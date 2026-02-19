@@ -1,12 +1,8 @@
 'use client';
+import LandingPage from '../src/LandingPage';
+import { useRouter } from 'next/navigation';
 
-import dynamic from 'next/dynamic';
-
-// Dynamically import the landing page to avoid SSR issues
-const LandingPage = dynamic(() => import('../src/LandingPage'), { ssr: false });
-
-export default function Home() {
-  return (
-    <LandingPage />
-  );
+export default function Index() {
+  const router = useRouter();
+  return <LandingPage onEnterShop={() => router.push('/home')} />;
 }

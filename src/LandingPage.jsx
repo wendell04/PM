@@ -1,498 +1,535 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './custom-styles.css';
 
-const LandingPage = () => {
+const LandingPage = ({onEnterShop}) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [showSignupModal, setShowSignupModal] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [modal, setModal] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
-  // Sample services data
-  const services = [
-    {
-      id: 1,
-      title: "Custom T-Shirts",
-      description: "High-quality custom t-shirts with your designs printed to perfection.",
-      icon: "TS"
-    },
-    {
-      id: 2,
-      title: "Corporate Giveaways",
-      description: "Branded merchandise for your business events and marketing campaigns.",
-      icon: "CG"
-    },
-    {
-      id: 3,
-      title: "Personalized Gifts",
-      description: "Unique personalized gifts for special occasions and celebrations.",
-      icon: "PG"
-    },
-    {
-      id: 4,
-      title: "Mugs & Drinkware",
-      description: "Custom mugs, tumblers, and drinkware for personal or promotional use.",
-      icon: "MD"
-    },
-    {
-      id: 5,
-      title: "Bags & Accessories",
-      description: "Personalized bags, backpacks, and accessories for everyday use.",
-      icon: "BA"
-    },
-    {
-      id: 6,
-      title: "Signage & Banners",
-      description: "Professional signage and banners for businesses and events.",
-      icon: "SB"
-    }
-  ];
 
-  // Sample products data
-  const products = [
-    {
-      id: 1,
-      title: "Premium Cotton T-Shirt",
-      price: "₱299",
-      image: "/placeholder-product.jpg"
-    },
-    {
-      id: 2,
-      title: "Custom Ceramic Mug",
-      price: "₱199",
-      image: "/placeholder-product.jpg"
-    },
-    {
-      id: 3,
-      title: "Personalized Canvas Bag",
-      price: "₱499",
-      image: "/placeholder-product.jpg"
-    },
-    {
-      id: 4,
-      title: "Custom Phone Case",
-      price: "₱399",
-      image: "/placeholder-product.jpg"
-    },
-    {
-      id: 5,
-      title: "Personalized Notebook",
-      price: "₱249",
-      image: "/placeholder-product.jpg"
-    },
-    {
-      id: 6,
-      title: "Custom Keychain",
-      price: "₱99",
-      image: "/placeholder-product.jpg"
-    }
-  ];
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 50);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
-  // Login Modal Component
-  const LoginModal = () => {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
-
-    const handleSubmit = (e) => {
-      e.preventDefault();
-      // Simple validation
-      if (!email || !password) {
-        setError('Please fill in all fields');
-        return;
-      }
-      
-      // Simulate login process
-      console.log('Login attempt with:', { email, password });
-      // Close modal after successful login
-      setShowLoginModal(false);
-      // In a real app, you would redirect to dashboard
-    };
-
-    if (!showLoginModal) return null;
-
-    return (
-      <div className="modal-overlay" onClick={() => setShowLoginModal(false)}>
-        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-          <div className="modal-header">
-            <h2>Login to Your Account</h2>
-            <button className="close-btn" onClick={() => setShowLoginModal(false)}>✕</button>
-          </div>
-          <form onSubmit={handleSubmit} className="modal-form">
-            {error && <div className="error-message">{error}</div>}
-            <div className="form-group">
-              <label htmlFor="email">Email Address</label>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="modal-input"
-                placeholder="you@example.com"
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="password">Password</label>
-              <input
-                type="password"
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="modal-input"
-                placeholder="••••••••"
-                required
-              />
-            </div>
-            <div className="form-options">
-              <label className="checkbox-label">
-                <input type="checkbox" /> Remember me
-              </label>
-              <a href="#" className="forgot-password">Forgot password?</a>
-            </div>
-            <button type="submit" className="submit-btn">Sign In</button>
-          </form>
-          <div className="modal-footer">
-            <p>Don't have an account? <button onClick={() => { setShowLoginModal(false); setShowSignupModal(true); }} className="switch-form">Sign Up</button></p>
-          </div>
-        </div>
-      </div>
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => entries.forEach(e => e.isIntersecting && e.target.classList.add('visible')),
+      { threshold: 0.12 }
     );
+    document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const container = document.getElementById('particles');
+    if (!container) return;
+    const colors = ['#d4a843', '#e8c76a', '#c41e3a', 'rgba(245,245,245,0.6)'];
+    for (let i = 0; i < 18; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      const s = Math.random() * 5 + 2;
+      const c = colors[Math.floor(Math.random() * colors.length)];
+      p.style.cssText = `
+        width:${s}px; height:${s}px;
+        left:${Math.random() * 90 + 5}%;
+        bottom:${Math.random() * 30 + 10}%;
+        background:${c};
+        box-shadow:0 0 ${s * 2}px ${c};
+        animation-duration:${Math.random() * 4 + 3}s;
+        animation-delay:${Math.random() * 6}s;
+      `;
+      container.appendChild(p);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = modal ? 'hidden' : '';
+    return () => {document.body.style.overflow = '';};
+  }, [modal]);
+
+  const openModal = (type) => {
+    setModal(type);
+    setMobileMenuOpen(false);
   };
 
-  // Signup Modal Component
-  const SignupModal = () => {
-    const [phoneNumber, setPhoneNumber] = useState('');
-    const [error, setError] = useState('');
-    const [otp, setOtp] = useState('');
-    const [otpSent, setOtpSent] = useState(false);
-    const [showOTPInput, setShowOTPInput] = useState(false);
-    const [countdown, setCountdown] = useState(0);
+  const closeModal = () => setModal(null);
 
-    const handleSubmit = (e) => {
-      e.preventDefault();
-      
-      if (!phoneNumber || !otp) {
-        setError('Please enter phone number and verify OTP');
-        return;
-      }
-      
-      // Simulate signup process after OTP verification
-      console.log('Signup attempt with:', { phoneNumber, otp });
-      // Close modal after successful signup
-      setShowSignupModal(false);
-      // In a real app, you would redirect to profile setup
-    };
+  const closeMobile = () => {
+    setMobileMenuOpen(false);
+    document.body.style.overflow = '';
+  };
 
-    const handleSendOTP = () => {
-      if (!phoneNumber) {
-        setError('Please enter a phone number');
-        return;
-      }
-
-      // Simulate sending OTP
-      console.log(`Sending OTP to ${phoneNumber}`);
-      setOtpSent(true);
-      setShowOTPInput(true);
-      setError('');
-      
-      // Start countdown for resend
-      setCountdown(60);
-      const timer = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    };
-
-    const handleVerifyOTP = () => {
-      if (!otp) {
-        setError('Please enter the OTP');
-        return;
-      }
-
-      // Simulate OTP verification
-      console.log(`Verifying OTP: ${otp}`);
-      setError('');
-      // In a real app, you would verify the OTP with the backend
-      // Then redirect to profile setup page
-      alert('Phone number verified! You would be redirected to profile setup.');
-      setShowSignupModal(false);
-    };
-
-    const handleResendOTP = () => {
-      if (countdown > 0) return; // Prevent resending during cooldown
-      
-      // Reset and send new OTP
-      setOtp('');
-      setOtpSent(false);
-      setTimeout(() => {
-        handleSendOTP();
-      }, 100);
-    };
-
-    if (!showSignupModal) return null;
-
-    return (
-      <div className="modal-overlay" onClick={() => setShowSignupModal(false)}>
-        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-          <div className="modal-header">
-            <h2>Create Account</h2>
-            <button className="close-btn" onClick={() => setShowSignupModal(false)}>✕</button>
-          </div>
-          <form onSubmit={handleSubmit} className="modal-form">
-            {error && <div className="error-message">{error}</div>}
-            <div className="form-group">
-              <label htmlFor="phoneNumber">Phone Number</label>
-              <div className="phone-input-wrapper">
-                <input
-                  type="tel"
-                  id="phoneNumber"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  className="modal-input"
-                  placeholder="+63 912 345 6789"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={handleSendOTP}
-                  disabled={otpSent || !phoneNumber}
-                  className={`send-otp-btn ${
-                    otpSent || !phoneNumber
-                      ? 'disabled'
-                      : ''
-                  }`}
-                >
-                  {otpSent ? 'Sent!' : 'Send OTP'}
-                </button>
-              </div>
-            </div>
-
-            {showOTPInput && (
-              <div className="form-group">
-                <label htmlFor="otp">Enter OTP</label>
-                <input
-                  type="text"
-                  id="otp"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  className="modal-input"
-                  placeholder="Enter 6-digit code"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={handleVerifyOTP}
-                  className="verify-otp-btn"
-                >
-                  Verify OTP
-                </button>
-              </div>
-            )}
-
-            <div className="form-agreement text-center">
-              <p className="text-sm text-gray-700">
-                By signing up, you agree to PersonalizeMe's <a href="#" className="text-green-600 hover:underline font-medium">Terms of Service</a> & <a href="#" className="text-green-600 hover:underline font-medium">Privacy Policy</a>
-              </p>
-            </div>
-            <button type="submit" className="submit-btn">Continue</button>
-          </form>
-          
-          {/* Google Signup Option */}
-          <div className="modal-divider-section">
-            <div className="divider-line"></div>
-            <div className="divider-text">Or continue with</div>
-            <div className="divider-line"></div>
-          </div>
-          
-          <button 
-            className="google-signup-btn"
-            onClick={() => {
-              console.log('Google signup initiated');
-              // In a real app, this would redirect to Google OAuth
-              // Then redirect to profile setup page
-              alert('Google signup initiated! You would be redirected to profile setup.');
-              setShowSignupModal(false);
-            }}
-          >
-            <svg className="google-icon" viewBox="0 0 24 24">
-              <path d="M12.24 10.285V14.4h6.806c-.275 1.765-2.056 5.174-6.806 5.174-4.095 0-7.439-3.389-7.439-7.574s3.345-7.574 7.439-7.574c2.33 0 3.891.989 4.785 1.849l3.254-3.138C18.189 1.186 15.479 0 12.24 0c-6.635 0-12 5.365-12 12s5.365 12 12 12c6.926 0 11.52-4.869 11.52-11.726 0-.788-.085-1.39-.189-1.989H12.24z" fill="#4285F4"/>
-            </svg>
-            Sign up with Google
-          </button>
-          
-          <div className="modal-footer">
-            <p>Already have an account? <button onClick={() => { setShowSignupModal(false); setShowLoginModal(true); }} className="switch-form">Login</button></p>
-          </div>
-        </div>
-      </div>
-    );
+  const toggleMobile = () => {
+    const next = !mobileMenuOpen;
+    setMobileMenuOpen(next);
+    document.body.style.overflow = next ? 'hidden' : '';
   };
 
   return (
-    <div className="landing-page">
-      {/* Header */}
-      <header className="header">
+    <>
+      {/* NAVBAR */}
+      <nav className={`navbar ${scrolled ? 'scrolled' : ''}`}>
         <div className="container">
-          <nav className="navbar">
-            <a href="/" className="logo">
-              Personalize<span className="gold">Me</span>
+          <div className="nav-inner">
+
+            <a href="#" className="nav-logo">
+              <img
+                src="/logos/PersonalizeMe logo.png"
+                alt="Personalize Me Prints"
+                className="nav-logo-mark"
+              />
+              <div className="nav-logo-text">
+                PERSONALIZE <span>ME</span><br />PRINTS
+              </div>
             </a>
 
+            <ul className="nav-links">
+              <li><a href="#services">Services</a></li>
+              <li><a href="#how-it-works">How It Works</a></li>
+              <li><a href="#why-us">Why Us</a></li>
+            </ul>
+
+            <div className="nav-auth">
+              <button className="btn-nav-login" onClick={() => openModal('login')}>Login</button>
+              <button className="btn-nav-register" onClick={() => openModal('register')}>Register</button>
+            </div>
+
             <button
-              className="hamburger"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className={`hamburger ${mobileMenuOpen ? 'open' : ''}`}
+              onClick={toggleMobile}
+              aria-label="Menu"
             >
-              {mobileMenuOpen ? '✕' : '☰'}
+              <span></span><span></span><span></span>
             </button>
 
-            <ul className={`nav-links ${mobileMenuOpen ? 'active' : ''}`}>
-              <li><a href="#home">Home</a></li>
-              <li><a href="#services">Services</a></li>
-
-              {/* Products with dropdown */}
-              <li className="dropdown-products">
-                <a href="#products" className="dropbtn-products">Products</a>
-                <div className="dropdown-content-products">
-                  <a href="#">Ballpens</a>
-                  <a href="#">Bookmarks</a>
-                  <a href="#">Button Pins</a>
-                  <a href="#">Caps</a>
-                  <a href="#">Mugs</a>
-                  <a href="#">Magnet</a>
-
-                  <a href="#">Bags</a>
-                  <a href="#">T-Shirts</a>
-                </div>
-              </li>
-
-              <li><a href="#about">About</a></li>
-              <li><a href="#contact">Contact</a></li>
-              
-              {/* Login/Signup buttons for desktop */}
-              <li className="auth-buttons hidden md:block">
-                <button onClick={() => setShowLoginModal(true)} className="btn-login">Login</button>
-                <button onClick={() => setShowSignupModal(true)} className="btn-signup">Sign Up</button>
-              </li>
-            </ul>
-            
-            {/* Login/Signup buttons for mobile */}
-            {mobileMenuOpen && (
-              <div className="mobile-auth-buttons">
-                <button onClick={() => setShowLoginModal(true)} className="btn-login-mobile">Login</button>
-                <button onClick={() => setShowSignupModal(true)} className="btn-signup-mobile">Sign Up</button>
-              </div>
-            )}
-          </nav>
+          </div>
         </div>
-      </header>
+      </nav>
 
-      {/* Hero Section */}
+      {/* MOBILE MENU */}
+      <div className={`mobile-menu ${mobileMenuOpen ? 'open' : ''}`}>
+        <a href="#services" onClick={closeMobile}>Services</a>
+        <a href="#how-it-works" onClick={closeMobile}>How It Works</a>
+        <a href="#why-us" onClick={closeMobile}>Why Us</a>
+        <div className="mobile-auth-btns">
+          <button className="btn-nav-login" onClick={() => openModal('login')}>Login</button>
+          <button className="btn-nav-register" onClick={() => openModal('register')}>Register</button>
+        </div>
+      </div>
+
+      {/* HERO */}
       <section className="hero" id="home">
-        <div className="container">
-          <div className="hero-content">
-            <h1>
-              <span className="gold">Printing Quality</span>
-              <span className="red">at Affordable Rates</span>
-            </h1>
-            <p>
-              High-quality printing that puts your brand front and center.
-              From custom gifts to corporate giveaways—crafted just for you.
-            </p>
-
-            <div className="btn-container">
-              <a href="#products" className="btn">Shop Now</a>
-              <a href="#services" className="btn btn-outline">Learn More</a>
+        <div className="hero-content">
+          <div className="hero-badge">Premium Custom Printing</div>
+          <h1 className="hero-title">
+            Print What<br />
+            <span className="red-text">Represents</span>
+            <span className="gold-text"> You</span>
+          </h1>
+          <p className="hero-subtitle">
+            High-quality personalized printing for t-shirts, mugs, souvenirs, and more.
+            Upload your design — we'll make it real. Fast, affordable, and built to impress.
+          </p>
+          <div className="hero-actions">
+            <button className="btn-primary" onClick={onEnterShop}>
+              Browse Products
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            <a href="#how-it-works" className="btn-secondary">How It Works</a>
+          </div>
+          <div className="hero-stats">
+            <div>
+              <div className="hero-stat-num gold-text">500+</div>
+              <div className="hero-stat-label">Happy Clients</div>
             </div>
-
-            <div className="contact-info">
-              <div className="contact-item">
-                <span>Email:</span>
-                <a href="mailto:info@personalizeme.ph">info@personalizeme.ph</a>
-              </div>
-              <div className="contact-item">
-                <span>Text:</span>
-                <a href="tel:+639459726272">+63 945972 6272</a>
-              </div>
-              <div className="contact-item">
-                <span>Text:</span>
-                <a href="tel:+639624362161">+63 962436 2161</a>
-              </div>
+            <div>
+              <div className="hero-stat-num gold-text">24hr</div>
+              <div className="hero-stat-label">Turnaround</div>
             </div>
+            <div>
+              <div className="hero-stat-num gold-text">100%</div>
+              <div className="hero-stat-label">Satisfaction</div>
+            </div>
+          </div>
+        </div>
+
+        {/* LOGO VISUAL */}
+        <div className="hero-visual">
+          <div className="logo-3d-scene">
+            <div className="particles" id="particles"></div>
+            <div className="ring-outer"></div>
+            <div className="ring-mid"></div>
+            <div className="orbit" style={{ animationDuration: '7s' }}>
+              <div className="orbit-dot" style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+            </div>
+            <div className="orbit" style={{ animationDuration: '10s', animationDirection: 'reverse', transform: 'rotate(120deg)' }}>
+              <div className="orbit-dot" style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--red)', boxShadow: '0 0 8px var(--red)' }}></div>
+            </div>
+            <div className="orbit" style={{ animationDuration: '13s', transform: 'rotate(240deg)' }}>
+              <div className="orbit-dot" style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--gold-light)', boxShadow: '0 0 6px var(--gold-light)' }}></div>
+            </div>
+            <img
+              src="/logos/PersonalizeMe logo.png"
+              alt="Personalize Me Prints Logo"
+              className="hero-logo-img"
+            />
+            <div className="logo-glow"></div>
           </div>
         </div>
       </section>
 
-      {/* Services Section */}
-      <section className="services" id="services">
-        <div className="container">
-          <h2 className="section-title">Our Services</h2>
+      {/* MARQUEE */}
+      <div className="marquee-strip">
+        <div className="marquee-track">
+          {[
+            'Silk Screen Printing', 'Digital Printing Shirt', 'Keychains', 'Eco Bags',
+            'Folded Fan Printing', 'Business Cards', 'Paper Bags', 'Kraft Bag',
+            'Mugs', 'Tumbler', 'Sticker Labels', 'Giveaways', 'Birthday Invitations', 'Personalized Calendars',
+            'Silk Screen Printing', 'Digital Printing Shirt', 'Keychains', 'Eco Bags',
+            'Folded Fan Printing', 'Business Cards', 'Paper Bags', 'Kraft Bag',
+            'Mugs', 'Tumbler', 'Sticker Labels', 'Giveaways', 'Birthday Invitations', 'Personalized Calendars'
+          ].map((item, i) => (
+            <div className="marquee-item" key={i}>
+              <span className="marquee-dot"></span>{item}
+            </div>
+          ))}
+        </div>
+      </div>
 
+      {/* SERVICES */}
+      <section id="services">
+        <div className="container">
+          <div className="section-header center">
+            <span className="section-tag">What We Offer</span>
+            <h2 className="section-title">Our <span className="gold-text">Print</span> Services</h2>
+            <p className="section-subtitle">
+              From apparel to promotional materials — we bring your ideas to life
+              with precision printing at prices that won't break the bank.
+            </p>
+          </div>
           <div className="services-grid">
-            {services.map(service => (
-              <div className="service-card" key={service.id}>
-                <div className="service-icon">{service.icon}</div>
-                <h3 className="service-title">{service.title}</h3>
-                <p className="service-description">{service.description}</p>
+            {[
+              { icon: '🖨️', title: 'Silk Screen Printing', desc: "Premium silk screen printing for bulk shirts and apparel. Vibrant, long-lasting colors that won't fade.", color: 'red' },
+              { icon: '👕', title: 'Digital Printing Shirt', desc: 'Full-color digital prints directly on shirts. Perfect for detailed designs, photos, and small quantities.', color: 'gold' },
+              { icon: '🔑', title: 'Keychains', desc: 'Custom printed or engraved keychains — great for giveaways, souvenirs, and personalized gifts.', color: 'red' },
+              { icon: '🛍️', title: 'Eco Bags', desc: 'Personalized eco-friendly bags for events, businesses, and everyday use. Stylish and sustainable.', color: 'gold' },
+              { icon: '🪭', title: 'Folded Fan Printing', desc: 'Custom printed folded fans — ideal for outdoor events, weddings, and promotional campaigns.', color: 'red' },
+              { icon: '💼', title: 'Business Cards', desc: 'Professional business cards printed with sharp detail. Make a lasting first impression every time.', color: 'gold' },
+              { icon: '🛍️', title: 'Paper Bags', desc: 'Branded paper bags for your business or events. Clean, professional, and customizable in any size.', color: 'red' },
+              { icon: '🎒', title: 'Kraft Bag', desc: 'Eco-friendly kraft bags with your custom print. Perfect for packaging, retail, and giveaways.', color: 'gold' },
+              { icon: '☕', title: 'Mugs', desc: 'Personalized mugs for gifts, corporate giveaways, or personal use. Full-wrap printing available.', color: 'red' },
+              { icon: '🥤', title: 'Tumbler', desc: 'Custom printed tumblers — keep drinks hot or cold in style with your own personalized design.', color: 'gold' },
+              { icon: '🏷️', title: 'Sticker Labels', desc: 'Die-cut and custom sticker labels for products, packaging, events, and personal branding.', color: 'red' },
+              { icon: '🎁', title: 'Giveaways', desc: 'Complete personalized giveaway packages for events, birthdays, and corporate occasions.', color: 'gold' },
+              { icon: '🎉', title: 'Birthday Invitations', desc: 'Beautifully designed and printed birthday invitations. Custom layouts to match your theme.', color: 'red' },
+              { icon: '📅', title: 'Personalized Calendars', desc: 'Custom calendars with your photos and branding. Perfect for year-round gifts and promotions.', color: 'gold' },
+            ].map((s, i) => (
+              <div className="service-card fade-up" key={i}>
+                <div className="service-icon" style={s.color === 'red'
+                  ? { background: 'rgba(196,30,58,.12)', border: '1px solid rgba(196,30,58,.25)' }
+                  : { background: 'rgba(212,168,67,.1)', border: '1px solid rgba(212,168,67,.25)' }
+                }>{s.icon}</div>
+                <h3>{s.title}</h3>
+                <p>{s.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Products Section */}
-      <section className="products" id="products">
+      {/* HOW IT WORKS */}
+      <section id="how-it-works" className="how-bg">
         <div className="container">
-          <h2 className="section-title">Top Print Products</h2>
-
-          <div className="products-grid">
-            {products.map(product => (
-              <div className="product-card" key={product.id}>
-                <div className="product-image">
-                  {product.image ? (
-                    <img src={product.image} alt={product.title} />
-                  ) : (
-                    <span>Product Image</span>
-                  )}
-                </div>
-                <div className="product-info">
-                  <h3 className="product-title">{product.title}</h3>
-                  <p className="product-price">{product.price}</p>
-                  <button className="btn">Add to Cart</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="footer">
-        <div className="container">
-          <div className="footer-content">
-            <span className="follow-us">Follow Us On</span>
-
-            <div className="social-links">
-              <a href="https://www.facebook.com/personalizemeprints" target="_blank" rel="noopener noreferrer" className="social-link" aria-label="Facebook"></a>
-              <a href="https://www.instagram.com/personalizemeprints" target="_blank" rel="noopener noreferrer" className="social-link" aria-label="Instagram"></a>
-              <a href="https://www.tiktok.com/@personalizemeprints" target="_blank" rel="noopener noreferrer" className="social-link" aria-label="TikTok"></a>
-              <a href="https://shopee.ph/personalizemeprints" target="_blank" rel="noopener noreferrer" className="social-link" aria-label="Shopee"></a>
-            </div>
-
-            <p className="copyright">
-              © {new Date().getFullYear()} Personalize Me. All rights reserved.
+          <div className="section-header center">
+            <span className="section-tag">Simple Process</span>
+            <h2 className="section-title">How It <span className="red-text">Works</span></h2>
+            <p className="section-subtitle">
+              Getting your custom prints is fast and hassle-free.
+              Just follow these simple steps and we'll handle the rest.
             </p>
+          </div>
+          <div className="steps-grid">
+            {[
+              { n: '1', title: 'Choose a Product', desc: 'Browse our catalog and pick what you want — t-shirts, mugs, stickers, or more.' },
+              { n: '2', title: 'Upload Your Design', desc: 'Upload your artwork or describe what you want. No design? We can help you create one.' },
+              { n: '3', title: 'Review & Approve', desc: "We'll send you a proof. Confirm the design placement and details before we print." },
+              { n: '4', title: 'Get Your Order', desc: 'Once approved, we print and deliver — fast, fresh, exactly as you imagined.' },
+            ].map((s, i) => (
+              <div className="step-card fade-up" key={i}>
+                <div className="step-num">{s.n}</div>
+                <h3>{s.title}</h3>
+                <p>{s.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* WHY US */}
+      <section id="why-us">
+        <div className="container">
+          <div className="features-layout">
+            <div>
+              <div className="section-header">
+                <span className="section-tag">Why Choose Us</span>
+                <h2 className="section-title">Quality You Can <span className="gold-text">Feel</span></h2>
+                <p className="section-subtitle">
+                  We're not just a print shop — we're your creative partner.
+                  Every order is handled with care, precision, and pride.
+                </p>
+              </div>
+              <div className="feature-list">
+                {[
+                  { title: 'Affordable Pricing', desc: 'Premium prints at prices that make sense. No hidden fees, no overpricing.' },
+                  { title: 'Fast Turnaround', desc: 'Most orders ready within 24–48 hours. Rush orders? We can make it work.' },
+                  { title: 'Design Assistance', desc: 'No designer? No problem. Request a design and our team will create it for you.' },
+                  { title: 'Approval Before Print', desc: 'You see and approve the final design before we print — 100% satisfaction guaranteed.' },
+                ].map((f, i) => (
+                  <div className="feature-item fade-up" key={i}>
+                    <div className="feature-check">✓</div>
+                    <div>
+                      <h4>{f.title}</h4>
+                      <p>{f.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="feature-visual">
+              <div className="feature-card-stack">
+                <div className="fcard">
+                  <div className="fcard-inner">
+                    <div className="fcard-label">Total Orders</div>
+                    <div className="fcard-value gold-text">1,240+</div>
+                    <div className="fcard-bar"><div className="fcard-bar-fill" style={{ width: '82%', background: 'linear-gradient(90deg,var(--gold-dark),var(--gold))' }}></div></div>
+                  </div>
+                </div>
+                <div className="fcard">
+                  <div className="fcard-inner">
+                    <div className="fcard-label">Satisfaction Rate</div>
+                    <div className="fcard-value red-text">98.5%</div>
+                    <div className="fcard-bar"><div className="fcard-bar-fill" style={{ width: '98%', background: 'linear-gradient(90deg,var(--red-dark),var(--red))' }}></div></div>
+                  </div>
+                </div>
+                <div className="fcard">
+                  <div className="fcard-inner">
+                    <div className="fcard-label">Avg. Delivery</div>
+                    <div className="fcard-value gold-text">24 hrs</div>
+                    <div style={{ fontSize: '.75rem', color: 'var(--gray)', marginTop: '.5rem' }}>Rush orders available</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section>
+        <div className="container">
+          <div className="cta-banner fade-up">
+            <h2>Ready to <span className="red-text">Personalize</span> Something?</h2>
+            <p>Whether it's a shirt for your team or a gift for someone special — we're here to print it perfectly.</p>
+            <div className="cta-actions">
+              <button className="btn-primary" onClick={onEnterShop}>
+                Browse Products
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M3 8h10M9 4l4 4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>  
+                </svg> 
+              </button>
+              <a href="#sservices" className="btn-secondary">View Services</a> 
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer>
+        <div className="container">
+          <div className="footer-grid">
+            <div className="footer-brand">
+              <a href="#" className="nav-logo" style={{ display: 'inline-flex', marginBottom: '.25rem' }}>
+                <img
+                  src="/logos/PersonalizeMe logo.png"
+                  alt="Personalize Me Prints"
+                  className="nav-logo-mark"
+                />
+                <div className="nav-logo-text" style={{ marginLeft: '.75rem' }}>
+                  PERSONALIZE <span>ME</span><br />PRINTS
+                </div>
+              </a>
+              <p>Printing quality at affordable rates. We bring your ideas to life with precision and care.</p>
+              <div className="social-links">
+                <a href="#" className="social-btn" aria-label="Facebook">f</a>
+                <a href="#" className="social-btn" aria-label="Instagram">📷</a>
+                <a href="#" className="social-btn" aria-label="TikTok">♪</a>
+                <a href="#" className="social-btn" aria-label="Shopee">🛍️</a>
+              </div>
+            </div>
+            <div className="footer-col">
+              <h4>Services</h4>
+              <ul>
+                <li><a href="#">Silk Screen Printing</a></li>
+                <li><a href="#">Digital Printing Shirt</a></li>
+                <li><a href="#">Keychains</a></li>
+                <li><a href="#">Eco Bags</a></li>
+                <li><a href="#">Folded Fan Printing</a></li>
+                <li><a href="#">Business Cards</a></li>
+                <li><a href="#">Paper Bags</a></li>
+                <li><a href="#">Kraft Bag</a></li>
+                <li><a href="#">Mugs</a></li>
+                <li><a href="#">Tumbler</a></li>
+                <li><a href="#">Sticker Labels</a></li>
+                <li><a href="#">Giveaways</a></li>
+                <li><a href="#">Birthday Invitations</a></li>
+                <li><a href="#">Personalized Calendars</a></li>
+              </ul>
+            </div>
+            <div className="footer-col">
+              <h4>Company</h4>
+              <ul>
+                <li><a href="#">About Us</a></li>
+                <li><a href="#">How It Works</a></li>
+                <li><a href="#">Portfolio</a></li>
+                <li><a href="#">Pricing</a></li>
+              </ul>
+            </div>
+            <div className="footer-col">
+              <h4>Support</h4>
+              <ul>
+                <li><a href="#">Contact Us</a></li>
+                <li><a href="#">Track Order</a></li>
+                <li><a href="#">FAQ</a></li>
+                <li><a href="#">Privacy Policy</a></li>
+              </ul>
+            </div>
+          </div>
+          <div className="footer-bottom">
+            <p>© 2025 Personalize ME Prints. All rights reserved.</p>
           </div>
         </div>
       </footer>
 
-      {/* Modals */}
-      <LoginModal />
-      <SignupModal />
+      {/* AUTH MODAL */}
+      {modal && (
+        <div className="auth-overlay" onClick={closeModal}>
+          <div className="auth-modal" onClick={e => e.stopPropagation()}>
+
+      {/* LOGIN */}
+      {modal === 'login' && (
+        <>
+          <div className="auth-modal-header">
+            <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="auth-modal-logo" />
+            <div><h2>Welcome Back!</h2><p>Login to your Account</p></div>
+            <button className="auth-close" onClick={closeModal}>✕</button>
+          </div>
+          <div className="auth-modal-body">
+            <button className="btn-google">
+              <svg width="18" height="18" viewBox="0 0 18 18">
+                <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+                <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
+                <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/>
+                <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
+              </svg>
+              Continue with Google
+            </button>
+            <div className="auth-divider"><span>or Login with email</span></div>
+            <div className="auth-field">
+              <label>Email Address</label>
+              <input type="email" placeholder="you@example.com" />
+            </div>
+            <div className="auth-field">
+              <label>Password</label>
+              <div className="auth-input-wrap">
+                <input type={showPassword ? 'text' : 'password'} placeholder="Enter your password" />
+                <button className="auth-eye" onClick={() => setShowPassword(!showPassword)}>
+                  {showPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
+            </div>
+            <div className="auth-row">
+              <label className="auth-check"><input type="checkbox" /><span>Remember Me</span></label>
+              <a href="#" className="auth-link">Forgot Password</a>
+            </div>
+            <button className="btn-auth-submit">Sign In</button>
+            <p className="auth-switch">Don't have an account? <button onClick={() => setModal('register')}>Create one</button></p>
+          </div>
+        </>
+      )}
+
+      {/* REGISTER */}
+      {modal === 'register' && (
+        <>
+          <div className="auth-modal-header">
+            <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="auth-modal-logo" />
+            <div><h2>Create Account</h2><p>Join Personalize Me Prints</p></div>
+            <button className="auth-close" onClick={closeModal}>✕</button>
+          </div>
+          <div className="auth-modal-body">
+            <button className="btn-google">
+              <svg width="18" height="18" viewBox="0 0 18 18">
+                <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+                <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
+                <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/>
+                <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
+              </svg>
+              Continue with Google
+            </button>
+            <div className="auth-divider"><span>or register with email</span></div>
+            <div className="auth-fields-grid">
+              <div className="auth-field">
+                <label>Full Name</label>
+                <input type="text" placeholder="Juan Dela Cruz" />
+              </div>
+              <div className="auth-field">
+                <label>Phone Number</label>
+                <input type="tel" placeholder="+63 912 345 6789" />
+              </div>
+            </div>
+            <div className="auth-field">
+              <label>Email Address</label>
+              <input type="email" placeholder="you@example.com" />
+            </div>
+            <div className="auth-fields-grid">
+              <div className="auth-field">
+                <label>Password</label>
+                <div className="auth-input-wrap">
+                  <input type={showPassword ? 'text' : 'password'} placeholder="Create Password" />
+                  <button className="auth-eye" onClick={() => setShowPassword(!showPassword)}>
+                    {showPassword ? '🙈' : '👁️'}
+                  </button>
+                </div>
+              </div>
+              <div className="auth-field">
+                <label>Confirm Password</label>
+                <div className="auth-input-wrap">
+                  <input type={showConfirm ? 'text' : 'password'} placeholder="Repeat Password" />
+                  <button className="auth-eye" onClick={() => setShowConfirm(!showConfirm)}>
+                    {showConfirm ? '🙈' : '👁️'}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <label className="auth-check auth-terms">
+              <input type="checkbox" />
+              <span>I agree to the <a href="#" className="auth-link">Terms of Service</a> and <a href="#" className="auth-link">Privacy Policy</a></span>
+            </label>
+            <button className="btn-auth-submit">Create Account</button>
+            <p className="auth-switch">Already have an account? <button onClick={() => setModal('login')}>Sign In</button></p>
+          </div>
+        </>
+      )}
+
     </div>
+  </div>
+)}
+    </>
   );
 };
 
