@@ -72,6 +72,24 @@ const CustomerHome = ({onBackToLanding}) => {
     // (localStorage structure — tiers[].prices object)
     const getPriceRange = (product) => {
         if (product.priceType === 'inquiry') return null;
+        
+        // Fixed price - may variant prices or single price
+        if (product.priceType === 'fixed') {
+            // May variant prices?
+            if (product.variantPrices && Object.keys(product.variantPrices).length > 0) {
+                const prices = Object.values(product.variantPrices)
+                    .map(p => parseFloat(p))
+                    .filter(p => p > 0);
+                if (!prices.length) return '—';
+                const min = Math.min(...prices);
+                const max = Math.max(...prices);
+                return min === max ? `₱${min}` : `₱${min} – ₱${max}`;
+            }
+            // Single fixed price lang
+            return product.price ? `₱${product.price}` : '—';
+        }
+        
+        // Tiered pricing - get min/max from tiers
         if (!product.tiers?.length) return '—';
         const allPrices = product.tiers
             .flatMap(t => Object.values(t.prices))
