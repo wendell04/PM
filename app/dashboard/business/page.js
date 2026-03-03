@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
+// ── Inventory Helper (LocalStorage)
+import { getInventoryList } from './inventory/page';
+
 // ── TODO (MongoDB): palitan ng import ng API functions pag may DB na
 // import { getCategories, saveCategory, saveSubCategory, saveProduct } from '@/lib/productStorage';
 
@@ -67,9 +70,98 @@ function Combobox({ value, onChange, options, placeholder, label, required }) {
               className="combobox-item combobox-add"
               onClick={() => select(inputVal)}
             >
-              Add "{inputVal}"
+              <span>+</span> Add "{inputVal}"
             </button>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Inventory Combobox (for Material/Blank Item) ─────────────────────────────
+function InventoryCombobox({ value, onChange, inventoryList, placeholder, label }) {
+  const [open, setOpen] = useState(false);
+  const [inputVal, setInputVal] = useState('');
+  const ref = useRef(null);
+
+  // Get display name for selected inventory item
+  const getDisplayName = (id) => {
+    const item = inventoryList.find(inv => inv.id === id);
+    if (!item) return '';
+    return `${item.name} (${item.category}) - ${item.isOnDemand ? 'Upon Order' : `${item.stockQty} stocks`}`;
+  };
+
+  useEffect(() => {
+    setInputVal(value ? getDisplayName(value) : '');
+  }, [value, inventoryList]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = inventoryList.filter(item =>
+    `${item.name} (${item.category})`.toLowerCase().includes((inputVal || '').toLowerCase())
+  );
+
+  const select = (item) => {
+    const displayName = `${item.name} (${item.category}) - ${item.isOnDemand ? 'Upon Order' : `${item.stockQty} stocks`}`;
+    setInputVal(displayName);
+    onChange(item.id);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={ref} className="combobox-root">
+      {label && (
+        <label className="form-label">
+          {label}
+        </label>
+      )}
+      <div className="combobox-field">
+        <input
+          type="text"
+          className="form-input"
+          value={inputVal}
+          placeholder={placeholder}
+          readOnly
+          onFocus={() => setOpen(true)}
+        />
+        <div style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          {value && (
+            <button
+              type="button"
+              onClick={() => { setInputVal(''); onChange(''); setOpen(true); }}
+              style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 0.25rem', lineHeight: '1' }}
+              title="Clear selection"
+            >
+              ×
+            </button>
+          )}
+          <button type="button" className="combobox-toggle" onClick={() => setOpen(o => !o)} style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '0.72rem', padding: '0' }}>
+            {open ? ' ' : ' '}
+          </button>
+        </div>
+      </div>
+      {open && filtered.length > 0 && (
+        <div className="combobox-menu">
+          {filtered.map((item, i) => {
+            const displayName = `${item.name} (${item.category}) - ${item.isOnDemand ? 'Upon Order' : `${item.stockQty} stocks`}`;
+            return (
+              <button
+                key={i}
+                type="button"
+                className={`combobox-item${item.id === value ? ' active' : ''}`}
+                onClick={() => select(item)}
+              >
+                {displayName}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -130,7 +222,7 @@ function VariantGroupingCheckboxes({ variantGroups, groupChecks, onGroupChecksCh
           return (
             <div key={p.id} className="vgc-row">
               <span className="vgc-primary-badge">{p.value}</span>
-              <span className="vgc-arrow">→</span>
+              <span className="vgc-arrow"></span>
               <span className="vgc-g2-name">{g2.name || 'V2'}:</span>
               <label className="vgc-check-label vgc-all-label">
                 <input
@@ -422,7 +514,7 @@ function ProductPreviewModal({ product, onClose }) {
   const fixedMaxP = fixedPricesArray.length ? Math.max(...fixedPricesArray) : null;
 
   return (
-    <div className="preview-overlay" onClick={onClose}>
+    <div className="preview-overlay">
       <div className="preview-modal" onClick={e => e.stopPropagation()}>
         <div className="preview-modal-header">
           <h3 className="preview-modal-title">Storefront Preview</h3>
@@ -528,7 +620,7 @@ function ProductPreviewModal({ product, onClose }) {
             <p className="preview-section-label">Availability</p>
             <div className="preview-stock-status">
               {!product.trackInventory ? (
-                <span className="preview-stock-badge upon-order">⚡ Upon Order / Supplied</span>
+                <span className="preview-stock-badge upon-order">Upon Order / Supplied</span>
               ) : product.stock === 0 ? (
                 <span className="preview-stock-badge out-of-stock">Out of Stock</span>
               ) : product.stock <= 10 ? (
@@ -537,6 +629,11 @@ function ProductPreviewModal({ product, onClose }) {
                 <span className="preview-stock-badge in-stock">In Stock — {product.stock} pcs</span>
               )}
             </div>
+            {product.inventoryId && (
+              <p className="form-hint" style={{ marginTop: '0.75rem' }}>
+                🔗 Linked to Inventory: <strong>Item #{product.inventoryId.slice(0, 8)}</strong>
+              </p>
+            )}
           </div>
 
         </div>
@@ -562,6 +659,7 @@ export default function AddProductsPage() {
     priceType: 'fixed',
     trackInventory: true,
     stock: '',
+    inventoryId: '',        // linked Inventory item ID (for "Source of Truth" materials)
   });
 
   const [fixedPrice, setFixedPrice] = useState('');
@@ -590,13 +688,18 @@ export default function AddProductsPage() {
   const [savedSubCategories, setSavedSubCategories] = useState({});
   const [showPreview, setShowPreview] = useState(false);
 
-
+  // ── NEW: Inventory List State ────────────────────────────────────────────────
+  const [inventoryList, setInventoryList] = useState([]);
 
   // ── TODO: MongoDB — palitan ng GET /api/categories at GET /api/subcategories ──
   // CURRENT: LocalStorage (browser-only, hindi persistent sa server)
   useEffect(() => {
     setSavedCategories(JSON.parse(localStorage.getItem('customCategories') || '[]'));
     setSavedSubCategories(JSON.parse(localStorage.getItem('subCategories') || '{}'));
+    
+    // Load Inventory List (Source of Truth for blank materials)
+    const inventory = getInventoryList();
+    setInventoryList(inventory);
   }, []);
 
   const hasVariants = combinations.length > 0;
@@ -631,6 +734,25 @@ export default function AddProductsPage() {
       ...prev,
       subCategoryName: val,
       subCategoryCode: autoCode,
+    }));
+  };
+
+  // ── NEW: Handle Inventory/Material Selection ─────────────────────────────────
+  // Connects Add Product to Inventory "Source of Truth"
+  const handleInventoryChange = (inventoryId) => {
+    const selectedItem = inventoryId ? inventoryList.find(inv => inv.id === inventoryId) : null;
+
+    setFormData(prev => ({
+      ...prev,
+      inventoryId: inventoryId,
+      // Auto-set category and sub-category from inventory item (clear if no selection)
+      category: selectedItem ? selectedItem.category : '',
+      subCategoryName: selectedItem ? selectedItem.name : '',
+      subCategoryCode: selectedItem ? selectedItem.name.split(' ').filter(w => w.length > 0).map(w => w[0]).join('').toUpperCase().slice(0, 8) : '',
+      // Auto-detect Upon Order status
+      trackInventory: selectedItem ? !selectedItem.isOnDemand : true,
+      // Auto-set stock from inventory if not upon order
+      stock: selectedItem && !selectedItem.isOnDemand ? String(selectedItem.stockQty) : '',
     }));
   };
 
@@ -1020,6 +1142,7 @@ export default function AddProductsPage() {
     // ──────────────────────────────────────────────────────────────
     const newProduct = {
       id: Date.now(),                        // TODO: MongoDB will auto-generate _id
+      inventoryId: formData.inventoryId || null,  // Linked Inventory item (Source of Truth)
       category: formData.category,           // Product Category (e.g., "Mugs")
       subCategoryCode: formData.subCategoryCode,  // Auto-generated code (e.g., "CER")
       subCategoryName: formData.subCategoryName,  // Sub-category name (e.g., "Ceramic")
@@ -1131,32 +1254,65 @@ export default function AddProductsPage() {
         <div className="form-section">
           <h2 className="form-section-title">Product</h2>
 
+          {/* ── NEW: Material/Inventory Dropdown (Source of Truth) ─────────────── */}
+          {/* Links product to Inventory item for automatic stock management */}
+          <div className="form-group" style={{ marginBottom: '1rem' }}>
+            <InventoryCombobox
+              label="Product / Blank Item"
+              value={formData.inventoryId}
+              onChange={handleInventoryChange}
+              inventoryList={inventoryList}
+              placeholder="Select a Product from inventory..."
+            />
+            <p className="form-hint">
+              Select a material to auto-fill category, sub-category, and stock.
+              {formData.inventoryId && (() => {
+                const selected = inventoryList.find(inv => inv.id === formData.inventoryId);
+                return selected?.isOnDemand
+                  ? ' This item is Upon Order - stock will be bypassed.'
+                  : ` Current stock: ${selected?.stockQty} pcs (Min: ${selected?.minStockLevel})`;
+              })()}
+            </p>
+          </div>
+
           {/* Row 1: Category | Sub-category */}
           <div className="category-row">
 
             {/* ── Category: Main product category (e.g., "Mugs", "T-Shirt") ── */}
-            {/* TODO: MongoDB — will be saved to 'category' field */}
+            {/* Auto-filled from Material selection, read-only */}
             <div className="form-group">
-              <Combobox
-                label="Category"
-                required
+              <label className="form-label">
+                Category
+                {formData.inventoryId && (
+                  <span className="form-label-sub"> (from Material)</span>
+                )}
+              </label>
+              <input
+                type="text"
+                className="form-input"
                 value={formData.category}
-                onChange={handleCategoryChange}
-                options={savedCategories}
-                placeholder="e.g. T-Shirt, Mugs…"
+                readOnly
+                placeholder="Select a Product"
+                style={{ cursor: formData.inventoryId ? 'not-allowed' : 'default', opacity: formData.inventoryId ? 0.7 : 1 }}
               />
             </div>
 
             {/* ── Sub-category: Product variant/type (e.g., "Ceramic", "DTF") ── */}
-            {/* TODO: MongoDB — will be saved to 'subCategoryName' field */}
-            {/* subCategoryCode: Auto-generated initials (e.g., "CER" from "Ceramic") */}
+            {/* Auto-filled from Material selection, read-only */}
             <div className="form-group">
-              <Combobox
-                label="Sub-category"
+              <label className="form-label">
+                Sub-category
+                {formData.inventoryId && (
+                  <span className="form-label-sub"> (from Material)</span>
+                )}
+              </label>
+              <input
+                type="text"
+                className="form-input"
                 value={formData.subCategoryName}
-                onChange={handleSubCategoryChange}
-                options={subCatOptions}
-                placeholder="e.g. DTF, Ceramic…"
+                readOnly
+                placeholder="Select a Product"
+                style={{ cursor: formData.inventoryId ? 'not-allowed' : 'default', opacity: formData.inventoryId ? 0.7 : 1 }}
               />
             </div>
 
@@ -1190,22 +1346,35 @@ export default function AddProductsPage() {
         {/* ── Availability ── */}
         <div className="form-section">
           <h2 className="form-section-title">Availability</h2>
-          <div className="availability-cards">
-            {[
-              { val: true, title: 'Track Stock', desc: 'Tracable Stock / Quantity available.' },
-              { val: false, title: 'Upon Order / Supplied', desc: 'Supplier-based. Stock not available, upon ordering.' },
-            ].map(({ val, title, desc }) => (
-              <button
-                key={String(val)}
-                type="button"
-                className={`availability-card${formData.trackInventory === val ? ' selected' : ''}`}
-                onClick={() => setFormData(prev => ({ ...prev, trackInventory: val, stock: val ? prev.stock : '' }))}
-              >
-                <div className="availability-title">{title}</div>
-                <div className="availability-desc">{desc}</div>
-                {formData.trackInventory === val && val === true && (
+
+          {!formData.inventoryId ? (
+            <p className="form-hint" style={{ marginBottom: '1rem', color: '#f87171' }}>
+              Please select a Material / Blank Item first before setting Availability
+            </p>
+          ) : (() => {
+            const inv = inventoryList.find(i => i.id === formData.inventoryId);
+            if (inv?.isOnDemand) {
+              // Upon Order item - show only Upon Order card (non-toggleable)
+              return (
+                <div className="availability-card selected" style={{ cursor: 'not-allowed', opacity: 0.7 }}>
+                  <div className="availability-title">Upon Order / Supplied</div>
+                  <div className="availability-desc">
+                    This item is set as "Upon Order" in Inventory. Stock tracking is disabled.
+                  </div>
+                </div>
+              );
+            } else {
+              // Has stock - show only Track Stock card (non-toggleable, auto-selected)
+              return (
+                <div className="availability-card selected" style={{ cursor: 'not-allowed', opacity: 0.7 }}>
+                  <div className="availability-title">Track Stock</div>
+                  <div className="availability-desc">
+                    Stock is tracked from Inventory ({inv.stockQty} pcs available)
+                  </div>
                   <div className="stock-qty-input-wrap" onClick={e => e.stopPropagation()}>
-                    <label className="form-label">Stock Qty <span className="required">*</span></label>
+                    <label className="form-label">
+                      Available Stock <span className="required">*</span>
+                    </label>
                     <input
                       type="number"
                       className="form-input"
@@ -1214,6 +1383,10 @@ export default function AddProductsPage() {
                       onChange={e => {
                         const val = e.target.value;
                         if (val === '' || parseInt(val) >= 0) {
+                          if (parseInt(val) > inv.stockQty) {
+                            alert(`Cannot set stock higher than Inventory stock (${inv.stockQty} pcs)`);
+                            return;
+                          }
                           setFormData(prev => ({ ...prev, stock: val }));
                         }
                       }}
@@ -1221,11 +1394,16 @@ export default function AddProductsPage() {
                       min="0"
                       required
                     />
+                    {parseInt(formData.stock) > 0 && (
+                      <p className="form-hint" style={{ marginTop: '0.5rem', color: 'var(--gray)' }}>
+                        {inv.stockQty - parseInt(formData.stock)} pcs remaining in Inventory for this product
+                      </p>
+                    )}
                   </div>
-                )}
-              </button>
-            ))}
-          </div>
+                </div>
+              );
+            }
+          })()}
         </div>
 
         {/* ── Variants ── */}
@@ -1324,13 +1502,13 @@ export default function AddProductsPage() {
         <div className="form-section">
           <h2 className="form-section-title">Pricing</h2>
 
-          {!formData.category && (
+          {!formData.inventoryId && (
             <p className="form-hint" style={{ marginBottom: '1rem', color: '#f87171' }}>
-              Please Add Product Category first before setting Pricing
+              Please select a Material / Blank Item first before setting Pricing
             </p>
           )}
 
-          <div className="price-type-row" style={{ opacity: !formData.category ? 0.5 : 1, pointerEvents: !formData.category ? 'none' : 'auto' }}>
+          <div className="price-type-row" style={{ opacity: !formData.inventoryId ? 0.5 : 1, pointerEvents: !formData.inventoryId ? 'none' : 'auto' }}>
             {[
               { val: 'fixed',   label: 'Fixed Price' },
               { val: 'tiered',  label: 'Tier Price' },
@@ -1340,7 +1518,7 @@ export default function AddProductsPage() {
                 key={val}
                 type="button"
                 className={`price-type-btn${formData.priceType === val ? ' selected' : ''}`}
-                onClick={() => setFormData(prev => ({ ...prev, priceType: val }))}
+                onClick={() => formData.inventoryId && setFormData(prev => ({ ...prev, priceType: val }))}
               >
                 {label}
               </button>
@@ -1395,17 +1573,18 @@ export default function AddProductsPage() {
                 />
               ) : (
                 <div className="form-group">
-                  <div className="tier-price-cell">
+                  <div className="tier-price-cell" style={{ opacity: !formData.inventoryId ? 0.5 : 1, pointerEvents: !formData.inventoryId ? 'none' : 'auto' }}>
                     <span className="peso">₱</span>
                     <input
                       type="number"
                       className="tier-input"
                       value={fixedPrice || ''}
                       onKeyDown={preventNegative}
-                      onChange={e => setFixedPrice(sanitizeNumber(e.target.value))}
+                      onChange={e => formData.inventoryId && setFixedPrice(sanitizeNumber(e.target.value))}
                       placeholder="0"
                       min="0"
                       step="0.01"
+                      disabled={!formData.inventoryId}
                     />
                   </div>
                 </div>
@@ -1439,18 +1618,20 @@ export default function AddProductsPage() {
               )}
 
               {/* ── NEW: SmartPricingTable for tiered pricing */}
-              <SmartPricingTable
-                tiers={tiers}
-                variantGroups={variantGroups}
-                combinations={combinations}
-                groupChecks={groupChecks}
-                onPriceChange={updateTierPriceWithMerge}
-                updateTierRange={updateTierRange}
-                removeTier={removeTier}
-                mode="tiered"
-              />
+              <div style={{ opacity: !formData.inventoryId ? 0.5 : 1, pointerEvents: !formData.inventoryId ? 'none' : 'auto' }}>
+                <SmartPricingTable
+                  tiers={tiers}
+                  variantGroups={variantGroups}
+                  combinations={combinations}
+                  groupChecks={groupChecks}
+                  onPriceChange={updateTierPriceWithMerge}
+                  updateTierRange={updateTierRange}
+                  removeTier={removeTier}
+                  mode="tiered"
+                />
+              </div>
 
-              <button type="button" className="add-tier-btn" onClick={addTier}>
+              <button type="button" className="add-tier-btn" onClick={addTier} disabled={!formData.inventoryId} style={{ opacity: !formData.inventoryId ? 0.5 : 1, cursor: !formData.inventoryId ? 'not-allowed' : 'pointer' }}>
                 Add Price Tier
               </button>
             </>

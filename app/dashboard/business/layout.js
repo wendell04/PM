@@ -19,6 +19,7 @@ export default function BusinessDashboardLayout({ children }) {
 
   const navItems = [
     { name: 'Add Products', href: '/dashboard/business' },
+    { name: 'Product List', href: '/dashboard/business/products' },
     { name: 'Orders', href: '/dashboard/business/orders' },
     { name: 'Inventory', href: '/dashboard/business/inventory' },
     { name: 'Sales', href: '/dashboard/business/sales' },
