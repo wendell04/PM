@@ -25,6 +25,47 @@
 
 import { useState, useEffect } from 'react';
 
+// ── Reusable Number Input Component ───────────────────────────────────────────
+// Prevents negative values, e, E, -, +, and disables scroll wheel
+function NumberInput({ value, onChange, min = 0, max, placeholder, className, disabled }) {
+  const handleChange = (e) => {
+    const val = e.target.value;
+    // Allow empty string or valid non-negative number
+    if (val === '' || /^-?\d*$/.test(val)) {
+      const num = val === '' ? '' : Math.max(min, parseInt(val) || min);
+      onChange({ ...e, target: { ...e.target, value: num } });
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    // Block e, E, +, -
+    if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+      e.preventDefault();
+    }
+  };
+
+  const handleWheel = (e) => {
+    // Prevent scroll wheel from changing value
+    e.target.blur();
+    e.preventDefault();
+  };
+
+  return (
+    <input
+      type="number"
+      className={className}
+      value={value}
+      onChange={handleChange}
+      onKeyDown={handleKeyDown}
+      onWheel={handleWheel}
+      min={min}
+      max={max}
+      placeholder={placeholder}
+      disabled={disabled}
+    />
+  );
+}
+
 // ── LocalStorage Key ───────────────────────────────────────────────────────────
 const INVENTORY_STORAGE_KEY = 'pmp_inventory';
 
@@ -143,6 +184,8 @@ const initialInventory = [];
 //   stockQty: Number,           // Current stock quantity
 //   minStockLevel: Number,      // Minimum stock threshold
 //   isOnDemand: Boolean,        // true = Upon Order, false = Track Stock
+//   isActive: Boolean,          // ⭐ NEW: true = active, false = archived
+//   deletedAt: Date | null,     // ⭐ NEW: Timestamp when archived/deleted
 //   createdAt: Date,            // Timestamp
 //   updatedAt: Date             // Last update timestamp
 // }
@@ -154,12 +197,15 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onA
     category: 'Mugs',
     stockQty: 0,
     minStockLevel: 10,
-    isOnDemand: false
+    isOnDemand: false,
+    isActive: true  // ⭐ NEW: For soft delete - defaults to true for new items
   });
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [duplicateItem, setDuplicateItem] = useState(null); // For duplicate warning modal
+  const [isLinked, setIsLinked] = useState(false); // ⭐ NEW: Track if item is linked to products/sales
 
+  // ⭐ Set formData from item when editing
   useEffect(() => {
     if (item) {
       setFormData({
@@ -167,7 +213,8 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onA
         category: item.category || 'Mugs',
         stockQty: item.stockQty || 0,
         minStockLevel: item.minStockLevel || 10,
-        isOnDemand: item.isOnDemand || false
+        isOnDemand: item.isOnDemand || false,
+        isActive: item.isActive !== undefined ? item.isActive : true
       });
     } else {
       setFormData({
@@ -175,8 +222,30 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onA
         category: 'Mugs',
         stockQty: 0,
         minStockLevel: 10,
-        isOnDemand: false
+        isOnDemand: false,
+        isActive: true
       });
+    }
+  }, [item]);
+
+  // ⭐ NEW: Check if item is linked to products or has sales history
+  useEffect(() => {
+    if (item) {
+      const allProducts = JSON.parse(localStorage.getItem('products') || '[]');
+      const allOrders = JSON.parse(localStorage.getItem('orders') || '[]');
+
+      // Check if referenced by products
+      const linkedProducts = allProducts.filter(p => p.inventoryId === item.id);
+
+      // Check if item has sales history
+      const salesWithThisItem = allOrders.filter(order =>
+        order.items?.some(orderItem => orderItem.inventoryId === item.id) ||
+        order.productInventoryId === item.id
+      );
+
+      setIsLinked(linkedProducts.length > 0 || salesWithThisItem.length > 0);
+    } else {
+      setIsLinked(false);
     }
   }, [item]);
 
@@ -235,6 +304,12 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onA
       return;
     }
 
+    // Validate stock quantity for new items
+    if (!item && !formData.isOnDemand && (!formData.stockQty || formData.stockQty < 0)) {
+      alert('Please enter a valid stock quantity');
+      return;
+    }
+
     // Normalize the name: Trim whitespace and convert to Proper Case
     const normalizedName = formData.name.trim()
       .split(' ')
@@ -261,11 +336,15 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onA
     }
 
     // Save with normalized name
+    // ⭐ NEW: Include isActive and deletedAt fields
+    // When editing, preserve original stockQty (stock adjustments done via table +/- buttons)
     onSave({
       ...formData,
       name: normalizedName,
-      stockQty: parseInt(formData.stockQty),
-      minStockLevel: parseInt(formData.minStockLevel)
+      stockQty: item ? item.stockQty : parseInt(formData.stockQty),  // Preserve stock when editing
+      minStockLevel: parseInt(formData.minStockLevel),
+      isActive: formData.isActive !== undefined ? formData.isActive : true,  // ⭐ Preserve active status
+      deletedAt: formData.isActive === false ? new Date() : null  // ⭐ Set deletedAt when archived
     });
   };
 
@@ -278,13 +357,26 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onA
           <h2 className="modal-title">
             {item ? 'Edit Inventory Item' : 'Add New Inventory Item'}
           </h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="modal-form">
           <div className="form-group">
             <label className="form-label">
               Product Name <span className="required">*</span>
+              {isLinked && (
+                <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                  Locked (Item is in use)
+                </span>
+              )}
             </label>
             <input
               type="text"
@@ -294,15 +386,32 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onA
               onChange={handleInputChange}
               placeholder="e.g., Ceramic, Magic Mug..."
               required
+              readOnly={isLinked}
+              style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
             />
-            <p className="form-hint">
-              Product name will be auto-formatted (Proper Case). Duplicate names in the same category are not allowed.
-            </p>
+            {isLinked ? (
+              <p className="form-hint" style={{ color: '#f59e0b' }}>
+                This item is linked to products or sales records. Name cannot be changed to prevent data discrepancies.
+              </p>
+            ) : (
+              <p className="form-hint">
+                Product name will be auto-formatted (Proper Case). Duplicate names in the same category are not allowed.
+              </p>
+            )}
           </div>
 
           <div className="form-group">
             <label className="form-label">
               Category <span className="required">*</span>
+              {isLinked && (
+                <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                  Locked (Item is in use)
+                </span>
+              )}
             </label>
             {showNewCategoryInput ? (
               <div className="new-category-input-wrap">
@@ -323,13 +432,21 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onA
                   }}
                   placeholder="Enter new category name..."
                   autoFocus
+                  readOnly={isLinked}
+                  style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
                 />
+                {isLinked && (
+                  <p className="form-hint" style={{ color: '#f59e0b', marginTop: '0.5rem' }}>
+                    This item is linked to products or sales. Category cannot be changed.
+                  </p>
+                )}
                 <div className="new-category-actions" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
                   <button
                     type="button"
                     className="btn-primary"
                     onClick={handleAddNewCategory}
-                    style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                    disabled={isLinked}
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', opacity: isLinked ? 0.5 : 1, cursor: isLinked ? 'not-allowed' : 'pointer' }}
                   >
                     Add Category
                   </button>
@@ -354,63 +471,126 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onA
                   value={formData.category}
                   onChange={handleCategorySelect}
                   required
+                  disabled={isLinked}
+                  style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
                 >
                   {categories.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                   <option value="__new__" style={{ borderTop: '1px solid var(--border)', fontWeight: '600' }}>+ Add New Category...</option>
                 </select>
-                <p className="form-hint">
-                  Select a category or add a new one.
-                </p>
+                {isLinked ? (
+                  <p className="form-hint" style={{ color: '#f59e0b' }}>
+                    This item is linked to products or sales records. Category cannot be changed to prevent data discrepancies.
+                  </p>
+                ) : (
+                  <p className="form-hint">
+                    Select a category or add a new one.
+                  </p>
+                )}
               </>
             )}
           </div>
 
           <div className="form-group">
-            <label className="form-checkbox-label">
+            <label className="form-checkbox-label" style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}>
               <input
                 type="checkbox"
                 name="isOnDemand"
                 className="form-checkbox"
                 checked={formData.isOnDemand}
                 onChange={handleInputChange}
+                disabled={isLinked}
+                style={{ cursor: isLinked ? 'not-allowed' : 'pointer' }}
               />
               <span className="checkbox-text">
                 Upon Order / Supplied (stock ignored)
+                {isLinked && (
+                  <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    Locked
+                  </span>
+                )}
               </span>
             </label>
-            <p className="form-hint">
-              When enabled, stock levels will be bypassed and item will always show as available.
-            </p>
+            {isLinked ? (
+              <p className="form-hint" style={{ color: '#f59e0b' }}>
+                This item is linked to products or sales. Stock tracking mode cannot be changed to prevent data discrepancies.
+              </p>
+            ) : (
+              <p className="form-hint">
+                When enabled, stock levels will be bypassed and item will always show as available.
+              </p>
+            )}
           </div>
 
-          {!formData.isOnDemand && (
-            <>
-              <div className="form-group">
-                <label className="form-label">Current Stock</label>
-                <input
-                  type="number"
-                  name="stockQty"
-                  className="form-input"
-                  value={formData.stockQty}
-                  onChange={handleNumberInput}
-                  min="0"
-                />
+          {!formData.isOnDemand && item && (
+            <div style={{
+              background: 'rgba(99, 102, 241, 0.1)',
+              border: '1px solid var(--primary)',
+              borderRadius: '8px',
+              padding: '1rem',
+              marginBottom: '1.5rem'
+            }}>
+              <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
+                Current Stock Level
               </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: '600', color: 'var(--white)', marginBottom: '0.75rem' }}>
+                {formData.stockQty} pcs
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: '1.5' }}>
+                To adjust stock levels, use the + / − buttons in the inventory table. This ensures all changes are properly logged with reasons for audit tracking.
+              </p>
+            </div>
+          )}
 
-              <div className="form-group">
-                <label className="form-label">Min. Stock Level</label>
-                <input
-                  type="number"
-                  name="minStockLevel"
-                  className="form-input"
-                  value={formData.minStockLevel}
-                  onChange={handleNumberInput}
-                  min="0"
-                />
-              </div>
-            </>
+          {!formData.isOnDemand && !item && (
+            <div className="form-group">
+              <label className="form-label">Current Stock <span className="required">*</span></label>
+              <NumberInput
+                className="form-input"
+                name="stockQty"
+                value={formData.stockQty}
+                onChange={e => setFormData(prev => ({ ...prev, stockQty: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
+                min={0}
+                placeholder="0"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    return false;
+                  }
+                }}
+              />
+              <p className="form-hint">
+                Initial stock quantity for this new item.
+              </p>
+            </div>
+          )}
+
+          {!formData.isOnDemand && (
+            <div className="form-group">
+              <label className="form-label">Min. Stock Level</label>
+              <NumberInput
+                className="form-input"
+                name="minStockLevel"
+                value={formData.minStockLevel}
+                onChange={e => setFormData(prev => ({ ...prev, minStockLevel: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
+                min={0}
+                placeholder="10"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    return false;
+                  }
+                }}
+              />
+              <p className="form-hint">
+                You'll receive a low stock warning when current stock falls below this level.
+              </p>
+            </div>
           )}
 
           <div className="modal-actions">
@@ -453,7 +633,11 @@ function DuplicateItemModal({ isOpen, onClose, onEdit, existingItem, categoryNam
       <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title modal-title-warning">Duplicate Item Detected</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
         </div>
 
         <div className="modal-body">
@@ -491,34 +675,665 @@ function DuplicateItemModal({ isOpen, onClose, onEdit, existingItem, categoryNam
   );
 }
 
-// ── Delete Confirmation Modal ──────────────────────────────────────────────────
-function DeleteConfirmModal({ isOpen, onClose, onConfirm, itemName }) {
+// ── Archive/Delete Confirmation Modal ─────────────────────────────────────────
+// ⭐ NEW: Now checks sales history in addition to product references
+// If item has sales history, force soft delete (archive) only
+function ArchiveConfirmModal({ 
+  isOpen, 
+  onClose, 
+  onArchive, 
+  onDelete,  // Fixed: Added onDelete prop
+  itemName, 
+  isReferenced, 
+  referencingProductsCount,
+  hasSalesHistory = false  // ⭐ NEW: Prop for sales history
+}) {
   if (!isOpen) return null;
 
   return (
     <div className="modal-overlay">
       <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title modal-title-danger">Confirm Delete</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <h2 className="modal-title modal-title-danger">
+            {isReferenced ? 'Item Is Referenced' : 'Confirm Action'}
+          </h2>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
         </div>
 
         <div className="modal-body">
-          <p className="delete-confirm-text">
-            Are you sure you want to delete <strong>"{itemName}"</strong>?
-          </p>
-          <p className="delete-confirm-warning">
-            This action cannot be undone. This item will be removed from your inventory and may affect existing products.
-          </p>
+          {isReferenced || hasSalesHistory ? (
+            <>
+              {isReferenced && (
+                <>
+                  <p className="delete-confirm-text">
+                    <strong>"{itemName}"</strong> is currently used by {referencingProductsCount} product(s).
+                  </p>
+                  <p className="delete-confirm-warning" style={{
+                    marginTop: '1rem',
+                    background: 'rgba(255, 193, 7, 0.1)',
+                    border: '1px solid rgba(255, 193, 7, 0.3)',
+                    padding: '1rem',
+                    borderRadius: '8px'
+                  }}>
+                    <strong>Cannot Delete:</strong> This item is being used in your product catalog.
+                    Deleting it would break those products.
+                  </p>
+                </>
+              )}
+              
+              {/* ⭐ NEW: Sales History Warning */}
+              {hasSalesHistory && (
+                <>
+                  <p className="delete-confirm-text" style={{ 
+                    marginTop: isReferenced ? '1rem' : '0',
+                    color: '#f87171',
+                    fontWeight: '600'
+                  }}>
+                    <strong>CRITICAL:</strong> This item has previous sales records!
+                  </p>
+                  <p className="delete-confirm-warning" style={{ 
+                    marginTop: '0.5rem',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    padding: '1rem',
+                    borderRadius: '8px'
+                  }}>
+                    <strong>Cannot Permanently Delete:</strong> This item is part of your sales history. 
+                    Hard deleting would corrupt your accounting and sales reports.
+                  </p>
+                </>
+              )}
+              
+              <p className="delete-confirm-text" style={{ marginTop: '1rem' }}>
+                Would you like to <strong>Archive</strong> it instead?
+              </p>
+              <ul style={{
+                marginTop: '0.75rem',
+                paddingLeft: '1.25rem',
+                color: 'var(--gray)',
+                fontSize: '0.875rem',
+                lineHeight: '1.8'
+              }}>
+                <p>
+                  Item will be hidden from "Add Product" dropdown
+                  Existing products remain valid<br />
+                  - Sales history preserved<br />
+                  - Reports and accounting data intact<br />
+                  - Can be restored anytime
+                </p>
+              </ul>
+            </>
+          ) : (
+            <>
+              <p className="delete-confirm-text">
+                Are you sure you want to delete <strong>"{itemName}"</strong>?
+              </p>
+              <p className="delete-confirm-warning">
+                This action cannot be undone. The item will be permanently removed from your inventory.
+              </p>
+              <p style={{ 
+                marginTop: '0.75rem',
+                fontSize: '0.875rem',
+                color: 'var(--gray)',
+                fontStyle: 'italic'
+              }}>
+                ℹ️ Only delete permanently if this item was created by mistake and has never been used.
+              </p>
+            </>
+          )}
         </div>
 
         <div className="modal-actions">
           <button type="button" className="btn-secondary" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="btn-danger" onClick={onConfirm}>
-            Delete
+          {isReferenced || hasSalesHistory ? (
+            <button type="button" className="btn-primary" onClick={onArchive}>
+              Archive Item
+            </button>
+          ) : (
+            <button type="button" className="btn-danger" onClick={onDelete}>
+              Delete Permanently
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Manual Stock Addition Modal ───────────────────────────────────────────────
+// Modal for adding stock with audit log
+// Reasons: Restock/New Delivery, Inventory Correction
+function StockAdditionModal({ isOpen, onClose, onConfirm, item }) {
+  const [reason, setReason] = useState('restock'); // 'restock', 'correction-add'
+  const [quantity, setQuantity] = useState('');
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [pendingData, setPendingData] = useState(null);
+
+  useEffect(() => {
+    if (isOpen && item) {
+      // Reset form when modal opens
+      setReason('restock');
+      setQuantity('');
+      setShowConfirmModal(false);
+      setPendingData(null);
+    }
+  }, [isOpen, item]);
+
+  const handleSubmit = () => {
+    if (!quantity || quantity <= 0) {
+      alert('Please enter a valid quantity');
+      return;
+    }
+
+    // Store pending data and show confirmation modal
+    const adjustmentData = {
+      reason,
+      quantity: parseInt(quantity)
+    };
+
+    setPendingData(adjustmentData);
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmAdd = () => {
+    if (pendingData) {
+      onConfirm(pendingData);
+      setShowConfirmModal(false);
+      setPendingData(null);
+      onClose();
+    }
+  };
+
+  if (!isOpen || !item) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">Add Stock</h2>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
           </button>
+        </div>
+
+        <div className="modal-body">
+          {/* Item Info */}
+          <div style={{
+            background: 'rgba(99, 102, 241, 0.1)',
+            border: '1px solid var(--primary)',
+            borderRadius: '8px',
+            padding: '1rem',
+            marginBottom: '1.5rem'
+          }}>
+            <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Adding stock to:</div>
+            <div style={{ fontWeight: '600', color: 'var(--white)' }}>{item.name}</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>
+              Category: {item.category} - Current Stock: {item.stockQty} pcs
+            </div>
+          </div>
+
+          {/* Reason Dropdown */}
+          <div className="form-group">
+            <label className="form-label">
+              Reason for Addition <span className="required">*</span>
+            </label>
+            <select
+              className="form-select"
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+            >
+              <option value="restock">Restock</option>
+              <option value="correction-add">Inventory Correction (Add)</option>
+            </select>
+            {reason === 'restock' && (
+              <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
+                For new stock.
+              </p>
+            )}
+          </div>
+
+          {/* Quantity */}
+          <div className="form-group">
+            <label className="form-label">
+              Quantity to Add <span className="required">*</span>
+            </label>
+            <NumberInput
+              className="form-input no-spinner"
+              value={quantity}
+              onChange={e => setQuantity(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
+              min={1}
+              placeholder=""
+            />
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleSubmit}
+            disabled={!quantity}
+          >
+            Add Stock
+          </button>
+        </div>
+      </div>
+
+      {/* Confirmation Modal for Add Stock */}
+      <div className="modal-overlay" style={{ display: showConfirmModal ? 'flex' : 'none' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+          <div className="modal-header">
+            <h2 className="modal-title modal-title-success">Confirm Stock Addition</h2>
+            <button className="modal-close" onClick={() => setShowConfirmModal(false)}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <div className="modal-body">
+            <div className="confirm-summary">
+              <div className="confirm-row">
+                <span className="confirm-label">Product:</span>
+                <span className="confirm-value">{item?.name}</span>
+              </div>
+              <div className="confirm-row">
+                <span className="confirm-label">Category:</span>
+                <span className="confirm-value">{item?.category}</span>
+              </div>
+              <div className="confirm-row">
+                <span className="confirm-label">Current Stock:</span>
+                <span className="confirm-value">{item?.stockQty} pcs</span>
+              </div>
+              <div className="confirm-row">
+                <span className="confirm-label">Quantity to Add:</span>
+                <span className="confirm-value" style={{ color: '#4ade80', fontWeight: '700' }}>
+                  +{pendingData?.quantity} pcs
+                </span>
+              </div>
+              <div className="confirm-row">
+                <span className="confirm-label">New Stock Total:</span>
+                <span className="confirm-value" style={{ color: '#4ade80', fontWeight: '700' }}>
+                  {(item?.stockQty || 0) + (pendingData?.quantity || 0)} pcs
+                </span>
+              </div>
+              <div className="confirm-row">
+                <span className="confirm-label">Reason:</span>
+                <span className="confirm-value">
+                  {pendingData?.reason === 'restock' ? 'Restock / New Delivery' : 'Inventory Correction'}
+                </span>
+              </div>
+            </div>
+            <p className="confirm-hint" style={{ marginTop: '1rem', color: '#facc15' }}>
+              This will increase your inventory stock and create an audit log entry.
+            </p>
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" className="btn-secondary" onClick={() => setShowConfirmModal(false)}>
+              Cancel
+            </button>
+            <button type="button" className="btn-primary" onClick={handleConfirmAdd}>
+              Confirm Addition
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Manual Stock Adjustment Modal ─────────────────────────────────────────────
+// ⭐ NEW: Modal for reducing stock with audit log
+// Reasons: Sales Outside System, Damaged Stock, Stock Correction
+function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
+  const [reason, setReason] = useState('sales-outside'); // 'sales-outside', 'damaged', 'correction-remove'
+  const [quantity, setQuantity] = useState('');
+  const [sellingPrice, setSellingPrice] = useState('');
+  const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
+  const [remarks, setRemarks] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [pendingData, setPendingData] = useState(null);
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [validationMessage, setValidationMessage] = useState('');
+
+  useEffect(() => {
+    if (isOpen && item) {
+      // Reset form when modal opens
+      setReason('sales-outside');
+      setQuantity('');
+      setSellingPrice('');
+      setSaleDate(new Date().toISOString().split('T')[0]);
+      setRemarks('');
+      setCustomerName('');
+      setShowConfirmModal(false);
+      setPendingData(null);
+      setShowValidationModal(false);
+      setValidationMessage('');
+    }
+  }, [isOpen, item]);
+
+  const handleSubmit = () => {
+    if (!quantity || quantity <= 0) {
+      setValidationMessage('Please enter a valid quantity');
+      setShowValidationModal(true);
+      return;
+    }
+
+    // For sales outside system, require selling price
+    if (reason === 'sales-outside' && !sellingPrice) {
+      setValidationMessage('Please enter the sold price');
+      setShowValidationModal(true);
+      return;
+    }
+
+    // Store pending data and show confirmation modal for "Record Sale"
+    const adjustmentData = {
+      reason,
+      quantity: parseInt(quantity),
+      sellingPrice: reason === 'sales-outside' ? parseFloat(sellingPrice) : 0,
+      saleDate: reason === 'sales-outside' ? saleDate : null,
+      remarks: remarks || null,
+      customerName: customerName || null
+    };
+
+    if (reason === 'sales-outside') {
+      setPendingData(adjustmentData);
+      setShowConfirmModal(true);
+    } else {
+      // For damaged/correction, confirm directly
+      onConfirm(adjustmentData);
+      onClose();
+    }
+  };
+
+  const handleConfirmSale = () => {
+    if (pendingData) {
+      onConfirm(pendingData);
+      setShowConfirmModal(false);
+      setPendingData(null);
+      onClose();
+    }
+  };
+
+  if (!isOpen || !item) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">Reduce Stock</h2>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="modal-body">
+          {/* Item Info */}
+          <div style={{
+            background: 'rgba(99, 102, 241, 0.1)',
+            border: '1px solid var(--primary)',
+            borderRadius: '8px',
+            padding: '1rem',
+            marginBottom: '1.5rem'
+          }}>
+            <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Adjusting Stock for:</div>
+            <div style={{ fontWeight: '600', color: 'var(--white)', fontSize: '1.125rem' }}>{item.name}</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>
+              Category: {item.category} - Current Stock: {item.stockQty} pcs
+            </div>
+          </div>
+
+          {/* Reason Dropdown */}
+          <div className="form-group">
+            <label className="form-label">
+              Reason for Adjustment <span className="required">*</span>
+            </label>
+            <select
+              className="form-select"
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+            >
+              <option value="sales-outside">Sales Outside System (Manual Sale)</option>
+              <option value="damaged">Damaged Stock</option>
+              <option value="correction-remove">Stock Correction (Remove)</option>
+            </select>
+            {reason === 'sales-outside' && (
+              <p className="form-hint" style={{ color: '#facc15', marginTop: '0.5rem' }}>
+                Preferred: This will create a sales record and reduce stock.
+              </p>
+            )}
+          </div>
+
+          {/* Quantity */}
+          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+            <label className="form-label">
+              Quantity {reason === 'sales-outside' ? 'Sold' : 'to Remove'} <span className="required">*</span>
+            </label>
+            <NumberInput
+              className="form-input no-spinner"
+              value={quantity}
+              onChange={e => setQuantity(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
+              min={1}
+              max={item.stockQty}
+              placeholder=""
+            />
+            {quantity > item.stockQty && (
+              <p className="form-hint" style={{ color: '#f87171', marginTop: '0.5rem' }}>
+                Quantity exceeds current stock ({item.stockQty} pcs)
+              </p>
+            )}
+          </div>
+
+          {/* Dynamic Fields based on reason */}
+          {reason === 'sales-outside' && (
+            <>
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label">
+                  Total Amount Received (₱) <span className="required">*</span>
+                </label>
+                <div className="tier-price-cell">
+                  <span className="peso">₱</span>
+                  <input
+                    type="number"
+                    className="tier-input no-spinner"
+                    value={sellingPrice}
+                    onChange={e => {
+                      const val = e.target.value;
+                      // Allow empty or valid decimal number
+                      if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                        setSellingPrice(val);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      // Block e, E, +, -
+                      if (['e', 'E', '+', '-'].includes(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    onWheel={(e) => {
+                      e.target.blur();
+                      e.preventDefault();
+                    }}
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+                <p className="form-hint" style={{ marginTop: '0.5rem' }}>
+                  Enter the total amount received.
+                </p>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label">
+                  Date of Sale <span className="required">*</span>
+                </label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={saleDate}
+                  onChange={e => setSaleDate(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label">
+                  Customer Name <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={customerName}
+                  onChange={e => setCustomerName(e.target.value)}
+                  placeholder="e.g., Juan Dela Cruz"
+                />
+              </div>
+            </>
+          )}
+
+          {reason === 'damaged' && (
+            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+              <label className="form-label">
+                Remarks / Cause of Damage <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
+              </label>
+              <textarea
+                className="form-textarea"
+                value={remarks}
+                onChange={e => setRemarks(e.target.value)}
+                placeholder="e.g., Broken item, Item defect..."
+                rows={3}
+              />
+            </div>
+          )}
+
+          {reason === 'correction-remove' && (
+            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+              <label className="form-label">
+                Remarks <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
+              </label>
+              <textarea
+                className="form-textarea"
+                value={remarks}
+                onChange={e => setRemarks(e.target.value)}
+                placeholder="e.g., Inventory count adjustment..."
+                rows={3}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleSubmit}
+            disabled={quantity > item.stockQty || !quantity}
+          >
+            {reason === 'sales-outside' ? 'Record Sale' : reason === 'damaged' ? 'Mark as Damaged' : 'Adjust Stock'}
+          </button>
+        </div>
+      </div>
+
+      {/* Confirmation Modal for Record Sale */}
+      <div className="modal-overlay" style={{ display: showConfirmModal ? 'flex' : 'none' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+          <div className="modal-header">
+            <h2 className="modal-title modal-title-success">Confirm Sale Record</h2>
+            <button className="modal-close" onClick={() => setShowConfirmModal(false)}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <div className="modal-body">
+            <div className="confirm-summary">
+              <div className="confirm-row">
+                <span className="confirm-label">Product:</span>
+                <span className="confirm-value">{item?.name}</span>
+              </div>
+              <div className="confirm-row">
+                <span className="confirm-label">Category:</span>
+                <span className="confirm-value">{item?.category}</span>
+              </div>
+              <div className="confirm-row">
+                <span className="confirm-label">Quantity Sold:</span>
+                <span className="confirm-value">{pendingData?.quantity} pcs</span>
+              </div>
+              <div className="confirm-row">
+                <span className="confirm-label">Total Amount Received:</span>
+                <span className="confirm-value" style={{ color: '#4ade80', fontWeight: '700' }}>
+                  ₱{pendingData?.sellingPrice?.toFixed(2)}
+                </span>
+              </div>
+              {pendingData?.customerName && (
+                <div className="confirm-row">
+                  <span className="confirm-label">Customer:</span>
+                  <span className="confirm-value">{pendingData.customerName}</span>
+                </div>
+              )}
+              <div className="confirm-row">
+                <span className="confirm-label">Date:</span>
+                <span className="confirm-value">{pendingData?.saleDate || new Date().toISOString().split('T')[0]}</span>
+              </div>
+            </div>
+            <p className="confirm-hint" style={{ marginTop: '1rem', color: '#facc15' }}>
+              This will create a sales record and reduce your inventory stock.
+            </p>
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" className="btn-secondary" onClick={() => setShowConfirmModal(false)}>
+              Cancel
+            </button>
+            <button type="button" className="btn-primary" onClick={handleConfirmSale}>
+              Confirm Sale
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Validation Modal */}
+      <div className="modal-overlay" style={{ display: showValidationModal ? 'flex' : 'none' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+          <div className="modal-header">
+            <h2 className="modal-title modal-title-warning">Validation Error</h2>
+            <button className="modal-close" onClick={() => setShowValidationModal(false)}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <div className="modal-body">
+            <p className="delete-confirm-text">
+              {validationMessage}
+            </p>
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" className="btn-primary" onClick={() => setShowValidationModal(false)}>
+              OK
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -536,7 +1351,11 @@ function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
           <h2 className="modal-title modal-title-success">
             {isEdit ? 'Update Item' : 'Add New Item'}
           </h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
         </div>
 
         <div className="modal-body">
@@ -589,6 +1408,21 @@ export default function InventoryPage() {
   const [statusFilter, setStatusFilter] = useState(''); // 'low-stock', 'out-of-stock', 'upon-order', ''
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false); // For Add/Edit confirmation
   const [pendingItemData, setPendingItemData] = useState(null); // Temp storage before confirm
+  
+  // ⭐ NEW: States for Archive/Delete with product reference checking
+  const [archiveItem, setArchiveItem] = useState(null); // Item to archive/delete
+  const [referencingProducts, setReferencingProducts] = useState([]); // Products using this item
+  const [showArchiveModal, setShowArchiveModal] = useState(false); // Show archive confirmation
+  const [hasSalesHistory, setHasSalesHistory] = useState(false); // ⭐ NEW: Track if item has sales
+  
+  // ⭐ NEW: States for Manual Stock Adjustment
+  const [adjustmentItem, setAdjustmentItem] = useState(null); // Item being adjusted
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false); // Show adjustment modal (reduce)
+  const [showAdjustmentSuccess, setShowAdjustmentSuccess] = useState(false); // Show success message
+
+  // ⭐ NEW: States for Stock Addition
+  const [additionItem, setAdditionItem] = useState(null); // Item being added
+  const [showAdditionModal, setShowAdditionModal] = useState(false); // Show addition modal
 
   // ⚠️ TODO: MongoDB - Replace with API call
   // CURRENT: Load from LocalStorage on mount
@@ -639,10 +1473,14 @@ export default function InventoryPage() {
   };
 
   // Filter inventory based on search query and status filter
+  // ⭐ NEW: By default, only show active items (isActive: true)
   const filteredInventory = inventory.filter(item => {
+    // ⭐ EXCLUDE archived items by default
+    if (item.isActive === false) return false;
+    
     const query = searchQuery.toLowerCase();
     const matchesSearch = item.name.toLowerCase().includes(query) || item.category.toLowerCase().includes(query);
-    
+
     // Status filter
     let matchesStatus = true;
     if (statusFilter === 'low-stock') {
@@ -652,9 +1490,12 @@ export default function InventoryPage() {
     } else if (statusFilter === 'upon-order') {
       matchesStatus = item.isOnDemand;
     }
-    
+
     return matchesSearch && matchesStatus;
   });
+
+  // ⭐ NEW: Filter for archived items (for separate view)
+  const archivedInventory = inventory.filter(item => item.isActive === false);
 
   // Handle Add New Item
   const handleAddNew = () => {
@@ -668,9 +1509,193 @@ export default function InventoryPage() {
     setIsModalOpen(true);
   };
 
-  // Handle Delete Item
+  // Handle Delete/Archive Item
+  // ⭐ NEW: Check if item is referenced by products OR sales before allowing delete
   const handleDelete = (item) => {
-    setDeleteItem(item);
+    // ⚠️ TODO: MongoDB - Replace with API calls to get products and orders referencing this item
+    // CURRENT: Check LocalStorage for products and orders
+    // FUTURE: GET /api/products?inventoryId={item.id} AND GET /api/orders?inventoryId={item.id}
+    
+    const allProducts = JSON.parse(localStorage.getItem('products') || '[]');
+    const allOrders = JSON.parse(localStorage.getItem('orders') || '[]');
+    
+    // Check if referenced by products
+    const productsUsingThisItem = allProducts.filter(
+      p => p.inventoryId === item.id
+    );
+    
+    // ⭐ NEW: Check if item has sales history
+    const salesWithThisItem = allOrders.filter(order =>
+      order.items?.some(orderItem => orderItem.inventoryId === item.id) ||
+      order.productInventoryId === item.id
+    );
+    
+    setReferencingProducts(productsUsingThisItem);
+    setHasSalesHistory(salesWithThisItem.length > 0); // ⭐ NEW: Track sales history
+    setArchiveItem(item);
+    
+    // ⭐ NEW: Store sales info for validation
+    setShowArchiveModal(true);
+  };
+
+  // ⭐ NEW: Archive item (soft delete)
+  // ⚠️ TODO: MongoDB - Replace with PUT /api/inventory/:id
+  const handleArchive = () => {
+    if (!archiveItem) return;
+    
+    // Update item to inactive
+    setInventory(prev =>
+      prev.map(item =>
+        item.id === archiveItem.id
+          ? { ...item, isActive: false, deletedAt: new Date() }
+          : item
+      )
+    );
+    
+    // Close modal and reset
+    setShowArchiveModal(false);
+    setArchiveItem(null);
+    setReferencingProducts([]);
+  };
+
+  // Handle Permanent Delete (only if not referenced)
+  // ⚠️ TODO: MongoDB - Replace with DELETE /api/inventory/:id
+  const handlePermanentDelete = () => {
+    if (!archiveItem) return;
+    
+    // Delete permanently
+    setInventory(prev => prev.filter(item => item.id !== archiveItem.id));
+    
+    // Close modal and reset
+    setShowArchiveModal(false);
+    setArchiveItem(null);
+    setReferencingProducts([]);
+  };
+
+  // ⭐ NEW: Restore archived item
+  // ⚠️ TODO: MongoDB - Replace with PUT /api/inventory/:id
+  const handleRestore = (item) => {
+    setInventory(prev =>
+      prev.map(i =>
+        i.id === item.id
+          ? { ...i, isActive: true, deletedAt: null }
+          : i
+      )
+    );
+  };
+
+  // ⭐ NEW: Handle stock adjustment (Manual Stock Out)
+  // ⚠️ TODO: MongoDB - Replace with API calls
+  const handleStockAdjustment = (adjustmentData) => {
+    if (!adjustmentItem) return;
+    
+    const { reason, quantity, sellingPrice, saleDate, remarks, customerName } = adjustmentData;
+    
+    // Reduce stock
+    setInventory(prev =>
+      prev.map(item =>
+        item.id === adjustmentItem.id
+          ? { ...item, stockQty: Math.max(0, item.stockQty - quantity) }
+          : item
+      )
+    );
+    
+    // ⭐ Create audit log entry
+    const auditLog = {
+      id: Date.now(),
+      inventoryId: adjustmentItem.id,
+      itemName: adjustmentItem.name,
+      category: adjustmentItem.category,
+      type: 'stock-out',
+      reason,
+      quantity: -quantity, // Negative for stock out
+      stockBefore: adjustmentItem.stockQty,
+      stockAfter: adjustmentItem.stockQty - quantity,
+      sellingPrice: reason === 'sales-outside' ? sellingPrice : null,
+      saleDate: reason === 'sales-outside' ? saleDate : null,
+      customerName: reason === 'sales-outside' ? customerName : null,
+      remarks,
+      createdAt: new Date().toISOString()
+    };
+    
+    // Save to audit logs (LocalStorage for now)
+    // ⚠️ TODO: MongoDB - Save to audit_logs collection
+    const existingLogs = JSON.parse(localStorage.getItem('pmp_inventory_logs') || '[]');
+    localStorage.setItem('pmp_inventory_logs', JSON.stringify([...existingLogs, auditLog]));
+    
+    // ⭐ If sales outside system, create sales record
+    if (reason === 'sales-outside') {
+      const salesRecord = {
+        id: Date.now(),
+        inventoryId: adjustmentItem.id,
+        productName: adjustmentItem.name,
+        category: adjustmentItem.category,
+        quantity,
+        unitPrice: sellingPrice,
+        totalPrice: sellingPrice * quantity,
+        saleDate,
+        customerName,
+        source: 'manual', // 'manual' for outside system, 'online' for storefront
+        status: 'completed',
+        createdAt: new Date().toISOString()
+      };
+      
+      // Save to sales (LocalStorage for now)
+      // ⚠️ TODO: MongoDB - Save to sales collection
+      const existingSales = JSON.parse(localStorage.getItem('pmp_sales') || '[]');
+      localStorage.setItem('pmp_sales', JSON.stringify([...existingSales, salesRecord]));
+    }
+    
+    // Close modal
+    setShowAdjustmentModal(false);
+    setAdjustmentItem(null);
+
+    // Show success message
+    setShowAdjustmentSuccess(true);
+  };
+
+  // ⭐ NEW: Handle stock addition (Manual Stock In)
+  // ⚠️ TODO: MongoDB - Replace with API calls
+  const handleStockAddition = (additionData) => {
+    if (!additionItem) return;
+
+    const { reason, quantity, remarks } = additionData;
+
+    // Increase stock
+    setInventory(prev =>
+      prev.map(item =>
+        item.id === additionItem.id
+          ? { ...item, stockQty: item.stockQty + quantity }
+          : item
+      )
+    );
+
+    // ⭐ Create audit log entry
+    const auditLog = {
+      id: Date.now(),
+      inventoryId: additionItem.id,
+      itemName: additionItem.name,
+      category: additionItem.category,
+      type: 'stock-in',
+      reason,
+      quantity: quantity, // Positive for stock in
+      stockBefore: additionItem.stockQty,
+      stockAfter: additionItem.stockQty + quantity,
+      remarks,
+      createdAt: new Date().toISOString()
+    };
+
+    // Save to audit logs (LocalStorage for now)
+    // ⚠️ TODO: MongoDB - Save to audit_logs collection
+    const existingLogs = JSON.parse(localStorage.getItem('pmp_inventory_logs') || '[]');
+    localStorage.setItem('pmp_inventory_logs', JSON.stringify([...existingLogs, auditLog]));
+
+    // Close modal
+    setShowAdditionModal(false);
+    setAdditionItem(null);
+
+    // Show success message
+    setShowAdjustmentSuccess(true);
   };
 
   // Handle Save (Add or Update) - Shows confirmation modal first
@@ -793,10 +1818,13 @@ export default function InventoryPage() {
   };
 
   // Calculate summary stats
+  // ⭐ NEW: Separate active and archived items
   const totalItems = inventory.length;
-  const lowStockItems = inventory.filter(item => !item.isOnDemand && item.stockQty <= item.minStockLevel && item.stockQty > 0).length;
-  const outOfStockItems = inventory.filter(item => !item.isOnDemand && item.stockQty === 0).length;
-  const uponOrderItems = inventory.filter(item => item.isOnDemand).length;
+  const activeItems = inventory.filter(item => item.isActive !== false).length;
+  const archivedItems = inventory.filter(item => item.isActive === false).length;
+  const lowStockItems = inventory.filter(item => !item.isOnDemand && item.stockQty <= item.minStockLevel && item.stockQty > 0 && item.isActive !== false).length;
+  const outOfStockItems = inventory.filter(item => !item.isOnDemand && item.stockQty === 0 && item.isActive !== false).length;
+  const uponOrderItems = inventory.filter(item => item.isOnDemand && item.isActive !== false).length;
 
   if (!isLoaded) {
     return (
@@ -828,17 +1856,17 @@ export default function InventoryPage() {
 
         {/* ── Summary Cards ────────────────────────────────────────────────────── */}
         <div className="inventory-summary">
-          <div 
+          <div
             className={`summary-card${statusFilter === '' ? ' active' : ''}`}
             onClick={() => setStatusFilter('')}
             style={{ cursor: 'pointer' }}
           >
             <div className="summary-content">
-              <span className="summary-value">{totalItems}</span>
-              <span className="summary-label">Total Items</span>
+              <span className="summary-value">{activeItems}</span>
+              <span className="summary-label">Active Items</span>
             </div>
           </div>
-          <div 
+          <div
             className={`summary-card summary-card-warning${statusFilter === 'low-stock' ? ' active' : ''}`}
             onClick={() => setStatusFilter(statusFilter === 'low-stock' ? '' : 'low-stock')}
             style={{ cursor: 'pointer' }}
@@ -848,7 +1876,7 @@ export default function InventoryPage() {
               <span className="summary-label">Low Stock</span>
             </div>
           </div>
-          <div 
+          <div
             className={`summary-card summary-card-danger${statusFilter === 'out-of-stock' ? ' active' : ''}`}
             onClick={() => setStatusFilter(statusFilter === 'out-of-stock' ? '' : 'out-of-stock')}
             style={{ cursor: 'pointer' }}
@@ -858,7 +1886,7 @@ export default function InventoryPage() {
               <span className="summary-label">Out of Stock</span>
             </div>
           </div>
-          <div 
+          <div
             className={`summary-card summary-card-info${statusFilter === 'upon-order' ? ' active' : ''}`}
             onClick={() => setStatusFilter(statusFilter === 'upon-order' ? '' : 'upon-order')}
             style={{ cursor: 'pointer' }}
@@ -868,6 +1896,20 @@ export default function InventoryPage() {
               <span className="summary-label">Upon Order</span>
             </div>
           </div>
+          {archivedItems > 0 && (
+            <div
+              className="summary-card"
+              style={{ 
+                background: 'rgba(100, 100, 100, 0.1)',
+                border: '1px solid rgba(100, 100, 100, 0.3)'
+              }}
+            >
+              <div className="summary-content">
+                <span className="summary-value" style={{ color: 'var(--gray)' }}>{archivedItems}</span>
+                <span className="summary-label" style={{ color: 'var(--gray)' }}>Archived</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -966,38 +2008,48 @@ export default function InventoryPage() {
                     <td className="table-cell">
                       <span className="category-badge">{item.category}</span>
                     </td>
-                    <td className="table-cell">
+                    <td className="table-cell-stock">
                       {item.isOnDemand ? (
-                        <span className="stock-value-dash">—</span>
-                      ) : editingInline?.id === item.id && editingInline?.field === 'stockQty' ? (
-                        <input
-                          type="number"
-                          className="form-input-inline"
-                          value={editingInline.value}
-                          onChange={handleInlineEditChange}
-                          onBlur={handleInlineEditSave}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') handleInlineEditSave();
-                            if (e.key === 'Escape') handleInlineEditCancel();
-                          }}
-                          autoFocus
-                        />
+                        <span className="stock-value-dash">Upon Order</span>
                       ) : (
-                        <span
-                          className={`stock-value-inline ${stockStatus.status === 'out-of-stock' ? 'stock-value-zero' : ''}`}
-                          onClick={() => handleInlineEditStart(item, 'stockQty')}
-                          title="Click to edit"
-                        >
-                          {item.stockQty}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <button
+                            className="btn-sm btn-secondary"
+                            onClick={() => {
+                              setAdjustmentItem(item);
+                              setShowAdjustmentModal(true);
+                            }}
+                            disabled={item.stockQty === 0}
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '1rem', lineHeight: '1' }}
+                            title="Reduce stock (Manual adjustment)"
+                          >
+                            −
+                          </button>
+                          <span
+                            className={`stock-value-inline ${stockStatus.status === 'out-of-stock' ? 'stock-value-zero' : ''}`}
+                            style={{ minWidth: '40px', display: 'inline-block', textAlign: 'center' }}
+                          >
+                            {item.stockQty}
+                          </span>
+                          <button
+                            className="btn-sm btn-secondary"
+                            onClick={() => {
+                              setAdditionItem(item);
+                              setShowAdditionModal(true);
+                            }}
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '1rem', lineHeight: '1' }}
+                            title="Add stock"
+                          >
+                            +
+                          </button>
+                        </div>
                       )}
                     </td>
                     <td className="table-cell">
                       {item.isOnDemand ? (
                         <span className="stock-value-dash">—</span>
                       ) : editingInline?.id === item.id && editingInline?.field === 'minStockLevel' ? (
-                        <input
-                          type="number"
+                        <NumberInput
                           className="form-input-inline"
                           value={editingInline.value}
                           onChange={handleInlineEditChange}
@@ -1006,6 +2058,7 @@ export default function InventoryPage() {
                             if (e.key === 'Enter') handleInlineEditSave();
                             if (e.key === 'Escape') handleInlineEditCancel();
                           }}
+                          min={0}
                           autoFocus
                         />
                       ) : (
@@ -1025,26 +2078,16 @@ export default function InventoryPage() {
                     </td>
                     <td className="table-cell-actions">
                       <button
-                        className="btn-icon-edit"
+                        className="btn-sm btn-secondary"
                         onClick={() => handleEdit(item)}
-                        title="Edit"
                       >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                          <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                        </svg>
+                        Edit
                       </button>
                       <button
-                        className="btn-icon-delete"
+                        className="btn-sm btn-danger"
                         onClick={() => handleDelete(item)}
-                        title="Delete"
                       >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <polyline points="3,6 5,6 21,6"/>
-                          <path d="M19,6v14a2,2,0,0,1-2,2H7a2,2,0,0,1-2-2V6m3,0V4a2,2,0,0,1,2-2h4a2,2,0,0,1,2,2v2"/>
-                          <line x1="10" y1="11" x2="10" y2="17"/>
-                          <line x1="14" y1="11" x2="14" y2="17"/>
-                        </svg>
+                        Remove
                       </button>
                     </td>
                   </tr>
@@ -1054,6 +2097,92 @@ export default function InventoryPage() {
           </table>
         )}
       </div>
+
+      {/* ⭐ NEW: Archived Items Section */}
+      {archivedInventory.length > 0 && (
+        <div style={{ marginTop: '2rem' }}>
+          <h2 style={{ 
+            fontSize: '1.25rem', 
+            fontWeight: '600', 
+            color: 'var(--gray)',
+            marginBottom: '1rem'
+          }}>
+            Archived Items ({archivedInventory.length})
+          </h2>
+          <div className="inventory-table-wrapper">
+            <table className="inventory-table">
+              <thead>
+                <tr>
+                  <th className="table-col-name">Product Name</th>
+                  <th className="table-col-category">Category</th>
+                  <th className="table-col-stock">Stock</th>
+                  <th className="table-col-status">Archived Date</th>
+                  <th className="table-col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {archivedInventory.map(item => {
+                  const isReferenced = JSON.parse(localStorage.getItem('products') || '[]').some(p => p.inventoryId === item.id);
+                  return (
+                    <tr key={item.id} className="inventory-table-row" style={{ opacity: 0.5 }}>
+                      <td className="table-cell-name">
+                        <span className="product-name" style={{ color: 'var(--gray)' }}>{item.name}</span>
+                      </td>
+                      <td className="table-cell">
+                        <span className="category-badge" style={{ background: 'rgba(100, 100, 100, 0.2)', color: 'var(--gray)' }}>{item.category}</span>
+                      </td>
+                      <td className="table-cell">
+                        {item.isOnDemand ? (
+                          <span className="stock-value-dash" style={{ color: 'var(--gray)' }}>Upon Order</span>
+                        ) : (
+                          <span className="stock-value-inline" style={{ color: 'var(--gray)' }}>{item.stockQty}</span>
+                        )}
+                      </td>
+                      <td className="table-cell">
+                        <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>
+                          {item.deletedAt ? new Date(item.deletedAt).toLocaleDateString() : '—'}
+                        </span>
+                      </td>
+                      <td className="table-cell">
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button
+                            className="btn-sm btn-secondary"
+                            onClick={() => handleEdit(item)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="btn-sm btn-primary"
+                            onClick={() => handleRestore(item)}
+                          >
+                            ↶ Restore
+                          </button>
+                          {!isReferenced && (
+                            <button
+                              className="btn-sm btn-danger"
+                              onClick={() => handleDelete(item)}
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ 
+            marginTop: '1rem', 
+            color: 'var(--gray)', 
+            fontSize: '0.875rem',
+            fontStyle: 'italic'
+          }}>
+            ℹ️ Archived items are hidden from the "Add Product" dropdown but remain in your inventory for record-keeping.
+          </p>
+        </div>
+      )}
 
       {/* ── Modals ─────────────────────────────────────────────────────────────── */}
       <InventoryModal
@@ -1074,11 +2203,43 @@ export default function InventoryPage() {
         inventory={inventory}
       />
 
-      <DeleteConfirmModal
-        isOpen={!!deleteItem}
-        onClose={() => setDeleteItem(null)}
-        onConfirm={handleConfirmDelete}
-        itemName={deleteItem?.name}
+      {/* ⭐ NEW: Archive/Delete Confirmation Modal with product reference checking */}
+      <ArchiveConfirmModal
+        isOpen={showArchiveModal}
+        onClose={() => {
+          setShowArchiveModal(false);
+          setArchiveItem(null);
+          setReferencingProducts([]);
+          setHasSalesHistory(false);
+        }}
+        onArchive={handleArchive}
+        onDelete={handlePermanentDelete}
+        itemName={archiveItem?.name}
+        isReferenced={referencingProducts.length > 0}
+        referencingProductsCount={referencingProducts.length}
+        hasSalesHistory={hasSalesHistory}
+      />
+
+      {/* ⭐ NEW: Manual Stock Adjustment Modal */}
+      <StockAdjustmentModal
+        isOpen={showAdjustmentModal}
+        onClose={() => {
+          setShowAdjustmentModal(false);
+          setAdjustmentItem(null);
+        }}
+        onConfirm={handleStockAdjustment}
+        item={adjustmentItem}
+      />
+
+      {/* ⭐ NEW: Stock Addition Modal */}
+      <StockAdditionModal
+        isOpen={showAdditionModal}
+        onClose={() => {
+          setShowAdditionModal(false);
+          setAdditionItem(null);
+        }}
+        onConfirm={handleStockAddition}
+        item={additionItem}
       />
 
       <ConfirmSaveModal
@@ -1091,6 +2252,32 @@ export default function InventoryPage() {
         itemData={pendingItemData}
         isEdit={!!editingItem}
       />
+
+      {/* Stock Adjustment Success Toast */}
+      {showAdjustmentSuccess && (
+        <div className="modal-overlay" style={{ display: 'flex' }} onClick={() => setShowAdjustmentSuccess(false)}>
+          <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title modal-title-success">Success</h2>
+              <button className="modal-close" onClick={() => setShowAdjustmentSuccess(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="confirm-hint" style={{ textAlign: 'center', fontSize: '0.95rem' }}>
+                Stock adjusted successfully!
+              </p>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn-primary" onClick={() => setShowAdjustmentSuccess(false)}>
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

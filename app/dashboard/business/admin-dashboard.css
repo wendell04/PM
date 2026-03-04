@@ -384,6 +384,22 @@
   color: var(--gray);
 }
 
+/* Remove spin buttons from number inputs */
+.form-input[type="number"]::-webkit-inner-spin-button,
+.form-input[type="number"]::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button,
+.no-spinner::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  -moz-appearance: textfield;
+  appearance: none;
+  margin: 0;
+}
+
+.form-input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 .form-textarea {
   min-height: 120px;
   resize: vertical;
@@ -695,6 +711,52 @@
 
 .combobox-add:hover {
   background: rgba(212, 168, 67, 0.08);
+}
+
+/* ── Combobox Empty State ────────────────────────────────────────────────────── */
+.combobox-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+
+.combobox-empty-icon {
+  color: var(--gray);
+  margin-bottom: 1rem;
+}
+
+.combobox-empty-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--white);
+  margin-bottom: 0.5rem;
+}
+
+.combobox-empty-description {
+  font-size: 0.8rem;
+  color: var(--gray);
+  line-height: 1.5;
+  margin-bottom: 1.25rem;
+}
+
+.combobox-empty-button {
+  display: inline-block;
+  padding: 0.6rem 1.25rem;
+  background: var(--primary);
+  color: var(--white);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.combobox-empty-button:hover {
+  background: var(--primary-dark);
+  text-decoration: none;
 }
 
 /* ══════════════════════════════════════
@@ -1110,6 +1172,16 @@
   font-family: 'DM Sans', sans-serif;
   font-size: 0.85rem;
   transition: border-color 0.2s;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.tier-input::-webkit-inner-spin-button,
+.tier-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  -moz-appearance: textfield;
+  appearance: none;
+  margin: 0;
 }
 
 .tier-input:focus {
@@ -1620,6 +1692,28 @@
 .btn-primary:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(212, 168, 67, 0.3);
+  opacity: 0.95;
+}
+
+.btn-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 0.9rem;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-success:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.3);
   opacity: 0.95;
 }
 
@@ -2207,7 +2301,7 @@
 }
 
 .modal-title-success {
-  color: #facc15;
+  color: #22c55e;
 }
 
 .modal-close {

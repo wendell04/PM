@@ -39,6 +39,47 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
+// ── Reusable Number Input Component ───────────────────────────────────────────
+// Prevents negative values, e, E, -, +, and disables scroll wheel
+function NumberInput({ value, onChange, min = 0, max, placeholder, className, disabled, step }) {
+  const handleChange = (e) => {
+    const val = e.target.value;
+    // Allow empty string or valid non-negative number (with optional decimal)
+    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+      onChange({ ...e, target: { ...e.target, value: val } });
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    // Block e, E, +, -
+    if (['e', 'E', '+', '-'].includes(e.key)) {
+      e.preventDefault();
+    }
+  };
+
+  const handleWheel = (e) => {
+    // Prevent scroll wheel from changing value
+    e.target.blur();
+    e.preventDefault();
+  };
+
+  return (
+    <input
+      type="number"
+      className={className}
+      value={value}
+      onChange={handleChange}
+      onKeyDown={handleKeyDown}
+      onWheel={handleWheel}
+      min={min}
+      max={max}
+      placeholder={placeholder}
+      disabled={disabled}
+      step={step}
+    />
+  );
+}
+
 // ── Inventory Helper (LocalStorage)
 // ⚠️ TODO: MongoDB - Replace with API call: GET /api/inventory
 import { getInventoryList } from './inventory/page';
@@ -119,21 +160,25 @@ function Combobox({ value, onChange, options, placeholder, label, required }) {
 }
 
 // ─── Inventory Combobox (for Material/Blank Item) ─────────────────────────────
+// ⭐ NEW: Only shows active inventory items (isActive: true)
 function InventoryCombobox({ value, onChange, inventoryList, placeholder, label }) {
   const [open, setOpen] = useState(false);
   const [inputVal, setInputVal] = useState('');
   const ref = useRef(null);
 
+  // ⭐ Filter to only active items
+  const activeInventoryList = inventoryList.filter(item => item.isActive !== false);
+
   // Get display name for selected inventory item
   const getDisplayName = (id) => {
-    const item = inventoryList.find(inv => inv.id === id);
+    const item = activeInventoryList.find(inv => inv.id === id);
     if (!item) return '';
     return `${item.name} (${item.category}) - ${item.isOnDemand ? 'Upon Order' : `${item.stockQty} stocks`}`;
   };
 
   useEffect(() => {
     setInputVal(value ? getDisplayName(value) : '');
-  }, [value, inventoryList]);
+  }, [value, activeInventoryList]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -143,7 +188,7 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label 
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const filtered = inventoryList.filter(item =>
+  const filtered = activeInventoryList.filter(item =>
     `${item.name} (${item.category})`.toLowerCase().includes((inputVal || '').toLowerCase())
   );
 
@@ -178,7 +223,9 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label 
               style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '1.2rem', padding: '0 0.25rem', lineHeight: '1' }}
               title="Clear selection"
             >
-              ×
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
             </button>
           )}
           <button type="button" className="combobox-toggle" onClick={() => setOpen(o => !o)} style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '0.72rem', padding: '0' }}>
@@ -186,21 +233,46 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label 
           </button>
         </div>
       </div>
-      {open && filtered.length > 0 && (
+      {open && (
         <div className="combobox-menu">
-          {filtered.map((item, i) => {
-            const displayName = `${item.name} (${item.category}) - ${item.isOnDemand ? 'Upon Order' : `${item.stockQty} stocks`}`;
-            return (
-              <button
-                key={i}
-                type="button"
-                className={`combobox-item${item.id === value ? ' active' : ''}`}
-                onClick={() => select(item)}
+          {activeInventoryList.length === 0 ? (
+            <div className="combobox-empty">
+              <div className="combobox-empty-icon">
+              </div>
+              <p className="combobox-empty-title">No Items in Inventory</p>
+              <p className="combobox-empty-description">
+                Add items to your inventory first before creating products.
+              </p>
+              <a
+                href="/dashboard/business/inventory"
+                className="combobox-empty-button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.location.href = '/dashboard/business/inventory';
+                }}
               >
-                {displayName}
-              </button>
-            );
-          })}
+                Go to Inventory
+              </a>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="combobox-empty">
+              <p className="combobox-empty-description">No items found matching "{inputVal}"</p>
+            </div>
+          ) : (
+            filtered.map((item, i) => {
+              const displayName = `${item.name} (${item.category}) - ${item.isOnDemand ? 'Upon Order' : `${item.stockQty} stocks`}`;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  className={`combobox-item${item.id === value ? ' active' : ''}`}
+                  onClick={() => select(item)}
+                >
+                  {displayName}
+                </button>
+              );
+            })
+          )}
         </div>
       )}
     </div>
@@ -211,13 +283,6 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label 
 function comboLabel(combo) {
   return Object.values(combo).join(' / ');
 }
-
-// Prevent negative numbers in input fields
-const preventNegative = (e) => {
-  if (e.key === '-' || e.key === 'e' || e.key === 'E') {
-    e.preventDefault();
-  }
-};
 
 const sanitizeNumber = (val) => {
   if (val === '') return '';
@@ -414,25 +479,36 @@ function SmartPricingTable({
                   <>
                     <td><span className="tier-badge">Tier {idx + 1}</span></td>
                     <td>
-                      <input type="number" className="tier-input"
-                        value={tier.minQty ?? ''} placeholder="1" min="0"
-                        onKeyDown={preventNegative}
-                        onChange={e => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'minQty', v); }} />
+                      <NumberInput
+                        className="tier-input"
+                        value={tier.minQty ?? ''}
+                        placeholder=""
+                        min={0}
+                        onChange={e => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'minQty', v); }}
+                      />
                     </td>
                     <td>
-                      <input type="number" className="tier-input"
-                        value={tier.maxQty ?? ''} placeholder="∞" min="0"
-                        onKeyDown={preventNegative}
-                        onChange={e => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'maxQty', v); }} />
+                      <NumberInput
+                        className="tier-input"
+                        value={tier.maxQty ?? ''}
+                        placeholder="∞"
+                        min={0}
+                        onChange={e => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'maxQty', v); }}
+                      />
                     </td>
                   </>
                 )}
                 <td>
                   <div className="tier-price-cell">
                     <span className="peso">₱</span>
-                    <input type="number" className="tier-input" value={tier.prices['__base__'] || ''}
-                      onKeyDown={preventNegative}
-                      onChange={e => onPriceChange(tier.id, '__base__', sanitizeNumber(e.target.value))} placeholder="0" />
+                    <NumberInput
+                      className="tier-input"
+                      value={tier.prices['__base__'] || ''}
+                      onChange={e => onPriceChange(tier.id, '__base__', sanitizeNumber(e.target.value))}
+                      placeholder="0"
+                      min={0}
+                      step="0.01"
+                    />
                   </div>
                 </td>
                 {mode === 'tiered' && (
@@ -485,16 +561,22 @@ function SmartPricingTable({
                 <>
                   <td><span className="tier-badge">Tier {idx + 1}</span></td>
                   <td>
-                    <input type="number" className="tier-input"
-                      value={tier.minQty ?? ''} placeholder="1" min="0"
-                      onKeyDown={preventNegative}
-                      onChange={e => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'minQty', v); }} />
+                    <NumberInput
+                      className="tier-input"
+                      value={tier.minQty ?? ''}
+                      placeholder="1"
+                      min={0}
+                      onChange={e => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'minQty', v); }}
+                    />
                   </td>
                   <td>
-                    <input type="number" className="tier-input"
-                      value={tier.maxQty ?? ''} placeholder="∞" min="0"
-                      onKeyDown={preventNegative}
-                      onChange={e => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'maxQty', v); }} />
+                    <NumberInput
+                      className="tier-input"
+                      value={tier.maxQty ?? ''}
+                      placeholder="∞"
+                      min={0}
+                      onChange={e => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'maxQty', v); }}
+                    />
                   </td>
                 </>
               )}
@@ -506,11 +588,9 @@ function SmartPricingTable({
                   <td key={cg.key} className={isMerged ? 'smart-cell-merged' : ''}>
                     <div className="tier-price-cell">
                       <span className="peso">₱</span>
-                      <input
-                        type="number"
+                      <NumberInput
                         className="tier-input"
                         value={colPrice}
-                        onKeyDown={preventNegative}
                         onChange={e => {
                           const newVal = sanitizeNumber(e.target.value);
                           // Update all combo IDs in the merged group
@@ -519,7 +599,7 @@ function SmartPricingTable({
                           });
                         }}
                         placeholder="0"
-                        min="0"
+                        min={0}
                         step="0.01"
                         title={isMerged ? `Editing all: ${cg.secondaryVals.join(', ')}` : cg.label}
                       />
@@ -803,6 +883,37 @@ function PriceErrorModal({ isOpen, onClose, message }) {
   );
 }
 
+// ── Inventory Error Modal ──────────────────────────────────────────────────────
+function InventoryErrorModal({ isOpen, onClose }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title modal-title-warning">Product Required</h2>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-body">
+          <p className="delete-confirm-text">
+            Please select a <strong>Product / Blank Item</strong> from the inventory first.
+          </p>
+          <p className="delete-confirm-warning" style={{ marginTop: '0.75rem' }}>
+            This ensures that your product is linked to the correct material and stock levels.
+          </p>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-primary" onClick={onClose}>
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Confirm Save Product Modal ─────────────────────────────────────────────────
 function ConfirmSaveProductModal({ isOpen, onClose, onConfirm, product }) {
   if (!isOpen || !product) return null;
@@ -998,6 +1109,7 @@ export default function AddProductsPage() {
   const [priceErrorMessage, setPriceErrorMessage] = useState('');
   const [showConfirmSaveModal, setShowConfirmSaveModal] = useState(false);
   const [pendingNewProduct, setPendingNewProduct] = useState(null);
+  const [showInventoryErrorModal, setShowInventoryErrorModal] = useState(false);
 
   // ── NEW: Inventory List State ────────────────────────────────────────────────
   const [inventoryList, setInventoryList] = useState([]);
@@ -1065,6 +1177,16 @@ export default function AddProductsPage() {
       // Auto-set stock from inventory if not upon order
       stock: selectedItem && !selectedItem.isOnDemand ? String(selectedItem.stockQty) : '',
     }));
+
+    // ⭐ Clear prices when inventory is removed to prevent "ghost" values
+    if (!inventoryId) {
+      setFixedPrice('');
+      setFixedPriceVariants({});
+      setTiers(prev => prev.map(t => ({
+        ...t,
+        prices: { '__base__': '' }
+      })));
+    }
   };
 
   const cartesian = (groups) => {
@@ -1393,6 +1515,14 @@ export default function AddProductsPage() {
     e.preventDefault();
 
     // ──────────────────────────────────────────────────────────────
+    // VALIDATION: Require Inventory Item (Source of Truth)
+    // ──────────────────────────────────────────────────────────────
+    if (!formData.inventoryId) {
+      setShowInventoryErrorModal(true);
+      return;
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // VALIDATION: Check for empty prices (unless "For Inquiry")
     // ──────────────────────────────────────────────────────────────
     if (formData.priceType === 'fixed') {
@@ -1461,7 +1591,7 @@ export default function AddProductsPage() {
     // TODO: MongoDB — Save Sub-Category if new
     // CURRENT: LocalStorage (browser-only, hindi persistent sa server)
     // FUTURE: Replace with POST /api/subcategories
-    // ──────────────────────────────────────────────────────────────
+    // ────────────────────��─────────────────────────────────────────
     if (formData.category && formData.subCategoryName) {
       const existingSubs = savedSubCategories[formData.category] || [];
       if (!existingSubs.includes(formData.subCategoryName)) {
@@ -1688,6 +1818,12 @@ export default function AddProductsPage() {
         message={priceErrorMessage}
       />
 
+      {/* Inventory Error Modal */}
+      <InventoryErrorModal
+        isOpen={showInventoryErrorModal}
+        onClose={() => setShowInventoryErrorModal(false)}
+      />
+
       {/* Confirm Save Product Modal */}
       <ConfirmSaveProductModal
         isOpen={showConfirmSaveModal}
@@ -1724,7 +1860,10 @@ export default function AddProductsPage() {
               placeholder="Select a Product from inventory..."
             />
             <p className="form-hint">
-              Select a material to auto-fill category, sub-category, and stock.
+              {inventoryList.filter(i => i.isActive !== false).length === 0
+                ? 'Add items to your inventory first before creating products.'
+                : 'Select a material to auto-fill category, sub-category, and stock.'
+              }
               {formData.inventoryId && (() => {
                 const selected = inventoryList.find(inv => inv.id === formData.inventoryId);
                 return selected?.isOnDemand
@@ -1834,11 +1973,9 @@ export default function AddProductsPage() {
                     <label className="form-label">
                       Available Stock <span className="required">*</span>
                     </label>
-                    <input
-                      type="number"
+                    <NumberInput
                       className="form-input"
                       value={formData.stock}
-                      onKeyDown={preventNegative}
                       onChange={e => {
                         const val = e.target.value;
                         if (val === '' || parseInt(val) >= 0) {
@@ -1851,7 +1988,8 @@ export default function AddProductsPage() {
                         }
                       }}
                       placeholder="0"
-                      min="0"
+                      min={0}
+                      max={inv.stockQty}
                       required
                     />
                     {parseInt(formData.stock) > 0 && (
@@ -2035,14 +2173,12 @@ export default function AddProductsPage() {
                 <div className="form-group">
                   <div className="tier-price-cell" style={{ opacity: !formData.inventoryId ? 0.5 : 1, pointerEvents: !formData.inventoryId ? 'none' : 'auto' }}>
                     <span className="peso">₱</span>
-                    <input
-                      type="number"
+                    <NumberInput
                       className="tier-input"
                       value={fixedPrice || ''}
-                      onKeyDown={preventNegative}
                       onChange={e => formData.inventoryId && setFixedPrice(sanitizeNumber(e.target.value))}
                       placeholder="0"
-                      min="0"
+                      min={0}
                       step="0.01"
                       disabled={!formData.inventoryId}
                     />
