@@ -1,12 +1,51 @@
 'use client';
 
+/**
+ * ADD PRODUCT PAGE
+ *
+ * Current Status: LocalStorage (Browser-only, for testing)
+ * ⚠️ TODO: MongoDB Integration - Replace LocalStorage with Database
+ *
+ * Features:
+ * - Add/Edit products with category, sub-category
+ * - Auto-fill from Inventory (Source of Truth)
+ * - Fixed pricing or Tiered pricing
+ * - Variant management (up to 2 variant groups)
+ * - Smart pricing (merge variants with same price)
+ * - Image upload (thumbnail + gallery)
+ * - Product preview modal
+ *
+ * MongoDB Integration Steps:
+ * 1. Create MongoDB collection: 'products'
+ * 2. Replace LocalStorage calls with API endpoints:
+ *    - GET /api/products - Fetch all products
+ *    - POST /api/products - Add new product
+ *    - PUT /api/products/:id - Update product
+ *    - DELETE /api/products/:id - Delete product
+ *    - GET /api/categories - Fetch categories
+ *    - POST /api/categories - Add new category
+ *    - GET /api/subcategories - Fetch subcategories
+ *    - POST /api/subcategories - Add new subcategory
+ * 3. Add API routes in app/api/products/route.js
+ * 4. Add Mongoose schema in models/Product.js
+ * 5. Remove LocalStorage references
+ *
+ * Data Relationships:
+ * - Products reference Inventory items via inventoryId
+ * - Categories can be separate collection or derived from products
+ * - Subcategories stored in product documents
+ */
+
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
 // ── Inventory Helper (LocalStorage)
+// ⚠️ TODO: MongoDB - Replace with API call: GET /api/inventory
 import { getInventoryList } from './inventory/page';
 
-// ── TODO (MongoDB): palitan ng import ng API functions pag may DB na
+// ── TODO (MongoDB): Replace with API imports
+// CURRENT: LocalStorage helpers (browser-only)
+// FUTURE: API functions for MongoDB
 // import { getCategories, saveCategory, saveSubCategory, saveProduct } from '@/lib/productStorage';
 
 // ─── Combobox ──────────────────────────────────────────────────────────────────
@@ -646,6 +685,267 @@ function ProductPreviewModal({ product, onClose }) {
   );
 }
 
+// ── Duplicate Product Warning Modal ────────────────────────────────────────────
+function DuplicateProductModal({ isOpen, onClose, category, subCategoryName }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title modal-title-warning">Duplicate Product Detected</h2>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-body">
+          <p className="delete-confirm-text">
+            Product <strong>"{category} - {subCategoryName || '(No sub-category)'}"</strong> already exists!
+          </p>
+          <p className="delete-confirm-warning" style={{ marginTop: '0.75rem' }}>
+            Please edit the existing product in the Product Listing instead.
+          </p>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Success Modal ──────────────────────────────────────────────────────────────
+function SuccessModal({ isOpen, onClose }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title modal-title-success">Product Added Successfully!</h2>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-body">
+          <p className="delete-confirm-text">
+            Your product has been saved to the catalog.
+          </p>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-primary" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Stock Error Modal ──────────────────────────────────────────────────────────
+function StockErrorModal({ isOpen, onClose, maxStock }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title modal-title-danger">Invalid Stock Quantity</h2>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-body">
+          <p className="delete-confirm-text">
+            Cannot set stock higher Availability than Inventory stock (<strong>{maxStock} pcs</strong>).
+          </p>
+          <p className="delete-confirm-warning" style={{ marginTop: '0.75rem' }}>
+            Please enter a value that is less than or equal to the available inventory.
+          </p>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Price Error Modal ──────────────────────────────────────────────────────────
+function PriceErrorModal({ isOpen, onClose, message }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title modal-title-warning">Price Required</h2>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-body">
+          <p className="delete-confirm-text">
+            {message}
+          </p>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Confirm Save Product Modal ─────────────────────────────────────────────────
+function ConfirmSaveProductModal({ isOpen, onClose, onConfirm, product }) {
+  if (!isOpen || !product) return null;
+
+  // Calculate total price info
+  let priceInfo = '';
+  if (product.priceType === 'inquiry') {
+    priceInfo = 'For Inquiry';
+  } else if (product.priceType === 'fixed') {
+    if (product.variantPrices) {
+      const prices = Object.values(product.variantPrices).map(p => parseFloat(p)).filter(p => p > 0);
+      const minP = prices.length ? Math.min(...prices) : 0;
+      const maxP = prices.length ? Math.max(...prices) : 0;
+      priceInfo = `₱${minP}${maxP !== minP ? ` – ₱${maxP}` : ''}`;
+    } else if (product.price) {
+      priceInfo = `₱${product.price}`;
+    }
+  } else if (product.priceType === 'tiered' && product.tiers) {
+    const allPrices = product.tiers.flatMap(t => Object.values(t.prices).map(p => parseFloat(p)).filter(p => p > 0));
+    const minP = allPrices.length ? Math.min(...allPrices) : 0;
+    const maxP = allPrices.length ? Math.max(...allPrices) : 0;
+    priceInfo = `₱${minP}${maxP !== minP ? ` – ₱${maxP}` : ''} (tiered)`;
+  }
+
+  // Stock info
+  let stockInfo = '';
+  if (!product.trackInventory) {
+    stockInfo = 'Upon Order / Supplied';
+  } else {
+    stockInfo = `${product.stock || 0} pcs available`;
+  }
+
+  // Variant info
+  const variantCount = product.variantGroups?.length || 0;
+  const combinationCount = product.combinations?.length || 0;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title modal-title-success">Confirm Save Product</h2>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-body">
+          <p className="delete-confirm-text" style={{ marginBottom: '1.5rem' }}>
+            Please review the product details before saving to your catalog.
+          </p>
+
+          <div className="confirm-summary" style={{
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            padding: '1.25rem'
+          }}>
+            {/* Thumbnail Preview */}
+            {product.thumbnail && (
+              <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
+                <img
+                  src={product.thumbnail}
+                  alt="Product thumbnail"
+                  style={{
+                    width: '120px',
+                    height: '120px',
+                    objectFit: 'cover',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)'
+                  }}
+                />
+              </div>
+            )}
+
+            <div className="confirm-row" style={{ marginBottom: '0.75rem' }}>
+              <span className="confirm-label" style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>Product:</span>
+              <span className="confirm-value" style={{ fontWeight: '600', color: 'var(--white)' }}>
+                {product.category} {product.subCategoryName ? `- ${product.subCategoryName}` : ''}
+              </span>
+            </div>
+
+            {product.description && (
+              <div className="confirm-row" style={{ marginBottom: '0.75rem' }}>
+                <span className="confirm-label" style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>Description:</span>
+                <span className="confirm-value" style={{ color: 'var(--white)' }}>
+                  {product.description.length > 100 ? product.description.substring(0, 100) + '...' : product.description}
+                </span>
+              </div>
+            )}
+
+            <div className="confirm-row" style={{ marginBottom: '0.75rem' }}>
+              <span className="confirm-label" style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>Price:</span>
+              <span className="confirm-value" style={{ color: '#facc15', fontWeight: '600' }}>
+                {priceInfo}
+              </span>
+            </div>
+
+            <div className="confirm-row" style={{ marginBottom: '0.75rem' }}>
+              <span className="confirm-label" style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>Stock:</span>
+              <span className="confirm-value" style={{ color: 'var(--white)' }}>
+                {stockInfo}
+              </span>
+            </div>
+
+            {variantCount > 0 && (
+              <div className="confirm-row" style={{ marginBottom: '0.75rem' }}>
+                <span className="confirm-label" style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>Variants:</span>
+                <span className="confirm-value" style={{ color: 'var(--white)' }}>
+                  {variantCount} group{variantCount > 1 ? 's' : ''} ({combinationCount} combinations)
+                </span>
+              </div>
+            )}
+
+            {product.images?.length > 0 && (
+              <div className="confirm-row" style={{ marginBottom: '0.75rem' }}>
+                <span className="confirm-label" style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>Images:</span>
+                <span className="confirm-value" style={{ color: 'var(--white)' }}>
+                  {product.images.length} image{product.images.length > 1 ? 's' : ''}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <p className="confirm-hint" style={{
+            marginTop: '1rem',
+            color: 'var(--gray)',
+            fontSize: '0.875rem'
+          }}>
+            Click "Confirm Save" to add this product to your catalog.
+          </p>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn-primary" onClick={onConfirm}>
+            Confirm Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function AddProductsPage() {
   const router = useRouter();
@@ -687,6 +987,17 @@ export default function AddProductsPage() {
   const [savedCategories, setSavedCategories] = useState([]);
   const [savedSubCategories, setSavedSubCategories] = useState({});
   const [showPreview, setShowPreview] = useState(false);
+
+  // ── NEW: Modal States ────────────────────────────────────────────────────────
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [pendingProductData, setPendingProductData] = useState(null);
+  const [showStockErrorModal, setShowStockErrorModal] = useState(false);
+  const [maxStockQty, setMaxStockQty] = useState(0);
+  const [showPriceErrorModal, setShowPriceErrorModal] = useState(false);
+  const [priceErrorMessage, setPriceErrorMessage] = useState('');
+  const [showConfirmSaveModal, setShowConfirmSaveModal] = useState(false);
+  const [pendingNewProduct, setPendingNewProduct] = useState(null);
 
   // ── NEW: Inventory List State ────────────────────────────────────────────────
   const [inventoryList, setInventoryList] = useState([]);
@@ -1082,9 +1393,48 @@ export default function AddProductsPage() {
     e.preventDefault();
 
     // ──────────────────────────────────────────────────────────────
+    // VALIDATION: Check for empty prices (unless "For Inquiry")
+    // ──────────────────────────────────────────────────────────────
+    if (formData.priceType === 'fixed') {
+      if (hasVariants) {
+        // Check if at least one variant has a price
+        const hasAnyPrice = Object.values(fixedPriceVariants).some(p => p !== '' && p !== null && p !== undefined);
+        if (!hasAnyPrice) {
+          setPriceErrorMessage('Please enter at least one price for the variants, or set price type to "For Inquiry".');
+          setShowPriceErrorModal(true);
+          return;
+        }
+      } else {
+        // No variants - check fixed price
+        if (!fixedPrice || parseFloat(fixedPrice) <= 0) {
+          setPriceErrorMessage('Please enter a price.');
+          setShowPriceErrorModal(true);
+          return;
+        }
+      }
+    } else if (formData.priceType === 'tiered') {
+      // Check if at least one tier has a price
+      const hasAnyTierPrice = tiers.some(tier =>
+        Object.values(tier.prices).some(p => p !== '' && p !== null && p !== undefined && parseFloat(p) > 0)
+      );
+      if (!hasAnyTierPrice) {
+        setPriceErrorMessage('Please enter at least one price in the pricing tiers.');
+        setShowPriceErrorModal(true);
+        return;
+      }
+    }
+    // If priceType === 'inquiry', no price validation needed
+
+    // ──────────────────────────────────────────────────────────────
     // TODO: MongoDB Validation — Check for duplicate product
     // CURRENT: LocalStorage check (browser-only)
     // FUTURE: Replace with API call: GET /api/products/check-duplicate
+    //
+    // Example MongoDB query:
+    // const existingProduct = await Product.findOne({
+    //   category: formData.category,
+    //   subCategoryName: formData.subCategoryName
+    // });
     // ──────────────────────────────────────────────────────────────
     const existingProducts = JSON.parse(localStorage.getItem('products') || '[]');
     const isDuplicate = existingProducts.some(
@@ -1092,7 +1442,7 @@ export default function AddProductsPage() {
     );
 
     if (isDuplicate) {
-      alert(`Product "${formData.category} - ${formData.subCategoryName || '(No sub-category)'}" already exists!\n\nPlease edit the existing product in the Product Listing instead.`);
+      setShowDuplicateModal(true);
       return;
     }
 
@@ -1148,7 +1498,7 @@ export default function AddProductsPage() {
       subCategoryName: formData.subCategoryName,  // Sub-category name (e.g., "Ceramic")
       description: formData.description,     // Product description/materials
       priceType: formData.priceType,         // 'fixed' or 'tiered'
-      
+
       // ── Pricing: Fixed or Tiered ──
       ...(formData.priceType === 'fixed'
         ? hasVariants
@@ -1156,34 +1506,101 @@ export default function AddProductsPage() {
           : { price: fixedPrice }                  // Single fixed price
         : { tiers }                                // Tiered pricing (qty-based)
       ),
-      
+
       // ── Variants ──
       variantGroups: variantGroups,          // Variant definitions (e.g., Color, Size)
       combinations: combinations,            // All variant combinations
-      
+
       // ── Images (currently blob: URLs, will be Cloudinary/S3 URLs) ──
       thumbnail: thumbnail?.preview || null, // Main product thumbnail
       images: images.map(img => img.preview), // Gallery images
-      
+
       // ── Inventory/Stock ──
       trackInventory: formData.trackInventory,  // true = Track Stock, false = Upon Order
       stock: stockVal,                          // Current stock quantity
       stockStatus: stockStatus.class,           // Status pill class
-      
+
       // ── Metadata ──
       createdAt: new Date().toISOString(),      // Product creation timestamp
     };
 
     // ──────────────────────────────────────────────────────────────
+    // Show Confirmation Modal before saving
+    // ──────────────────────────────────────────────────────────────
+    setPendingNewProduct(newProduct);
+    setShowConfirmSaveModal(true);
+  };
+
+  // Confirm the save action (after user clicks "Confirm" in modal)
+  const handleConfirmSave = () => {
+    if (!pendingNewProduct) return;
+
+    // Save categories and subcategories
+    if (pendingNewProduct.category && !savedCategories.includes(pendingNewProduct.category)) {
+      const updated = [...savedCategories, pendingNewProduct.category];
+      setSavedCategories(updated);
+      localStorage.setItem('customCategories', JSON.stringify(updated));
+    }
+
+    if (pendingNewProduct.category && pendingNewProduct.subCategoryName) {
+      const existingSubs = savedSubCategories[pendingNewProduct.category] || [];
+      if (!existingSubs.includes(pendingNewProduct.subCategoryName)) {
+        const updatedSubs = {
+          ...savedSubCategories,
+          [pendingNewProduct.category]: [...existingSubs, pendingNewProduct.subCategoryName],
+        };
+        setSavedSubCategories(updatedSubs);
+        localStorage.setItem('subCategories', JSON.stringify(updatedSubs));
+      }
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // TODO: MongoDB — Save Product to Database
     // CURRENT: LocalStorage (browser-only, hindi persistent sa server)
     // FUTURE: Replace with POST /api/products
+    //
+    // Example API call:
+    // const response = await fetch('/api/products', {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/json' },
+    //   body: JSON.stringify(pendingNewProduct),
+    // });
+    // const savedProduct = await response.json();
+    //
+    // MongoDB Document Structure:
+    // {
+    //   _id: ObjectId,              // MongoDB auto-generates
+    //   inventoryId: ObjectId,      // Reference to Inventory collection
+    //   category: String,           // e.g., "Mugs"
+    //   subCategoryCode: String,    // e.g., "CER"
+    //   subCategoryName: String,    // e.g., "Ceramic"
+    //   description: String,
+    //   priceType: String,          // 'fixed' | 'tiered' | 'inquiry'
+    //   price: Number,              // For fixed price (no variants)
+    //   variantPrices: Object,      // { [comboId]: price } for variants
+    //   tiers: Array,               // For tiered pricing
+    //   variantGroups: Array,       // Variant definitions
+    //   combinations: Array,        // All variant combinations
+    //   thumbnail: String,          // Image URL (Cloudinary/S3)
+    //   images: Array,              // Image URLs array
+    //   trackInventory: Boolean,
+    //   stock: Number,
+    //   stockStatus: String,        // 'in-stock' | 'low-stock' | 'out-of-stock' | 'upon-order'
+    //   createdAt: Date,
+    //   updatedAt: Date
+    // }
     // ──────────────────────────────────────────────────────────────
+
+    // Save product to LocalStorage (TEMPORARY - for testing only)
     const existing = JSON.parse(localStorage.getItem('products') || '[]');
-    localStorage.setItem('products', JSON.stringify([...existing, newProduct]));
+    localStorage.setItem('products', JSON.stringify([...existing, pendingNewProduct]));
 
-    alert('Product added successfully!');
+    // Close modal and show success
+    setShowConfirmSaveModal(false);
+    setPendingNewProduct(null);
+    setShowSuccessModal(true);
 
+    // Reset form
     setFormData({
       category: '',
       subCategoryCode: '',
@@ -1239,6 +1656,48 @@ export default function AddProductsPage() {
           onClose={() => setShowPreview(false)}
         />
       )}
+
+      {/* Duplicate Product Modal */}
+      <DuplicateProductModal
+        isOpen={showDuplicateModal}
+        onClose={() => setShowDuplicateModal(false)}
+        category={formData.category}
+        subCategoryName={formData.subCategoryName}
+      />
+
+      {/* Success Modal */}
+      <SuccessModal
+        isOpen={showSuccessModal}
+        onClose={() => {
+          setShowSuccessModal(false);
+          router.push('/dashboard/business/products');
+        }}
+      />
+
+      {/* Stock Error Modal */}
+      <StockErrorModal
+        isOpen={showStockErrorModal}
+        onClose={() => setShowStockErrorModal(false)}
+        maxStock={maxStockQty}
+      />
+
+      {/* Price Error Modal */}
+      <PriceErrorModal
+        isOpen={showPriceErrorModal}
+        onClose={() => setShowPriceErrorModal(false)}
+        message={priceErrorMessage}
+      />
+
+      {/* Confirm Save Product Modal */}
+      <ConfirmSaveProductModal
+        isOpen={showConfirmSaveModal}
+        onClose={() => {
+          setShowConfirmSaveModal(false);
+          setPendingNewProduct(null);
+        }}
+        onConfirm={handleConfirmSave}
+        product={pendingNewProduct}
+      />
 
       <div className="page-header">
         <h1 className="page-title">Add New Product</h1>
@@ -1384,7 +1843,8 @@ export default function AddProductsPage() {
                         const val = e.target.value;
                         if (val === '' || parseInt(val) >= 0) {
                           if (parseInt(val) > inv.stockQty) {
-                            alert(`Cannot set stock higher than Inventory stock (${inv.stockQty} pcs)`);
+                            setMaxStockQty(inv.stockQty);
+                            setShowStockErrorModal(true);
                             return;
                           }
                           setFormData(prev => ({ ...prev, stock: val }));

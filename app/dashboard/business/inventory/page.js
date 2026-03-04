@@ -2,19 +2,25 @@
 
 /**
  * INVENTORY MANAGEMENT PAGE
- * 
+ *
+ * Current Status: LocalStorage (Browser-only, for testing)
+ * ⚠️ TODO: MongoDB Integration - Replace LocalStorage with Database
+ *
  * Features:
  * - Add/Edit/Delete inventory items (blank materials)
  * - Inline editing for stock levels
  * - Status filtering (Low Stock, Out of Stock, Upon Order)
  * - Search by name or category
- * - Confirmation modals for Add/Edit and Delete actions
- * 
- * TODO: MongoDB Integration - Replace LocalStorage with:
- * - GET /api/inventory - Fetch all inventory items
- * - POST /api/inventory - Add new item
- * - PUT /api/inventory/:id - Update item
- * - DELETE /api/inventory/:id - Delete item
+ * - Duplicate prevention (same Name + Category)
+ * - Auto-formatting (Proper Case)
+ *
+ * MongoDB Integration Steps:
+ * 1. Create MongoDB collection: 'inventory'
+ * 2. Replace getInventoryList() → GET /api/inventory
+ * 3. Replace saveInventoryList() → POST/PUT /api/inventory/:id
+ * 4. Add API routes in app/api/inventory/route.js
+ * 5. Add Mongoose schema in models/Inventory.js
+ * 6. Remove LocalStorage references
  */
 
 import { useState, useEffect } from 'react';
@@ -22,10 +28,35 @@ import { useState, useEffect } from 'react';
 // ── LocalStorage Key ───────────────────────────────────────────────────────────
 const INVENTORY_STORAGE_KEY = 'pmp_inventory';
 
+// ⚠️ TODO: MongoDB - Replace with API calls
+// CURRENT: LocalStorage helper functions (browser-only)
+// FUTURE: Replace with API calls to MongoDB
+
 // ── LocalStorage Helpers ───────────────────────────────────────────────────────
-// TODO: MongoDB - Replace with API calls:
+// ⚠️ TODO: MongoDB - Replace with API calls:
 // - getInventoryList() → GET /api/inventory
 // - saveInventoryList() → POST /api/inventory or PUT /api/inventory/:id
+//
+// Example MongoDB API implementation:
+// ```javascript
+// // app/api/inventory/route.js
+// export async function GET() {
+//   const inventory = await Inventory.find({}).sort({ name: 1 });
+//   return NextResponse.json(inventory);
+// }
+//
+// export async function POST(request) {
+//   const body = await request.json();
+//   const newItem = await Inventory.create(body);
+//   return NextResponse.json(newItem);
+// }
+//
+// export async function PUT(request) {
+//   const { id, ...data } = await request.json();
+//   const updated = await Inventory.findByIdAndUpdate(id, data, { new: true });
+//   return NextResponse.json(updated);
+// }
+// ```
 export function getInventoryList() {
   if (typeof window === 'undefined') return [];
   try {
@@ -37,7 +68,9 @@ export function getInventoryList() {
   }
 }
 
-// TODO: MongoDB - Replace with API call to save/update inventory item
+// ⚠️ TODO: MongoDB - Replace with API call to save/update inventory item
+// CURRENT: Saves to LocalStorage (browser-only, NOT persistent across devices)
+// FUTURE: POST to MongoDB API
 export function saveInventoryList(inventory) {
   if (typeof window === 'undefined') return;
   try {
@@ -48,7 +81,7 @@ export function saveInventoryList(inventory) {
 }
 
 // ── Categories ─────────────────────────────────────────────────────────────────
-const CATEGORIES = [
+const DEFAULT_CATEGORIES = [
   'Mugs',
   'T-Shirt',
   'Stickers',
@@ -59,44 +92,63 @@ const CATEGORIES = [
   'Others'
 ];
 
-// ── Initial Sample Data ────────────────────────────────────────────────────────
-const initialInventory = [
-  {
-    id: crypto.randomUUID(),
-    name: 'Ceramic',
-    category: 'Mugs',
-    stockQty: 100,
-    minStockLevel: 20,
-    isOnDemand: false
-  },
-  {
-    id: crypto.randomUUID(),
-    name: 'Magic Mug',
-    category: 'Mugs',
-    stockQty: 50,
-    minStockLevel: 15,
-    isOnDemand: false
-  },
-  {
-    id: crypto.randomUUID(),
-    name: 'Silkscreen T-Shirt',
-    category: 'T-Shirt',
-    stockQty: 0,
-    minStockLevel: 10,
-    isOnDemand: true
-  },
-  {
-    id: crypto.randomUUID(),
-    name: 'Vinyl Sticker',
-    category: 'Stickers',
-    stockQty: 200,
-    minStockLevel: 50,
-    isOnDemand: false
+// ── LocalStorage Key for Categories ───────────────────────────────────────────
+const CATEGORIES_STORAGE_KEY = 'pmp_inventory_categories';
+
+// ⚠️ TODO: MongoDB - Replace with API calls
+// CURRENT: Categories stored in LocalStorage (browser-only)
+// FUTURE: Store categories in MongoDB as separate collection or derive from inventory
+//
+// Option 1: Separate categories collection
+// - GET /api/categories - Fetch all categories
+// - POST /api/categories - Add new category
+//
+// Option 2: Derive from inventory items
+// - Use MongoDB aggregation: db.inventory.distinct("category")
+// - No need to store categories separately
+
+// ── Get Categories from LocalStorage ───────────────────────────────────────────
+// ⚠️ TODO: MongoDB - Replace with API call: GET /api/categories
+export function getCategories() {
+  if (typeof window === 'undefined') return DEFAULT_CATEGORIES;
+  try {
+    const stored = localStorage.getItem(CATEGORIES_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : DEFAULT_CATEGORIES;
+  } catch (error) {
+    console.error('Error reading categories from LocalStorage:', error);
+    return DEFAULT_CATEGORIES;
   }
-];
+}
+
+// ── Save Categories to LocalStorage ────────────────────────────────────────────
+// ⚠️ TODO: MongoDB - Replace with API call: POST /api/categories
+export function saveCategories(categories) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(categories));
+  } catch (error) {
+    console.error('Error saving categories to LocalStorage:', error);
+  }
+}
+
+// ── Initial Sample Data ────────────────────────────────────────────────────────
+// ⚠️ TODO: MongoDB - Remove this initial data when connecting to database
+// This is only for testing purposes. In production, data will come from MongoDB.
+const initialInventory = [];
+// Example structure for MongoDB documents (for reference):
+// {
+//   _id: ObjectId,              // MongoDB auto-generates this
+//   name: String,               // e.g., "Ceramic", "Magic Mug"
+//   category: String,           // e.g., "Mugs", "T-Shirt"
+//   stockQty: Number,           // Current stock quantity
+//   minStockLevel: Number,      // Minimum stock threshold
+//   isOnDemand: Boolean,        // true = Upon Order, false = Track Stock
+//   createdAt: Date,            // Timestamp
+//   updatedAt: Date             // Last update timestamp
+// }
 
 // ── Modal Component ────────────────────────────────────────────────────────────
-function InventoryModal({ isOpen, onClose, onSave, item, categories }) {
+function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onAddCategory, inventory, editingItem }) {
   const [formData, setFormData] = useState({
     name: '',
     category: 'Mugs',
@@ -104,6 +156,9 @@ function InventoryModal({ isOpen, onClose, onSave, item, categories }) {
     minStockLevel: 10,
     isOnDemand: false
   });
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [duplicateItem, setDuplicateItem] = useState(null); // For duplicate warning modal
 
   useEffect(() => {
     if (item) {
@@ -133,6 +188,37 @@ function InventoryModal({ isOpen, onClose, onSave, item, categories }) {
     }));
   };
 
+  const handleCategorySelect = (e) => {
+    const value = e.target.value;
+    if (value === '__new__') {
+      setShowNewCategoryInput(true);
+      setNewCategoryName('');
+    } else {
+      setShowNewCategoryInput(false);
+      setFormData(prev => ({ ...prev, category: value }));
+    }
+  };
+
+  const handleAddNewCategory = () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) {
+      alert('Please enter a category name');
+      return;
+    }
+
+    // Check if category already exists
+    if (categories.some(cat => cat.toLowerCase() === trimmed.toLowerCase())) {
+      alert('Category already exists!');
+      return;
+    }
+
+    // Add new category
+    onAddCategory(trimmed);
+    setFormData(prev => ({ ...prev, category: trimmed }));
+    setShowNewCategoryInput(false);
+    setNewCategoryName('');
+  };
+
   const handleNumberInput = (e) => {
     const { name, value } = e.target;
     const sanitized = value === '' ? '0' : Math.max(0, parseInt(value) || 0);
@@ -148,8 +234,36 @@ function InventoryModal({ isOpen, onClose, onSave, item, categories }) {
       alert('Please enter a product name');
       return;
     }
+
+    // Normalize the name: Trim whitespace and convert to Proper Case
+    const normalizedName = formData.name.trim()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+
+    // Check for duplicates in inventory (same Name + same Category)
+    const isDuplicate = inventory.some(item =>
+      item.name.toLowerCase() === normalizedName.toLowerCase() &&
+      item.category.toLowerCase() === formData.category.toLowerCase() &&
+      item.id !== (editingItem?.id) // Exclude current item if editing
+    );
+
+    if (isDuplicate) {
+      // Find the existing item for the redirect option
+      const existingItem = inventory.find(item =>
+        item.name.toLowerCase() === normalizedName.toLowerCase() &&
+        item.category.toLowerCase() === formData.category.toLowerCase()
+      );
+
+      // Show duplicate warning modal instead of confirm
+      setDuplicateItem(existingItem);
+      return;
+    }
+
+    // Save with normalized name
     onSave({
       ...formData,
+      name: normalizedName,
       stockQty: parseInt(formData.stockQty),
       minStockLevel: parseInt(formData.minStockLevel)
     });
@@ -181,23 +295,76 @@ function InventoryModal({ isOpen, onClose, onSave, item, categories }) {
               placeholder="e.g., Ceramic, Magic Mug..."
               required
             />
+            <p className="form-hint">
+              Product name will be auto-formatted (Proper Case). Duplicate names in the same category are not allowed.
+            </p>
           </div>
 
           <div className="form-group">
             <label className="form-label">
               Category <span className="required">*</span>
             </label>
-            <select
-              name="category"
-              className="form-select"
-              value={formData.category}
-              onChange={handleInputChange}
-              required
-            >
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
+            {showNewCategoryInput ? (
+              <div className="new-category-input-wrap">
+                <input
+                  type="text"
+                  className="form-input"
+                  value={newCategoryName}
+                  onChange={e => setNewCategoryName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddNewCategory();
+                    }
+                    if (e.key === 'Escape') {
+                      setShowNewCategoryInput(false);
+                      setNewCategoryName('');
+                    }
+                  }}
+                  placeholder="Enter new category name..."
+                  autoFocus
+                />
+                <div className="new-category-actions" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleAddNewCategory}
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                  >
+                    Add Category
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => {
+                      setShowNewCategoryInput(false);
+                      setNewCategoryName('');
+                    }}
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <select
+                  name="category"
+                  className="form-select"
+                  value={formData.category}
+                  onChange={handleCategorySelect}
+                  required
+                >
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                  <option value="__new__" style={{ borderTop: '1px solid var(--border)', fontWeight: '600' }}>+ Add New Category...</option>
+                </select>
+                <p className="form-hint">
+                  Select a category or add a new one.
+                </p>
+              </>
+            )}
           </div>
 
           <div className="form-group">
@@ -255,6 +422,70 @@ function InventoryModal({ isOpen, onClose, onSave, item, categories }) {
             </button>
           </div>
         </form>
+      </div>
+
+      {/* Duplicate Item Warning Modal */}
+      <DuplicateItemModal
+        isOpen={!!duplicateItem}
+        onClose={() => setDuplicateItem(null)}
+        onEdit={() => {
+          if (duplicateItem) {
+            setDuplicateItem(null); // Clear duplicate item first
+            onClose(); // Close the InventoryModal
+            setTimeout(() => {
+              onEdit(duplicateItem); // Open edit mode for existing item
+            }, 150);
+          }
+        }}
+        existingItem={duplicateItem}
+        categoryName={formData.category}
+      />
+    </div>
+  );
+}
+
+// ── Duplicate Item Warning Modal ───────────────────────────────────────────────
+function DuplicateItemModal({ isOpen, onClose, onEdit, existingItem, categoryName }) {
+  if (!isOpen || !existingItem) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title modal-title-warning">Duplicate Item Detected</h2>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-body">
+          <p className="delete-confirm-text">
+            <strong>"{existingItem.name}"</strong> in category <strong>"{categoryName}"</strong> already exists in your inventory.
+          </p>
+          <p className="delete-confirm-warning" style={{ marginTop: '0.75rem' }}>
+            Would you like to update the existing item's stock instead?
+          </p>
+          <div className="existing-item-info" style={{
+            background: 'rgba(255, 193, 7, 0.1)',
+            border: '1px solid rgba(255, 193, 7, 0.3)',
+            borderRadius: '8px',
+            padding: '1rem',
+            marginTop: '1rem'
+          }}>
+            <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>Current Item:</div>
+            <div style={{ fontWeight: '600', color: 'var(--white)', marginBottom: '0.25rem' }}>{existingItem.name}</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>
+              Category: {existingItem.category} • Stock: {existingItem.isOnDemand ? 'Upon Order' : `${existingItem.stockQty} pcs`}
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn-primary" onClick={onEdit}>
+            Edit Existing Item
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -348,6 +579,7 @@ function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
 // ── Main Inventory Page ────────────────────────────────────────────────────────
 export default function InventoryPage() {
   const [inventory, setInventory] = useState([]);
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -358,7 +590,20 @@ export default function InventoryPage() {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false); // For Add/Edit confirmation
   const [pendingItemData, setPendingItemData] = useState(null); // Temp storage before confirm
 
-  // Load inventory from LocalStorage on mount
+  // ⚠️ TODO: MongoDB - Replace with API call
+  // CURRENT: Load from LocalStorage on mount
+  // FUTURE: GET /api/inventory - Fetch from MongoDB
+  //
+  // Example:
+  // useEffect(() => {
+  //   fetch('/api/inventory')
+  //     .then(res => res.json())
+  //     .then(data => {
+  //       setInventory(data);
+  //       setIsLoaded(true);
+  //     })
+  //     .catch(err => console.error('Error loading inventory:', err));
+  // }, []);
   useEffect(() => {
     const stored = getInventoryList();
     if (stored.length > 0) {
@@ -367,15 +612,31 @@ export default function InventoryPage() {
       setInventory(initialInventory);
       saveInventoryList(initialInventory);
     }
+
+    // Load categories
+    const storedCategories = getCategories();
+    setCategories(storedCategories);
+
     setIsLoaded(true);
   }, []);
 
-  // Save to LocalStorage whenever inventory changes
+  // ⚠️ TODO: MongoDB - Remove this useEffect
+  // CURRENT: Save to LocalStorage on every change
+  // FUTURE: Not needed - will use API calls (POST/PUT) for each action
   useEffect(() => {
     if (isLoaded) {
       saveInventoryList(inventory);
     }
   }, [inventory, isLoaded]);
+
+  // ⚠️ TODO: MongoDB - Replace with API call
+  // CURRENT: Save to LocalStorage
+  // FUTURE: POST /api/categories
+  const handleAddCategory = (newCategory) => {
+    const updatedCategories = [...categories, newCategory];
+    setCategories(updatedCategories);
+    saveCategories(updatedCategories);
+  };
 
   // Filter inventory based on search query and status filter
   const filteredInventory = inventory.filter(item => {
@@ -413,6 +674,9 @@ export default function InventoryPage() {
   };
 
   // Handle Save (Add or Update) - Shows confirmation modal first
+  // ⚠️ TODO: MongoDB - Replace with API call
+  // CURRENT: Stores locally, saves to LocalStorage via useEffect
+  // FUTURE: POST /api/inventory (new) or PUT /api/inventory/:id (update)
   const handleSave = (itemData) => {
     // Store pending data and show confirmation modal
     setPendingItemData({
@@ -423,9 +687,26 @@ export default function InventoryPage() {
   };
 
   // Confirm the Add/Edit action
+  // ⚠️ TODO: MongoDB - Replace with API call
+  // CURRENT: Updates LocalStorage state
+  // FUTURE: Call API and handle response
+  //
+  // Example:
+  // const handleConfirmSave = async () => {
+  //   if (!pendingItemData) return;
+  //   const method = editingItem ? 'PUT' : 'POST';
+  //   const url = editingItem ? `/api/inventory/${pendingItemData.id}` : '/api/inventory';
+  //   const res = await fetch(url, {
+  //     method,
+  //     headers: { 'Content-Type': 'application/json' },
+  //     body: JSON.stringify(pendingItemData),
+  //   });
+  //   const savedItem = await res.json();
+  //   // Then update state with savedItem
+  // };
   const handleConfirmSave = () => {
     if (!pendingItemData) return;
-    
+
     if (editingItem) {
       // Update existing item
       setInventory(prev =>
@@ -439,7 +720,7 @@ export default function InventoryPage() {
       // Add new item
       setInventory(prev => [...prev, pendingItemData]);
     }
-    
+
     // Close all modals and reset
     setIsConfirmModalOpen(false);
     setIsModalOpen(false);
@@ -448,6 +729,16 @@ export default function InventoryPage() {
   };
 
   // Handle Confirm Delete
+  // ⚠️ TODO: MongoDB - Replace with API call
+  // CURRENT: Removes from LocalStorage state
+  // FUTURE: DELETE /api/inventory/:id
+  //
+  // Example:
+  // const handleConfirmDelete = async () => {
+  //   if (!deleteItem) return;
+  //   await fetch(`/api/inventory/${deleteItem.id}`, { method: 'DELETE' });
+  //   setInventory(prev => prev.filter(item => item.id !== deleteItem.id));
+  // };
   const handleConfirmDelete = () => {
     if (deleteItem) {
       setInventory(prev => prev.filter(item => item.id !== deleteItem.id));
@@ -772,8 +1063,15 @@ export default function InventoryPage() {
           setEditingItem(null);
         }}
         onSave={handleSave}
+        onEdit={(existingItem) => {
+          setEditingItem(existingItem);
+          setIsModalOpen(true);
+        }}
         item={editingItem}
-        categories={CATEGORIES}
+        editingItem={editingItem}
+        categories={categories}
+        onAddCategory={handleAddCategory}
+        inventory={inventory}
       />
 
       <DeleteConfirmModal

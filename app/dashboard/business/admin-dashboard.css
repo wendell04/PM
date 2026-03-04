@@ -403,10 +403,36 @@
   color: var(--white);
 }
 
+.form-select option[value="__new__"] {
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+}
+
 .form-hint {
   color: var(--gray);
   font-size: 0.8rem;
   margin-top: 0.35rem;
+}
+
+/* New Category Input Styles */
+.new-category-input-wrap {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.new-category-input-wrap .form-input {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+.new-category-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 .form-label-sub {
@@ -2128,6 +2154,8 @@
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   scrollbar-width: thin;
   scrollbar-color: var(--gold) var(--dark2);
+  padding: 0 1.5rem 1.5rem;
+  box-sizing: border-box;
 }
 
 .modal-content::-webkit-scrollbar {
@@ -2172,6 +2200,10 @@
 
 .modal-title-danger {
   color: var(--red);
+}
+
+.modal-title-warning {
+  color: #f59e0b;
 }
 
 .modal-title-success {
@@ -2256,6 +2288,7 @@
 .modal-actions .btn-danger {
   min-width: 100px;
   padding: 0.75rem 1.5rem;
+  margin: 0;
 }
 
 .delete-confirm-text {
