@@ -232,8 +232,8 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
   // ⭐ NEW: Check if item is linked to products or has sales history
   useEffect(() => {
     if (item) {
-      const allProducts = JSON.parse(localStorage.getItem('products') || '[]');
-      const allOrders = JSON.parse(localStorage.getItem('orders') || '[]');
+      const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
+      const allOrders = JSON.parse(localStorage.getItem('pmp_orders') || '[]');
 
       // Check if referenced by products
       const linkedProducts = allProducts.filter(p => p.inventoryId === item.id);
@@ -862,13 +862,13 @@ function ArchiveConfirmModal({
               <p className="delete-confirm-warning">
                 This action cannot be undone. The item will be permanently removed from your inventory.
               </p>
-              <p style={{ 
+              <p style={{
                 marginTop: '0.75rem',
                 fontSize: '0.875rem',
                 color: 'var(--gray)',
                 fontStyle: 'italic'
               }}>
-                ℹ️ Only delete permanently if this item was created by mistake and has never been used.
+                <span style={{ marginRight: '0.5rem', fontWeight: 'bold' }}>ℹ</span> Only delete permanently if this item was created by mistake and has never been used.
               </p>
             </>
           )}
@@ -1603,25 +1603,25 @@ export default function InventoryPage() {
     // ⚠️ TODO: MongoDB - Replace with API calls to get products and orders referencing this item
     // CURRENT: Check LocalStorage for products and orders
     // FUTURE: GET /api/products?inventoryId={item.id} AND GET /api/orders?inventoryId={item.id}
-    
-    const allProducts = JSON.parse(localStorage.getItem('products') || '[]');
-    const allOrders = JSON.parse(localStorage.getItem('orders') || '[]');
-    
+
+    const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
+    const allOrders = JSON.parse(localStorage.getItem('pmp_orders') || '[]');
+
     // Check if referenced by products
     const productsUsingThisItem = allProducts.filter(
       p => p.inventoryId === item.id
     );
-    
+
     // ⭐ NEW: Check if item has sales history
     const salesWithThisItem = allOrders.filter(order =>
       order.items?.some(orderItem => orderItem.inventoryId === item.id) ||
       order.productInventoryId === item.id
     );
-    
+
     setReferencingProducts(productsUsingThisItem);
     setHasSalesHistory(salesWithThisItem.length > 0); // ⭐ NEW: Track sales history
     setArchiveItem(item);
-    
+
     // ⭐ NEW: Store sales info for validation
     setShowArchiveModal(true);
   };
@@ -2276,13 +2276,13 @@ export default function InventoryPage() {
               </tbody>
             </table>
           </div>
-          <p style={{ 
-            marginTop: '1rem', 
-            color: 'var(--gray)', 
+          <p style={{
+            marginTop: '1rem',
+            color: 'var(--gray)',
             fontSize: '0.875rem',
             fontStyle: 'italic'
           }}>
-            ℹ️ Archived items are hidden from the "Add Product" dropdown but remain in your inventory for record-keeping.
+            <span style={{ marginRight: '0.5rem', fontWeight: 'bold' }}>ℹ</span> Archived items are hidden from the "Add Product" dropdown but remain in your inventory for record-keeping.
           </p>
         </div>
       )}

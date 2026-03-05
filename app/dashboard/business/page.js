@@ -169,7 +169,7 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label 
 
   // ⭐ Get products already linked to inventory items
   const linkedProductIds = useMemo(() => {
-    const allProducts = JSON.parse(localStorage.getItem('products') || '[]');
+    const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
     return new Set(allProducts.map(p => p.inventoryId).filter(id => id));
   }, []);
 
@@ -1156,7 +1156,7 @@ export default function AddProductsPage() {
   useEffect(() => {
     setSavedCategories(JSON.parse(localStorage.getItem('customCategories') || '[]'));
     setSavedSubCategories(JSON.parse(localStorage.getItem('subCategories') || '{}'));
-    
+
     // Load Inventory List (Source of Truth for blank materials)
     const inventory = getInventoryList();
     setInventoryList(inventory);
@@ -1559,7 +1559,7 @@ export default function AddProductsPage() {
       return;
     }
 
-    // ──────────────────────────────────────────────────────────────
+    // ───────────────────────────────────────────────────────�������──────
     // VALIDATION: Check for empty prices (unless "For Inquiry")
     // ──────────────────────────────────────────────────────────────
     if (formData.priceType === 'fixed') {
@@ -1722,69 +1722,50 @@ export default function AddProductsPage() {
     }
 
     // ──────────────────────────────────────────────────────────────
-    // TODO: MongoDB — Save Product to Database
-    // CURRENT: LocalStorage (browser-only, hindi persistent sa server)
-    // FUTURE: Replace with POST /api/products
-    //
-    // Example API call:
-    // const response = await fetch('/api/products', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify(pendingNewProduct),
-    // });
-    // const savedProduct = await response.json();
-    //
-    // MongoDB Document Structure:
-    // {
-    //   _id: ObjectId,              // MongoDB auto-generates
-    //   inventoryId: ObjectId,      // Reference to Inventory collection
-    //   category: String,           // e.g., "Mugs"
-    //   subCategoryCode: String,    // e.g., "CER"
-    //   subCategoryName: String,    // e.g., "Ceramic"
-    //   description: String,
-    //   priceType: String,          // 'fixed' | 'tiered' | 'inquiry'
-    //   price: Number,              // For fixed price (no variants)
-    //   variantPrices: Object,      // { [comboId]: price } for variants
-    //   tiers: Array,               // For tiered pricing
-    //   variantGroups: Array,       // Variant definitions
-    //   combinations: Array,        // All variant combinations
-    //   thumbnail: String,          // Image URL (Cloudinary/S3)
-    //   images: Array,              // Image URLs array
-    //   trackInventory: Boolean,
-    //   stock: Number,
-    //   stockStatus: String,        // 'in-stock' | 'low-stock' | 'out-of-stock' | 'upon-order'
-    //   createdAt: Date,
-    //   updatedAt: Date
-    // }
+    // Save Product to LocalStorage (or MongoDB in future)
     // ──────────────────────────────────────────────────────────────
+    const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
 
-    // Save product to LocalStorage (TEMPORARY - for testing only)
-    const existing = JSON.parse(localStorage.getItem('products') || '[]');
-    localStorage.setItem('products', JSON.stringify([...existing, pendingNewProduct]));
+    // ⭐ CREATE new product
+    const newProduct = {
+      ...pendingNewProduct,
+      id: crypto.randomUUID(),
+      isPublished: false,  // Default to unpublished
+      createdAt: new Date().toISOString(),
+    };
+    allProducts.push(newProduct);
+    localStorage.setItem('pmp_products', JSON.stringify(allProducts));
 
     // Close modal and show success
     setShowConfirmSaveModal(false);
     setPendingNewProduct(null);
     setShowSuccessModal(true);
 
-    // Reset form
-    setFormData({
-      category: '',
-      subCategoryCode: '',
-      subCategoryName: '',
-      productName: '',
-      description: '',
-      priceType: 'fixed',
-      trackInventory: true,
-      stock: '',
-    });
-    setFixedPrice('');
-    setFixedPriceVariants({});
-    setTiers([{ id: 1, minQty: 1, maxQty: 20, prices: { '__base__': '' } }]);
-    setVariantGroups([]);
-    setCombinations([]);
-    setThumbnail(null);
-    setImages([]);
+    // Reset form after success
+    setTimeout(() => {
+      setShowSuccessModal(false);
+      // Reset form fields
+      setFormData({
+        category: '',
+        subCategoryCode: '',
+        subCategoryName: '',
+        productName: '',
+        description: '',
+        priceType: 'fixed',
+        trackInventory: true,
+        stock: '',
+        inventoryId: '',
+      });
+      setFixedPrice('');
+      setFixedPriceVariants({});
+      setTiers([{ id: 1, minQty: 1, maxQty: 20, prices: { '__base__': '' } }]);
+      setVariantGroups([]);
+      setCombinations([]);
+      setThumbnail(null);
+      setImages([]);
+      // Redirect to Product List
+      router.push('/dashboard/business/products');
+    }, 1500);
   };
 
   const allPrices = tiers
@@ -1874,7 +1855,9 @@ export default function AddProductsPage() {
 
       <div className="page-header">
         <h1 className="page-title">Add New Product</h1>
-        <p className="page-subtitle">I-setup ang category, sub-category, variants, at tiered pricing.</p>
+        <p className="page-subtitle">
+          I-setup ang category, sub-category, variants, at tiered pricing.
+        </p>
       </div>
 
       <form className="product-form" onSubmit={handleSubmit}>
