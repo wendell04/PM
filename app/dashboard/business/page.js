@@ -36,7 +36,7 @@
  * - Subcategories stored in product documents
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 
 // ── Reusable Number Input Component ───────────────────────────────────────────
@@ -161,24 +161,33 @@ function Combobox({ value, onChange, options, placeholder, label, required }) {
 
 // ─── Inventory Combobox (for Material/Blank Item) ─────────────────────────────
 // ⭐ NEW: Only shows active inventory items (isActive: true)
+// ⭐ EXCLUDES items already linked to products (1:1 relationship)
 function InventoryCombobox({ value, onChange, inventoryList, placeholder, label }) {
   const [open, setOpen] = useState(false);
   const [inputVal, setInputVal] = useState('');
   const ref = useRef(null);
 
-  // ⭐ Filter to only active items
-  const activeInventoryList = inventoryList.filter(item => item.isActive !== false);
+  // ⭐ Get products already linked to inventory items
+  const linkedProductIds = useMemo(() => {
+    const allProducts = JSON.parse(localStorage.getItem('products') || '[]');
+    return new Set(allProducts.map(p => p.inventoryId).filter(id => id));
+  }, []);
+
+  // ⭐ Filter to only active items NOT already linked to products
+  const availableInventoryList = inventoryList.filter(item => 
+    item.isActive !== false && !linkedProductIds.has(item.id)
+  );
 
   // Get display name for selected inventory item
   const getDisplayName = (id) => {
-    const item = activeInventoryList.find(inv => inv.id === id);
+    const item = availableInventoryList.find(inv => inv.id === id) || inventoryList.find(inv => inv.id === id);
     if (!item) return '';
     return `${item.name} (${item.category}) - ${item.isOnDemand ? 'Upon Order' : `${item.stockQty} stocks`}`;
   };
 
   useEffect(() => {
     setInputVal(value ? getDisplayName(value) : '');
-  }, [value, activeInventoryList]);
+  }, [value, availableInventoryList]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -188,9 +197,10 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label 
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const filtered = activeInventoryList.filter(item =>
-    `${item.name} (${item.category})`.toLowerCase().includes((inputVal || '').toLowerCase())
-  );
+  const filtered = availableInventoryList.filter(item => {
+    const displayName = `${item.name} (${item.category}) - ${item.isOnDemand ? 'Upon Order' : `${item.stockQty} stocks`}`;
+    return displayName.toLowerCase().includes((inputVal || '').toLowerCase());
+  });
 
   const select = (item) => {
     const displayName = `${item.name} (${item.category}) - ${item.isOnDemand ? 'Upon Order' : `${item.stockQty} stocks`}`;
@@ -235,9 +245,36 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label 
       </div>
       {open && (
         <div className="combobox-menu">
-          {activeInventoryList.length === 0 ? (
+          {availableInventoryList.length === 0 && inventoryList.filter(i => i.isActive !== false).length > 0 ? (
             <div className="combobox-empty">
               <div className="combobox-empty-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <path d="M3 9h18M9 21V9"/>
+                </svg>
+              </div>
+              <p className="combobox-empty-title">All Items Already Used</p>
+              <p className="combobox-empty-description">
+                All inventory items are already linked to products. Add more items to your inventory first.
+              </p>
+              <a
+                href="/dashboard/business/inventory"
+                className="combobox-empty-button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.location.href = '/dashboard/business/inventory';
+                }}
+              >
+                Go to Inventory
+              </a>
+            </div>
+          ) : availableInventoryList.length === 0 ? (
+            <div className="combobox-empty">
+              <div className="combobox-empty-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <path d="M3 9h18M9 21V9"/>
+                </svg>
               </div>
               <p className="combobox-empty-title">No Items in Inventory</p>
               <p className="combobox-empty-description">
@@ -256,7 +293,7 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label 
             </div>
           ) : filtered.length === 0 ? (
             <div className="combobox-empty">
-              <p className="combobox-empty-description">No items found matching "{inputVal}"</p>
+              <p className="combobox-empty-description">No available items found matching "{inputVal}"</p>
             </div>
           ) : (
             filtered.map((item, i) => {
@@ -838,7 +875,7 @@ function StockErrorModal({ isOpen, onClose, maxStock }) {
 
         <div className="modal-body">
           <p className="delete-confirm-text">
-            Cannot set stock higher Availability than Inventory stock (<strong>{maxStock} pcs</strong>).
+            Cannot set higher Availability than Inventory stock (<strong>{maxStock} pcs</strong>).
           </p>
           <p className="delete-confirm-warning" style={{ marginTop: '0.75rem' }}>
             Please enter a value that is less than or equal to the available inventory.
@@ -1565,7 +1602,7 @@ export default function AddProductsPage() {
     //   category: formData.category,
     //   subCategoryName: formData.subCategoryName
     // });
-    // ──────────────────────────────────────────────────────────────
+    // ���─────────────────────────────────────────────────────────────
     const existingProducts = JSON.parse(localStorage.getItem('products') || '[]');
     const isDuplicate = existingProducts.some(
       p => p.category === formData.category && p.subCategoryName === formData.subCategoryName
@@ -1587,7 +1624,7 @@ export default function AddProductsPage() {
       localStorage.setItem('customCategories', JSON.stringify(updated));
     }
 
-    // ──────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────���─��──────────────
     // TODO: MongoDB — Save Sub-Category if new
     // CURRENT: LocalStorage (browser-only, hindi persistent sa server)
     // FUTURE: Replace with POST /api/subcategories

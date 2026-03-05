@@ -191,7 +191,7 @@ const initialInventory = [];
 // }
 
 // ── Modal Component ────────────────────────────────────────────────────────────
-function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onAddCategory, inventory, editingItem }) {
+function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, categories, onAddCategory, inventory, editingItem }) {
   const [formData, setFormData] = useState({
     name: '',
     category: 'Mugs',
@@ -202,7 +202,8 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onA
   });
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [duplicateItem, setDuplicateItem] = useState(null); // For duplicate warning modal
+  const [duplicateItem, setDuplicateItem] = useState(null); // For duplicate warning modal (active items)
+  const [archivedItem, setArchivedItem] = useState(null); // For archived item restore modal
   const [isLinked, setIsLinked] = useState(false); // ⭐ NEW: Track if item is linked to products/sales
 
   // ⭐ Set formData from item when editing
@@ -317,21 +318,21 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onA
       .join(' ');
 
     // Check for duplicates in inventory (same Name + same Category)
-    const isDuplicate = inventory.some(item =>
+    const duplicateItem = inventory.find(item =>
       item.name.toLowerCase() === normalizedName.toLowerCase() &&
       item.category.toLowerCase() === formData.category.toLowerCase() &&
       item.id !== (editingItem?.id) // Exclude current item if editing
     );
 
-    if (isDuplicate) {
-      // Find the existing item for the redirect option
-      const existingItem = inventory.find(item =>
-        item.name.toLowerCase() === normalizedName.toLowerCase() &&
-        item.category.toLowerCase() === formData.category.toLowerCase()
-      );
-
-      // Show duplicate warning modal instead of confirm
-      setDuplicateItem(existingItem);
+    if (duplicateItem) {
+      // Check if item is archived
+      if (duplicateItem.isActive === false) {
+        // Show archived item modal
+        setArchivedItem(duplicateItem);
+      } else {
+        // Show duplicate warning modal (active item)
+        setDuplicateItem(duplicateItem);
+      }
       return;
     }
 
@@ -493,32 +494,40 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onA
           </div>
 
           <div className="form-group">
-            <label className="form-checkbox-label" style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}>
+            <label className="form-checkbox-label" style={isLinked && formData.stockQty > 0 ? { opacity: 0.6, cursor: 'not-allowed' } : {}}>
               <input
                 type="checkbox"
                 name="isOnDemand"
                 className="form-checkbox"
                 checked={formData.isOnDemand}
                 onChange={handleInputChange}
-                disabled={isLinked}
-                style={{ cursor: isLinked ? 'not-allowed' : 'pointer' }}
+                disabled={isLinked && formData.stockQty > 0}
+                style={{ cursor: isLinked && formData.stockQty > 0 ? 'not-allowed' : 'pointer' }}
               />
               <span className="checkbox-text">
                 Upon Order / Supplied (stock ignored)
-                {isLinked && (
+                {isLinked && formData.stockQty > 0 ? (
                   <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                       <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                     </svg>
-                    Locked
+                    Locked (In Use)
                   </span>
-                )}
+                ) : isLinked && formData.stockQty === 0 ? (
+                  <span style={{ color: '#facc15', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                    Can Switch (Stock is 0)
+                  </span>
+                ) : null}
               </span>
             </label>
-            {isLinked ? (
+            {isLinked && formData.stockQty > 0 ? (
               <p className="form-hint" style={{ color: '#f59e0b' }}>
-                This item is linked to products or sales. Stock tracking mode cannot be changed to prevent data discrepancies.
+                Cannot switch to "Upon Order" while stock is available ({formData.stockQty} pcs). Wait until stocks are depleted.
+              </p>
+            ) : isLinked && formData.stockQty === 0 ? (
+              <p className="form-hint" style={{ color: '#facc15' }}>
+                If stock is 0, you can switch to "Upon Order" mode if you want to stop tracking stock for this item.
               </p>
             ) : (
               <p className="form-hint">
@@ -610,14 +619,35 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, item, categories, onA
         onClose={() => setDuplicateItem(null)}
         onEdit={() => {
           if (duplicateItem) {
-            setDuplicateItem(null); // Clear duplicate item first
-            onClose(); // Close the InventoryModal
+            setDuplicateItem(null);
+            onClose();
             setTimeout(() => {
-              onEdit(duplicateItem); // Open edit mode for existing item
+              onEdit(duplicateItem);
             }, 150);
           }
         }}
         existingItem={duplicateItem}
+        categoryName={formData.category}
+      />
+
+      {/* Archived Item Detected Modal */}
+      <ArchivedItemModal
+        isOpen={!!archivedItem}
+        onClose={() => setArchivedItem(null)}
+        onRestore={() => {
+          if (archivedItem) {
+            // Restore the item (set isActive: true, deletedAt: null)
+            if (onRestoreItem) {
+              onRestoreItem(archivedItem);
+            }
+            setArchivedItem(null);
+            // Close the Add modal - item is now restored in inventory list
+            setTimeout(() => {
+              onClose();
+            }, 150);
+          }
+        }}
+        archivedItem={archivedItem}
         categoryName={formData.category}
       />
     </div>
@@ -668,6 +698,63 @@ function DuplicateItemModal({ isOpen, onClose, onEdit, existingItem, categoryNam
           </button>
           <button type="button" className="btn-primary" onClick={onEdit}>
             Edit Existing Item
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Archived Item Detected Modal ──────────────────────────────────────────────
+// Shows when user tries to add item with same name/category as archived item
+function ArchivedItemModal({ isOpen, onClose, onRestore, archivedItem, categoryName }) {
+  if (!isOpen || !archivedItem) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title modal-title-warning">Archived Item Found</h2>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <p className="delete-confirm-text">
+            <strong>"{archivedItem.name}"</strong> in category <strong>"{categoryName}"</strong> exists in your archive.
+          </p>
+          <p className="delete-confirm-warning" style={{ marginTop: '0.75rem', color: '#f59e0b' }}>
+            This item was previously archived. Restore it to use again.
+          </p>
+          <div className="existing-item-info" style={{
+            background: 'rgba(245, 158, 11, 0.1)',
+            border: '1px solid rgba(245, 158, 11, 0.3)',
+            borderRadius: '8px',
+            padding: '1rem',
+            marginTop: '1rem'
+          }}>
+            <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>Archived Item:</div>
+            <div style={{ fontWeight: '600', color: 'var(--white)', marginBottom: '0.25rem' }}>{archivedItem.name}</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>
+              Category: {archivedItem.category} • Stock: {archivedItem.isOnDemand ? 'Upon Order' : `${archivedItem.stockQty} pcs`}
+            </div>
+            {archivedItem.deletedAt && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.5rem' }}>
+                Archived on: {new Date(archivedItem.deletedAt).toLocaleDateString()}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn-primary" onClick={onRestore}>
+            Restore Item
           </button>
         </div>
       </div>
@@ -1423,6 +1510,7 @@ export default function InventoryPage() {
   // ⭐ NEW: States for Stock Addition
   const [additionItem, setAdditionItem] = useState(null); // Item being added
   const [showAdditionModal, setShowAdditionModal] = useState(false); // Show addition modal
+  const [showConvertModal, setShowConvertModal] = useState(false); // Show convert from Upon Order confirmation
 
   // ⚠️ TODO: MongoDB - Replace with API call
   // CURRENT: Load from LocalStorage on mount
@@ -1661,11 +1749,18 @@ export default function InventoryPage() {
 
     const { reason, quantity, remarks } = additionData;
 
-    // Increase stock
+    // ⭐ Convert from Upon Order to In Stock if needed
+    const isConverting = additionItem.isOnDemand;
+
+    // Increase stock (and convert to In Stock if was Upon Order)
     setInventory(prev =>
       prev.map(item =>
         item.id === additionItem.id
-          ? { ...item, stockQty: item.stockQty + quantity }
+          ? {
+              ...item,
+              stockQty: item.stockQty + quantity,
+              isOnDemand: isConverting ? false : item.isOnDemand  // Convert to In Stock
+            }
           : item
       )
     );
@@ -1681,6 +1776,7 @@ export default function InventoryPage() {
       quantity: quantity, // Positive for stock in
       stockBefore: additionItem.stockQty,
       stockAfter: additionItem.stockQty + quantity,
+      convertedFromUponOrder: isConverting,
       remarks,
       createdAt: new Date().toISOString()
     };
@@ -2034,8 +2130,15 @@ export default function InventoryPage() {
                           <button
                             className="btn-sm btn-secondary"
                             onClick={() => {
-                              setAdditionItem(item);
-                              setShowAdditionModal(true);
+                              if (item.isOnDemand) {
+                                // Item is Upon Order - show conversion confirmation
+                                setAdditionItem(item);
+                                setShowConvertModal(true);
+                              } else {
+                                // Item is In Stock - open add stock modal directly
+                                setAdditionItem(item);
+                                setShowAdditionModal(true);
+                              }
                             }}
                             style={{ padding: '0.25rem 0.5rem', fontSize: '1rem', lineHeight: '1' }}
                             title="Add stock"
@@ -2196,6 +2299,9 @@ export default function InventoryPage() {
           setEditingItem(existingItem);
           setIsModalOpen(true);
         }}
+        onRestoreItem={(archivedItem) => {
+          handleRestore(archivedItem);
+        }}
         item={editingItem}
         editingItem={editingItem}
         categories={categories}
@@ -2241,6 +2347,63 @@ export default function InventoryPage() {
         onConfirm={handleStockAddition}
         item={additionItem}
       />
+
+      {/* Convert Upon Order to In Stock Confirmation */}
+      {showConvertModal && additionItem && (
+        <div className="modal-overlay" style={{ display: 'flex' }} onClick={() => setShowConvertModal(false)}>
+          <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title modal-title-warning">Convert to In Stock</h2>
+              <button className="modal-close" onClick={() => setShowConvertModal(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <p className="delete-confirm-text">
+                <strong>"{additionItem.name}"</strong> is currently set as <strong>"Upon Order"</strong>.
+              </p>
+              <p className="delete-confirm-warning" style={{ marginTop: '0.75rem', color: '#f59e0b' }}>
+                Adding physical stock will convert this item to <strong>"In Stock"</strong> mode. This change will enable stock tracking for this item.
+              </p>
+              <div style={{
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                borderRadius: '8px',
+                padding: '1rem',
+                marginTop: '1rem'
+              }}>
+                <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>Current Status:</div>
+                <div style={{ fontWeight: '600', color: 'var(--white)', marginBottom: '0.25rem' }}>{additionItem.name}</div>
+                <div style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>
+                  Category: {additionItem.category} • Status: Upon Order
+                </div>
+              </div>
+              <p style={{ marginTop: '1rem', fontSize: '0.875rem', color: 'var(--gray)' }}>
+                Do you want to proceed with adding stock and converting to "In Stock" mode?
+              </p>
+            </div>
+
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={() => setShowConvertModal(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  setShowConvertModal(false);
+                  setShowAdditionModal(true); // Open stock addition modal
+                }}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmSaveModal
         isOpen={isConfirmModalOpen}
