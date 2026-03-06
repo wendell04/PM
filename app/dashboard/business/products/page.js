@@ -5,7 +5,7 @@
  * Edit modal now reuses the full Add Products form UI, pre-filled with existing product data.
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 
 // ── Reusable Number Input ──────────────────────────────────────────────────────
@@ -363,10 +363,6 @@ function EditProductModal({ product, inventoryList, onClose, onSave }) {
 
   const [showStockErrorModal, setShowStockErrorModal] = useState(false);
   const [maxStockQty, setMaxStockQty] = useState(0);
-  
-  // ⭐ NEW: Confirmation modal states
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [pendingSaveData, setPendingSaveData] = useState(null);
 
   const hasVariants = combinations.length > 0;
 
@@ -662,23 +658,13 @@ function EditProductModal({ product, inventoryList, onClose, onSave }) {
       stock: stockVal,
       updatedAt: new Date().toISOString(),
     };
-    // ⭐ Show confirmation modal before saving
-    setPendingSaveData(updatedProduct);
-    setShowConfirmModal(true);
-  };
-
-  const handleConfirmSave = () => {
-    if (pendingSaveData) {
-      onSave(pendingSaveData);
-      setShowConfirmModal(false);
-      setPendingSaveData(null);
-    }
+    onSave(updatedProduct);
   };
 
   const inv = inventoryList.find(i => i.id === formData.inventoryId);
 
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay" onClick={onClose}>
       <div
         onClick={e => e.stopPropagation()}
         style={{
@@ -912,8 +898,8 @@ function EditProductModal({ product, inventoryList, onClose, onSave }) {
               )}
 
               {formData.priceType === 'inquiry' && (
-                <div style={{ padding: '1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '8px', color: 'var(--gold)', fontSize: '0.9rem' }}>
-                  <span style={{ marginRight: '0.5rem' }}>ℹ</span> This product will be listed as "For Inquiry" — customers will contact you for pricing.
+                <div style={{ padding: '1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '8px', color: 'var(--gold)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  This product will be listed as "For Inquiry" customers will contact you for pricing.
                 </div>
               )}
             </div>
@@ -987,37 +973,189 @@ function EditProductModal({ product, inventoryList, onClose, onSave }) {
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             borderTop: '1px solid var(--red)',
           }}>
-            <span>⚠ Cannot exceed inventory stock ({maxStockQty} pcs)</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              Cannot exceed inventory stock ({maxStockQty} pcs)
+            </span>
             <button onClick={() => setShowStockErrorModal(false)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.2rem' }}>×</button>
-          </div>
-        )}
-
-        {/* ⭐ Confirmation Modal */}
-        {showConfirmModal && (
-          <div className="modal-overlay" style={{ zIndex: 2000 }}>
-            <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2 className="modal-title modal-title-success">Confirm Changes</h2>
-                <button className="modal-close" onClick={() => setShowConfirmModal(false)}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 6L6 18M6 6l12 12"/>
-                  </svg>
-                </button>
-              </div>
-              <div className="modal-body">
-                <p className="delete-confirm-text">
-                  Save changes to <strong>{product.productName || product.subCategoryName}</strong>?
-                </p>
-              </div>
-              <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setShowConfirmModal(false)}>Cancel</button>
-                <button type="button" className="btn-primary" onClick={handleConfirmSave}>Save Changes</button>
-              </div>
-            </div>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+// ── Toggle Switch ─────────────────────────────────────────────────────────────
+function ToggleSwitch({ checked, onChange, disabled }) {
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onChange}
+      disabled={disabled}
+      style={{
+        position: 'relative', display: 'inline-flex', alignItems: 'center',
+        width: '44px', height: '24px', borderRadius: '12px', border: 'none',
+        background: checked ? 'var(--primary)' : 'var(--border)',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        transition: 'background 0.2s ease', flexShrink: 0, padding: 0,
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      <span style={{
+        position: 'absolute', left: checked ? '22px' : '2px',
+        width: '20px', height: '20px', borderRadius: '50%',
+        background: 'var(--white)', transition: 'left 0.2s ease',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+      }} />
+    </button>
+  );
+}
+
+// ── Confirm Modal ─────────────────────────────────────────────────────────────
+function ConfirmModal({ title, message, confirmLabel, confirmClass, onConfirm, onCancel, children }) {
+  return (
+    <div className="modal-overlay" style={{ zIndex: 3000 }}>
+      <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">{title}</h2>
+          <button className="modal-close" onClick={onCancel}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div className="modal-body">
+          <p className="delete-confirm-text">{message}</p>
+          {children}
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button>
+          <button type="button" className={confirmClass || 'btn-primary'} onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Product Detail Expand Row ─────────────────────────────────────────────────
+function ProductExpandRow({ product, inv, colSpan }) {
+  const variantGroups = product.variantGroups || [];
+  const combinations = product.combinations || [];
+  const allVariantOptions = variantGroups.flatMap(g => g.options?.map(o => o.value) || []);
+
+  return (
+    <tr>
+      <td colSpan={colSpan} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ padding: '1rem 1.25rem 1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
+
+          {/* Description */}
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Description</div>
+            {product.description ? (
+              <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5, opacity: 0.85 }}>{product.description}</div>
+            ) : (
+              <div style={{ fontSize: '0.85rem', color: 'var(--gray)', fontStyle: 'italic', opacity: 0.6 }}>—</div>
+            )}
+          </div>
+
+          {/* Variants */}
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Variants</div>
+            {variantGroups.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                {variantGroups.map(g => (
+                  <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--gray)', minWidth: 'fit-content' }}>{g.name}:</span>
+                    {g.options?.map(o => (
+                      <span key={o.id} style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.07)', border: '1px solid var(--border)', borderRadius: '4px', padding: '0.1rem 0.45rem', color: 'var(--white)' }}>
+                        {o.value}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.85rem', color: 'var(--gray)', fontStyle: 'italic', opacity: 0.6 }}>—</div>
+            )}
+          </div>
+
+          {/* Pricing summary */}
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Pricing</div>
+            {product.priceType ? (
+              <div style={{ fontSize: '0.82rem', color: 'var(--white)', opacity: 0.85 }}>
+                {product.priceType === 'tiered' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                    {product.tiers?.map((t, i) => {
+                      const prices = Object.values(t.prices || {}).filter(p => p > 0);
+                      const min = prices.length ? Math.min(...prices) : 0;
+                      const max = prices.length ? Math.max(...prices) : 0;
+                      return (
+                        <div key={t.id} style={{ fontSize: '0.78rem' }}>
+                          <span style={{ color: 'var(--gray)' }}>Tier {i + 1} ({t.minQty}–{t.maxQty || '∞'} pcs):</span>{' '}
+                          <span style={{ color: 'var(--gold)' }}>₱{min}{min !== max ? `–₱${max}` : ''}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {product.priceType === 'fixed' && product.variantPrices && Object.keys(product.variantPrices).length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                    {combinations.slice(0, 6).map(c => (
+                      <div key={c.id} style={{ fontSize: '0.78rem' }}>
+                        <span style={{ color: 'var(--gray)' }}>{c.label}:</span>{' '}
+                        <span style={{ color: 'var(--gold)' }}>₱{parseFloat(product.variantPrices[c.id] || 0).toFixed(2)}</span>
+                      </div>
+                    ))}
+                    {combinations.length > 6 && <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>+{combinations.length - 6} more...</div>}
+                  </div>
+                )}
+                {product.priceType === 'fixed' && !product.variantPrices && (
+                  <span style={{ color: 'var(--gold)' }}>₱{parseFloat(product.price || 0).toFixed(2)}</span>
+                )}
+                {product.priceType === 'inquiry' && <span style={{ color: 'var(--primary)' }}>For Inquiry</span>}
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.82rem', color: 'var(--gray)', fontStyle: 'italic', opacity: 0.6 }}>—</div>
+            )}
+          </div>
+
+          {/* Inventory */}
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Inventory</div>
+            {inv ? (
+              <div style={{ fontSize: '0.82rem', color: 'var(--white)', opacity: 0.85 }}>
+                <div>{inv.name}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.2rem' }}>
+                  {inv.isOnDemand ? 'Upon Order' : `${inv.stockQty} total pcs in stock`}
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.82rem', color: 'var(--gray)', fontStyle: 'italic', opacity: 0.6 }}>—</div>
+            )}
+          </div>
+
+          {/* Images */}
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>
+              Gallery {product.images?.length > 0 ? `(${product.images.length})` : ''}
+            </div>
+            {product.images?.length > 0 ? (
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                {product.images.slice(0, 4).map((img, i) => (
+                  <img key={i} src={img} alt="" style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border)' }} />
+                ))}
+                {product.images.length > 4 && (
+                  <div style={{ width: '40px', height: '40px', borderRadius: '6px', background: 'var(--dark2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', color: 'var(--gray)' }}>
+                    +{product.images.length - 4}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.85rem', color: 'var(--gray)', fontStyle: 'italic', opacity: 0.6 }}>—</div>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -1028,11 +1166,24 @@ export default function ProductListPage() {
   const [inventoryList, setInventoryList] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(''); // Default to ''
   const [editingProduct, setEditingProduct] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+  const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
+  const [pendingEditData, setPendingEditData] = useState(null);
+  const [expandedRows, setExpandedRows] = useState(new Set());
 
+  // ── Bulk select state ──
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showBulkBar, setShowBulkBar] = useState(false);
+
+  // ── Modal states ──
+  const [deleteModal, setDeleteModal] = useState(null);   // product to delete
+  const [archiveModal, setArchiveModal] = useState(null); // product to archive
+  const [bulkModal, setBulkModal] = useState(null);       // { action: 'publish'|'unpublish'|'delete' }
+
+  // TODO: Replace localStorage with MongoDB API calls
   useEffect(() => {
     const storedProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
     const storedInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
@@ -1041,18 +1192,29 @@ export default function ProductListPage() {
     setIsLoaded(true);
   }, []);
 
+  const getInventoryItem = (inventoryId) => inventoryList.find(inv => inv.id === inventoryId);
+
   const filteredProducts = products.filter(product => {
     const matchesSearch =
       product.productName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.subCategoryName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.category?.toLowerCase().includes(searchQuery.toLowerCase());
+
+    // Check if product's inventory is archived
+    const inv = getInventoryItem(product.inventoryId);
+    const isInventoryArchived = inv && inv.isActive === false;
+
+    // Products with archived inventory ALWAYS go to archived filter
+    if (isInventoryArchived) {
+      return statusFilter === 'archived';
+    }
+
     let matchesStatus = true;
-    if (statusFilter === 'published') matchesStatus = product.isPublished === true;
-    else if (statusFilter === 'unpublished') matchesStatus = product.isPublished !== true;
+    if (statusFilter === 'published') matchesStatus = product.isPublished === true && !product.isArchived;
+    else if (statusFilter === 'unpublished') matchesStatus = product.isPublished !== true && !product.isArchived;
+    else if (statusFilter === 'archived') matchesStatus = product.isArchived === true;
     return matchesSearch && matchesStatus;
   });
-
-  const getInventoryItem = (inventoryId) => inventoryList.find(inv => inv.id === inventoryId);
 
   const getPriceRange = (product) => {
     if (!product.priceType) return '₱0';
@@ -1075,66 +1237,129 @@ export default function ProductListPage() {
       return 'For Inquiry';
     }
     if (minPrice === Infinity) minPrice = 0;
-    if (minPrice === maxPrice) return `₱${minPrice.toFixed(2)}`;
-    return `₱${minPrice.toFixed(2)} – ₱${maxPrice.toFixed(2)}`;
+    if (minPrice === maxPrice) return `₱${Math.floor(minPrice)}`;
+    return `₱${Math.floor(minPrice)} – ₱${Math.floor(maxPrice)}`;
   };
 
   const getStockStatus = (product) => {
     const inv = getInventoryItem(product.inventoryId);
     if (!inv) return { text: 'No Link', class: 'stock-no-link' };
     if (inv.isOnDemand) return { text: 'Upon Order', class: 'stock-upon-order' };
+
+    // ⭐ Product stock CANNOT exceed inventory stock
+    // Auto-cap product stock to inventory stock level
     const available = parseInt(product.stock) || 0;
     const total = inv.stockQty || 0;
-    if (available === 0) return { text: `${available} / ${total}`, class: 'stock-out' };
-    if (available <= 10) return { text: `${available} / ${total}`, class: 'stock-low' };
-    return { text: `${available} / ${total}`, class: 'stock-ok' };
+    const cappedStock = Math.min(available, total); // Cap to inventory
+
+    if (cappedStock === 0) return { text: `0 / ${total}`, class: 'stock-out' };
+    if (cappedStock <= 10) return { text: `${cappedStock} / ${total}`, class: 'stock-low' };
+    return { text: `${cappedStock} / ${total}`, class: 'stock-ok' };
   };
 
-  const togglePublish = (productId) => {
-    const updated = products.map(p => p.id === productId ? { ...p, isPublished: !p.isPublished, updatedAt: new Date().toISOString() } : p);
+  const getVariantSummary = (product) => {
+    const groups = product.variantGroups || [];
+    if (groups.length === 0) return null;
+    const totalOptions = groups.reduce((sum, g) => sum + (g.options?.length || 0), 0);
+    const combos = product.combinations?.length || 0;
+    if (groups.length === 1) return `${totalOptions} variant${totalOptions !== 1 ? 's' : ''}`;
+    return `${combos} combo${combos !== 1 ? 's' : ''}`;
+  };
+
+  // TODO: Replace with MongoDB API call
+  const saveProducts = (updated) => {
     setProducts(updated);
     localStorage.setItem('pmp_products', JSON.stringify(updated));
   };
+
+  const togglePublish = (productId) => {
+    saveProducts(products.map(p => p.id === productId ? { ...p, isPublished: !p.isPublished, updatedAt: new Date().toISOString() } : p));
+  };
+
+  const toggleExpand = (productId) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      next.has(productId) ? next.delete(productId) : next.add(productId);
+      return next;
+    });
+  };
+
+  // ── Bulk selection ──
+  const toggleSelect = (productId) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(productId) ? next.delete(productId) : next.add(productId);
+      setShowBulkBar(next.size > 0);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredProducts.length) {
+      setSelectedIds(new Set());
+      setShowBulkBar(false);
+    } else {
+      const all = new Set(filteredProducts.map(p => p.id));
+      setSelectedIds(all);
+      setShowBulkBar(all.size > 0);
+    }
+  };
+
+  const clearSelection = () => { setSelectedIds(new Set()); setShowBulkBar(false); };
 
   const handleEdit = (product) => { setEditingProduct(product); setShowEditModal(true); };
 
   const handleSaveEdit = (updatedProduct) => {
-    const updated = products.map(p => p.id === updatedProduct.id ? updatedProduct : p);
-    setProducts(updated);
-    localStorage.setItem('pmp_products', JSON.stringify(updated));
-    setShowEditModal(false);
-    setEditingProduct(null);
-    setShowSaveSuccess(true);
-    setTimeout(() => setShowSaveSuccess(false), 3000);
+    // Show confirmation modal before saving
+    setPendingEditData(updatedProduct);
+    setShowEditConfirmModal(true);
   };
 
-  const handleDelete = (product) => {
-    // ⭐ Check if product has sales/orders
-    const allOrders = JSON.parse(localStorage.getItem('pmp_orders') || '[]');
-    const hasSales = allOrders.some(order => 
-      order.productId === product.id || 
-      order.items?.some(item => item.productId === product.id)
-    );
-
-    if (hasSales) {
-      alert(`Cannot delete "${product.productName || product.subCategoryName}" - this product has sales history. Please archive it instead.`);
-      return;
+  const handleConfirmEditSave = () => {
+    if (pendingEditData) {
+      saveProducts(products.map(p => p.id === pendingEditData.id ? pendingEditData : p));
+      setShowEditModal(false);
+      setEditingProduct(null);
+      setShowEditConfirmModal(false);
+      setPendingEditData(null);
+      setShowSaveSuccess(true);
+      setTimeout(() => setShowSaveSuccess(false), 3000);
     }
-
-    if (!confirm(`Delete "${product.productName || product.subCategoryName}"? This product will be permanently removed. This cannot be undone.`)) return;
-    
-    const updated = products.filter(p => p.id !== product.id);
-    setProducts(updated);
-    localStorage.setItem('pmp_products', JSON.stringify(updated));
   };
 
-  const handleArchive = (product) => {
-    // ⭐ Archive product (set as unpublished instead of deleting)
-    const updated = products.map(p =>
-      p.id === product.id ? { ...p, isArchived: true, isPublished: false } : p
-    );
-    setProducts(updated);
-    localStorage.setItem('pmp_products', JSON.stringify(updated));
+  // ── Delete ─
+  const confirmDelete = (product) => {
+    // TODO: Check MongoDB orders collection instead of localStorage
+    const allOrders = JSON.parse(localStorage.getItem('pmp_orders') || '[]');
+    const hasSales = allOrders.some(o => o.productId === product.id || o.items?.some(i => i.productId === product.id));
+    if (hasSales) { setArchiveModal(product); return; }
+    setDeleteModal(product);
+  };
+
+  const executeDelete = () => {
+    saveProducts(products.filter(p => p.id !== deleteModal.id));
+    setDeleteModal(null);
+    clearSelection();
+  };
+
+  // ── Archive ──
+  const executeArchive = (product) => {
+    saveProducts(products.map(p => p.id === (product || archiveModal).id ? { ...p, isArchived: true, isPublished: false } : p));
+    setArchiveModal(null);
+    clearSelection();
+  };
+
+  // ── Bulk actions ──
+  const executeBulkAction = () => {
+    const action = bulkModal?.action;
+    let updated = [...products];
+    if (action === 'publish') updated = updated.map(p => selectedIds.has(p.id) ? { ...p, isPublished: true, updatedAt: new Date().toISOString() } : p);
+    else if (action === 'unpublish') updated = updated.map(p => selectedIds.has(p.id) ? { ...p, isPublished: false, updatedAt: new Date().toISOString() } : p);
+    else if (action === 'delete') updated = updated.filter(p => !selectedIds.has(p.id));
+    else if (action === 'archive') updated = updated.map(p => selectedIds.has(p.id) ? { ...p, isArchived: true, isPublished: false } : p);
+    saveProducts(updated);
+    setBulkModal(null);
+    clearSelection();
   };
 
   if (!isLoaded) {
@@ -1148,8 +1373,12 @@ export default function ProductListPage() {
     );
   }
 
+  const allSelected = filteredProducts.length > 0 && selectedIds.size === filteredProducts.length;
+  const someSelected = selectedIds.size > 0 && !allSelected;
+
   return (
     <div className="page-content-wrapper">
+
       {/* Save Success Toast */}
       {showSaveSuccess && (
         <div style={{
@@ -1157,10 +1386,11 @@ export default function ProductListPage() {
           background: '#facc15', color: 'black',
           padding: '0.875rem 1.5rem', borderRadius: '10px',
           fontWeight: 600, fontSize: '0.9rem',
-          boxShadow: '0 8px 32px rgba(198, 177, 23, 0.3)',
+          boxShadow: '0 8px 32px rgba(198,177,23,0.3)',
           display: 'flex', alignItems: 'center', gap: '0.5rem',
           animation: 'fadeIn 0.2s ease',
         }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
           Product updated successfully!
         </div>
       )}
@@ -1180,28 +1410,47 @@ export default function ProductListPage() {
         <div className="inventory-summary">
           <div className={`summary-card${statusFilter === '' ? ' active' : ''}`} onClick={() => setStatusFilter('')} style={{ cursor: 'pointer' }}>
             <div className="summary-content">
-              <span className="summary-value">{products.length}</span>
+              <span className="summary-value">{products.filter(p => {
+                const inv = getInventoryItem(p.inventoryId);
+                return !p.isArchived && !(inv && inv.isActive === false);
+              }).length}</span>
               <span className="summary-label">Total Products</span>
             </div>
           </div>
           <div className={`summary-card summary-card-success${statusFilter === 'published' ? ' active' : ''}`}
             onClick={() => setStatusFilter(statusFilter === 'published' ? '' : 'published')} style={{ cursor: 'pointer' }}>
             <div className="summary-content">
-              <span className="summary-value">{products.filter(p => p.isPublished === true).length}</span>
+              <span className="summary-value">{products.filter(p => {
+                const inv = getInventoryItem(p.inventoryId);
+                return p.isPublished === true && !(inv && inv.isActive === false);
+              }).length}</span>
               <span className="summary-label">Published</span>
             </div>
           </div>
           <div className={`summary-card summary-card-warning${statusFilter === 'unpublished' ? ' active' : ''}`}
             onClick={() => setStatusFilter(statusFilter === 'unpublished' ? '' : 'unpublished')} style={{ cursor: 'pointer' }}>
             <div className="summary-content">
-              <span className="summary-value">{products.filter(p => p.isPublished !== true).length}</span>
+              <span className="summary-value">{products.filter(p => {
+                const inv = getInventoryItem(p.inventoryId);
+                return p.isPublished !== true && !p.isArchived && !(inv && inv.isActive === false);
+              }).length}</span>
               <span className="summary-label">Unpublished</span>
+            </div>
+          </div>
+          <div className={`summary-card summary-card-danger${statusFilter === 'archived' ? ' active' : ''}`}
+            onClick={() => setStatusFilter(statusFilter === 'archived' ? '' : 'archived')} style={{ cursor: 'pointer' }}>
+            <div className="summary-content">
+              <span className="summary-value">{products.filter(p => {
+                const inv = getInventoryItem(p.inventoryId);
+                return p.isArchived === true || (inv && inv.isActive === false);
+              }).length}</span>
+              <span className="summary-label">Archived</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Search */}
+      {/* Toolbar */}
       <div className="inventory-toolbar">
         <div className="search-wrapper">
           <span className="search-icon">
@@ -1209,13 +1458,62 @@ export default function ProductListPage() {
               <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
             </svg>
           </span>
-          <input type="text" className="search-input" placeholder="Search products..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+          <input type="text" className="search-input" placeholder="Search products or category..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
           {searchQuery && <button className="search-clear" onClick={() => setSearchQuery('')}>×</button>}
         </div>
       </div>
 
+      {/* Info Note */}
+      <div style={{
+        padding: '0.75rem 1rem',
+        marginBottom: '1rem',
+        background: 'rgba(212, 168, 67, 0.08)',
+        border: '1px solid var(--primary)',
+        borderRadius: '8px',
+        fontSize: '0.875rem',
+        color: 'var(--gray)'
+      }}>
+        <span style={{ marginRight: '0.5rem', fontWeight: 'bold', color: 'var(--primary)' }}>ℹ</span>
+        <strong>Quick Guide:</strong> Click row to select - Use Publish/Unpublish buttons to toggle visibility - Products start as Hidden - Edit to modify details
+      </div>
+
+      {/* Bulk Action Bar */}
+      {showBulkBar && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '0.75rem',
+          padding: '0.75rem 1rem', marginBottom: '0.75rem',
+          background: 'rgba(212,168,67,0.08)', border: '1px solid var(--primary)',
+          borderRadius: '10px', flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>
+            {selectedIds.size} selected
+          </span>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button className="btn-sm btn-primary" onClick={() => setBulkModal({ action: 'publish' })}>Publish</button>
+            <button className="btn-sm btn-secondary" onClick={() => setBulkModal({ action: 'unpublish' })}
+              style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)' }}>Unpublish</button>
+            <button className="btn-sm btn-secondary" onClick={() => setBulkModal({ action: 'archive' })}
+              style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)' }}>Archive</button>
+            <button className="btn-sm btn-danger" onClick={() => setBulkModal({ action: 'delete' })}>Delete</button>
+          </div>
+          <button onClick={clearSelection} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>×</button>
+        </div>
+      )}
+
       {/* Table */}
-      <div className="inventory-table-wrapper">
+      <div style={{
+        WebkitOverflowScrolling: 'touch',
+        border: '1px solid var(--border)',
+        boxSizing: 'border-box',
+        scrollbarWidth: 'thin',
+        scrollbarColor: 'var(--gold) var(--dark2)',
+        borderRadius: '10px',
+        width: '0',
+        minWidth: '100%',
+        marginBottom: '1rem',
+        display: 'block',
+        overflowX: 'auto',
+      }}>
         {filteredProducts.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">
@@ -1230,14 +1528,24 @@ export default function ProductListPage() {
             )}
           </div>
         ) : (
-          <table className="inventory-table">
+          <table className="inventory-table" style={{ 
+            width: 'max-content',
+            minWidth: '100%',
+          }}>
             <thead>
               <tr>
+                <th style={{ width: '36px', paddingLeft: '1rem' }}>
+                  <input type="checkbox" checked={allSelected}
+                    ref={el => { if (el) el.indeterminate = someSelected; }}
+                    onChange={toggleSelectAll}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
+                </th>
+                <th style={{ width: '28px' }}></th>
                 <th className="table-col-name">Product</th>
                 <th className="table-col-category">Category</th>
                 <th className="table-col-stock">Price Range</th>
-                <th className="table-col-min">Storefront / Total Stock</th>
-                <th className="table-col-status">Status</th>
+                <th className="table-col-min">Availability and Stock</th>
+                <th style={{ minWidth: '80px' }}>Variants</th>
                 <th className="table-col-actions">Actions</th>
               </tr>
             </thead>
@@ -1246,95 +1554,197 @@ export default function ProductListPage() {
                 const inv = getInventoryItem(product.inventoryId);
                 const stockStatus = getStockStatus(product);
                 const priceRange = getPriceRange(product);
+                const variantSummary = getVariantSummary(product);
+                const isExpanded = expandedRows.has(product.id);
+                const isSelected = selectedIds.has(product.id);
+                const isInventoryArchived = inv?.isActive === false;
+
                 return (
-                  <tr key={product.id} className="inventory-table-row">
-                    <td className="table-cell-name">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        {product.thumbnail ? (
-                          <img src={product.thumbnail} alt={product.productName || product.subCategoryName}
-                            style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover' }} />
-                        ) : (
-                          <div style={{ width: '48px', height: '48px', borderRadius: '8px', background: 'rgba(100,100,100,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)', fontSize: '1.25rem' }}>
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                            <rect x="3" y="3" width="18" height="18" rx="2"/>
-                            <path d="M3 9h18M9 21V9"/>
-                          </svg>
+                  <React.Fragment key={product.id}>
+                    <tr className="inventory-table-row"
+                      style={{ 
+                        background: isSelected ? 'rgba(99,102,241,0.06)' : undefined, 
+                        opacity: product.isArchived ? 0.55 : 1,
+                        borderLeft: isInventoryArchived ? '3px solid #f59e0b' : 'none'
+                      }}>
+
+                      {/* Checkbox */}
+                      <td style={{ paddingLeft: '1rem', width: '36px' }}>
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(product.id)}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
+                      </td>
+
+                      {/* Expand chevron */}
+                      <td style={{ width: '28px', cursor: 'pointer' }} onClick={() => toggleExpand(product.id)}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                          style={{ color: 'var(--gray)', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'block' }}>
+                          <path d="M9 18l6-6-6-6"/>
+                        </svg>
+                      </td>
+
+                      {/* Product name + thumbnail */}
+                      <td className="table-cell-name">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          {product.thumbnail ? (
+                            <img src={product.thumbnail} alt={product.productName || product.subCategoryName}
+                              style={{ width: '44px', height: '44px', borderRadius: '8px', objectFit: 'cover', flexShrink: 0 }} />
+                          ) : (
+                            <div style={{ width: '44px', height: '44px', borderRadius: '8px', background: 'rgba(100,100,100,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)', flexShrink: 0 }}>
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+                              </svg>
+                            </div>
+                          )}
+                          <div>
+                            <div style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.9rem' }}>
+                              {product.productName || product.subCategoryName || 'Unnamed Product'}
+                              {product.isArchived && (
+                                <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', background: 'rgba(100,100,100,0.2)', border: '1px solid var(--border)', borderRadius: '4px', padding: '0.1rem 0.4rem', color: 'var(--gray)' }}>Archived</span>
+                              )}
+                            </div>
+                            {inv && (
+                              <div style={{ fontSize: '0.73rem', color: 'var(--gray)', marginTop: '0.15rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                {product.productName && product.productName !== inv.name && (
+                                  <span>{inv.name}</span>
+                                )}
+                                {isInventoryArchived && (
+                                  <span style={{ fontSize: '0.7rem', background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '4px', padding: '0.1rem 0.4rem', color: '#f59e0b' }}>
+                                    ⚠ Inventory Archived
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
+                      </td>
+
+                      {/* Category */}
+                      <td className="table-cell">
+                        <span className="category-badge">{product.category || 'N/A'}</span>
+                      </td>
+
+                      {/* Price */}
+                      <td className="table-cell-stock">
+                        <span style={{ fontWeight: 600, color: product.priceType === 'inquiry' ? 'var(--primary)' : 'var(--gold)', fontSize: '0.875rem' }}>{priceRange}</span>
+                        {product.priceType === 'tiered' && (
+                          <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.1rem' }}>{product.tiers?.length} tier{product.tiers?.length !== 1 ? 's' : ''}</div>
                         )}
-                        <div>
-                          <div style={{ fontWeight: '600', color: 'var(--white)' }}>{product.productName || product.subCategoryName || 'Unnamed Product'}</div>
-                          {inv && <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>Linked: {inv.name}</div>}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="table-cell">
-                      <span className="category-badge">{product.category || 'N/A'}</span>
-                    </td>
-                    <td className="table-cell-stock">
-                      <span style={{ fontWeight: '600', color: product.priceType === 'inquiry' ? 'var(--primary)' : 'var(--gold)' }}>{priceRange}</span>
-                    </td>
-                    <td className="table-cell">
-                      <span className={`stock-status-badge ${stockStatus.class}`}>{stockStatus.text}</span>
-                    </td>
-                    <td className="table-cell">
-                      <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={product.isPublished === true} onChange={() => togglePublish(product.id)}
-                          style={{ width: '40px', height: '20px', marginRight: '0.5rem', cursor: 'pointer', accentColor: 'var(--primary)' }} />
-                        <span style={{ fontSize: '0.875rem', color: product.isPublished ? 'var(--primary)' : 'var(--gray)' }}>
-                          {product.isPublished ? 'Live' : 'Hidden'}
-                        </span>
-                      </label>
-                    </td>
-                    <td className="table-cell-actions">
-                      <button className="btn-sm btn-primary" onClick={() => handleEdit(product)} title="Edit">Edit</button>
-                      {(() => {
-                        // Check if product has sales
-                        const allOrders = JSON.parse(localStorage.getItem('pmp_orders') || '[]');
-                        const hasSales = allOrders.some(order => 
-                          order.productId === product.id || 
-                          order.items?.some(item => item.productId === product.id)
-                        );
-                        
-                        if (hasSales) {
-                          // Show Archive button for products with sales
-                          return (
-                            <button 
-                              className="btn-sm btn-secondary" 
-                              onClick={() => handleArchive(product)} 
-                              title="Archive"
-                              style={{ background: 'var(--dark2)', borderColor: 'var(--border)' }}
-                            >
-                              Archive
-                            </button>
-                          );
-                        } else {
-                          // Show Delete button for products without sales
-                          return (
-                            <button className="btn-sm btn-danger" onClick={() => handleDelete(product)} title="Delete">Remove</button>
-                          );
-                        }
-                      })()}
-                    </td>
-                  </tr>
+                      </td>
+
+                      {/* Stock */}
+                      <td className="table-cell">
+                        <span className={`stock-status-badge ${stockStatus.class}`}>{stockStatus.text}</span>
+                      </td>
+
+                      {/* Variants */}
+                      <td className="table-cell">
+                        {variantSummary ? (
+                          <span style={{ fontSize: '0.8rem', color: 'var(--white)', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: '5px', padding: '0.2rem 0.5rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px', display: 'block' }}>
+                            {variantSummary}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>—</span>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="table-cell-actions">
+                        {!product.isArchived && (
+                          <button
+                            className="btn-sm btn-primary"
+                            onClick={() => handleEdit(product)}
+                            disabled={isInventoryArchived}
+                            style={{
+                              background: isInventoryArchived ? 'var(--gray)' : 'var(--gold)',
+                              borderColor: isInventoryArchived ? 'var(--border)' : 'var(--gold)',
+                              color: '#000',
+                              opacity: isInventoryArchived ? 0.5 : 1,
+                              cursor: isInventoryArchived ? 'not-allowed' : 'pointer'
+                            }}
+                            title={isInventoryArchived ? 'Cannot edit - Inventory is archived.' : 'Edit product'}>
+                            Edit
+                          </button>
+                        )}
+                        <button className="btn-sm btn-danger" onClick={() => confirmDelete(product)}>
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+
+                    {/* Expand row */}
+                    {isExpanded && (
+                      <ProductExpandRow key={`${product.id}-expand`} product={product} inv={inv} colSpan={8} />
+                    )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
           </table>
         )}
       </div>
+      {deleteModal && (
+        <ConfirmModal
+          title="Delete Product"
+          message={`Permanently delete "${deleteModal.productName || deleteModal.subCategoryName}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          confirmClass="btn-danger"
+          onConfirm={executeDelete}
+          onCancel={() => setDeleteModal(null)}
+        />
+      )}
 
-      {/* Info Note */}
-      <div style={{ marginTop: '2rem', padding: '1rem', background: 'rgba(99,102,241,0.1)', border: '1px solid var(--primary)', borderRadius: '8px' }}>
-        <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
-          <span style={{ marginRight: '0.5rem', fontWeight: 'bold' }}>ℹ</span> How it works:
-        </div>
-        <ul style={{ fontSize: '0.875rem', color: 'var(--gray)', lineHeight: '1.8', paddingLeft: '1.25rem' }}>
-          <li><strong>Published:</strong> Product appears in your storefront</li>
-          <li><strong>Hidden:</strong> Product is saved but not visible to customers</li>
-          <li><strong>Stock (Available / Total):</strong> Shows storefront allocation vs total inventory</li>
-          <li><strong>Edit:</strong> Opens full edit form — all attributes are editable</li>
-        </ul>
-      </div>
+      {/* Edit Confirmation Modal */}
+      {showEditConfirmModal && pendingEditData && (
+        <ConfirmModal
+          title="Save Changes"
+          message={`Save changes to "${pendingEditData.productName || pendingEditData.subCategoryName}"?`}
+          confirmLabel="Save Changes"
+          confirmClass="btn-primary"
+          onConfirm={handleConfirmEditSave}
+          onCancel={() => {
+            setShowEditConfirmModal(false);
+            setPendingEditData(null);
+            setShowEditModal(false);
+            setEditingProduct(null);
+          }}
+        />
+      )}
+
+      {/* Archive Suggestion Modal (product has sales) */}
+      {archiveModal && (
+        <ConfirmModal
+          title="Cannot Delete"
+          message={`"${archiveModal.productName || archiveModal.subCategoryName}" has existing sales history and cannot be deleted. Archive it instead?`}
+          confirmLabel="Archive"
+          confirmClass="btn-primary"
+          onConfirm={() => executeArchive(archiveModal)}
+          onCancel={() => setArchiveModal(null)}
+        />
+      )}
+
+      {/* Bulk Action Modal */}
+      {bulkModal && (
+        <ConfirmModal
+          title={
+            bulkModal.action === 'publish' ? 'Publish Products' :
+            bulkModal.action === 'unpublish' ? 'Unpublish Products' :
+            bulkModal.action === 'archive' ? 'Archive Products' : 'Delete Products'
+          }
+          message={`${
+            bulkModal.action === 'publish' ? 'Publish' :
+            bulkModal.action === 'unpublish' ? 'Unpublish' :
+            bulkModal.action === 'archive' ? 'Archive' : 'Delete'
+          } ${selectedIds.size} selected product${selectedIds.size !== 1 ? 's' : ''}?${bulkModal.action === 'delete' ? ' This cannot be undone.' : ''}`}
+          confirmLabel={
+            bulkModal.action === 'publish' ? 'Publish All' :
+            bulkModal.action === 'unpublish' ? 'Unpublish All' :
+            bulkModal.action === 'archive' ? 'Archive All' : 'Delete All'
+          }
+          confirmClass={bulkModal.action === 'delete' ? 'btn-danger' : 'btn-primary'}
+          onConfirm={executeBulkAction}
+          onCancel={() => setBulkModal(null)}
+        />
+      )}
 
       {/* Full Edit Modal */}
       {showEditModal && editingProduct && (

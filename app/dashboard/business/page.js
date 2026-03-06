@@ -1987,7 +1987,7 @@ export default function AddProductsPage() {
                 <div className="availability-card selected" style={{ cursor: 'not-allowed', opacity: 0.7 }}>
                   <div className="availability-title">Track Stock</div>
                   <div className="availability-desc">
-                    Stock is tracked from Inventory ({inv.stockQty} pcs available)
+                    Enter Storefront Availability, Stock is tracked from Inventory ({inv.stockQty} pcs available)
                   </div>
                   <div className="stock-qty-input-wrap" onClick={e => e.stopPropagation()}>
                     <label className="form-label">

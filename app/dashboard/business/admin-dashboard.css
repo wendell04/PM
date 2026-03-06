@@ -2014,7 +2014,7 @@
 
 .inventory-table th {
   padding: 1rem;
-  text-align: left;
+  text-align: center;
   color: var(--gray-light);
   font-weight: 700;
   font-size: 0.75rem;
@@ -2023,12 +2023,34 @@
   border-bottom: 1px solid var(--border);
 }
 
-.table-col-name { width: 30%; }
-.table-col-category { width: 18%; }
-.table-col-stock { width: 15%; }
-.table-col-min { width: 15%; }
-.table-col-status { width: 14%; }
-.table-col-actions { width: 8%; }
+.inventory-table th:first-child {
+  text-align: left;
+}
+
+.table-col-name { 
+  width: 30%;
+  text-align: left;
+}
+.table-col-category { 
+  width: 18%;
+  text-align: center;
+}
+.table-col-stock { 
+  width: 15%;
+  text-align: center;
+}
+.table-col-min { 
+  width: 15%;
+  text-align: center;
+}
+.table-col-status { 
+  width: 14%;
+  text-align: center;
+}
+.table-col-actions { 
+  width: 8%;
+  text-align: center;
+}
 
 .inventory-table-row {
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
@@ -2045,7 +2067,12 @@
 
 .inventory-table td {
   padding: 1rem;
+  text-align: center;
   vertical-align: middle;
+}
+
+.inventory-table td:first-child {
+  text-align: left;
 }
 
 /* Table Cell Styles */
@@ -2081,6 +2108,9 @@
   color: var(--gray);
   font-weight: 600;
   font-size: 1.2rem;
+  display: inline-block;
+  text-align: center;
+  min-width: 40px;
 }
 
 .stock-value-inline,

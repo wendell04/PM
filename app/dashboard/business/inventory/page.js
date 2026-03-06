@@ -1126,7 +1126,7 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
       return;
     }
 
-    // Store pending data and show confirmation modal for "Record Sale"
+    // Store pending data and show confirmation modal for ALL reasons
     const adjustmentData = {
       reason,
       quantity: parseInt(quantity),
@@ -1136,14 +1136,9 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
       customerName: customerName || null
     };
 
-    if (reason === 'sales-outside') {
-      setPendingData(adjustmentData);
-      setShowConfirmModal(true);
-    } else {
-      // For damaged/correction, confirm directly
-      onConfirm(adjustmentData);
-      onClose();
-    }
+    // Show confirmation modal for all reasons
+    setPendingData(adjustmentData);
+    setShowConfirmModal(true);
   };
 
   const handleConfirmSale = () => {
@@ -1339,11 +1334,14 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
         </div>
       </div>
 
-      {/* Confirmation Modal for Record Sale */}
+      {/* Confirmation Modal for Stock Reduction */}
       <div className="modal-overlay" style={{ display: showConfirmModal ? 'flex' : 'none' }} onClick={e => e.stopPropagation()}>
         <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
           <div className="modal-header">
-            <h2 className="modal-title modal-title-success">Confirm Sale Record</h2>
+            <h2 className="modal-title modal-title-success">
+              {pendingData?.reason === 'sales-outside' ? 'Confirm Sale Record' : 
+               pendingData?.reason === 'damaged' ? 'Confirm Stock Reduction' : 'Confirm Stock Adjustment'}
+            </h2>
             <button className="modal-close" onClick={() => setShowConfirmModal(false)}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M18 6L6 18M6 6l12 12"/>
@@ -1362,28 +1360,51 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
                 <span className="confirm-value">{item?.category}</span>
               </div>
               <div className="confirm-row">
-                <span className="confirm-label">Quantity Sold:</span>
-                <span className="confirm-value">{pendingData?.quantity} pcs</span>
-              </div>
-              <div className="confirm-row">
-                <span className="confirm-label">Total Amount Received:</span>
-                <span className="confirm-value" style={{ color: '#4ade80', fontWeight: '700' }}>
-                  ₱{pendingData?.sellingPrice?.toFixed(2)}
+                <span className="confirm-label">Quantity:</span>
+                <span className="confirm-value" style={{ color: '#f87171', fontWeight: '700' }}>
+                  −{pendingData?.quantity} pcs
                 </span>
               </div>
-              {pendingData?.customerName && (
-                <div className="confirm-row">
-                  <span className="confirm-label">Customer:</span>
-                  <span className="confirm-value">{pendingData.customerName}</span>
-                </div>
+              {pendingData?.reason === 'sales-outside' ? (
+                <>
+                  <div className="confirm-row">
+                    <span className="confirm-label">Total Amount Received:</span>
+                    <span className="confirm-value" style={{ color: '#4ade80', fontWeight: '700' }}>
+                      ₱{pendingData?.sellingPrice?.toFixed(2)}
+                    </span>
+                  </div>
+                  {pendingData?.customerName && (
+                    <div className="confirm-row">
+                      <span className="confirm-label">Customer:</span>
+                      <span className="confirm-value">{pendingData.customerName}</span>
+                    </div>
+                  )}
+                  <div className="confirm-row">
+                    <span className="confirm-label">Date:</span>
+                    <span className="confirm-value">{pendingData?.saleDate || new Date().toISOString().split('T')[0]}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="confirm-row">
+                    <span className="confirm-label">Reason:</span>
+                    <span className="confirm-value">
+                      {pendingData?.reason === 'damaged' ? 'Damaged Stock' : 'Stock Correction'}
+                    </span>
+                  </div>
+                  {pendingData?.remarks && (
+                    <div className="confirm-row">
+                      <span className="confirm-label">Remarks:</span>
+                      <span className="confirm-value">{pendingData.remarks}</span>
+                    </div>
+                  )}
+                </>
               )}
-              <div className="confirm-row">
-                <span className="confirm-label">Date:</span>
-                <span className="confirm-value">{pendingData?.saleDate || new Date().toISOString().split('T')[0]}</span>
-              </div>
             </div>
             <p className="confirm-hint" style={{ marginTop: '1rem', color: '#facc15' }}>
-              This will create a sales record and reduce your inventory stock.
+              {pendingData?.reason === 'sales-outside' 
+                ? 'This will create a sales record and reduce your inventory stock.'
+                : 'This will reduce your inventory stock and create an audit log entry.'}
             </p>
           </div>
 
@@ -1392,7 +1413,8 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
               Cancel
             </button>
             <button type="button" className="btn-primary" onClick={handleConfirmSale}>
-              Confirm Sale
+              {pendingData?.reason === 'sales-outside' ? 'Confirm Sale' : 
+               pendingData?.reason === 'damaged' ? 'Confirm Reduction' : 'Confirm Adjustment'}
             </button>
           </div>
         </div>
@@ -1493,6 +1515,7 @@ export default function InventoryPage() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [editingInline, setEditingInline] = useState(null); // { id, field, value }
   const [statusFilter, setStatusFilter] = useState(''); // 'low-stock', 'out-of-stock', 'upon-order', ''
+  const [showArchived, setShowArchived] = useState(false); // Toggle archived items visibility
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false); // For Add/Edit confirmation
   const [pendingItemData, setPendingItemData] = useState(null); // Temp storage before confirm
   
@@ -1605,7 +1628,7 @@ export default function InventoryPage() {
     // FUTURE: GET /api/products?inventoryId={item.id} AND GET /api/orders?inventoryId={item.id}
 
     const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
-    const allOrders = JSON.parse(localStorage.getItem('pmp_orders') || '[]');
+    const allOrders = JSON.parse(localStorage.getItem('pmp_sales') || '[]');
 
     // Check if referenced by products
     const productsUsingThisItem = allProducts.filter(
@@ -1614,6 +1637,7 @@ export default function InventoryPage() {
 
     // ⭐ NEW: Check if item has sales history
     const salesWithThisItem = allOrders.filter(order =>
+      order.inventoryId === item.id ||  // Direct inventory sale
       order.items?.some(orderItem => orderItem.inventoryId === item.id) ||
       order.productInventoryId === item.id
     );
@@ -1630,7 +1654,7 @@ export default function InventoryPage() {
   // ⚠️ TODO: MongoDB - Replace with PUT /api/inventory/:id
   const handleArchive = () => {
     if (!archiveItem) return;
-    
+
     // Update item to inactive
     setInventory(prev =>
       prev.map(item =>
@@ -1639,7 +1663,16 @@ export default function InventoryPage() {
           : item
       )
     );
-    
+
+    // ⭐ Auto-archive products linked to this inventory
+    const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
+    const updatedProducts = allProducts.map(p =>
+      p.inventoryId === archiveItem.id
+        ? { ...p, isPublished: false, isArchived: true, updatedAt: new Date().toISOString() }
+        : p
+    );
+    localStorage.setItem('pmp_products', JSON.stringify(updatedProducts));
+
     // Close modal and reset
     setShowArchiveModal(false);
     setArchiveItem(null);
@@ -1994,10 +2027,12 @@ export default function InventoryPage() {
           </div>
           {archivedItems > 0 && (
             <div
-              className="summary-card"
-              style={{ 
-                background: 'rgba(100, 100, 100, 0.1)',
-                border: '1px solid rgba(100, 100, 100, 0.3)'
+              className={`summary-card${showArchived ? ' active' : ''}`}
+              onClick={() => setShowArchived(!showArchived)}
+              style={{
+                cursor: 'pointer',
+                background: showArchived ? 'rgba(100, 100, 100, 0.2)' : 'rgba(100, 100, 100, 0.1)',
+                border: showArchived ? '1px solid var(--gray)' : '1px solid rgba(100, 100, 100, 0.3)'
               }}
             >
               <div className="summary-content">
@@ -2048,7 +2083,19 @@ export default function InventoryPage() {
       </div>
 
       {/* ── Inventory Table ────────────────────────────────────────────────────── */}
-      <div className="inventory-table-wrapper">
+      <div style={{
+        WebkitOverflowScrolling: 'touch',
+        border: '1px solid var(--border)',
+        boxSizing: 'border-box',
+        scrollbarWidth: 'thin',
+        scrollbarColor: 'var(--gold) var(--dark2)',
+        borderRadius: '10px',
+        width: '0',
+        minWidth: '100%',
+        marginBottom: '1rem',
+        display: 'block',
+        overflowX: 'auto',
+      }}>
         {filteredInventory.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">
@@ -2104,11 +2151,11 @@ export default function InventoryPage() {
                     <td className="table-cell">
                       <span className="category-badge">{item.category}</span>
                     </td>
-                    <td className="table-cell-stock">
+                    <td className="table-cell-stock" style={{ textAlign: 'center' }}>
                       {item.isOnDemand ? (
-                        <span className="stock-value-dash">Upon Order</span>
+                        <span className="stock-value-dash">—</span>
                       ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                           <button
                             className="btn-sm btn-secondary"
                             onClick={() => {
@@ -2183,6 +2230,7 @@ export default function InventoryPage() {
                       <button
                         className="btn-sm btn-secondary"
                         onClick={() => handleEdit(item)}
+                        style={{ background: 'var(--gold)', borderColor: 'var(--gold)', color: '#000' }}
                       >
                         Edit
                       </button>
@@ -2202,7 +2250,7 @@ export default function InventoryPage() {
       </div>
 
       {/* ⭐ NEW: Archived Items Section */}
-      {archivedInventory.length > 0 && (
+      {showArchived && archivedInventory.length > 0 && (
         <div style={{ marginTop: '2rem' }}>
           <h2 style={{ 
             fontSize: '1.25rem', 
@@ -2213,7 +2261,20 @@ export default function InventoryPage() {
             Archived Items ({archivedInventory.length})
           </h2>
           <div className="inventory-table-wrapper">
-            <table className="inventory-table">
+            <div style={{
+              WebkitOverflowScrolling: 'touch',
+              border: '1px solid var(--border)',
+              boxSizing: 'border-box',
+              scrollbarWidth: 'thin',
+              scrollbarColor: 'var(--gold) var(--dark2)',
+              borderRadius: '10px',
+              width: '0',
+              minWidth: '100%',
+              marginBottom: '1rem',
+              display: 'block',
+              overflowX: 'auto',
+            }}>
+              <table className="inventory-table">
               <thead>
                 <tr>
                   <th className="table-col-name">Product Name</th>
@@ -2225,7 +2286,12 @@ export default function InventoryPage() {
               </thead>
               <tbody>
                 {archivedInventory.map(item => {
-                  const isReferenced = JSON.parse(localStorage.getItem('products') || '[]').some(p => p.inventoryId === item.id);
+                  const isReferenced = JSON.parse(localStorage.getItem('pmp_products') || '[]').some(p => p.inventoryId === item.id);
+                  const hasSalesHistory = JSON.parse(localStorage.getItem('pmp_sales') || '[]').some(order =>
+                    order.inventoryId === item.id ||
+                    order.items?.some(orderItem => orderItem.inventoryId === item.id) ||
+                    order.productInventoryId === item.id
+                  );
                   return (
                     <tr key={item.id} className="inventory-table-row" style={{ opacity: 0.5 }}>
                       <td className="table-cell-name">
@@ -2251,6 +2317,7 @@ export default function InventoryPage() {
                           <button
                             className="btn-sm btn-secondary"
                             onClick={() => handleEdit(item)}
+                            style={{ background: 'var(--gold)', borderColor: 'var(--gold)', color: '#000' }}
                           >
                             Edit
                           </button>
@@ -2258,9 +2325,9 @@ export default function InventoryPage() {
                             className="btn-sm btn-primary"
                             onClick={() => handleRestore(item)}
                           >
-                            ↶ Restore
+                            Restore
                           </button>
-                          {!isReferenced && (
+                          {!isReferenced && !hasSalesHistory && (
                             <button
                               className="btn-sm btn-danger"
                               onClick={() => handleDelete(item)}
@@ -2275,6 +2342,7 @@ export default function InventoryPage() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
           <p style={{
             marginTop: '1rem',
@@ -2282,7 +2350,7 @@ export default function InventoryPage() {
             fontSize: '0.875rem',
             fontStyle: 'italic'
           }}>
-            <span style={{ marginRight: '0.5rem', fontWeight: 'bold' }}>ℹ</span> Archived items are hidden from the "Add Product" dropdown but remain in your inventory for record-keeping.
+            <span style={{ marginRight: '0.5rem', fontWeight: 'bold', color: '#f59e0b' }}>⚠</span> Deleted items were archived to avoid data discrepancies. Adding a product with the same name under the same category will Restore the archived item instead.
           </p>
         </div>
       )}
