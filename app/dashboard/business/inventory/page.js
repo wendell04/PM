@@ -4,7 +4,7 @@
  * INVENTORY MANAGEMENT PAGE
  *
  * Current Status: LocalStorage (Browser-only, for testing)
- * ⚠️ TODO: MongoDB Integration - Replace LocalStorage with Database
+ * TODO: MongoDB Integration - Replace LocalStorage with Database
  *
  * Features:
  * - Add/Edit/Delete inventory items (blank materials)
@@ -23,7 +23,7 @@
  * 6. Remove LocalStorage references
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // ── Reusable Number Input Component ───────────────────────────────────────────
 // Prevents negative values, e, E, -, +, and disables scroll wheel
@@ -69,12 +69,12 @@ function NumberInput({ value, onChange, min = 0, max, placeholder, className, di
 // ── LocalStorage Key ───────────────────────────────────────────────────────────
 const INVENTORY_STORAGE_KEY = 'pmp_inventory';
 
-// ⚠️ TODO: MongoDB - Replace with API calls
+// TODO: MongoDB - Replace with API calls
 // CURRENT: LocalStorage helper functions (browser-only)
 // FUTURE: Replace with API calls to MongoDB
 
 // ── LocalStorage Helpers ───────────────────────────────────────────────────────
-// ⚠️ TODO: MongoDB - Replace with API calls:
+// TODO: MongoDB - Replace with API calls:
 // - getInventoryList() → GET /api/inventory
 // - saveInventoryList() → POST /api/inventory or PUT /api/inventory/:id
 //
@@ -109,7 +109,7 @@ export function getInventoryList() {
   }
 }
 
-// ⚠️ TODO: MongoDB - Replace with API call to save/update inventory item
+// TODO: MongoDB - Replace with API call to save/update inventory item
 // CURRENT: Saves to LocalStorage (browser-only, NOT persistent across devices)
 // FUTURE: POST to MongoDB API
 export function saveInventoryList(inventory) {
@@ -136,7 +136,7 @@ const DEFAULT_CATEGORIES = [
 // ── LocalStorage Key for Categories ───────────────────────────────────────────
 const CATEGORIES_STORAGE_KEY = 'pmp_inventory_categories';
 
-// ⚠️ TODO: MongoDB - Replace with API calls
+// TODO: MongoDB - Replace with API calls
 // CURRENT: Categories stored in LocalStorage (browser-only)
 // FUTURE: Store categories in MongoDB as separate collection or derive from inventory
 //
@@ -149,7 +149,7 @@ const CATEGORIES_STORAGE_KEY = 'pmp_inventory_categories';
 // - No need to store categories separately
 
 // ── Get Categories from LocalStorage ───────────────────────────────────────────
-// ⚠️ TODO: MongoDB - Replace with API call: GET /api/categories
+// TODO: MongoDB - Replace with API call: GET /api/categories
 export function getCategories() {
   if (typeof window === 'undefined') return DEFAULT_CATEGORIES;
   try {
@@ -162,7 +162,7 @@ export function getCategories() {
 }
 
 // ── Save Categories to LocalStorage ────────────────────────────────────────────
-// ⚠️ TODO: MongoDB - Replace with API call: POST /api/categories
+// TODO: MongoDB - Replace with API call: POST /api/categories
 export function saveCategories(categories) {
   if (typeof window === 'undefined') return;
   try {
@@ -173,7 +173,7 @@ export function saveCategories(categories) {
 }
 
 // ── Initial Sample Data ────────────────────────────────────────────────────────
-// ⚠️ TODO: MongoDB - Remove this initial data when connecting to database
+// TODO: MongoDB - Remove this initial data when connecting to database
 // This is only for testing purposes. In production, data will come from MongoDB.
 const initialInventory = [];
 // Example structure for MongoDB documents (for reference):
@@ -184,8 +184,8 @@ const initialInventory = [];
 //   stockQty: Number,           // Current stock quantity
 //   minStockLevel: Number,      // Minimum stock threshold
 //   isOnDemand: Boolean,        // true = Upon Order, false = Track Stock
-//   isActive: Boolean,          // ⭐ NEW: true = active, false = archived
-//   deletedAt: Date | null,     // ⭐ NEW: Timestamp when archived/deleted
+//   isActive: Boolean,          // NEW: true = active, false = archived
+//   deletedAt: Date | null,     // NEW: Timestamp when archived/deleted
 //   createdAt: Date,            // Timestamp
 //   updatedAt: Date             // Last update timestamp
 // }
@@ -198,15 +198,17 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
     stockQty: 0,
     minStockLevel: 10,
     isOnDemand: false,
-    isActive: true  // ⭐ NEW: For soft delete - defaults to true for new items
+    isActive: true  // NEW: For soft delete - defaults to true for new items
   });
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [duplicateItem, setDuplicateItem] = useState(null); // For duplicate warning modal (active items)
   const [archivedItem, setArchivedItem] = useState(null); // For archived item restore modal
-  const [isLinked, setIsLinked] = useState(false); // ⭐ NEW: Track if item is linked to products/sales
+  const [isLinked, setIsLinked] = useState(false); // NEW: Track if item is linked to products/sales
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false); // For custom combobox
+  const categoryDropdownRef = useRef(null);
 
-  // ⭐ Set formData from item when editing
+  // Set formData from item when editing
   useEffect(() => {
     if (item) {
       setFormData({
@@ -229,7 +231,18 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
     }
   }, [item]);
 
-  // ⭐ NEW: Check if item is linked to products or has sales history
+  // Close category dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target)) {
+        setShowCategoryDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // NEW: Check if item is linked to products or has sales history
   useEffect(() => {
     if (item) {
       const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
@@ -337,15 +350,15 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
     }
 
     // Save with normalized name
-    // ⭐ NEW: Include isActive and deletedAt fields
+    // NEW: Include isActive and deletedAt fields
     // When editing, preserve original stockQty (stock adjustments done via table +/- buttons)
     onSave({
       ...formData,
       name: normalizedName,
       stockQty: item ? item.stockQty : parseInt(formData.stockQty),  // Preserve stock when editing
       minStockLevel: parseInt(formData.minStockLevel),
-      isActive: formData.isActive !== undefined ? formData.isActive : true,  // ⭐ Preserve active status
-      deletedAt: formData.isActive === false ? new Date() : null  // ⭐ Set deletedAt when archived
+      isActive: formData.isActive !== undefined ? formData.isActive : true,  // Preserve active status
+      deletedAt: formData.isActive === false ? new Date() : null  // Set deletedAt when archived
     });
   };
 
@@ -388,6 +401,7 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
               placeholder="e.g., Ceramic, Magic Mug..."
               required
               readOnly={isLinked}
+              autoComplete="off"
               style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
             />
             {isLinked ? (
@@ -466,20 +480,56 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
               </div>
             ) : (
               <>
-                <select
-                  name="category"
-                  className="form-select"
-                  value={formData.category}
-                  onChange={handleCategorySelect}
-                  required
-                  disabled={isLinked}
-                  style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
-                >
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                  <option value="__new__" style={{ borderTop: '1px solid var(--border)', fontWeight: '600' }}>+ Add New Category...</option>
-                </select>
+                <div className="combobox-root" ref={categoryDropdownRef}>
+                  <div className="combobox-field">
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={formData.category}
+                      readOnly
+                      onClick={() => !isLinked && setShowCategoryDropdown(!showCategoryDropdown)}
+                      style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : { cursor: 'pointer' }}
+                      disabled={isLinked}
+                    />
+                    <button
+                      type="button"
+                      className="combobox-toggle"
+                      onClick={() => !isLinked && setShowCategoryDropdown(!showCategoryDropdown)}
+                      disabled={isLinked}
+                      style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
+                    >
+                      {showCategoryDropdown ? '▲' : '▼'}
+                    </button>
+                  </div>
+                  {showCategoryDropdown && !isLinked && (
+                    <div className="combobox-menu" style={{ maxHeight: '200px' }}>
+                      {categories.slice(0, 5).map((cat, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          className={`combobox-item${cat === formData.category ? ' active' : ''}`}
+                          onClick={() => {
+                            setFormData(prev => ({ ...prev, category: cat }));
+                            setShowCategoryDropdown(false);
+                          }}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className="combobox-item combobox-add"
+                        onClick={() => {
+                          setShowCategoryDropdown(false);
+                          setShowNewCategoryInput(true);
+                          setNewCategoryName('');
+                        }}
+                      >
+                        <span>+</span> Add New Category...
+                      </button>
+                    </div>
+                  )}
+                </div>
                 {isLinked ? (
                   <p className="form-hint" style={{ color: '#f59e0b' }}>
                     This item is linked to products or sales records. Category cannot be changed to prevent data discrepancies.
@@ -595,6 +645,8 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
                     return false;
                   }
                 }}
+                readOnly
+                style={{ opacity: 0.6, cursor: 'not-allowed' }}
               />
               <p className="form-hint">
                 You'll receive a low stock warning when current stock falls below this level.
@@ -763,7 +815,7 @@ function ArchivedItemModal({ isOpen, onClose, onRestore, archivedItem, categoryN
 }
 
 // ── Archive/Delete Confirmation Modal ─────────────────────────────────────────
-// ⭐ NEW: Now checks sales history in addition to product references
+// NEW: Now checks sales history in addition to product references
 // If item has sales history, force soft delete (archive) only
 function ArchiveConfirmModal({ 
   isOpen, 
@@ -773,7 +825,7 @@ function ArchiveConfirmModal({
   itemName, 
   isReferenced, 
   referencingProductsCount,
-  hasSalesHistory = false  // ⭐ NEW: Prop for sales history
+  hasSalesHistory = false  // NEW: Prop for sales history
 }) {
   if (!isOpen) return null;
 
@@ -812,7 +864,7 @@ function ArchiveConfirmModal({
                 </>
               )}
               
-              {/* ⭐ NEW: Sales History Warning */}
+              {/* NEW: Sales History Warning */}
               {hasSalesHistory && (
                 <>
                   <p className="delete-confirm-text" style={{ 
@@ -845,13 +897,6 @@ function ArchiveConfirmModal({
                 fontSize: '0.875rem',
                 lineHeight: '1.8'
               }}>
-                <p>
-                  Item will be hidden from "Add Product" dropdown
-                  Existing products remain valid<br />
-                  - Sales history preserved<br />
-                  - Reports and accounting data intact<br />
-                  - Can be restored anytime
-                </p>
               </ul>
             </>
           ) : (
@@ -901,6 +946,19 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item }) {
   const [quantity, setQuantity] = useState('');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingData, setPendingData] = useState(null);
+  const [showReasonDropdown, setShowReasonDropdown] = useState(false);
+  const reasonDropdownRef = useRef(null);
+
+  // Close reason dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (reasonDropdownRef.current && !reasonDropdownRef.current.contains(e.target)) {
+        setShowReasonDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (isOpen && item) {
@@ -972,14 +1030,49 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item }) {
             <label className="form-label">
               Reason for Addition <span className="required">*</span>
             </label>
-            <select
-              className="form-select"
-              value={reason}
-              onChange={e => setReason(e.target.value)}
-            >
-              <option value="restock">Restock</option>
-              <option value="correction-add">Inventory Correction (Add)</option>
-            </select>
+            <div className="combobox-root" ref={reasonDropdownRef}>
+              <div className="combobox-field">
+                <input
+                  type="text"
+                  className="form-input"
+                  value={reason === 'restock' ? 'Restock' : 'Inventory Correction (Add)'}
+                  readOnly
+                  onClick={() => setShowReasonDropdown(!showReasonDropdown)}
+                  style={{ cursor: 'pointer' }}
+                />
+                <button
+                  type="button"
+                  className="combobox-toggle"
+                  onClick={() => setShowReasonDropdown(!showReasonDropdown)}
+                >
+                  {showReasonDropdown ? '▲' : '▼'}
+                </button>
+              </div>
+              {showReasonDropdown && (
+                <div className="combobox-menu">
+                  <button
+                    type="button"
+                    className={`combobox-item${reason === 'restock' ? ' active' : ''}`}
+                    onClick={() => {
+                      setReason('restock');
+                      setShowReasonDropdown(false);
+                    }}
+                  >
+                    Restock
+                  </button>
+                  <button
+                    type="button"
+                    className={`combobox-item${reason === 'correction-add' ? ' active' : ''}`}
+                    onClick={() => {
+                      setReason('correction-add');
+                      setShowReasonDropdown(false);
+                    }}
+                  >
+                    Inventory Correction (Add)
+                  </button>
+                </div>
+              )}
+            </div>
             {reason === 'restock' && (
               <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
                 For new stock.
@@ -1081,8 +1174,33 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item }) {
   );
 }
 
+// ── Confirm Modal ──────────────────────────────────────────────────────────
+function ConfirmModal({ title, message, confirmLabel, confirmClass, onConfirm, onCancel }) {
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">{title}</h2>
+          <button className="modal-close" onClick={onCancel}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div className="modal-body">
+          <p className="delete-confirm-text">{message}</p>
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button>
+          <button type="button" className={confirmClass || 'btn-primary'} onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Manual Stock Adjustment Modal ─────────────────────────────────────────────
-// ⭐ NEW: Modal for reducing stock with audit log
+// NEW: Modal for reducing stock with audit log
 // Reasons: Sales Outside System, Damaged Stock, Stock Correction
 function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
   const [reason, setReason] = useState('sales-outside'); // 'sales-outside', 'damaged', 'correction-remove'
@@ -1095,6 +1213,8 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
   const [pendingData, setPendingData] = useState(null);
   const [showValidationModal, setShowValidationModal] = useState(false);
   const [validationMessage, setValidationMessage] = useState('');
+  const [showReasonDropdown, setShowReasonDropdown] = useState(false);
+  const reasonDropdownRef = useRef(null);
 
   useEffect(() => {
     if (isOpen && item) {
@@ -1185,15 +1305,63 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
             <label className="form-label">
               Reason for Adjustment <span className="required">*</span>
             </label>
-            <select
-              className="form-select"
-              value={reason}
-              onChange={e => setReason(e.target.value)}
-            >
-              <option value="sales-outside">Sales Outside System (Manual Sale)</option>
-              <option value="damaged">Damaged Stock</option>
-              <option value="correction-remove">Stock Correction (Remove)</option>
-            </select>
+            <div className="combobox-root" ref={reasonDropdownRef}>
+              <div className="combobox-field">
+                <input
+                  type="text"
+                  className="form-input"
+                  value={
+                    reason === 'sales-outside' ? 'Sales Outside System (Manual Sale)' :
+                    reason === 'damaged' ? 'Damaged Stock' :
+                    'Stock Correction (Remove)'
+                  }
+                  readOnly
+                  onClick={() => setShowReasonDropdown(!showReasonDropdown)}
+                  style={{ cursor: 'pointer' }}
+                />
+                <button
+                  type="button"
+                  className="combobox-toggle"
+                  onClick={() => setShowReasonDropdown(!showReasonDropdown)}
+                >
+                  {showReasonDropdown ? '▲' : '▼'}
+                </button>
+              </div>
+              {showReasonDropdown && (
+                <div className="combobox-menu">
+                  <button
+                    type="button"
+                    className={`combobox-item${reason === 'sales-outside' ? ' active' : ''}`}
+                    onClick={() => {
+                      setReason('sales-outside');
+                      setShowReasonDropdown(false);
+                    }}
+                  >
+                    Sales Outside System (Manual Sale)
+                  </button>
+                  <button
+                    type="button"
+                    className={`combobox-item${reason === 'damaged' ? ' active' : ''}`}
+                    onClick={() => {
+                      setReason('damaged');
+                      setShowReasonDropdown(false);
+                    }}
+                  >
+                    Damaged Stock
+                  </button>
+                  <button
+                    type="button"
+                    className={`combobox-item${reason === 'correction-remove' ? ' active' : ''}`}
+                    onClick={() => {
+                      setReason('correction-remove');
+                      setShowReasonDropdown(false);
+                    }}
+                  >
+                    Stock Correction (Remove)
+                  </button>
+                </div>
+              )}
+            </div>
             {reason === 'sales-outside' && (
               <p className="form-hint" style={{ color: '#facc15', marginTop: '0.5rem' }}>
                 Preferred: This will create a sales record and reduce stock.
@@ -1519,23 +1687,24 @@ export default function InventoryPage() {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false); // For Add/Edit confirmation
   const [pendingItemData, setPendingItemData] = useState(null); // Temp storage before confirm
   
-  // ⭐ NEW: States for Archive/Delete with product reference checking
+  // NEW: States for Archive/Delete with product reference checking
   const [archiveItem, setArchiveItem] = useState(null); // Item to archive/delete
   const [referencingProducts, setReferencingProducts] = useState([]); // Products using this item
   const [showArchiveModal, setShowArchiveModal] = useState(false); // Show archive confirmation
-  const [hasSalesHistory, setHasSalesHistory] = useState(false); // ⭐ NEW: Track if item has sales
+  const [restoreItem, setRestoreItem] = useState(null); // Item to restore
+  const [hasSalesHistory, setHasSalesHistory] = useState(false); // NEW: Track if item has sales
   
-  // ⭐ NEW: States for Manual Stock Adjustment
+  // NEW: States for Manual Stock Adjustment
   const [adjustmentItem, setAdjustmentItem] = useState(null); // Item being adjusted
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false); // Show adjustment modal (reduce)
   const [showAdjustmentSuccess, setShowAdjustmentSuccess] = useState(false); // Show success message
 
-  // ⭐ NEW: States for Stock Addition
+  // NEW: States for Stock Addition
   const [additionItem, setAdditionItem] = useState(null); // Item being added
   const [showAdditionModal, setShowAdditionModal] = useState(false); // Show addition modal
   const [showConvertModal, setShowConvertModal] = useState(false); // Show convert from Upon Order confirmation
 
-  // ⚠️ TODO: MongoDB - Replace with API call
+  // TODO: MongoDB - Replace with API call
   // CURRENT: Load from LocalStorage on mount
   // FUTURE: GET /api/inventory - Fetch from MongoDB
   //
@@ -1565,7 +1734,7 @@ export default function InventoryPage() {
     setIsLoaded(true);
   }, []);
 
-  // ⚠️ TODO: MongoDB - Remove this useEffect
+  // TODO: MongoDB - Remove this useEffect
   // CURRENT: Save to LocalStorage on every change
   // FUTURE: Not needed - will use API calls (POST/PUT) for each action
   useEffect(() => {
@@ -1574,7 +1743,7 @@ export default function InventoryPage() {
     }
   }, [inventory, isLoaded]);
 
-  // ⚠️ TODO: MongoDB - Replace with API call
+  // TODO: MongoDB - Replace with API call
   // CURRENT: Save to LocalStorage
   // FUTURE: POST /api/categories
   const handleAddCategory = (newCategory) => {
@@ -1584,9 +1753,9 @@ export default function InventoryPage() {
   };
 
   // Filter inventory based on search query and status filter
-  // ⭐ NEW: By default, only show active items (isActive: true)
+  // NEW: By default, only show active items (isActive: true)
   const filteredInventory = inventory.filter(item => {
-    // ⭐ EXCLUDE archived items by default
+    // EXCLUDE archived items by default
     if (item.isActive === false) return false;
     
     const query = searchQuery.toLowerCase();
@@ -1605,7 +1774,7 @@ export default function InventoryPage() {
     return matchesSearch && matchesStatus;
   });
 
-  // ⭐ NEW: Filter for archived items (for separate view)
+  // NEW: Filter for archived items (for separate view)
   const archivedInventory = inventory.filter(item => item.isActive === false);
 
   // Handle Add New Item
@@ -1621,9 +1790,9 @@ export default function InventoryPage() {
   };
 
   // Handle Delete/Archive Item
-  // ⭐ NEW: Check if item is referenced by products OR sales before allowing delete
+  // NEW: Check if item is referenced by products OR sales before allowing delete
   const handleDelete = (item) => {
-    // ⚠️ TODO: MongoDB - Replace with API calls to get products and orders referencing this item
+    // TODO: MongoDB - Replace with API calls to get products and orders referencing this item
     // CURRENT: Check LocalStorage for products and orders
     // FUTURE: GET /api/products?inventoryId={item.id} AND GET /api/orders?inventoryId={item.id}
 
@@ -1635,7 +1804,7 @@ export default function InventoryPage() {
       p => p.inventoryId === item.id
     );
 
-    // ⭐ NEW: Check if item has sales history
+    // NEW: Check if item has sales history
     const salesWithThisItem = allOrders.filter(order =>
       order.inventoryId === item.id ||  // Direct inventory sale
       order.items?.some(orderItem => orderItem.inventoryId === item.id) ||
@@ -1643,15 +1812,15 @@ export default function InventoryPage() {
     );
 
     setReferencingProducts(productsUsingThisItem);
-    setHasSalesHistory(salesWithThisItem.length > 0); // ⭐ NEW: Track sales history
+    setHasSalesHistory(salesWithThisItem.length > 0); // NEW: Track sales history
     setArchiveItem(item);
 
-    // ⭐ NEW: Store sales info for validation
+    // NEW: Store sales info for validation
     setShowArchiveModal(true);
   };
 
-  // ⭐ NEW: Archive item (soft delete)
-  // ⚠️ TODO: MongoDB - Replace with PUT /api/inventory/:id
+  // NEW: Archive item (soft delete)
+  // TODO: MongoDB - Replace with PUT /api/inventory/:id
   const handleArchive = () => {
     if (!archiveItem) return;
 
@@ -1664,7 +1833,7 @@ export default function InventoryPage() {
       )
     );
 
-    // ⭐ Auto-archive products linked to this inventory
+    // Auto-archive products linked to this inventory
     const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
     const updatedProducts = allProducts.map(p =>
       p.inventoryId === archiveItem.id
@@ -1680,7 +1849,7 @@ export default function InventoryPage() {
   };
 
   // Handle Permanent Delete (only if not referenced)
-  // ⚠️ TODO: MongoDB - Replace with DELETE /api/inventory/:id
+  // TODO: MongoDB - Replace with DELETE /api/inventory/:id
   const handlePermanentDelete = () => {
     if (!archiveItem) return;
     
@@ -1693,8 +1862,8 @@ export default function InventoryPage() {
     setReferencingProducts([]);
   };
 
-  // ⭐ NEW: Restore archived item
-  // ⚠️ TODO: MongoDB - Replace with PUT /api/inventory/:id
+  // NEW: Restore archived item
+  // TODO: MongoDB - Replace with PUT /api/inventory/:id
   const handleRestore = (item) => {
     setInventory(prev =>
       prev.map(i =>
@@ -1705,23 +1874,56 @@ export default function InventoryPage() {
     );
   };
 
-  // ⭐ NEW: Handle stock adjustment (Manual Stock Out)
-  // ⚠️ TODO: MongoDB - Replace with API calls
+  // NEW: Handle stock adjustment (Manual Stock Out)
+  // TODO: MongoDB - Replace with API calls
   const handleStockAdjustment = (adjustmentData) => {
     if (!adjustmentItem) return;
-    
+
     const { reason, quantity, sellingPrice, saleDate, remarks, customerName } = adjustmentData;
-    
+
+    const newStockQty = Math.max(0, adjustmentItem.stockQty - quantity);
+
+    // ──────────────────────────────────────────────────────────────
+    // TODO: MongoDB - Wrap in Transaction
+    // These operations should be atomic (all-or-nothing):
+    // 1. Update inventory stock
+    // 2. Update product availability (if exceeds new stock)
+    // 3. Create audit log
+    // 4. Create sales record (if sales-outside)
+    //
+    // Example MongoDB Transaction:
+    // const session = client.startSession();
+    // await session.withTransaction(async () => {
+    //   await Inventory.findByIdAndUpdate(id, { stockQty: newStockQty }, { session });
+    //   await Product.updateMany({ inventoryId: id, stock: { $gt: newStockQty } }, { stock: newStockQty }, { session });
+    //   await InventoryLog.create([auditLog], { session });
+    //   if (reason === 'sales-outside') await Sales.create([salesRecord], { session });
+    // });
+    // ──────────────────────────────────────────────────────────────
+
     // Reduce stock
     setInventory(prev =>
       prev.map(item =>
         item.id === adjustmentItem.id
-          ? { ...item, stockQty: Math.max(0, item.stockQty - quantity) }
+          ? { ...item, stockQty: newStockQty }
           : item
       )
     );
+
+    // NEW: Update product availability if it exceeds new inventory stock
+    const existingProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
+    const productsToUpdate = existingProducts.filter(p => p.inventoryId === adjustmentItem.id && p.stock > newStockQty);
     
-    // ⭐ Create audit log entry
+    if (productsToUpdate.length > 0) {
+      const updatedProducts = existingProducts.map(p => 
+        p.inventoryId === adjustmentItem.id && p.stock > newStockQty
+          ? { ...p, stock: newStockQty, updatedAt: new Date().toISOString() }
+          : p
+      );
+      localStorage.setItem('pmp_products', JSON.stringify(updatedProducts));
+    }
+
+    // Create audit log entry
     const auditLog = {
       id: Date.now(),
       inventoryId: adjustmentItem.id,
@@ -1740,11 +1942,11 @@ export default function InventoryPage() {
     };
     
     // Save to audit logs (LocalStorage for now)
-    // ⚠️ TODO: MongoDB - Save to audit_logs collection
+    // TODO: MongoDB - Save to audit_logs collection
     const existingLogs = JSON.parse(localStorage.getItem('pmp_inventory_logs') || '[]');
     localStorage.setItem('pmp_inventory_logs', JSON.stringify([...existingLogs, auditLog]));
     
-    // ⭐ If sales outside system, create sales record
+    // If sales outside system, create sales record
     if (reason === 'sales-outside') {
       const salesRecord = {
         id: Date.now(),
@@ -1762,7 +1964,7 @@ export default function InventoryPage() {
       };
       
       // Save to sales (LocalStorage for now)
-      // ⚠️ TODO: MongoDB - Save to sales collection
+      // TODO: MongoDB - Save to sales collection
       const existingSales = JSON.parse(localStorage.getItem('pmp_sales') || '[]');
       localStorage.setItem('pmp_sales', JSON.stringify([...existingSales, salesRecord]));
     }
@@ -1775,14 +1977,14 @@ export default function InventoryPage() {
     setShowAdjustmentSuccess(true);
   };
 
-  // ⭐ NEW: Handle stock addition (Manual Stock In)
-  // ⚠️ TODO: MongoDB - Replace with API calls
+  // NEW: Handle stock addition (Manual Stock In)
+  // TODO: MongoDB - Replace with API calls
   const handleStockAddition = (additionData) => {
     if (!additionItem) return;
 
     const { reason, quantity, remarks } = additionData;
 
-    // ⭐ Convert from Upon Order to In Stock if needed
+    // Convert from Upon Order to In Stock if needed
     const isConverting = additionItem.isOnDemand;
 
     // Increase stock (and convert to In Stock if was Upon Order)
@@ -1798,7 +2000,7 @@ export default function InventoryPage() {
       )
     );
 
-    // ⭐ Create audit log entry
+    // Create audit log entry
     const auditLog = {
       id: Date.now(),
       inventoryId: additionItem.id,
@@ -1815,7 +2017,7 @@ export default function InventoryPage() {
     };
 
     // Save to audit logs (LocalStorage for now)
-    // ⚠️ TODO: MongoDB - Save to audit_logs collection
+    // TODO: MongoDB - Save to audit_logs collection
     const existingLogs = JSON.parse(localStorage.getItem('pmp_inventory_logs') || '[]');
     localStorage.setItem('pmp_inventory_logs', JSON.stringify([...existingLogs, auditLog]));
 
@@ -1828,7 +2030,7 @@ export default function InventoryPage() {
   };
 
   // Handle Save (Add or Update) - Shows confirmation modal first
-  // ⚠️ TODO: MongoDB - Replace with API call
+  // TODO: MongoDB - Replace with API call
   // CURRENT: Stores locally, saves to LocalStorage via useEffect
   // FUTURE: POST /api/inventory (new) or PUT /api/inventory/:id (update)
   const handleSave = (itemData) => {
@@ -1841,7 +2043,7 @@ export default function InventoryPage() {
   };
 
   // Confirm the Add/Edit action
-  // ⚠️ TODO: MongoDB - Replace with API call
+  // TODO: MongoDB - Replace with API call
   // CURRENT: Updates LocalStorage state
   // FUTURE: Call API and handle response
   //
@@ -1883,7 +2085,7 @@ export default function InventoryPage() {
   };
 
   // Handle Confirm Delete
-  // ⚠️ TODO: MongoDB - Replace with API call
+  // TODO: MongoDB - Replace with API call
   // CURRENT: Removes from LocalStorage state
   // FUTURE: DELETE /api/inventory/:id
   //
@@ -1947,7 +2149,7 @@ export default function InventoryPage() {
   };
 
   // Calculate summary stats
-  // ⭐ NEW: Separate active and archived items
+  // NEW: Separate active and archived items
   const totalItems = inventory.length;
   const activeItems = inventory.filter(item => item.isActive !== false).length;
   const archivedItems = inventory.filter(item => item.isActive === false).length;
@@ -2249,32 +2451,34 @@ export default function InventoryPage() {
         )}
       </div>
 
-      {/* ⭐ NEW: Archived Items Section */}
+      {/* NEW: Archived Items Section */}
       {showArchived && archivedInventory.length > 0 && (
         <div style={{ marginTop: '2rem' }}>
-          <h2 style={{ 
-            fontSize: '1.25rem', 
-            fontWeight: '600', 
+          <h2 style={{
+            fontSize: '1.25rem',
+            fontWeight: '600',
             color: 'var(--gray)',
             marginBottom: '1rem'
           }}>
             Archived Items ({archivedInventory.length})
           </h2>
-          <div className="inventory-table-wrapper">
-            <div style={{
-              WebkitOverflowScrolling: 'touch',
-              border: '1px solid var(--border)',
-              boxSizing: 'border-box',
-              scrollbarWidth: 'thin',
-              scrollbarColor: 'var(--gold) var(--dark2)',
-              borderRadius: '10px',
-              width: '0',
+          <div style={{
+            WebkitOverflowScrolling: 'touch',
+            border: '1px solid var(--border)',
+            boxSizing: 'border-box',
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'var(--gold) var(--dark2)',
+            borderRadius: '10px',
+            width: '0',
+            minWidth: '100%',
+            marginBottom: '1rem',
+            display: 'block',
+            overflowX: 'auto',
+          }}>
+            <table className="inventory-table" style={{
+              width: 'max-content',
               minWidth: '100%',
-              marginBottom: '1rem',
-              display: 'block',
-              overflowX: 'auto',
             }}>
-              <table className="inventory-table">
               <thead>
                 <tr>
                   <th className="table-col-name">Product Name</th>
@@ -2312,18 +2516,17 @@ export default function InventoryPage() {
                           {item.deletedAt ? new Date(item.deletedAt).toLocaleDateString() : '—'}
                         </span>
                       </td>
-                      <td className="table-cell">
+                      <td className="table-cell-actions">
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button
-                            className="btn-sm btn-secondary"
-                            onClick={() => handleEdit(item)}
-                            style={{ background: 'var(--gold)', borderColor: 'var(--gold)', color: '#000' }}
-                          >
-                            Edit
-                          </button>
-                          <button
                             className="btn-sm btn-primary"
-                            onClick={() => handleRestore(item)}
+                            onClick={() => setRestoreItem(item)}
+                            style={{
+                              background: 'var(--dark2)',
+                              borderColor: 'var(--border)',
+                              color: 'var(--white)',
+                              cursor: 'pointer'
+                            }}
                           >
                             Restore
                           </button>
@@ -2342,7 +2545,6 @@ export default function InventoryPage() {
                 })}
               </tbody>
             </table>
-            </div>
           </div>
           <p style={{
             marginTop: '1rem',
@@ -2377,7 +2579,7 @@ export default function InventoryPage() {
         inventory={inventory}
       />
 
-      {/* ⭐ NEW: Archive/Delete Confirmation Modal with product reference checking */}
+      {/* NEW: Archive/Delete Confirmation Modal with product reference checking */}
       <ArchiveConfirmModal
         isOpen={showArchiveModal}
         onClose={() => {
@@ -2394,7 +2596,22 @@ export default function InventoryPage() {
         hasSalesHistory={hasSalesHistory}
       />
 
-      {/* ⭐ NEW: Manual Stock Adjustment Modal */}
+      {/* NEW: Restore Confirmation Modal */}
+      {restoreItem && (
+        <ConfirmModal
+          title="Restore Inventory Item"
+          message={`Restore "${restoreItem.name}" from archived? This will make the item available for use again.`}
+          confirmLabel="Restore"
+          confirmClass="btn-primary"
+          onConfirm={() => {
+            handleRestore(restoreItem);
+            setRestoreItem(null);
+          }}
+          onCancel={() => setRestoreItem(null)}
+        />
+      )}
+
+      {/* NEW: Manual Stock Adjustment Modal */}
       <StockAdjustmentModal
         isOpen={showAdjustmentModal}
         onClose={() => {
@@ -2405,7 +2622,7 @@ export default function InventoryPage() {
         item={adjustmentItem}
       />
 
-      {/* ⭐ NEW: Stock Addition Modal */}
+      {/* NEW: Stock Addition Modal */}
       <StockAdditionModal
         isOpen={showAdditionModal}
         onClose={() => {

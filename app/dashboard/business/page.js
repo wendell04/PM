@@ -160,20 +160,20 @@ function Combobox({ value, onChange, options, placeholder, label, required }) {
 }
 
 // ─── Inventory Combobox (for Material/Blank Item) ─────────────────────────────
-// ⭐ NEW: Only shows active inventory items (isActive: true)
-// ⭐ EXCLUDES items already linked to products (1:1 relationship)
+// NEW: Only shows active inventory items (isActive: true)
+// EXCLUDES items already linked to products (1:1 relationship)
 function InventoryCombobox({ value, onChange, inventoryList, placeholder, label }) {
   const [open, setOpen] = useState(false);
   const [inputVal, setInputVal] = useState('');
   const ref = useRef(null);
 
-  // ⭐ Get products already linked to inventory items
+  // Get products already linked to inventory items
   const linkedProductIds = useMemo(() => {
     const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
     return new Set(allProducts.map(p => p.inventoryId).filter(id => id));
   }, []);
 
-  // ⭐ Filter to only active items NOT already linked to products
+  // Filter to only active items NOT already linked to products
   const availableInventoryList = inventoryList.filter(item => 
     item.isActive !== false && !linkedProductIds.has(item.id)
   );
@@ -1215,7 +1215,7 @@ export default function AddProductsPage() {
       stock: selectedItem && !selectedItem.isOnDemand ? String(selectedItem.stockQty) : '',
     }));
 
-    // ⭐ Clear prices when inventory is removed to prevent "ghost" values
+    // Clear prices when inventory is removed to prevent "ghost" values
     if (!inventoryId) {
       setFixedPrice('');
       setFixedPriceVariants({});
@@ -1559,15 +1559,25 @@ export default function AddProductsPage() {
       return;
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // VALIDATION: Require stock value for tracked inventory
+    // ──────────────────────────────────────────────────────────────
+    const selectedItem = inventoryList.find(inv => inv.id === formData.inventoryId);
+    if (selectedItem && !selectedItem.isOnDemand && (!formData.stock || formData.stock === '' || parseInt(formData.stock) < 0)) {
+      setPriceErrorMessage('Please enter available stock for storefront.');
+      setShowPriceErrorModal(true);
+      return;
+    }
+
     // ───────────────────────────────────────────────────────�������──────
     // VALIDATION: Check for empty prices (unless "For Inquiry")
     // ──────────────────────────────────────────────────────────────
     if (formData.priceType === 'fixed') {
       if (hasVariants) {
-        // Check if at least one variant has a price
-        const hasAnyPrice = Object.values(fixedPriceVariants).some(p => p !== '' && p !== null && p !== undefined);
-        if (!hasAnyPrice) {
-          setPriceErrorMessage('Please enter at least one price for the variants, or set price type to "For Inquiry".');
+        // Check if ALL variants have prices
+        const allPricesFilled = Object.values(fixedPriceVariants).every(p => p !== '' && p !== null && p !== undefined && parseFloat(p) > 0);
+        if (!allPricesFilled) {
+          setPriceErrorMessage('Please enter prices for all variants, or set price type to "For Inquiry".');
           setShowPriceErrorModal(true);
           return;
         }
@@ -1580,12 +1590,12 @@ export default function AddProductsPage() {
         }
       }
     } else if (formData.priceType === 'tiered') {
-      // Check if at least one tier has a price
-      const hasAnyTierPrice = tiers.some(tier =>
-        Object.values(tier.prices).some(p => p !== '' && p !== null && p !== undefined && parseFloat(p) > 0)
+      // Check if ALL tier prices are filled
+      const allTiersFilled = tiers.every(tier =>
+        Object.values(tier.prices).every(p => p !== '' && p !== null && p !== undefined && parseFloat(p) > 0)
       );
-      if (!hasAnyTierPrice) {
-        setPriceErrorMessage('Please enter at least one price in the pricing tiers.');
+      if (!allTiersFilled) {
+        setPriceErrorMessage('Please enter prices for all items in the pricing tiers.');
         setShowPriceErrorModal(true);
         return;
       }
@@ -1726,7 +1736,7 @@ export default function AddProductsPage() {
     // ──────────────────────────────────────────────────────────────
     const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
 
-    // ⭐ CREATE new product
+    // CREATE new product
     const newProduct = {
       ...pendingNewProduct,
       id: crypto.randomUUID(),
@@ -1991,7 +2001,7 @@ export default function AddProductsPage() {
                   </div>
                   <div className="stock-qty-input-wrap" onClick={e => e.stopPropagation()}>
                     <label className="form-label">
-                      Available Stock <span className="required">*</span>
+                      Available Storefront Stock <span className="required">*</span>
                     </label>
                     <NumberInput
                       className="form-input"

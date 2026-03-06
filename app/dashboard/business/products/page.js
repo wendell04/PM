@@ -329,7 +329,7 @@ function VariantGroupingCheckboxes({ variantGroups, groupChecks, onGroupChecksCh
 }
 
 // ── EditProductModal — Full form reusing Add Products UI ──────────────────────
-function EditProductModal({ product, inventoryList, onClose, onSave }) {
+function EditProductModal({ product, inventoryList, onClose, onSave, onPriceError }) {
   const [formData, setFormData] = useState({
     category: product.category || '',
     subCategoryName: product.subCategoryName || '',
@@ -637,6 +637,28 @@ function EditProductModal({ product, inventoryList, onClose, onSave }) {
   const maxP = allPrices.length ? Math.max(...allPrices) : null;
 
   const handleSave = () => {
+    // Validate prices before saving
+    if (formData.priceType === 'fixed') {
+      if (hasVariants) {
+        const allPricesFilled = Object.values(fixedPriceVariants).every(p => p !== '' && p !== null && p !== undefined && parseFloat(p) > 0);
+        if (!allPricesFilled) {
+          onPriceError('Please enter prices for all variants.');
+          return;
+        }
+      } else if (!fixedPrice || parseFloat(fixedPrice) <= 0) {
+        onPriceError('Please enter a price.');
+        return;
+      }
+    } else if (formData.priceType === 'tiered') {
+      const allTiersFilled = tiers.every(tier =>
+        Object.values(tier.prices).every(p => p !== '' && p !== null && p !== undefined && parseFloat(p) > 0)
+      );
+      if (!allTiersFilled) {
+        onPriceError('Please enter prices for all items in the pricing tiers.');
+        return;
+      }
+    }
+
     const stockVal = formData.trackInventory ? parseInt(formData.stock) || 0 : null;
     const updatedProduct = {
       ...product,
@@ -774,21 +796,27 @@ function EditProductModal({ product, inventoryList, onClose, onSave }) {
               ) : (
                 <div className="availability-card selected" style={{ cursor: 'not-allowed', opacity: 0.7 }}>
                   <div className="availability-title">Track Stock</div>
-                  <div className="availability-desc">Stock is tracked from Inventory ({inv?.stockQty} pcs available)</div>
+                  <div className="availability-desc">
+                    Current Inventory Stock: <strong style={{ color: 'var(--gold)' }}>{inv?.stockQty || 0} pcs</strong>
+                  </div>
                   <div className="stock-qty-input-wrap" onClick={e => e.stopPropagation()}>
-                    <label className="form-label">Available Stock <span className="required">*</span></label>
+                    <label className="form-label">Available Stock (Storefront) <span className="required">*</span></label>
                     <NumberInput className="form-input" value={formData.stock}
                       onChange={e => {
                         const val = e.target.value;
                         if (val === '' || parseInt(val) >= 0) {
-                          if (parseInt(val) > inv.stockQty) { setMaxStockQty(inv.stockQty); setShowStockErrorModal(true); return; }
+                          if (parseInt(val) > inv.stockQty) {
+                            setMaxStockQty(inv.stockQty);
+                            setShowStockErrorModal(true);
+                            return;
+                          }
                           setFormData(prev => ({ ...prev, stock: val }));
                         }
                       }}
                       placeholder="0" min={0} max={inv?.stockQty} required />
                     {parseInt(formData.stock) > 0 && inv && (
-                      <p className="form-hint" style={{ marginTop: '0.5rem' }}>
-                        {inv.stockQty - parseInt(formData.stock)} pcs remaining in Inventory
+                      <p className="form-hint" style={{ marginTop: '0.5rem', color: 'var(--gray)' }}>
+                        {inv.stockQty - parseInt(formData.stock)} pcs remaining in Inventory for this product
                       </p>
                     )}
                   </div>
@@ -964,20 +992,32 @@ function EditProductModal({ product, inventoryList, onClose, onSave }) {
           </form>
         </div>
 
-        {/* Stock Error inline notice */}
+        {/* Stock Error Modal */}
         {showStockErrorModal && (
-          <div style={{
-            position: 'sticky', bottom: 0, left: 0, right: 0,
-            background: 'rgba(196,30,58,0.95)', color: 'white',
-            padding: '0.75rem 1.5rem',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            borderTop: '1px solid var(--red)',
-          }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              Cannot exceed inventory stock ({maxStockQty} pcs)
-            </span>
-            <button onClick={() => setShowStockErrorModal(false)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.2rem' }}>×</button>
+          <div className="modal-overlay" onClick={() => setShowStockErrorModal(false)}>
+            <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title modal-title-danger">Invalid Stock Quantity</h2>
+                <button className="modal-close" onClick={() => setShowStockErrorModal(false)}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+              <div className="modal-body">
+                <p className="delete-confirm-text">
+                  Cannot set higher Availability than Inventory stock (<strong>{maxStockQty} pcs</strong>).
+                </p>
+                <p className="delete-confirm-warning" style={{ marginTop: '0.75rem' }}>
+                  Please enter a value that is less than or equal to the available inventory.
+                </p>
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowStockErrorModal(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1035,6 +1075,278 @@ function ConfirmModal({ title, message, confirmLabel, confirmClass, onConfirm, o
   );
 }
 
+// ── Confirm Edit Modal (Shows changes preview) ─────────────────────────────────
+function ConfirmEditModal({ isOpen, onClose, originalProduct, updatedProduct, inventoryList, onConfirm }) {
+  if (!isOpen || !originalProduct || !updatedProduct) return null;
+
+  const getInventoryName = (id) => {
+    const inv = inventoryList.find(i => i.id === id);
+    return inv ? inv.name : 'N/A';
+  };
+
+  // Calculate price info
+  let priceInfo = '';
+  if (updatedProduct.priceType === 'inquiry') {
+    priceInfo = 'For Inquiry';
+  } else if (updatedProduct.priceType === 'fixed') {
+    if (updatedProduct.variantPrices && Object.keys(updatedProduct.variantPrices).length > 0) {
+      const prices = Object.values(updatedProduct.variantPrices).map(p => parseFloat(p)).filter(p => p > 0);
+      const minP = prices.length ? Math.min(...prices) : 0;
+      const maxP = prices.length ? Math.max(...prices) : 0;
+      priceInfo = `₱${minP}${maxP !== minP ? ` – ₱${maxP}` : ''}`;
+    } else if (updatedProduct.price) {
+      priceInfo = `₱${updatedProduct.price}`;
+    }
+  } else if (updatedProduct.priceType === 'tiered' && updatedProduct.tiers) {
+    const allPrices = updatedProduct.tiers.flatMap(t => Object.values(t.prices).map(p => parseFloat(p)).filter(p => p > 0));
+    const minP = allPrices.length ? Math.min(...allPrices) : 0;
+    const maxP = allPrices.length ? Math.max(...allPrices) : 0;
+    priceInfo = `₱${minP}${maxP !== minP ? ` – ₱${maxP}` : ''} (tiered)`;
+  }
+
+  // Stock info
+  let stockInfo = '';
+  if (!updatedProduct.trackInventory) {
+    stockInfo = 'Upon Order / Supplied';
+  } else {
+    stockInfo = `${updatedProduct.stock || 0} pcs available`;
+  }
+
+  // Variant info
+  const variantCount = updatedProduct.variantGroups?.length || 0;
+  const combinationCount = updatedProduct.combinations?.length || 0;
+
+  // Check what changed
+  const changes = [];
+  if (originalProduct.stock !== updatedProduct.stock) {
+    changes.push({
+      field: 'Availability (Storefront)',
+      old: `${originalProduct.stock || 0} pcs`,
+      new: `${updatedProduct.stock || 0} pcs`
+    });
+  }
+  if (originalProduct.isPublished !== updatedProduct.isPublished) {
+    changes.push({
+      field: 'Status',
+      old: originalProduct.isPublished ? 'Published' : 'Unpublished',
+      new: updatedProduct.isPublished ? 'Published' : 'Unpublished'
+    });
+  }
+  if (originalProduct.priceType !== updatedProduct.priceType) {
+    changes.push({
+      field: 'Price Type',
+      old: originalProduct.priceType || 'N/A',
+      new: updatedProduct.priceType || 'N/A'
+    });
+  }
+  if (originalProduct.price !== updatedProduct.price && updatedProduct.priceType === 'fixed') {
+    changes.push({
+      field: 'Price',
+      old: originalProduct.price ? `₱${parseFloat(originalProduct.price).toFixed(2)}` : 'N/A',
+      new: updatedProduct.price ? `₱${parseFloat(updatedProduct.price).toFixed(2)}` : 'N/A'
+    });
+  }
+  if (originalProduct.description !== updatedProduct.description) {
+    changes.push({
+      field: 'Description',
+      old: originalProduct.description || '—',
+      new: updatedProduct.description || '—'
+    });
+  }
+
+  const hasChanges = changes.length > 0;
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 4000 }}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">Confirm Save Product</h2>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <p className="delete-confirm-text" style={{ marginBottom: '1.5rem' }}>
+            Please review the product details before saving to your catalog.
+          </p>
+
+          <div className="confirm-summary" style={{
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            padding: '1.25rem',
+            marginBottom: '1.5rem'
+          }}>
+            {/* Thumbnail Preview */}
+            {updatedProduct.thumbnail && (
+              <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
+                <img
+                  src={updatedProduct.thumbnail}
+                  alt="Product thumbnail"
+                  style={{
+                    width: '120px',
+                    height: '120px',
+                    objectFit: 'cover',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)'
+                  }}
+                />
+              </div>
+            )}
+
+            <div className="confirm-row" style={{ marginBottom: '0.75rem' }}>
+              <span className="confirm-label" style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>Product:</span>
+              <span className="confirm-value" style={{ fontWeight: '600', color: 'var(--white)' }}>
+                {updatedProduct.category} {updatedProduct.subCategoryName ? `- ${updatedProduct.subCategoryName}` : ''}
+              </span>
+            </div>
+
+            {updatedProduct.description && (
+              <div className="confirm-row" style={{ marginBottom: '0.75rem' }}>
+                <span className="confirm-label" style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>Description:</span>
+                <span className="confirm-value" style={{ color: 'var(--white)' }}>
+                  {updatedProduct.description.length > 100 ? updatedProduct.description.substring(0, 100) + '...' : updatedProduct.description}
+                </span>
+              </div>
+            )}
+
+            <div className="confirm-row" style={{ marginBottom: '0.75rem' }}>
+              <span className="confirm-label" style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>Price:</span>
+              <span className="confirm-value" style={{ color: '#facc15', fontWeight: '600' }}>
+                {priceInfo}
+              </span>
+            </div>
+
+            <div className="confirm-row" style={{ marginBottom: '0.75rem' }}>
+              <span className="confirm-label" style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>Stock:</span>
+              <span className="confirm-value" style={{ color: 'var(--white)' }}>
+                {stockInfo}
+              </span>
+            </div>
+
+            {variantCount > 0 && (
+              <div className="confirm-row" style={{ marginBottom: '0.75rem' }}>
+                <span className="confirm-label" style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>Variants:</span>
+                <span className="confirm-value" style={{ color: 'var(--white)' }}>
+                  {variantCount} group{variantCount > 1 ? 's' : ''} ({combinationCount} combinations)
+                </span>
+              </div>
+            )}
+
+            {updatedProduct.images?.length > 0 && (
+              <div className="confirm-row" style={{ marginBottom: '0.75rem' }}>
+                <span className="confirm-label" style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>Images:</span>
+                <span className="confirm-value" style={{ color: 'var(--white)' }}>
+                  {updatedProduct.images.length} image{updatedProduct.images.length > 1 ? 's' : ''}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Changes Summary */}
+          {hasChanges && (
+            <div style={{
+              background: 'var(--dark2)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              padding: '1rem',
+              marginBottom: '1rem'
+            }}>
+              <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '0.75rem', fontWeight: 600 }}>
+                Changes Summary
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {changes.map((change, idx) => (
+                  <div key={idx} style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    padding: '0.75rem',
+                    background: 'var(--dark)',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>{change.field}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{
+                          fontSize: '0.85rem',
+                          color: '#ef4444',
+                          textDecoration: 'line-through',
+                          background: 'rgba(239, 68, 68, 0.1)',
+                          padding: '0.2rem 0.5rem',
+                          borderRadius: '4px'
+                        }}>
+                          {change.old}
+                        </span>
+                        <span style={{ color: 'var(--gray)', fontSize: '0.85rem', margin: '0 0.25rem' }}>-</span>
+                        <span style={{
+                          fontSize: '0.85rem',
+                          color: '#22c55e',
+                          background: 'rgba(34, 197, 94, 0.1)',
+                          padding: '0.2rem 0.5rem',
+                          borderRadius: '4px',
+                          fontWeight: 600
+                        }}>
+                          {change.new}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <p className="confirm-hint" style={{
+            marginTop: '1rem',
+            color: 'var(--gray)',
+            fontSize: '0.875rem'
+          }}>
+            Click "Confirm Save" to update this product in your catalog.
+          </p>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn-primary" onClick={onConfirm}>Confirm Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Price Error Modal ──────────────────────────────────────────────────────────
+function PriceErrorModal({ isOpen, onClose, message }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 5000 }}>
+      <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title modal-title-warning">Price Required</h2>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <p className="delete-confirm-text">{message}</p>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Product Detail Expand Row ─────────────────────────────────────────────────
 function ProductExpandRow({ product, inv, colSpan }) {
   const variantGroups = product.variantGroups || [];
@@ -1043,21 +1355,21 @@ function ProductExpandRow({ product, inv, colSpan }) {
 
   return (
     <tr>
-      <td colSpan={colSpan} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ padding: '1rem 1.25rem 1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
+      <td colSpan={9} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ padding: '1rem 1.25rem 1.25rem', display: 'flex', gap: '1rem', width: '100%' }}>
 
           {/* Description */}
-          <div>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Description</div>
             {product.description ? (
-              <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5, opacity: 0.85 }}>{product.description}</div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5, opacity: 0.85, overflowWrap: 'break-word' }}>{product.description}</div>
             ) : (
               <div style={{ fontSize: '0.85rem', color: 'var(--gray)', fontStyle: 'italic', opacity: 0.6 }}>—</div>
             )}
           </div>
 
           {/* Variants */}
-          <div>
+          <div style={{ flex: '1 1 150px', minWidth: 0 }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Variants</div>
             {variantGroups.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -1078,7 +1390,7 @@ function ProductExpandRow({ product, inv, colSpan }) {
           </div>
 
           {/* Pricing summary */}
-          <div>
+          <div style={{ flex: '1 1 150px', minWidth: 0 }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Pricing</div>
             {product.priceType ? (
               <div style={{ fontSize: '0.82rem', color: 'var(--white)', opacity: 0.85 }}>
@@ -1089,7 +1401,7 @@ function ProductExpandRow({ product, inv, colSpan }) {
                       const min = prices.length ? Math.min(...prices) : 0;
                       const max = prices.length ? Math.max(...prices) : 0;
                       return (
-                        <div key={t.id} style={{ fontSize: '0.78rem' }}>
+                        <div key={t.id} style={{ fontSize: '0.78rem', overflowWrap: 'break-word' }}>
                           <span style={{ color: 'var(--gray)' }}>Tier {i + 1} ({t.minQty}–{t.maxQty || '∞'} pcs):</span>{' '}
                           <span style={{ color: 'var(--gold)' }}>₱{min}{min !== max ? `–₱${max}` : ''}</span>
                         </div>
@@ -1100,7 +1412,7 @@ function ProductExpandRow({ product, inv, colSpan }) {
                 {product.priceType === 'fixed' && product.variantPrices && Object.keys(product.variantPrices).length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                     {combinations.slice(0, 6).map(c => (
-                      <div key={c.id} style={{ fontSize: '0.78rem' }}>
+                      <div key={c.id} style={{ fontSize: '0.78rem', overflowWrap: 'break-word' }}>
                         <span style={{ color: 'var(--gray)' }}>{c.label}:</span>{' '}
                         <span style={{ color: 'var(--gold)' }}>₱{parseFloat(product.variantPrices[c.id] || 0).toFixed(2)}</span>
                       </div>
@@ -1119,7 +1431,7 @@ function ProductExpandRow({ product, inv, colSpan }) {
           </div>
 
           {/* Inventory */}
-          <div>
+          <div style={{ flex: '1 1 150px', minWidth: 0 }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Inventory</div>
             {inv ? (
               <div style={{ fontSize: '0.82rem', color: 'var(--white)', opacity: 0.85 }}>
@@ -1133,19 +1445,19 @@ function ProductExpandRow({ product, inv, colSpan }) {
             )}
           </div>
 
-          {/* Images */}
-          <div>
+          {/* Gallery */}
+          <div style={{ flex: '1 1 180px', minWidth: 0 }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>
               Gallery {product.images?.length > 0 ? `(${product.images.length})` : ''}
             </div>
             {product.images?.length > 0 ? (
-              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                {product.images.slice(0, 4).map((img, i) => (
-                  <img key={i} src={img} alt="" style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border)' }} />
+              <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                {product.images.slice(0, 5).map((img, i) => (
+                  <img key={i} src={img} alt="" style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border)', flexShrink: 0 }} />
                 ))}
-                {product.images.length > 4 && (
-                  <div style={{ width: '40px', height: '40px', borderRadius: '6px', background: 'var(--dark2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', color: 'var(--gray)' }}>
-                    +{product.images.length - 4}
+                {product.images.length > 5 && (
+                  <div style={{ width: '40px', height: '40px', borderRadius: '6px', background: 'var(--dark2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', color: 'var(--gray)', flexShrink: 0 }}>
+                    +{product.images.length - 5}
                   </div>
                 )}
               </div>
@@ -1173,15 +1485,38 @@ export default function ProductListPage() {
   const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
   const [pendingEditData, setPendingEditData] = useState(null);
   const [expandedRows, setExpandedRows] = useState(new Set());
+  const [showPriceErrorModal, setShowPriceErrorModal] = useState(false);
+  const [priceErrorMessage, setPriceErrorMessage] = useState('');
 
   // ── Bulk select state ──
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showBulkBar, setShowBulkBar] = useState(false);
+  const [showBulkSelectDropdown, setShowBulkSelectDropdown] = useState(false);
+  const bulkSelectRef = useRef(null);
+
+  // Reset bulk select when status filter changes
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setShowBulkBar(false);
+    setShowBulkSelectDropdown(false);
+  }, [statusFilter]);
+
+  // Close bulk select dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (bulkSelectRef.current && !bulkSelectRef.current.contains(e.target)) {
+        setShowBulkSelectDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // ── Modal states ──
   const [deleteModal, setDeleteModal] = useState(null);   // product to delete
   const [archiveModal, setArchiveModal] = useState(null); // product to archive
   const [bulkModal, setBulkModal] = useState(null);       // { action: 'publish'|'unpublish'|'delete' }
+  const [restoreModal, setRestoreModal] = useState(null); // product to restore
 
   // TODO: Replace localStorage with MongoDB API calls
   useEffect(() => {
@@ -1210,7 +1545,8 @@ export default function ProductListPage() {
     }
 
     let matchesStatus = true;
-    if (statusFilter === 'published') matchesStatus = product.isPublished === true && !product.isArchived;
+    if (statusFilter === '') matchesStatus = !product.isArchived; // Total Products - exclude archived
+    else if (statusFilter === 'published') matchesStatus = product.isPublished === true && !product.isArchived;
     else if (statusFilter === 'unpublished') matchesStatus = product.isPublished !== true && !product.isArchived;
     else if (statusFilter === 'archived') matchesStatus = product.isArchived === true;
     return matchesSearch && matchesStatus;
@@ -1246,15 +1582,13 @@ export default function ProductListPage() {
     if (!inv) return { text: 'No Link', class: 'stock-no-link' };
     if (inv.isOnDemand) return { text: 'Upon Order', class: 'stock-upon-order' };
 
-    // ⭐ Product stock CANNOT exceed inventory stock
-    // Auto-cap product stock to inventory stock level
     const available = parseInt(product.stock) || 0;
     const total = inv.stockQty || 0;
-    const cappedStock = Math.min(available, total); // Cap to inventory
 
-    if (cappedStock === 0) return { text: `0 / ${total}`, class: 'stock-out' };
-    if (cappedStock <= 10) return { text: `${cappedStock} / ${total}`, class: 'stock-low' };
-    return { text: `${cappedStock} / ${total}`, class: 'stock-ok' };
+    // Availability is capped to inventory
+    if (available === 0) return { text: `0 / ${total}`, class: 'stock-out' };
+    if (available <= 10) return { text: `${available} / ${total}`, class: 'stock-low' };
+    return { text: `${available} / ${total}`, class: 'stock-ok' };
   };
 
   const getVariantSummary = (product) => {
@@ -1295,17 +1629,43 @@ export default function ProductListPage() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredProducts.length) {
-      setSelectedIds(new Set());
-      setShowBulkBar(false);
+    if (statusFilter === '') {
+      // Only show dropdown in Total Products filter
+      setShowBulkSelectDropdown(!showBulkSelectDropdown);
     } else {
-      const all = new Set(filteredProducts.map(p => p.id));
-      setSelectedIds(all);
-      setShowBulkBar(all.size > 0);
+      // In Published/Unpublished/Archived, just select all visible
+      if (selectedIds.size === filteredProducts.length) {
+        setSelectedIds(new Set());
+        setShowBulkBar(false);
+      } else {
+        const all = new Set(filteredProducts.map(p => p.id));
+        setSelectedIds(all);
+        setShowBulkBar(all.size > 0);
+      }
     }
   };
 
-  const clearSelection = () => { setSelectedIds(new Set()); setShowBulkBar(false); };
+  const selectAllPublished = () => {
+    const publishedIds = new Set(filteredProducts.filter(p => p.isPublished === true).map(p => p.id));
+    setSelectedIds(publishedIds);
+    setShowBulkBar(publishedIds.size > 0);
+    setShowBulkSelectDropdown(false);
+  };
+
+  const selectAllUnpublished = () => {
+    const unpublishedIds = new Set(filteredProducts.filter(p => p.isPublished !== true && !p.isArchived).map(p => p.id));
+    setSelectedIds(unpublishedIds);
+    setShowBulkBar(unpublishedIds.size > 0);
+    setShowBulkSelectDropdown(false);
+  };
+
+  const unselectAll = () => {
+    setSelectedIds(new Set());
+    setShowBulkBar(false);
+    setShowBulkSelectDropdown(false);
+  };
+
+  const clearSelection = () => { setSelectedIds(new Set()); setShowBulkBar(false); setShowBulkSelectDropdown(false); };
 
   const handleEdit = (product) => { setEditingProduct(product); setShowEditModal(true); };
 
@@ -1317,6 +1677,18 @@ export default function ProductListPage() {
 
   const handleConfirmEditSave = () => {
     if (pendingEditData) {
+      // ──────────────────────────────────────────────────────────────
+      // ⚠️ TODO: MongoDB - Wrap in Transaction
+      // This operation should be atomic:
+      // 1. Update product document
+      // 2. Update updatedAt timestamp
+      //
+      // Example MongoDB Transaction:
+      // const session = client.startSession();
+      // await session.withTransaction(async () => {
+      //   await Product.findByIdAndUpdate(pendingEditData.id, pendingEditData, { session });
+      // });
+      // ──────────────────────────────────────────────────────────────
       saveProducts(products.map(p => p.id === pendingEditData.id ? pendingEditData : p));
       setShowEditModal(false);
       setEditingProduct(null);
@@ -1337,29 +1709,111 @@ export default function ProductListPage() {
   };
 
   const executeDelete = () => {
-    saveProducts(products.filter(p => p.id !== deleteModal.id));
+    // ──────────────────────────────────────────────────────────────
+    // ⚠️ TODO: MongoDB - Wrap in Transaction
+    // This operation should be atomic:
+    // 1. Archive product (set isArchived: true, isPublished: false)
+    // 2. Update updatedAt timestamp
+    //
+    // Example MongoDB Transaction:
+    // const session = client.startSession();
+    // await session.withTransaction(async () => {
+    //   await Product.findByIdAndUpdate(deleteModal.id, { 
+    //     isArchived: true, 
+    //     isPublished: false,
+    //     updatedAt: new Date()
+    //   }, { session });
+    // });
+    // ──────────────────────────────────────────────────────────────
+    saveProducts(products.map(p => p.id === deleteModal.id ? { ...p, isArchived: true, isPublished: false, updatedAt: new Date().toISOString() } : p));
     setDeleteModal(null);
-    clearSelection();
   };
 
   // ── Archive ──
   const executeArchive = (product) => {
+    // ──────────────────────────────────────────────────────────────
+    // ⚠️ TODO: MongoDB - Wrap in Transaction
+    // This operation should be atomic:
+    // 1. Archive product (set isArchived: true, isPublished: false)
+    //
+    // Example MongoDB Transaction:
+    // const session = client.startSession();
+    // await session.withTransaction(async () => {
+    //   await Product.findByIdAndUpdate(product.id, { 
+    //     isArchived: true, 
+    //     isPublished: false 
+    //   }, { session });
+    // });
+    // ──────────────────────────────────────────────────────────────
     saveProducts(products.map(p => p.id === (product || archiveModal).id ? { ...p, isArchived: true, isPublished: false } : p));
     setArchiveModal(null);
     clearSelection();
+  };
+
+  // ── Restore ──
+  const handleRestore = (product) => {
+    // ──────────────────────────────────────────────────────────────
+    // ⚠️ TODO: MongoDB - Wrap in Transaction
+    // This operation should be atomic:
+    // 1. Restore product (set isArchived: false, isPublished: false)
+    // 2. Update updatedAt timestamp
+    //
+    // Example MongoDB Transaction:
+    // const session = client.startSession();
+    // await session.withTransaction(async () => {
+    //   await Product.findByIdAndUpdate(product.id, { 
+    //     isArchived: false,
+    //     isPublished: false,
+    //     updatedAt: new Date()
+    //   }, { session });
+    // });
+    // ──────────────────────────────────────────────────────────────
+    saveProducts(products.map(p => p.id === product.id ? { ...p, isArchived: false, isPublished: false, updatedAt: new Date().toISOString() } : p));
   };
 
   // ── Bulk actions ──
   const executeBulkAction = () => {
     const action = bulkModal?.action;
     let updated = [...products];
+
+    // ──────────────────────────────────────────────────────────────
+    // ⚠️ TODO: MongoDB - Wrap in Transaction
+    // These operations should be atomic (bulk updates):
+    // 1. Update multiple product documents
+    // 2. Update updatedAt timestamps
+    //
+    // Example MongoDB Transaction:
+    // const session = client.startSession();
+    // await session.withTransaction(async () => {
+    //   await Product.updateMany(
+    //     { _id: { $in: selectedIds } },
+    //     { $set: { isPublished: true/false, isArchived: false, updatedAt: new Date() } },
+    //     { session }
+    //   );
+    // });
+    // ──────────────────────────────────────────────────────────────
+
     if (action === 'publish') updated = updated.map(p => selectedIds.has(p.id) ? { ...p, isPublished: true, updatedAt: new Date().toISOString() } : p);
     else if (action === 'unpublish') updated = updated.map(p => selectedIds.has(p.id) ? { ...p, isPublished: false, updatedAt: new Date().toISOString() } : p);
-    else if (action === 'delete') updated = updated.filter(p => !selectedIds.has(p.id));
-    else if (action === 'archive') updated = updated.map(p => selectedIds.has(p.id) ? { ...p, isArchived: true, isPublished: false } : p);
+    else if (action === 'restore') updated = updated.map(p => selectedIds.has(p.id) ? { ...p, isArchived: false, isPublished: false, updatedAt: new Date().toISOString() } : p);
+    else if (action === 'remove') updated = updated.map(p => selectedIds.has(p.id) ? { ...p, isArchived: true, isPublished: false, updatedAt: new Date().toISOString() } : p);
     saveProducts(updated);
     setBulkModal(null);
     clearSelection();
+  };
+
+  // Check selected items status for bulk action buttons
+  const getSelectedItemsStatus = () => {
+    const selectedProducts = products.filter(p => selectedIds.has(p.id));
+    const hasPublished = selectedProducts.some(p => p.isPublished === true && !p.isArchived);
+    const hasUnpublished = selectedProducts.some(p => p.isPublished !== true && !p.isArchived);
+    const hasArchived = selectedProducts.some(p => p.isArchived === true);
+    // Check if any selected product has archived inventory
+    const hasArchivedInventory = selectedProducts.some(p => {
+      const inv = getInventoryItem(p.inventoryId);
+      return inv && inv.isActive === false;
+    });
+    return { hasPublished, hasUnpublished, hasArchived, hasArchivedInventory };
   };
 
   if (!isLoaded) {
@@ -1474,7 +1928,7 @@ export default function ProductListPage() {
         color: 'var(--gray)'
       }}>
         <span style={{ marginRight: '0.5rem', fontWeight: 'bold', color: 'var(--primary)' }}>ℹ</span>
-        <strong>Quick Guide:</strong> Click row to select - Use Publish/Unpublish buttons to toggle visibility - Products start as Hidden - Edit to modify details
+        <strong>Quick Guide:</strong> Click row to select - Use Publish / Unpublish buttons to toggle Storefront visibility
       </div>
 
       {/* Bulk Action Bar */}
@@ -1489,12 +1943,53 @@ export default function ProductListPage() {
             {selectedIds.size} selected
           </span>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button className="btn-sm btn-primary" onClick={() => setBulkModal({ action: 'publish' })}>Publish</button>
-            <button className="btn-sm btn-secondary" onClick={() => setBulkModal({ action: 'unpublish' })}
-              style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)' }}>Unpublish</button>
-            <button className="btn-sm btn-secondary" onClick={() => setBulkModal({ action: 'archive' })}
-              style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)' }}>Archive</button>
-            <button className="btn-sm btn-danger" onClick={() => setBulkModal({ action: 'delete' })}>Delete</button>
+            {(() => {
+              const { hasPublished, hasUnpublished, hasArchived, hasArchivedInventory } = getSelectedItemsStatus();
+              const showPublish = hasUnpublished && statusFilter !== 'published' && statusFilter !== 'archived' && !hasArchivedInventory;
+              const showUnpublish = hasPublished && statusFilter !== 'unpublished' && statusFilter !== 'archived' && !hasArchivedInventory;
+              const showRestore = hasArchived && !hasArchivedInventory;
+              return (
+                <>
+                  {showPublish && (
+                    <button className="btn-sm btn-primary" onClick={() => setBulkModal({ action: 'publish' })}>Publish</button>
+                  )}
+                  {showUnpublish && (
+                    <button className="btn-sm btn-secondary" onClick={() => setBulkModal({ action: 'unpublish' })}
+                      style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)' }}>Unpublish</button>
+                  )}
+                  {hasArchivedInventory ? (
+                    <button
+                      className="btn-sm btn-secondary"
+                      onClick={() => {
+                        // Redirect to Inventory page to restore inventory first
+                        router.push('/dashboard/business/inventory');
+                      }}
+                      style={{
+                        background: 'var(--dark2)',
+                        borderColor: 'var(--border)',
+                        color: 'var(--white)',
+                        cursor: 'pointer'
+                      }}>
+                      Restore Inventory First
+                    </button>
+                  ) : showRestore ? (
+                    <button
+                      className="btn-sm btn-primary"
+                      onClick={() => setBulkModal({ action: 'restore' })}
+                      style={{
+                        background: 'var(--dark2)',
+                        borderColor: 'var(--border)',
+                        color: 'var(--white)',
+                        cursor: 'pointer'
+                      }}>
+                      Restore
+                    </button>
+                  ) : (
+                    <button className="btn-sm btn-danger" onClick={() => setBulkModal({ action: 'remove' })}>Remove</button>
+                  )}
+                </>
+              );
+            })()}
           </div>
           <button onClick={clearSelection} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>×</button>
         </div>
@@ -1534,17 +2029,96 @@ export default function ProductListPage() {
           }}>
             <thead>
               <tr>
-                <th style={{ width: '36px', paddingLeft: '1rem' }}>
-                  <input type="checkbox" checked={allSelected}
-                    ref={el => { if (el) el.indeterminate = someSelected; }}
-                    onChange={toggleSelectAll}
-                    style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
+                <th style={{ width: '36px', paddingLeft: '1rem', position: 'relative' }}>
+                  <div style={{ position: 'relative' }} ref={bulkSelectRef}>
+                    <input type="checkbox" checked={allSelected}
+                      ref={el => { if (el) el.indeterminate = someSelected; }}
+                      onChange={toggleSelectAll}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--gold)' }}
+                      title={statusFilter === '' ? 'Select all (shows options)' : `Select all ${statusFilter}`} />
+                    {showBulkSelectDropdown && statusFilter === '' && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: '0',
+                        marginTop: '0.5rem',
+                        background: 'var(--dark2)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                        zIndex: 100,
+                        minWidth: '160px',
+                        overflow: 'hidden',
+                      }}>
+                        <button
+                          type="button"
+                          onClick={selectAllPublished}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem 0.75rem',
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--white)',
+                            fontSize: '0.85rem',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                          }}>
+                          Select Published
+                        </button>
+                        <button
+                          type="button"
+                          onClick={selectAllUnpublished}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem 0.75rem',
+                            background: 'transparent',
+                            border: 'none',
+                            borderTop: '1px solid var(--border)',
+                            color: 'var(--white)',
+                            fontSize: '0.85rem',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                          }}>
+                          Select Unpublished
+                        </button>
+                        {selectedIds.size > 0 && (
+                          <button
+                            type="button"
+                            onClick={unselectAll}
+                            style={{
+                              width: '100%',
+                              padding: '0.5rem 0.75rem',
+                              background: 'transparent',
+                              border: 'none',
+                              borderTop: '1px solid var(--border)',
+                              color: '#ef4444',
+                              fontSize: '0.85rem',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.5rem',
+                            }}>
+                            <span style={{ color: '#ef4444', fontSize: '1rem', fontWeight: 'bold' }}>-</span>
+                            Unselect All ({selectedIds.size})
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </th>
                 <th style={{ width: '28px' }}></th>
                 <th className="table-col-name">Product</th>
                 <th className="table-col-category">Category</th>
                 <th className="table-col-stock">Price Range</th>
-                <th className="table-col-min">Availability and Stock</th>
+                <th className="table-col-min">Availability</th>
+                <th className="table-col-min">Inventory Stock</th>
                 <th style={{ minWidth: '80px' }}>Variants</th>
                 <th className="table-col-actions">Actions</th>
               </tr>
@@ -1571,7 +2145,7 @@ export default function ProductListPage() {
                       {/* Checkbox */}
                       <td style={{ paddingLeft: '1rem', width: '36px' }}>
                         <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(product.id)}
-                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--primary)' }} />
+                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--gold)' }} />
                       </td>
 
                       {/* Expand chevron */}
@@ -1598,10 +2172,24 @@ export default function ProductListPage() {
                           <div>
                             <div style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.9rem' }}>
                               {product.productName || product.subCategoryName || 'Unnamed Product'}
-                              {product.isArchived && (
-                                <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', background: 'rgba(100,100,100,0.2)', border: '1px solid var(--border)', borderRadius: '4px', padding: '0.1rem 0.4rem', color: 'var(--gray)' }}>Archived</span>
-                              )}
                             </div>
+                            {!product.isArchived && (
+                              <div style={{ marginTop: '0.25rem' }}>
+                                <span style={{
+                                  fontSize: '0.65rem',
+                                  fontWeight: 700,
+                                  background: product.isPublished === true ? 'rgba(34, 197, 94, 0.15)' : 'rgba(212, 168, 67, 0.15)',
+                                  border: `1px solid ${product.isPublished === true ? 'rgba(34, 197, 94, 0.4)' : 'rgba(212, 168, 67, 0.4)'}`,
+                                  borderRadius: '4px',
+                                  padding: '0.1rem 0.4rem',
+                                  color: product.isPublished === true ? '#22c55e' : '#facc15',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.03em',
+                                }}>
+                                  {product.isPublished === true ? 'Published' : 'Unpublished'}
+                                </span>
+                              </div>
+                            )}
                             {inv && (
                               <div style={{ fontSize: '0.73rem', color: 'var(--gray)', marginTop: '0.15rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                                 {product.productName && product.productName !== inv.name && (
@@ -1631,9 +2219,26 @@ export default function ProductListPage() {
                         )}
                       </td>
 
-                      {/* Stock */}
+                      {/* Availability (Storefront) */}
                       <td className="table-cell">
-                        <span className={`stock-status-badge ${stockStatus.class}`}>{stockStatus.text}</span>
+                        {inv?.isOnDemand ? (
+                          <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Upon Order</span>
+                        ) : (
+                          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--gold)' }}>
+                            {product.stock != null && product.stock !== '' ? product.stock : 0} pcs
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Inventory Stock */}
+                      <td className="table-cell">
+                        {inv?.isOnDemand ? (
+                          <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Upon Order</span>
+                        ) : (
+                          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--white)' }}>
+                            {inv?.stockQty || 0} pcs
+                          </span>
+                        )}
                       </td>
 
                       {/* Variants */}
@@ -1649,25 +2254,51 @@ export default function ProductListPage() {
 
                       {/* Actions */}
                       <td className="table-cell-actions">
-                        {!product.isArchived && (
+                        {product.isArchived && !isInventoryArchived ? (
                           <button
-                            className="btn-sm btn-primary"
-                            onClick={() => handleEdit(product)}
-                            disabled={isInventoryArchived}
+                            className="btn-sm btn-secondary"
+                            onClick={() => setRestoreModal(product)}
                             style={{
-                              background: isInventoryArchived ? 'var(--gray)' : 'var(--gold)',
-                              borderColor: isInventoryArchived ? 'var(--border)' : 'var(--gold)',
-                              color: '#000',
-                              opacity: isInventoryArchived ? 0.5 : 1,
-                              cursor: isInventoryArchived ? 'not-allowed' : 'pointer'
+                              background: 'var(--dark2)',
+                              borderColor: 'var(--border)',
+                              color: 'var(--white)',
+                              cursor: 'pointer'
                             }}
-                            title={isInventoryArchived ? 'Cannot edit - Inventory is archived.' : 'Edit product'}>
-                            Edit
+                            title="Restore product">
+                            Restore
                           </button>
+                        ) : product.isArchived && isInventoryArchived ? (
+                          <span style={{
+                            fontSize: '0.75rem',
+                            color: 'var(--gray)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem'
+                          }}
+                          title="Restore inventory first to enable product actions">
+                            Restore inventory first
+                          </span>
+                        ) : (
+                          <>
+                            <button
+                              className="btn-sm btn-primary"
+                              onClick={() => handleEdit(product)}
+                              disabled={isInventoryArchived}
+                              style={{
+                                background: isInventoryArchived ? 'var(--gray)' : 'var(--gold)',
+                                borderColor: isInventoryArchived ? 'var(--border)' : 'var(--gold)',
+                                color: '#000',
+                                opacity: isInventoryArchived ? 0.5 : 1,
+                                cursor: isInventoryArchived ? 'not-allowed' : 'pointer'
+                              }}
+                              title={isInventoryArchived ? 'Cannot edit - Inventory is archived.' : 'Edit product'}>
+                              Edit
+                            </button>
+                            <button className="btn-sm btn-danger" onClick={() => confirmDelete(product)}>
+                              Remove
+                            </button>
+                          </>
                         )}
-                        <button className="btn-sm btn-danger" onClick={() => confirmDelete(product)}>
-                          Remove
-                        </button>
                       </td>
                     </tr>
 
@@ -1684,9 +2315,9 @@ export default function ProductListPage() {
       </div>
       {deleteModal && (
         <ConfirmModal
-          title="Delete Product"
-          message={`Permanently delete "${deleteModal.productName || deleteModal.subCategoryName}"? This cannot be undone.`}
-          confirmLabel="Delete"
+          title="Remove Product"
+          message={`Remove "${deleteModal.productName || deleteModal.subCategoryName}"? This will move the product to archived.`}
+          confirmLabel="Remove"
           confirmClass="btn-danger"
           onConfirm={executeDelete}
           onCancel={() => setDeleteModal(null)}
@@ -1695,26 +2326,35 @@ export default function ProductListPage() {
 
       {/* Edit Confirmation Modal */}
       {showEditConfirmModal && pendingEditData && (
-        <ConfirmModal
-          title="Save Changes"
-          message={`Save changes to "${pendingEditData.productName || pendingEditData.subCategoryName}"?`}
-          confirmLabel="Save Changes"
-          confirmClass="btn-primary"
-          onConfirm={handleConfirmEditSave}
-          onCancel={() => {
+        <ConfirmEditModal
+          isOpen={showEditConfirmModal}
+          onClose={() => {
             setShowEditConfirmModal(false);
             setPendingEditData(null);
             setShowEditModal(false);
             setEditingProduct(null);
           }}
+          originalProduct={editingProduct}
+          updatedProduct={pendingEditData}
+          inventoryList={inventoryList}
+          onConfirm={handleConfirmEditSave}
+        />
+      )}
+
+      {/* Price Error Modal */}
+      {showPriceErrorModal && (
+        <PriceErrorModal
+          isOpen={showPriceErrorModal}
+          onClose={() => setShowPriceErrorModal(false)}
+          message={priceErrorMessage}
         />
       )}
 
       {/* Archive Suggestion Modal (product has sales) */}
       {archiveModal && (
         <ConfirmModal
-          title="Cannot Delete"
-          message={`"${archiveModal.productName || archiveModal.subCategoryName}" has existing sales history and cannot be deleted. Archive it instead?`}
+          title="Cannot Remove"
+          message={`"${archiveModal.productName || archiveModal.subCategoryName}" has existing sales history and cannot be removed. Archive it instead?`}
           confirmLabel="Archive"
           confirmClass="btn-primary"
           onConfirm={() => executeArchive(archiveModal)}
@@ -1728,21 +2368,39 @@ export default function ProductListPage() {
           title={
             bulkModal.action === 'publish' ? 'Publish Products' :
             bulkModal.action === 'unpublish' ? 'Unpublish Products' :
-            bulkModal.action === 'archive' ? 'Archive Products' : 'Delete Products'
+            bulkModal.action === 'restore' ? 'Restore Products' :
+            'Remove Products'
           }
           message={`${
             bulkModal.action === 'publish' ? 'Publish' :
             bulkModal.action === 'unpublish' ? 'Unpublish' :
-            bulkModal.action === 'archive' ? 'Archive' : 'Delete'
-          } ${selectedIds.size} selected product${selectedIds.size !== 1 ? 's' : ''}?${bulkModal.action === 'delete' ? ' This cannot be undone.' : ''}`}
+            bulkModal.action === 'restore' ? 'Restore' :
+            'Remove'
+          } ${selectedIds.size} selected product${selectedIds.size !== 1 ? 's' : ''}?`}
           confirmLabel={
-            bulkModal.action === 'publish' ? 'Publish All' :
-            bulkModal.action === 'unpublish' ? 'Unpublish All' :
-            bulkModal.action === 'archive' ? 'Archive All' : 'Delete All'
+            bulkModal.action === 'publish' ? 'Publish' :
+            bulkModal.action === 'unpublish' ? 'Unpublish' :
+            bulkModal.action === 'restore' ? 'Restore' :
+            'Remove'
           }
-          confirmClass={bulkModal.action === 'delete' ? 'btn-danger' : 'btn-primary'}
+          confirmClass="btn-danger"
           onConfirm={executeBulkAction}
           onCancel={() => setBulkModal(null)}
+        />
+      )}
+
+      {/* Restore Confirmation Modal */}
+      {restoreModal && (
+        <ConfirmModal
+          title="Restore Product"
+          message={`Restore "${restoreModal.productName || restoreModal.subCategoryName}" from archived? This will make the product visible in the Total Products list (unpublished).`}
+          confirmLabel="Restore"
+          confirmClass="btn-primary"
+          onConfirm={() => {
+            handleRestore(restoreModal);
+            setRestoreModal(null);
+          }}
+          onCancel={() => setRestoreModal(null)}
         />
       )}
 
@@ -1753,6 +2411,7 @@ export default function ProductListPage() {
           inventoryList={inventoryList}
           onClose={() => { setShowEditModal(false); setEditingProduct(null); }}
           onSave={handleSaveEdit}
+          onPriceError={(msg) => { setPriceErrorMessage(msg); setShowPriceErrorModal(true); }}
         />
       )}
     </div>
