@@ -88,6 +88,7 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label,
     return new Set(allProducts.filter(p => p.id !== currentProductId).map(p => p.inventoryId).filter(id => id));
   }, [currentProductId]);
 
+  // Only show active inventory items (exclude archived)
   const availableInventoryList = inventoryList.filter(item =>
     item.isActive !== false && !linkedProductIds.has(item.id)
   );
@@ -1374,10 +1375,10 @@ function ProductExpandRow({ product, inv, colSpan }) {
   return (
     <tr>
       <td colSpan={9} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ padding: '1rem 1.25rem 1.25rem', display: 'flex', gap: '1rem', width: '100%' }}>
+        <div style={{ padding: '1rem 1.25rem 1.25rem', display: 'flex', gap: '1rem', width: '100%', justifyContent: 'space-between' }}>
 
           {/* Description */}
-          <div style={{ flex: '1 230px', minWidth: 0 }}>
+          <div style={{ flex: '1 200px', minWidth: 0 }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Description</div>
             {product.description ? (
               <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5, opacity: 0.85, overflowWrap: 'break-word' }}>{product.description}</div>
@@ -1879,9 +1880,14 @@ export default function ProductListPage() {
             <h1 className="page-title">Product List</h1>
             <p className="page-subtitle">Manage your products and control what appears in your storefront.</p>
           </div>
-          <button className="btn-primary" onClick={() => router.push('/dashboard/business')}>
-            <span className="btn-icon">+</span> Add New Product
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className="btn-primary" onClick={() => {}} disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+              <span className="btn-icon">+</span> Add Promotions
+            </button>
+            <button className="btn-primary" onClick={() => router.push('/dashboard/business')}>
+              <span className="btn-icon">+</span> Add New Product
+            </button>
+          </div>
         </div>
 
         <div className="inventory-summary">

@@ -23,7 +23,7 @@
  * 6. Remove LocalStorage references
  */
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // ── Reusable Number Input Component ───────────────────────────────────────────
 // Prevents negative values, e, E, -, +, and disables scroll wheel
@@ -172,6 +172,146 @@ export function saveCategories(categories) {
   }
 }
 
+// ── Suppliers Management ───────────────────────────────────────────────────────
+// NEW: Supplier tracking for cost and source tracking
+const SUPPLIERS_STORAGE_KEY = 'pmp_suppliers';
+
+// Default supplier option (like "Walk-in / Unspecified")
+export const WALK_IN_SUPPLIER = {
+  id: 'walk-in',
+  name: '— Walk-in / Unspecified',
+  contact: '',
+  address: '',
+  isSystem: true
+};
+
+export function getSuppliers() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const stored = localStorage.getItem(SUPPLIERS_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch (error) {
+    console.error('Error reading suppliers from LocalStorage:', error);
+    return [];
+  }
+}
+
+export function saveSuppliers(suppliers) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(SUPPLIERS_STORAGE_KEY, JSON.stringify(suppliers));
+  } catch (error) {
+    console.error('Error saving suppliers to LocalStorage:', error);
+  }
+}
+
+export function addSupplier(supplier) {
+  const suppliers = getSuppliers();
+  const newSupplier = {
+    ...supplier,
+    id: supplier.id || `supplier-${Date.now()}`,
+    phone: supplier.phone || '',
+    createdAt: new Date().toISOString()
+  };
+  suppliers.push(newSupplier);
+  saveSuppliers(suppliers);
+  return newSupplier;
+}
+
+export function getSupplierById(id) {
+  const suppliers = getSuppliers();
+  return suppliers.find(s => s.id === id) || null;
+}
+
+// ── Stock History Management ──────────────────────────────────────────────────
+// NEW: Track each stock addition with supplier and cost for audit trail
+// FIFO: Track remaining quantity per batch
+const STOCK_HISTORY_STORAGE_KEY = 'pmp_stock_history';
+
+export function getStockHistory(inventoryId = null) {
+  if (typeof window === 'undefined') return [];
+  try {
+    const stored = localStorage.getItem(STOCK_HISTORY_STORAGE_KEY);
+    const history = stored ? JSON.parse(stored) : [];
+    if (inventoryId) {
+      return history.filter(h => h.inventoryId === inventoryId);
+    }
+    return history;
+  } catch (error) {
+    console.error('Error reading stock history from LocalStorage:', error);
+    return [];
+  }
+}
+
+export function addStockHistory(entry) {
+  const history = getStockHistory();
+  const newEntry = {
+    ...entry,
+    id: `history-${Date.now()}`,
+    remainingQty: entry.quantity, // FIFO: Track remaining quantity
+    createdAt: new Date().toISOString()
+  };
+  history.push(newEntry);
+  saveStockHistory(history);
+  return newEntry;
+}
+
+export function saveStockHistory(history) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STOCK_HISTORY_STORAGE_KEY, JSON.stringify(history));
+  } catch (error) {
+    console.error('Error saving stock history to LocalStorage:', error);
+  }
+}
+
+// FIFO: Deduct from oldest batch first
+export function deductStockFIFO(inventoryId, quantityToDeduct) {
+  const history = getStockHistory(inventoryId);
+  
+  // Sort by date (oldest first) - FIFO
+  const sortedHistory = history.sort((a, b) => 
+    new Date(a.createdAt) - new Date(b.createdAt)
+  );
+  
+  let remaining = quantityToDeduct;
+  const updatedHistory = sortedHistory.map(batch => {
+    if (remaining <= 0) return batch;
+    
+    const canDeduct = Math.min(batch.remainingQty || batch.quantity, remaining);
+    const newRemaining = (batch.remainingQty || batch.quantity) - canDeduct;
+    remaining -= canDeduct;
+    
+    return { ...batch, remainingQty: newRemaining };
+  });
+  
+  saveStockHistory(updatedHistory);
+  
+  return {
+    success: remaining === 0,
+    deducted: quantityToDeduct - remaining,
+    remaining: remaining
+  };
+}
+
+// Get current stock from FIFO batches
+export function getCurrentStockFromFIFO(inventoryId) {
+  const history = getStockHistory(inventoryId);
+  return history.reduce((sum, h) => sum + (h.remainingQty || h.quantity), 0);
+}
+
+// Compute average cost for an inventory item
+export function computeAverageCost(inventoryId) {
+  const history = getStockHistory(inventoryId);
+  if (history.length === 0) return 0;
+  
+  const totalCost = history.reduce((sum, h) => sum + ((h.totalCost || 0) * ((h.remainingQty || h.quantity) / h.quantity)), 0);
+  const totalQty = history.reduce((sum, h) => sum + (h.remainingQty || h.quantity), 0);
+  
+  if (totalQty === 0) return 0;
+  return totalCost / totalQty;
+}
+
 // ── Initial Sample Data ────────────────────────────────────────────────────────
 // TODO: MongoDB - Remove this initial data when connecting to database
 // This is only for testing purposes. In production, data will come from MongoDB.
@@ -190,15 +330,152 @@ const initialInventory = [];
 //   updatedAt: Date             // Last update timestamp
 // }
 
+// ── Inventory Expand Row Component ────────────────────────────────────────────
+// Shows supplier and cost history when row is expanded
+// FIFO: Shows remaining quantity per batch
+function InventoryExpandRow({ item, colSpan }) {
+  const history = getStockHistory(item.id);
+  const scrollRef = useRef(null);
+
+  // Sort by date (oldest first) - FIFO order
+  const sortedHistory = [...history].sort((a, b) =>
+    new Date(a.createdAt) - new Date(b.createdAt)
+  );
+
+  // Auto-scroll to bottom to show summary when expanded
+  useEffect(() => {
+    if (scrollRef.current && sortedHistory.length > 0) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [sortedHistory.length]);
+
+  return (
+    <tr>
+      <td colSpan={colSpan} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ padding: '1rem 1.25rem 1.25rem', display: 'block', width: '100%' }}>
+          {/* History Table */}
+          {sortedHistory.length > 0 ? (
+            <div 
+              ref={scrollRef}
+              style={{
+                maxHeight: sortedHistory.length <= 2 ? 'none' : '140px',  // Scrollable only if more than 2 rows
+                overflowY: sortedHistory.length <= 2 ? 'visible' : 'auto',
+                border: '1px solid var(--border)',
+                borderRadius: '6px'
+              }}
+            >
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Date</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Supplier</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Original Qty</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Remaining</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Unit Cost</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Total Cost</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedHistory.map((entry, idx) => {
+                    const remainingQty = entry.remainingQty !== undefined ? entry.remainingQty : entry.quantity;
+                    const isDepleted = remainingQty === 0;
+                    
+                    return (
+                      <tr key={idx} style={{ 
+                        borderBottom: '1px solid rgba(255,255,255,0.05)',
+                        opacity: isDepleted ? 0.5 : 1,
+                        background: isDepleted ? 'rgba(0,0,0,0.1)' : 'transparent'
+                      }}>
+                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                          {new Date(entry.createdAt).toLocaleDateString()}
+                        </td>
+                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--white)', fontSize: '0.8rem' }}>
+                          {entry.supplierName || '— Walk-in / Unspecified'}
+                        </td>
+                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--white)', fontSize: '0.8rem' }}>
+                          {entry.quantity} pcs
+                        </td>
+                        <td style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.8rem', fontWeight: '600' }}>
+                          <span style={{ color: '#facc15' }}>
+                            {remainingQty} pcs
+                          </span>
+                          {remainingQty === 0 && (
+                            <div style={{ fontSize: '0.65rem', color: '#f87171', marginTop: '0.1rem' }}>Depleted</div>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gold)', fontSize: '0.8rem' }}>
+                          ₱{(entry.unitCost || 0).toFixed(2)}
+                        </td>
+                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gold)', fontSize: '0.8rem' }}>
+                          ₱{(entry.totalCost || 0).toFixed(2)}
+                        </td>
+                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                          {entry.reason === 'restock' ? 'Restock' : 
+                           entry.reason === 'initial' ? 'Initial Stock' : 
+                           entry.reason === 'correction-add' ? 'Correction' : entry.reason}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {/* Summary */}
+              <div style={{
+                marginTop: '1rem',
+                padding: '0.75rem',
+                background: 'rgba(212, 168, 67, 0.1)',
+                border: '1px solid rgba(212, 168, 67, 0.3)',
+                borderRadius: '6px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '0.5rem'
+              }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
+                  <span style={{ color: 'var(--gray)' }}>Total Stock:</span> <strong>{item.stockQty} pcs</strong>
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
+                  <span style={{ color: 'var(--gray)' }}>Average Cost:</span> <strong style={{ color: '#d4a843' }}>₱{(item.averageCost || 0).toFixed(2)}</strong>
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
+                  <span style={{ color: 'var(--gray)' }}>Overall Total Cost:</span> <strong style={{ color: '#d4a843' }}>₱{(item.stockQty * (item.averageCost || 0)).toFixed(2)}</strong>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              padding: '2rem',
+              textAlign: 'center',
+              color: 'var(--gray)',
+              fontSize: '0.875rem',
+              fontStyle: 'italic'
+            }}>
+              No stock history yet. Add stock to see history.
+            </div>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 // ── Modal Component ────────────────────────────────────────────────────────────
-function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, categories, onAddCategory, inventory, editingItem }) {
+function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, categories, onAddCategory, inventory, editingItem, suppliers, onAddSupplier }) {
   const [formData, setFormData] = useState({
     name: '',
     category: 'Mugs',
     stockQty: 0,
     minStockLevel: 10,
     isOnDemand: false,
-    isActive: true  // NEW: For soft delete - defaults to true for new items
+    isActive: true,  // NEW: For soft delete - defaults to true for new items
+    supplierId: 'unspecified',
+    supplierName: 'Unspecified',
+    unitCost: '',
+    isBulkPurchase: false,
+    totalCost: ''
   });
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -206,7 +483,13 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
   const [archivedItem, setArchivedItem] = useState(null); // For archived item restore modal
   const [isLinked, setIsLinked] = useState(false); // NEW: Track if item is linked to products/sales
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false); // For custom combobox
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false); // For supplier combobox
+  const [showAddSupplierModal, setShowAddSupplierModal] = useState(false); // For adding new supplier
+  const [showManageSuppliersModal, setShowManageSuppliersModal] = useState(false); // For managing suppliers
+  const [showValidationModal, setShowValidationModal] = useState(false); // For validation errors
+  const [validationMessage, setValidationMessage] = useState('');
   const categoryDropdownRef = useRef(null);
+  const supplierDropdownRef = useRef(null);
 
   // Set formData from item when editing
   useEffect(() => {
@@ -217,7 +500,12 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
         stockQty: item.stockQty || 0,
         minStockLevel: item.minStockLevel || 10,
         isOnDemand: item.isOnDemand || false,
-        isActive: item.isActive !== undefined ? item.isActive : true
+        isActive: item.isActive !== undefined ? item.isActive : true,
+        supplierId: item.lastSupplierId || 'unspecified',
+        supplierName: item.lastSupplierName || 'Unspecified',
+        unitCost: item.lastUnitCost ? String(item.lastUnitCost) : '',
+        isBulkPurchase: false,
+        totalCost: ''
       });
     } else {
       setFormData({
@@ -226,7 +514,12 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
         stockQty: 0,
         minStockLevel: 10,
         isOnDemand: false,
-        isActive: true
+        isActive: true,
+        supplierId: 'unspecified',
+        supplierName: 'Unspecified',
+        unitCost: '',
+        isBulkPurchase: false,
+        totalCost: ''
       });
     }
   }, [item]);
@@ -236,6 +529,9 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
     const handleClickOutside = (e) => {
       if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target)) {
         setShowCategoryDropdown(false);
+      }
+      if (supplierDropdownRef.current && !supplierDropdownRef.current.contains(e.target)) {
+        setShowSupplierDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -269,6 +565,109 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
+  };
+
+  // Handle supplier selection
+  const handleSupplierSelect = (supplierId, supplierName) => {
+    if (supplierId === '__new__') {
+      setShowAddSupplierModal(true);
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        supplierId,
+        supplierName
+      }));
+      setShowSupplierDropdown(false);
+    }
+  };
+
+  // Handle adding new supplier from modal
+  const handleAddNewSupplier = (supplierData) => {
+    const newSupplier = onAddSupplier(supplierData);
+    setFormData(prev => ({
+      ...prev,
+      supplierId: newSupplier.id,
+      supplierName: newSupplier.name
+    }));
+    setShowAddSupplierModal(false);
+  };
+
+  // Handle bulk purchase toggle
+  const handleBulkPurchaseToggle = () => {
+    setFormData(prev => ({
+      ...prev,
+      isBulkPurchase: !prev.isBulkPurchase
+    }));
+  };
+
+  // Handle unit cost change
+  const handleUnitCostChange = (value) => {
+    setFormData(prev => {
+      const unitCost = value;
+      let totalCost = prev.totalCost;
+      
+      // Auto-compute total cost if not in bulk mode
+      if (!prev.isBulkPurchase && unitCost !== '' && prev.stockQty !== '') {
+        const qty = parseInt(prev.stockQty) || 0;
+        const cost = parseFloat(unitCost) || 0;
+        totalCost = String(qty * cost);
+      }
+      
+      return {
+        ...prev,
+        unitCost,
+        totalCost
+      };
+    });
+  };
+
+  // Handle total cost change (for bulk purchase mode)
+  const handleTotalCostChange = (value) => {
+    setFormData(prev => {
+      const totalCost = value;
+      let unitCost = prev.unitCost;
+      
+      // Auto-compute unit cost if in bulk mode
+      if (prev.isBulkPurchase && totalCost !== '' && prev.stockQty !== '') {
+        const qty = parseInt(prev.stockQty) || 0;
+        const total = parseFloat(totalCost) || 0;
+        unitCost = qty > 0 ? String(total / qty) : '';
+      }
+      
+      return {
+        ...prev,
+        unitCost,
+        totalCost
+      };
+    });
+  };
+
+  // Handle stock quantity change (for auto-compute)
+  const handleStockQtyChange = (value) => {
+    setFormData(prev => {
+      const stockQty = value;
+      let unitCost = prev.unitCost;
+      let totalCost = prev.totalCost;
+      
+      if (prev.isBulkPurchase && prev.totalCost !== '' && value !== '') {
+        // Recompute unit cost from total
+        const qty = parseInt(value) || 0;
+        const total = parseFloat(prev.totalCost) || 0;
+        unitCost = qty > 0 ? String(total / qty) : '';
+      } else if (!prev.isBulkPurchase && prev.unitCost !== '' && value !== '') {
+        // Recompute total cost from unit
+        const qty = parseInt(value) || 0;
+        const cost = parseFloat(prev.unitCost) || 0;
+        totalCost = String(qty * cost);
+      }
+      
+      return {
+        ...prev,
+        stockQty,
+        unitCost,
+        totalCost
+      };
+    });
   };
 
   const handleCategorySelect = (e) => {
@@ -313,14 +712,25 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    
+    // Validate product name
     if (!formData.name.trim()) {
-      alert('Please enter a product name');
+      setValidationMessage('Please enter a product name');
+      setShowValidationModal(true);
       return;
     }
 
-    // Validate stock quantity for new items
-    if (!item && !formData.isOnDemand && (!formData.stockQty || formData.stockQty < 0)) {
-      alert('Please enter a valid stock quantity');
+    // Validate stock quantity for new items (not Upon Order)
+    if (!item && !formData.isOnDemand && (!formData.stockQty || parseInt(formData.stockQty) < 0)) {
+      setValidationMessage('Please enter a valid stock quantity');
+      setShowValidationModal(true);
+      return;
+    }
+
+    // Validate unit cost (required unless Upon Order)
+    if (!formData.isOnDemand && !formData.unitCost) {
+      setValidationMessage('Please enter the unit cost (original price)');
+      setShowValidationModal(true);
       return;
     }
 
@@ -350,7 +760,7 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
     }
 
     // Save with normalized name
-    // NEW: Include isActive and deletedAt fields
+    // NEW: Include supplier and cost information
     // When editing, preserve original stockQty (stock adjustments done via table +/- buttons)
     onSave({
       ...formData,
@@ -358,7 +768,12 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
       stockQty: item ? item.stockQty : parseInt(formData.stockQty),  // Preserve stock when editing
       minStockLevel: parseInt(formData.minStockLevel),
       isActive: formData.isActive !== undefined ? formData.isActive : true,  // Preserve active status
-      deletedAt: formData.isActive === false ? new Date() : null  // Set deletedAt when archived
+      deletedAt: formData.isActive === false ? new Date() : null,  // Set deletedAt when archived
+      // NEW: Supplier and cost fields
+      lastSupplierId: formData.supplierId === 'walk-in' ? null : formData.supplierId,
+      lastSupplierName: formData.supplierName,
+      lastUnitCost: formData.unitCost ? parseFloat(formData.unitCost) : 0,
+      averageCost: formData.unitCost ? parseFloat(formData.unitCost) : 0  // Initial cost = average cost
     });
   };
 
@@ -366,7 +781,7 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
+      <div className="modal-content modal-content-wide" onClick={e => e.stopPropagation()} style={{ maxWidth: '750px', width: '90%' }}>
         <div className="modal-header">
           <h2 className="modal-title">
             {item ? 'Edit Inventory Item' : 'Add New Inventory Item'}
@@ -379,170 +794,237 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
         </div>
 
         <form onSubmit={handleSubmit} className="modal-form">
-          <div className="form-group">
-            <label className="form-label">
-              Product Name <span className="required">*</span>
-              {isLinked && (
-                <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                  </svg>
-                  Locked (Item is in use)
-                </span>
+          {/* Row 1: Product Name | Category */}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
+            <div className="form-group">
+              <label className="form-label">
+                Product Name <span className="required">*</span>
+                {isLinked && (
+                  <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    Locked (Item is in use)
+                  </span>
+                )}
+              </label>
+              <input
+                type="text"
+                name="name"
+                className="form-input"
+                value={formData.name}
+                onChange={handleInputChange}
+                placeholder="e.g., Ceramic, Magic Mug..."
+                required
+                readOnly={isLinked}
+                autoComplete="off"
+                style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
+              />
+              {isLinked ? (
+                <p className="form-hint" style={{ color: '#f59e0b' }}>
+                  This item is linked to products or sales records. Name cannot be changed to prevent data discrepancies.
+                </p>
+              ) : (
+                <p className="form-hint">
+                  Product name will be auto-formatted (Proper Case). Duplicate names in the same category are not allowed.
+                </p>
               )}
-            </label>
-            <input
-              type="text"
-              name="name"
-              className="form-input"
-              value={formData.name}
-              onChange={handleInputChange}
-              placeholder="e.g., Ceramic, Magic Mug..."
-              required
-              readOnly={isLinked}
-              autoComplete="off"
-              style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
-            />
-            {isLinked ? (
-              <p className="form-hint" style={{ color: '#f59e0b' }}>
-                This item is linked to products or sales records. Name cannot be changed to prevent data discrepancies.
-              </p>
-            ) : (
-              <p className="form-hint">
-                Product name will be auto-formatted (Proper Case). Duplicate names in the same category are not allowed.
-              </p>
-            )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">
+                Category <span className="required">*</span>
+                {isLinked && (
+                  <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    Locked
+                  </span>
+                )}
+              </label>
+              {showNewCategoryInput ? (
+                <div className="new-category-input-wrap">
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={newCategoryName}
+                    onChange={e => setNewCategoryName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddNewCategory();
+                      }
+                      if (e.key === 'Escape') {
+                        setShowNewCategoryInput(false);
+                        setNewCategoryName('');
+                      }
+                    }}
+                    placeholder="Enter new category name..."
+                    autoFocus
+                    readOnly={isLinked}
+                    style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
+                  />
+                  {isLinked && (
+                    <p className="form-hint" style={{ color: '#f59e0b', marginTop: '0.5rem' }}>
+                      This item is linked to products or sales. Category cannot be changed.
+                    </p>
+                  )}
+                  <div className="new-category-actions" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={handleAddNewCategory}
+                      disabled={isLinked}
+                      style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', opacity: isLinked ? 0.5 : 1, cursor: isLinked ? 'not-allowed' : 'pointer' }}
+                    >
+                      Add Category
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => {
+                        setShowNewCategoryInput(false);
+                        setNewCategoryName('');
+                      }}
+                      style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="combobox-root" ref={categoryDropdownRef}>
+                    <div className="combobox-field">
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={formData.category}
+                        readOnly
+                        onClick={() => !isLinked && setShowCategoryDropdown(!showCategoryDropdown)}
+                        style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : { cursor: 'pointer' }}
+                        disabled={isLinked}
+                      />
+                      <button
+                        type="button"
+                        className="combobox-toggle"
+                        onClick={() => !isLinked && setShowCategoryDropdown(!showCategoryDropdown)}
+                        disabled={isLinked}
+                        style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
+                      >
+                        {showCategoryDropdown ? '▲' : '▼'}
+                      </button>
+                    </div>
+                    {showCategoryDropdown && !isLinked && (
+                      <div className="combobox-menu" style={{ maxHeight: '200px' }}>
+                        {categories.slice(0, 5).map((cat, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            className={`combobox-item${cat === formData.category ? ' active' : ''}`}
+                            onClick={() => {
+                              setFormData(prev => ({ ...prev, category: cat }));
+                              setShowCategoryDropdown(false);
+                            }}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="combobox-item combobox-add"
+                          onClick={() => {
+                            setShowCategoryDropdown(false);
+                            setShowNewCategoryInput(true);
+                            setNewCategoryName('');
+                          }}
+                        >
+                          <span>+</span> Add New Category...
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {isLinked ? (
+                    <p className="form-hint" style={{ color: '#f59e0b' }}>
+                      This item is linked to products or sales records.
+                    </p>
+                  ) : (
+                    <p className="form-hint">
+                      Select a category or add a new one.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">
-              Category <span className="required">*</span>
-              {isLinked && (
-                <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                  </svg>
-                  Locked (Item is in use)
-                </span>
-              )}
-            </label>
-            {showNewCategoryInput ? (
-              <div className="new-category-input-wrap">
-                <input
-                  type="text"
-                  className="form-input"
-                  value={newCategoryName}
-                  onChange={e => setNewCategoryName(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddNewCategory();
-                    }
-                    if (e.key === 'Escape') {
-                      setShowNewCategoryInput(false);
-                      setNewCategoryName('');
-                    }
-                  }}
-                  placeholder="Enter new category name..."
-                  autoFocus
-                  readOnly={isLinked}
-                  style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
-                />
-                {isLinked && (
-                  <p className="form-hint" style={{ color: '#f59e0b', marginTop: '0.5rem' }}>
-                    This item is linked to products or sales. Category cannot be changed.
-                  </p>
-                )}
-                <div className="new-category-actions" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    onClick={handleAddNewCategory}
-                    disabled={isLinked}
-                    style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', opacity: isLinked ? 0.5 : 1, cursor: isLinked ? 'not-allowed' : 'pointer' }}
-                  >
-                    Add Category
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => {
-                      setShowNewCategoryInput(false);
-                      setNewCategoryName('');
-                    }}
-                    style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
+          {/* Row 2: Stock Qty | Min Level */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            {!formData.isOnDemand && (
               <>
-                <div className="combobox-root" ref={categoryDropdownRef}>
-                  <div className="combobox-field">
+                <div className="form-group">
+                  <label className="form-label">
+                    {!item ? 'Current Stock *' : `Current Stock: ${formData.stockQty} pcs (locked)`}
+                  </label>
+                  {!item ? (
+                    <NumberInput
+                      className="form-input"
+                      name="stockQty"
+                      value={formData.stockQty}
+                      onChange={e => setFormData(prev => ({ ...prev, stockQty: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
+                      min={0}
+                      placeholder="0"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          return false;
+                        }
+                      }}
+                    />
+                  ) : (
                     <input
                       type="text"
                       className="form-input"
-                      value={formData.category}
+                      value={`${formData.stockQty} pcs`}
                       readOnly
-                      onClick={() => !isLinked && setShowCategoryDropdown(!showCategoryDropdown)}
-                      style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : { cursor: 'pointer' }}
-                      disabled={isLinked}
+                      style={{ opacity: 0.6, cursor: 'not-allowed', background: 'rgba(0,0,0,0.2)' }}
                     />
-                    <button
-                      type="button"
-                      className="combobox-toggle"
-                      onClick={() => !isLinked && setShowCategoryDropdown(!showCategoryDropdown)}
-                      disabled={isLinked}
-                      style={isLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
-                    >
-                      {showCategoryDropdown ? '▲' : '▼'}
-                    </button>
-                  </div>
-                  {showCategoryDropdown && !isLinked && (
-                    <div className="combobox-menu" style={{ maxHeight: '200px' }}>
-                      {categories.slice(0, 5).map((cat, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          className={`combobox-item${cat === formData.category ? ' active' : ''}`}
-                          onClick={() => {
-                            setFormData(prev => ({ ...prev, category: cat }));
-                            setShowCategoryDropdown(false);
-                          }}
-                        >
-                          {cat}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        className="combobox-item combobox-add"
-                        onClick={() => {
-                          setShowCategoryDropdown(false);
-                          setShowNewCategoryInput(true);
-                          setNewCategoryName('');
-                        }}
-                      >
-                        <span>+</span> Add New Category...
-                      </button>
-                    </div>
                   )}
-                </div>
-                {isLinked ? (
-                  <p className="form-hint" style={{ color: '#f59e0b' }}>
-                    This item is linked to products or sales records. Category cannot be changed to prevent data discrepancies.
-                  </p>
-                ) : (
                   <p className="form-hint">
-                    Select a category or add a new one.
+                    {!item ? 'Initial stock quantity for this new item.' : 'Use + / − buttons in table to adjust stock.'}
                   </p>
-                )}
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Min. Stock Level</label>
+                  <NumberInput
+                    className="form-input"
+                    name="minStockLevel"
+                    value={formData.minStockLevel}
+                    onChange={e => setFormData(prev => ({ ...prev, minStockLevel: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
+                    min={0}
+                    placeholder="10"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        return false;
+                      }
+                    }}
+                    readOnly={item}
+                    style={item ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
+                  />
+                  <p className="form-hint">
+                    You'll receive a low stock warning when current stock falls below this level.
+                  </p>
+                </div>
               </>
             )}
           </div>
 
+          {/* Upon Order Checkbox - Full width */}
           <div className="form-group">
             <label className="form-checkbox-label" style={isLinked && formData.stockQty > 0 ? { opacity: 0.6, cursor: 'not-allowed' } : {}}>
               <input
@@ -586,73 +1068,182 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
             )}
           </div>
 
-          {!formData.isOnDemand && item && (
-            <div style={{
-              background: 'rgba(99, 102, 241, 0.1)',
-              border: '1px solid var(--primary)',
-              borderRadius: '8px',
-              padding: '1rem',
-              marginBottom: '1.5rem'
-            }}>
-              <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
-                Current Stock Level
-              </div>
-              <div style={{ fontSize: '1.25rem', fontWeight: '600', color: 'var(--white)', marginBottom: '0.75rem' }}>
-                {formData.stockQty} pcs
-              </div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: '1.5' }}>
-                To adjust stock levels, use the + / − buttons in the inventory table. This ensures all changes are properly logged with reasons for audit tracking.
-              </p>
-            </div>
-          )}
-
-          {!formData.isOnDemand && !item && (
+          {/* Supplier Field (always shown, even for Upon Order) - LOCKED in Edit mode */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group">
-              <label className="form-label">Current Stock <span className="required">*</span></label>
-              <NumberInput
-                className="form-input"
-                name="stockQty"
-                value={formData.stockQty}
-                onChange={e => setFormData(prev => ({ ...prev, stockQty: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
-                min={0}
-                placeholder="0"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    return false;
-                  }
-                }}
-              />
+              <label className="form-label">
+                Supplier <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
+                {item && (
+                  <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    Locked
+                  </span>
+                )}
+              </label>
+              <div className="combobox-root" ref={supplierDropdownRef}>
+                <div className="combobox-field">
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={formData.supplierName}
+                    readOnly
+                    onClick={() => !item && setShowSupplierDropdown(!showSupplierDropdown)}
+                    style={item ? { cursor: 'not-allowed', opacity: 0.6, background: 'rgba(0,0,0,0.2)' } : { cursor: 'pointer' }}
+                    disabled={item}
+                  />
+                  {!item && (
+                    <button
+                      type="button"
+                      className="combobox-toggle"
+                      onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
+                    >
+                      {showSupplierDropdown ? '▲' : '▼'}
+                    </button>
+                  )}
+                </div>
+                {showSupplierDropdown && !item && (
+                  <div className="combobox-menu" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                    {/* Unspecified option */}
+                    <button
+                      type="button"
+                      className={`combobox-item${formData.supplierId === 'unspecified' ? ' active' : ''}`}
+                      onClick={() => handleSupplierSelect('unspecified', 'Unspecified')}
+                    >
+                      Unspecified
+                    </button>
+                    {/* Supplier list */}
+                    {suppliers && suppliers.map((supplier, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        className={`combobox-item${formData.supplierId === supplier.id ? ' active' : ''}`}
+                        onClick={() => handleSupplierSelect(supplier.id, supplier.name)}
+                      >
+                        {supplier.name}
+                      </button>
+                    ))}
+                    {/* Add new supplier option */}
+                    <button
+                      type="button"
+                      className="combobox-item combobox-add"
+                      onClick={() => handleSupplierSelect('__new__', '')}
+                    >
+                      <span>+</span> Add New Supplier...
+                    </button>
+                  </div>
+                )}
+              </div>
               <p className="form-hint">
-                Initial stock quantity for this new item.
+                {item
+                  ? 'Use the + button in the inventory table to add stock.'
+                  : 'Select a supplier or "Unspecified" for cash purchases.'}
               </p>
             </div>
-          )}
 
-          {!formData.isOnDemand && (
+            {/* Unit Cost Field - LOCKED in Edit mode */}
             <div className="form-group">
-              <label className="form-label">Min. Stock Level</label>
-              <NumberInput
-                className="form-input"
-                name="minStockLevel"
-                value={formData.minStockLevel}
-                onChange={e => setFormData(prev => ({ ...prev, minStockLevel: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
-                min={0}
-                placeholder="10"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    return false;
-                  }
-                }}
-                readOnly
-                style={{ opacity: 0.6, cursor: 'not-allowed' }}
-              />
-              <p className="form-hint">
-                You'll receive a low stock warning when current stock falls below this level.
+              <label className="form-label">
+                Unit Cost Each
+                {!formData.isOnDemand && <span className="required">*</span>}
+                {formData.isOnDemand && <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}> (Optional)</span>}
+                {item && (
+                  <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    Locked
+                  </span>
+                )}
+              </label>
+
+              {!item && (
+                /* Bulk Purchase Toggle - only for new items */
+                <label className="form-checkbox-label" style={{ marginBottom: '0.75rem' }}>
+                  <input
+                    type="checkbox"
+                    className="form-checkbox"
+                    checked={formData.isBulkPurchase}
+                    onChange={handleBulkPurchaseToggle}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span className="checkbox-text">
+                    Bulk Purchase (Enter Total Cost instead)
+                  </span>
+                </label>
+              )}
+
+              <div className="tier-price-cell">
+                <span className="peso">₱</span>
+                {!item && formData.isBulkPurchase ? (
+                  <input
+                    type="number"
+                    className="tier-input no-spinner"
+                    value={formData.totalCost}
+                    onChange={e => handleTotalCostChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (['e', 'E', '+', '-'].includes(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    onWheel={(e) => {
+                      e.target.blur();
+                      e.preventDefault();
+                    }}
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                    disabled={formData.isOnDemand}
+                    style={formData.isOnDemand ? { opacity: 0.6, cursor: 'not-allowed', background: 'rgba(0,0,0,0.2)' } : {}}
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    className="tier-input no-spinner"
+                    value={formData.unitCost}
+                    onChange={e => !item && handleUnitCostChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (['e', 'E', '+', '-'].includes(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    onWheel={(e) => {
+                      e.target.blur();
+                      e.preventDefault();
+                    }}
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                    disabled={item || formData.isOnDemand}
+                    style={(item || formData.isOnDemand) ? { opacity: 0.6, cursor: 'not-allowed', background: 'rgba(0,0,0,0.2)' } : {}}
+                  />
+                )}
+              </div>
+
+              {/* Auto-computed display - only for new items */}
+              {!item && formData.isBulkPurchase && formData.totalCost && formData.stockQty ? (
+                <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
+                  Unit Cost: ₱{(parseFloat(formData.totalCost) / parseInt(formData.stockQty)).toFixed(2)} each
+                </p>
+              ) : !item && formData.unitCost && formData.stockQty && (
+                <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
+                  Total: ₱{(parseFloat(formData.unitCost) * parseInt(formData.stockQty)).toFixed(2)}
+                </p>
+              )}
+
+              <p className="form-hint" style={{ marginTop: '0.5rem' }}>
+                {formData.isOnDemand
+                  ? 'Optional for Upon Order. Update when restocking.'
+                  : item
+                    ? 'Average cost updates when you add stock via the + button.'
+                    : 'Required for profit tracking.'}
               </p>
             </div>
-          )}
+          </div>
+          {/* End of Supplier/Cost grid */}
 
           <div className="modal-actions">
             <button type="button" className="btn-secondary" onClick={onClose}>
@@ -702,6 +1293,382 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
         archivedItem={archivedItem}
         categoryName={formData.category}
       />
+
+      {/* Add New Supplier Modal */}
+      <AddSupplierModal
+        isOpen={showAddSupplierModal}
+        onClose={() => setShowAddSupplierModal(false)}
+        onAdd={handleAddNewSupplier}
+      />
+
+      {/* Validation Modal */}
+      <ValidationModal
+        isOpen={showValidationModal}
+        onClose={() => setShowValidationModal(false)}
+        message={validationMessage}
+      />
+    </div>
+  );
+}
+
+// ── Validation Modal ───────────────────────────────────────────────────────────
+function ValidationModal({ isOpen, onClose, message }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title modal-title-warning">Validation Error</h2>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <p className="delete-confirm-text">{message}</p>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-primary" onClick={onClose}>
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Add Supplier Modal ─────────────────────────────────────────────────────────
+function AddSupplierModal({ isOpen, onClose, onAdd }) {
+  const [supplierName, setSupplierName] = useState('');
+  const [contact, setContact] = useState('');
+  const [address, setAddress] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      setSupplierName('');
+      setContact('');
+      setAddress('');
+    }
+  }, [isOpen]);
+
+  const handleSubmit = () => {
+    if (!supplierName.trim()) {
+      return;
+    }
+
+    onAdd({
+      name: supplierName.trim(),
+      contact: contact.trim(),
+      address: address.trim()
+    });
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">Add New Supplier</h2>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <div className="form-group">
+            <label className="form-label">
+              Supplier Name <span className="required">*</span>
+            </label>
+            <input
+              type="text"
+              className="form-input"
+              value={supplierName}
+              onChange={e => setSupplierName(e.target.value)}
+              placeholder="e.g., SanRoque Mugs"
+              autoFocus
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">
+              Contact Number <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
+            </label>
+            <input
+              type="text"
+              className="form-input"
+              value={contact}
+              onChange={e => setContact(e.target.value)}
+              placeholder="e.g., 0912-345-6789"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">
+              Address <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
+            </label>
+            <input
+              type="text"
+              className="form-input"
+              value={address}
+              onChange={e => setAddress(e.target.value)}
+              placeholder="e.g., San Roque, Marikina"
+            />
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleSubmit}
+            disabled={!supplierName.trim()}
+          >
+            Add Supplier
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Manage Suppliers Modal ──────────────────────────────────────────────────────
+function ManageSuppliersModal({ isOpen, onClose, suppliers, inventory, onAdd, onUpdate, onDelete }) {
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [formData, setFormData] = useState({ name: '', contact: '', address: '', phone: '' });
+
+  useEffect(() => {
+    if (isOpen) {
+      setShowAddForm(false);
+      setEditingId(null);
+      setFormData({ name: '', contact: '', address: '', phone: '' });
+    }
+  }, [isOpen]);
+
+  const handleSubmit = () => {
+    if (!formData.name.trim()) return;
+    
+    if (editingId) {
+      onUpdate(editingId, formData);
+    } else {
+      onAdd(formData);
+    }
+    setFormData({ name: '', contact: '', address: '', phone: '' });
+    setShowAddForm(false);
+    setEditingId(null);
+  };
+
+  const handleEdit = (supplier) => {
+    // Check if supplier is in use
+    const isInUse = inventory.some(item => 
+      item.lastSupplierId === supplier.id && item.isActive !== false
+    );
+    
+    setEditingId(supplier.id);
+    setFormData({
+      name: supplier.name,
+      contact: supplier.contact || '',
+      phone: supplier.phone || '',
+      address: supplier.address || ''
+    });
+    setShowAddForm(true);
+    // Store in-use status for disabling form
+    window.__supplierInUse = isInUse;
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '800px', width: '90%' }}>
+        <div className="modal-header">
+          <h2 className="modal-title">Supplier Management</h2>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="modal-body">
+          {!showAddForm ? (
+            <>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => setShowAddForm(true)}
+                style={{ marginBottom: '1rem' }}
+              >
+                <span>+</span> Add New Supplier
+              </button>
+
+              {suppliers && suppliers.length > 0 ? (
+                <div style={{ 
+                  maxHeight: '280px',  // ~2 rows max
+                  overflowY: 'auto',
+                  border: '1px solid var(--border)',
+                  borderRadius: '6px'
+                }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                        <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Supplier Name</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Contact Person</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Phone</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Address</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {suppliers.map((supplier, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--white)', fontWeight: 600 }}>{supplier.name}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>{supplier.contact || '—'}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>{supplier.phone || '—'}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>{supplier.address || '—'}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              className="btn-sm btn-secondary"
+                              onClick={() => handleEdit(supplier)}
+                              style={{ marginRight: '0.5rem', background: 'var(--gold)', borderColor: 'var(--gold)', color: '#000' }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-sm btn-danger"
+                              onClick={() => onDelete(supplier.id)}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{
+                  padding: '3rem',
+                  textAlign: 'center',
+                  color: 'var(--gray)',
+                  fontSize: '0.875rem',
+                  fontStyle: 'italic'
+                }}>
+                  No suppliers yet. Click "Add New Supplier" to get started.
+                </div>
+              )}
+            </>
+          ) : (
+            /* Add/Edit Form */
+            <div>
+              <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '1.5rem', color: 'var(--white)' }}>
+                {editingId ? 'Edit Supplier' : 'Add New Supplier'}
+              </h3>
+
+              {editingId && window.__supplierInUse && (
+                <div style={{
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  marginBottom: '1.5rem'
+                }}>
+                  <p style={{ fontSize: '0.875rem', color: '#f59e0b', margin: 0 }}>
+                    This supplier is currently in use. The supplier name cannot be changed.
+                  </p>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="form-label">Supplier Name <span className="required">*</span></label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={formData.name}
+                  onChange={e => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g., SanRoque Mugs"
+                  autoFocus
+                  disabled={editingId && window.__supplierInUse}
+                  style={editingId && window.__supplierInUse ? { opacity: 0.6, cursor: 'not-allowed', background: 'rgba(0,0,0,0.2)' } : {}}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Contact Person <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span></label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={formData.contact}
+                  onChange={e => setFormData({ ...formData, contact: e.target.value })}
+                  placeholder="e.g., Juan Dela Cruz"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Phone <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span></label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={formData.phone}
+                  onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="e.g., 0912-345-6789"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Address <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span></label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={formData.address}
+                  onChange={e => setFormData({ ...formData, address: e.target.value })}
+                  placeholder="e.g., San Roque, Marikina"
+                />
+              </div>
+
+              <div className="modal-actions" style={{ marginTop: '1.5rem' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setShowAddForm(false);
+                    setEditingId(null);
+                    setFormData({ name: '', contact: '', address: '', phone: '' });
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleSubmit}
+                  disabled={!formData.name.trim()}
+                >
+                  {editingId ? 'Update Supplier' : 'Add Supplier'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="modal-actions" style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -814,7 +1781,7 @@ function ArchivedItemModal({ isOpen, onClose, onRestore, archivedItem, categoryN
   );
 }
 
-// ── Archive/Delete Confirmation Modal ─────────────────────────────────────────
+// ── Archive/Delete Confirmation Modal ────────────���────────────────────────────
 // NEW: Now checks sales history in addition to product references
 // If item has sales history, force soft delete (archive) only
 function ArchiveConfirmModal({ 
@@ -938,16 +1905,26 @@ function ArchiveConfirmModal({
   );
 }
 
-// ── Manual Stock Addition Modal ───────────────────────────────────────────────
+// ── Manual Stock Addition Modal ──────────────���────────────────────────────────
 // Modal for adding stock with audit log
 // Reasons: Restock/New Delivery, Inventory Correction
-function StockAdditionModal({ isOpen, onClose, onConfirm, item }) {
+function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAddSupplier }) {
   const [reason, setReason] = useState('restock'); // 'restock', 'correction-add'
   const [quantity, setQuantity] = useState('');
+  const [supplierId, setSupplierId] = useState('walk-in');
+  const [supplierName, setSupplierName] = useState('Unspecified');
+  const [unitCost, setUnitCost] = useState('');
+  const [isBulkPurchase, setIsBulkPurchase] = useState(false);
+  const [totalCost, setTotalCost] = useState('');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingData, setPendingData] = useState(null);
   const [showReasonDropdown, setShowReasonDropdown] = useState(false);
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [validationMessage, setValidationMessage] = useState('');
   const reasonDropdownRef = useRef(null);
+  const supplierDropdownRef = useRef(null);
 
   // Close reason dropdown when clicking outside
   useEffect(() => {
@@ -967,19 +1944,122 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item }) {
       setQuantity('');
       setShowConfirmModal(false);
       setPendingData(null);
+      
+      // Auto-populate supplier from item's last supplier
+      if (item.lastSupplierId) {
+        setSupplierId(item.lastSupplierId);
+        setSupplierName(item.lastSupplierName || 'Unspecified');
+      } else {
+        setSupplierId('walk-in');
+        setSupplierName('Unspecified');
+      }
+      
+      // Auto-populate unit cost from item's last cost
+      setUnitCost(item.lastUnitCost ? String(item.lastUnitCost) : '');
+      setIsBulkPurchase(false);
+      setTotalCost('');
     }
   }, [isOpen, item]);
 
+  // Close supplier dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (reasonDropdownRef.current && !reasonDropdownRef.current.contains(e.target)) {
+        setShowReasonDropdown(false);
+      }
+      if (supplierDropdownRef.current && !supplierDropdownRef.current.contains(e.target)) {
+        setShowSupplierDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Handle supplier selection
+  const handleSupplierSelect = (id, name) => {
+    if (id === '__new__') {
+      setShowAddSupplierModal(true);
+    } else {
+      setSupplierId(id);
+      setSupplierName(name);
+      setShowSupplierDropdown(false);
+    }
+  };
+
+  // Handle adding new supplier
+  const handleAddNewSupplier = (supplierData) => {
+    const newSupplier = onAddSupplier(supplierData);
+    setSupplierId(newSupplier.id);
+    setSupplierName(newSupplier.name);
+    setShowAddSupplierModal(false);
+  };
+
+  // Handle bulk purchase toggle
+  const handleBulkPurchaseToggle = () => {
+    setIsBulkPurchase(prev => !prev);
+  };
+
+  // Handle unit cost change
+  const handleUnitCostChange = (value) => {
+    setUnitCost(value);
+    if (!isBulkPurchase && value !== '' && quantity !== '') {
+      const qty = parseInt(quantity) || 0;
+      const cost = parseFloat(value) || 0;
+      setTotalCost(String(qty * cost));
+    }
+  };
+
+  // Handle total cost change
+  const handleTotalCostChange = (value) => {
+    setTotalCost(value);
+    if (isBulkPurchase && value !== '' && quantity !== '') {
+      const qty = parseInt(quantity) || 0;
+      const total = parseFloat(value) || 0;
+      setUnitCost(qty > 0 ? String(total / qty) : '');
+    }
+  };
+
+  // Handle quantity change (for auto-compute)
+  const handleQuantityChange = (value) => {
+    setQuantity(value);
+    if (isBulkPurchase && totalCost !== '' && value !== '') {
+      const qty = parseInt(value) || 0;
+      const total = parseFloat(totalCost) || 0;
+      setUnitCost(qty > 0 ? String(total / qty) : '');
+    } else if (!isBulkPurchase && unitCost !== '' && value !== '') {
+      const qty = parseInt(value) || 0;
+      const cost = parseFloat(unitCost) || 0;
+      setTotalCost(String(qty * cost));
+    }
+  };
+
   const handleSubmit = () => {
     if (!quantity || quantity <= 0) {
-      alert('Please enter a valid quantity');
+      setValidationMessage('Please enter a valid quantity');
+      setShowValidationModal(true);
       return;
     }
+
+    // Validate unit cost
+    if (!unitCost) {
+      setValidationMessage('Please enter the unit cost (original price)');
+      setShowValidationModal(true);
+      return;
+    }
+
+    // Compute total cost
+    const qty = parseInt(quantity);
+    const cost = parseFloat(unitCost);
+    const computedTotalCost = qty * cost;
 
     // Store pending data and show confirmation modal
     const adjustmentData = {
       reason,
-      quantity: parseInt(quantity)
+      quantity: qty,
+      supplierId: supplierId === 'walk-in' ? null : supplierId,
+      supplierName,
+      unitCost: cost,
+      totalCost: computedTotalCost
     };
 
     setPendingData(adjustmentData);
@@ -1088,10 +2168,156 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item }) {
             <NumberInput
               className="form-input no-spinner"
               value={quantity}
-              onChange={e => setQuantity(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
+              onChange={e => handleQuantityChange(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
               min={1}
               placeholder=""
             />
+          </div>
+
+          {/* Supplier Field */}
+          <div className="form-group">
+            <label className="form-label">
+              Supplier <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
+            </label>
+            <div className="combobox-root" ref={supplierDropdownRef}>
+              <div className="combobox-field">
+                <input
+                  type="text"
+                  className="form-input"
+                  value={supplierName}
+                  readOnly
+                  onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
+                  style={{ cursor: 'pointer' }}
+                />
+                <button
+                  type="button"
+                  className="combobox-toggle"
+                  onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
+                >
+                  {showSupplierDropdown ? '▲' : '▼'}
+                </button>
+              </div>
+              {showSupplierDropdown && (
+                <div className="combobox-menu" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                  {/* Walk-in option */}
+                  <button
+                    type="button"
+                    className={`combobox-item${supplierId === 'walk-in' ? ' active' : ''}`}
+                    onClick={() => handleSupplierSelect('walk-in', '— Unspecified')}
+                  >
+                    — Unspecified
+                  </button>
+                  {/* Supplier list */}
+                  {suppliers && suppliers.map((supplier, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className={`combobox-item${supplierId === supplier.id ? ' active' : ''}`}
+                      onClick={() => handleSupplierSelect(supplier.id, supplier.name)}
+                    >
+                      {supplier.name}
+                    </button>
+                  ))}
+                  {/* Add new supplier option */}
+                  <button
+                    type="button"
+                    className="combobox-item combobox-add"
+                    onClick={() => handleSupplierSelect('__new__', '')}
+                  >
+                    <span>+</span> Add New Supplier...
+                  </button>
+                </div>
+              )}
+            </div>
+            <p className="form-hint">
+              Select a supplier or leave as "Unspecified" for cash purchases.
+            </p>
+          </div>
+
+          {/* Unit Cost and Bulk Purchase Fields */}
+          <div className="form-group">
+            <label className="form-label">
+              {isBulkPurchase ? 'Total Amount Paid' : 'Unit Cost Each'} 
+              <span className="required">*</span>
+            </label>
+            
+            {/* Bulk Purchase Toggle */}
+            <label className="form-checkbox-label" style={{ marginBottom: '0.75rem' }}>
+              <input
+                type="checkbox"
+                className="form-checkbox"
+                checked={isBulkPurchase}
+                onChange={handleBulkPurchaseToggle}
+                style={{ cursor: 'pointer' }}
+              />
+              <span className="checkbox-text">
+                Bulk Purchase (Enter Total Cost instead)
+              </span>
+            </label>
+
+            {!isBulkPurchase ? (
+              // Unit Cost Input
+              <div className="tier-price-cell">
+                <span className="peso">₱</span>
+                <input
+                  type="number"
+                  className="tier-input no-spinner"
+                  value={unitCost}
+                  onChange={e => handleUnitCostChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (['e', 'E', '+', '-'].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onWheel={(e) => {
+                    e.target.blur();
+                    e.preventDefault();
+                  }}
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+            ) : (
+              // Total Cost Input
+              <div className="tier-price-cell">
+                <span className="peso">₱</span>
+                <input
+                  type="number"
+                  className="tier-input no-spinner"
+                  value={totalCost}
+                  onChange={e => handleTotalCostChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (['e', 'E', '+', '-'].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onWheel={(e) => {
+                    e.target.blur();
+                    e.preventDefault();
+                  }}
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+            )}
+
+            {/* Auto-computed display */}
+            {!isBulkPurchase && unitCost && quantity && (
+              <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
+                Total Cost: ₱{(parseFloat(unitCost) * parseInt(quantity)).toFixed(2)}
+              </p>
+            )}
+            {isBulkPurchase && totalCost && quantity && (
+              <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
+                Unit Cost: ₱{(parseFloat(totalCost) / parseInt(quantity)).toFixed(2)} each
+              </p>
+            )}
+
+            <p className="form-hint" style={{ marginTop: '0.5rem' }}>
+              Required for profit tracking. This is your original cost per piece.
+            </p>
           </div>
         </div>
 
@@ -1149,6 +2375,20 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item }) {
                 </span>
               </div>
               <div className="confirm-row">
+                <span className="confirm-label">Supplier:</span>
+                <span className="confirm-value">{pendingData?.supplierName || '— Walk-in / Unspecified'}</span>
+              </div>
+              <div className="confirm-row">
+                <span className="confirm-label">Unit Cost:</span>
+                <span className="confirm-value">₱{pendingData?.unitCost?.toFixed(2)}</span>
+              </div>
+              <div className="confirm-row">
+                <span className="confirm-label">Total Cost:</span>
+                <span className="confirm-value" style={{ color: '#facc15', fontWeight: '700' }}>
+                  ₱{pendingData?.totalCost?.toFixed(2)}
+                </span>
+              </div>
+              <div className="confirm-row">
                 <span className="confirm-label">Reason:</span>
                 <span className="confirm-value">
                   {pendingData?.reason === 'restock' ? 'Restock / New Delivery' : 'Inventory Correction'}
@@ -1170,6 +2410,20 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item }) {
           </div>
         </div>
       </div>
+
+      {/* Add New Supplier Modal */}
+      <AddSupplierModal
+        isOpen={showAddSupplierModal}
+        onClose={() => setShowAddSupplierModal(false)}
+        onAdd={handleAddNewSupplier}
+      />
+
+      {/* Validation Modal */}
+      <ValidationModal
+        isOpen={showValidationModal}
+        onClose={() => setShowValidationModal(false)}
+        message={validationMessage}
+      />
     </div>
   );
 }
@@ -1199,7 +2453,7 @@ function ConfirmModal({ title, message, confirmLabel, confirmClass, onConfirm, o
   );
 }
 
-// ── Manual Stock Adjustment Modal ─────────────────────────────────────────────
+// ── Manual Stock Adjustment Modal ───────────────────────────────────���─────────
 // NEW: Modal for reducing stock with audit log
 // Reasons: Sales Outside System, Damaged Stock, Stock Correction
 function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
@@ -1676,6 +2930,7 @@ function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
 export default function InventoryPage() {
   const [inventory, setInventory] = useState([]);
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [suppliers, setSuppliers] = useState([]); // NEW: Suppliers state
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -1687,7 +2942,8 @@ export default function InventoryPage() {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false); // For Add/Edit confirmation
   const [pendingItemData, setPendingItemData] = useState(null); // Temp storage before confirm
   const [modalKey, setModalKey] = useState(0); // Force modal remount for fresh form
-  
+  const [expandedRows, setExpandedRows] = useState(new Set()); // NEW: For expandable rows
+
   // NEW: States for Archive/Delete with product reference checking
   const [archiveItem, setArchiveItem] = useState(null); // Item to archive/delete
   const [referencingProducts, setReferencingProducts] = useState([]); // Products using this item
@@ -1704,6 +2960,21 @@ export default function InventoryPage() {
   const [additionItem, setAdditionItem] = useState(null); // Item being added
   const [showAdditionModal, setShowAdditionModal] = useState(false); // Show addition modal
   const [showConvertModal, setShowConvertModal] = useState(false); // Show convert from Upon Order confirmation
+  const [showManageSuppliersModal, setShowManageSuppliersModal] = useState(false); // NEW: Supplier management modal
+  const [deleteSupplierId, setDeleteSupplierId] = useState(null); // For supplier delete confirmation
+  const [showSupplierDeleteConfirm, setShowSupplierDeleteConfirm] = useState(false); // Supplier delete confirmation modal
+  const [showSupplierInUseError, setShowSupplierInUseError] = useState(false); // Supplier in use error modal
+
+  // Handle supplier delete confirmation
+  const handleConfirmDeleteSupplier = () => {
+    if (!deleteSupplierId) return;
+
+    const updated = suppliers.filter(s => s.id !== deleteSupplierId);
+    setSuppliers(updated);
+    saveSuppliers(updated);
+    setDeleteSupplierId(null);
+    setShowSupplierDeleteConfirm(false);
+  };
 
   // TODO: MongoDB - Replace with API call
   // CURRENT: Load from LocalStorage on mount
@@ -1732,6 +3003,10 @@ export default function InventoryPage() {
     const storedCategories = getCategories();
     setCategories(storedCategories);
 
+    // Load suppliers
+    const storedSuppliers = getSuppliers();
+    setSuppliers(storedSuppliers);
+
     setIsLoaded(true);
   }, []);
 
@@ -1751,6 +3026,22 @@ export default function InventoryPage() {
     const updatedCategories = [...categories, newCategory];
     setCategories(updatedCategories);
     saveCategories(updatedCategories);
+  };
+
+  // NEW: Handle Add Supplier
+  const handleAddSupplier = (supplierData) => {
+    const newSupplier = addSupplier(supplierData);
+    setSuppliers(prev => [...prev, newSupplier]);
+    return newSupplier;
+  };
+
+  // NEW: Toggle expand/collapse row
+  const toggleExpand = (itemId) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      next.has(itemId) ? next.delete(itemId) : next.add(itemId);
+      return next;
+    });
   };
 
   // Filter inventory based on search query and status filter
@@ -1888,6 +3179,9 @@ export default function InventoryPage() {
 
     const newStockQty = Math.max(0, adjustmentItem.stockQty - quantity);
 
+    // FIFO: Deduct from oldest batch first
+    const fifoResult = deductStockFIFO(adjustmentItem.id, quantity);
+
     // ──────────────────────────────────────────────────────────────
     // TODO: MongoDB - Wrap in Transaction
     // These operations should be atomic (all-or-nothing):
@@ -1895,16 +3189,8 @@ export default function InventoryPage() {
     // 2. Update product availability (if exceeds new stock)
     // 3. Create audit log
     // 4. Create sales record (if sales-outside)
-    //
-    // Example MongoDB Transaction:
-    // const session = client.startSession();
-    // await session.withTransaction(async () => {
-    //   await Inventory.findByIdAndUpdate(id, { stockQty: newStockQty }, { session });
-    //   await Product.updateMany({ inventoryId: id, stock: { $gt: newStockQty } }, { stock: newStockQty }, { session });
-    //   await InventoryLog.create([auditLog], { session });
-    //   if (reason === 'sales-outside') await Sales.create([salesRecord], { session });
-    // });
-    // ──────────────────────────────────────────────────────────────
+    // 5. Update FIFO stock history
+    // ──────────────────────────────────�������───────────────────────────
 
     // Reduce stock
     setInventory(prev =>
@@ -1996,23 +3282,57 @@ export default function InventoryPage() {
   const handleStockAddition = (additionData) => {
     if (!additionItem) return;
 
-    const { reason, quantity, remarks } = additionData;
+    const { reason, quantity, supplierId, supplierName, unitCost, totalCost, remarks } = additionData;
 
     // Convert from Upon Order to In Stock if needed
     const isConverting = additionItem.isOnDemand;
 
-    // Increase stock (and convert to In Stock if was Upon Order)
+    // Compute new average cost
+    const currentStock = additionItem.stockQty;
+    const currentAvgCost = additionItem.averageCost || 0;
+    const newStock = quantity;
+    const newCost = unitCost;
+    
+    // New average cost = (currentStock * currentAvgCost + newStock * newCost) / (currentStock + newStock)
+    const newTotalStock = currentStock + newStock;
+    const newAverageCost = newTotalStock > 0 
+      ? ((currentStock * currentAvgCost) + (newStock * newCost)) / newTotalStock 
+      : newCost;
+
+    // Increase stock and update cost info
     setInventory(prev =>
       prev.map(item =>
         item.id === additionItem.id
           ? {
               ...item,
               stockQty: item.stockQty + quantity,
-              isOnDemand: isConverting ? false : item.isOnDemand  // Convert to In Stock
+              isOnDemand: isConverting ? false : item.isOnDemand,  // Convert to In Stock
+              lastSupplierId: supplierId,
+              lastSupplierName: supplierName,
+              lastUnitCost: unitCost,
+              averageCost: newAverageCost,
+              updatedAt: new Date().toISOString()
             }
           : item
       )
     );
+
+    // Create stock history entry
+    const stockHistoryEntry = {
+      inventoryId: additionItem.id,
+      itemName: additionItem.name,
+      category: additionItem.category,
+      supplierId: supplierId || null,
+      supplierName: supplierName || '— Walk-in / Unspecified',
+      quantity: quantity,
+      unitCost: unitCost,
+      totalCost: totalCost,
+      reason: reason,
+      stockBefore: additionItem.stockQty,
+      stockAfter: newTotalStock,
+      averageCostAfter: newAverageCost
+    };
+    addStockHistory(stockHistoryEntry);
 
     // Create audit log entry
     const auditLog = {
@@ -2022,16 +3342,19 @@ export default function InventoryPage() {
       category: additionItem.category,
       type: 'stock-in',
       reason,
-      quantity: quantity, // Positive for stock in
+      quantity: quantity,
       stockBefore: additionItem.stockQty,
-      stockAfter: additionItem.stockQty + quantity,
+      stockAfter: newTotalStock,
+      supplierId: supplierId,
+      supplierName: supplierName,
+      unitCost: unitCost,
+      totalCost: totalCost,
       convertedFromUponOrder: isConverting,
       remarks,
       createdAt: new Date().toISOString()
     };
 
-    // Save to audit logs (LocalStorage for now)
-    // TODO: MongoDB - Save to audit_logs collection
+    // Save to audit logs
     const existingLogs = JSON.parse(localStorage.getItem('pmp_inventory_logs') || '[]');
     localStorage.setItem('pmp_inventory_logs', JSON.stringify([...existingLogs, auditLog]));
 
@@ -2088,7 +3411,31 @@ export default function InventoryPage() {
       );
     } else {
       // Add new item
-      setInventory(prev => [...prev, pendingItemData]);
+      const newItem = {
+        ...pendingItemData,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      setInventory(prev => [...prev, newItem]);
+      
+      // Create initial stock history entry if has stock and cost
+      if (!pendingItemData.isOnDemand && pendingItemData.stockQty > 0 && pendingItemData.lastUnitCost) {
+        const stockHistoryEntry = {
+          inventoryId: newItem.id,
+          itemName: newItem.name,
+          category: newItem.category,
+          supplierId: pendingItemData.lastSupplierId,
+          supplierName: pendingItemData.lastSupplierName || '— Walk-in / Unspecified',
+          quantity: pendingItemData.stockQty,
+          unitCost: pendingItemData.lastUnitCost,
+          totalCost: pendingItemData.stockQty * pendingItemData.lastUnitCost,
+          reason: 'initial',
+          stockBefore: 0,
+          stockAfter: pendingItemData.stockQty,
+          averageCostAfter: pendingItemData.averageCost || pendingItemData.lastUnitCost
+        };
+        addStockHistory(stockHistoryEntry);
+      }
     }
 
     // Close all modals and reset
@@ -2193,10 +3540,20 @@ export default function InventoryPage() {
               Manage your blank materials and track stock levels.
             </p>
           </div>
-          <button className="btn-primary" onClick={handleAddNew}>
-            <span className="btn-icon">+</span>
-            Add New Item
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => setShowManageSuppliersModal(true)}
+            >
+              <span className="btn-icon">+</span>
+              Suppliers
+            </button>
+            <button className="btn-primary" onClick={handleAddNew}>
+              <span className="btn-icon">+</span>
+              Add New Item
+            </button>
+          </div>
         </div>
 
         {/* ── Summary Cards ────────────────────────────────────────────────────── */}
@@ -2348,6 +3705,7 @@ export default function InventoryPage() {
           <table className="inventory-table">
             <thead>
               <tr>
+                <th style={{ width: '28px' }}></th>
                 <th className="table-col-name">Product Name</th>
                 <th className="table-col-category">Category</th>
                 <th className="table-col-stock">Current Stock</th>
@@ -2359,8 +3717,18 @@ export default function InventoryPage() {
             <tbody>
               {filteredInventory.map(item => {
                 const stockStatus = getStockStatus(item);
+                const isExpanded = expandedRows.has(item.id);
+                
                 return (
-                  <tr key={item.id} className="inventory-table-row">
+                  <React.Fragment key={item.id}>
+                    <tr className="inventory-table-row">
+                      {/* Expand chevron */}
+                      <td style={{ width: '28px', cursor: 'pointer' }} onClick={() => toggleExpand(item.id)}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                          style={{ color: 'var(--gray)', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'block' }}>
+                          <path d="M9 18l6-6-6-6"/>
+                        </svg>
+                      </td>
                     <td className="table-cell-name">
                       <span className="product-name">{item.name}</span>
                     </td>
@@ -2458,6 +3826,12 @@ export default function InventoryPage() {
                       </button>
                     </td>
                   </tr>
+                  
+                  {/* Expandable Row - Shows when expanded */}
+                  {isExpanded && (
+                    <InventoryExpandRow item={item} colSpan={7} />
+                  )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
@@ -2592,6 +3966,8 @@ export default function InventoryPage() {
         categories={categories}
         onAddCategory={handleAddCategory}
         inventory={inventory}
+        suppliers={suppliers}
+        onAddSupplier={handleAddSupplier}
       />
 
       {/* NEW: Archive/Delete Confirmation Modal with product reference checking */}
@@ -2646,7 +4022,114 @@ export default function InventoryPage() {
         }}
         onConfirm={handleStockAddition}
         item={additionItem}
+        suppliers={suppliers}
+        onAddSupplier={handleAddSupplier}
       />
+
+      {/* Manage Suppliers Modal */}
+      <ManageSuppliersModal
+        isOpen={showManageSuppliersModal}
+        onClose={() => setShowManageSuppliersModal(false)}
+        suppliers={suppliers}
+        inventory={inventory}
+        onAdd={(data) => {
+          const newSupplier = addSupplier(data);
+          const updated = [...suppliers, newSupplier];
+          setSuppliers(updated);
+          saveSuppliers(updated);
+        }}
+        onUpdate={(id, data) => {
+          const updated = suppliers.map(s => s.id === id ? { ...s, ...data } : s);
+          setSuppliers(updated);
+          saveSuppliers(updated);
+        }}
+        onDelete={(id) => {
+          // Check if supplier is currently used by any active inventory item
+          const isInUseByInventory = inventory.some(item =>
+            item.lastSupplierId === id && item.isActive !== false
+          );
+
+          if (isInUseByInventory) {
+            // Show error - cannot delete, pass supplier info for modal
+            setDeleteSupplierId(null);
+            setShowSupplierInUseError(true);
+            return;
+          }
+
+          // Show confirmation modal before deleting
+          setDeleteSupplierId(id);
+          setShowSupplierDeleteConfirm(true);
+        }}
+      />
+
+      {/* Supplier In Use Error Modal */}
+      {showSupplierInUseError && (
+        <div className="modal-overlay" style={{ display: 'flex' }} onClick={() => setShowSupplierInUseError(false)}>
+          <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title modal-title-warning">Cannot Delete Supplier</h2>
+              <button className="modal-close" onClick={() => setShowSupplierInUseError(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <p className="delete-confirm-text">
+                This supplier is currently being used by one or more inventory items.
+              </p>
+              <p className="delete-confirm-warning" style={{ marginTop: '0.75rem', color: '#f59e0b' }}>
+                You cannot delete a supplier that is actively in use. Please update the inventory items first to use a different supplier.
+              </p>
+            </div>
+
+            <div className="modal-actions">
+              <button type="button" className="btn-primary" onClick={() => setShowSupplierInUseError(false)}>
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Supplier Delete Confirmation Modal */}
+      {showSupplierDeleteConfirm && (
+        <div className="modal-overlay" style={{ display: 'flex' }} onClick={() => setShowSupplierDeleteConfirm(false)}>
+          <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title modal-title-danger">Delete Supplier</h2>
+              <button className="modal-close" onClick={() => setShowSupplierDeleteConfirm(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <p className="delete-confirm-text">
+                Are you sure you want to delete this supplier?
+              </p>
+              <p className="delete-confirm-warning" style={{ marginTop: '0.75rem', color: '#f59e0b' }}>
+                This action cannot be undone. The supplier will be permanently removed from your supplier list.
+              </p>
+            </div>
+
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={() => setShowSupplierDeleteConfirm(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={handleConfirmDeleteSupplier}
+              >
+                Delete Supplier
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Convert Upon Order to In Stock Confirmation */}
       {showConvertModal && additionItem && (
