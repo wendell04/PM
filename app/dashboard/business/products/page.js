@@ -366,6 +366,24 @@ function EditProductModal({ product, inventoryList, onClose, onSave, onPriceErro
 
   const hasVariants = combinations.length > 0;
 
+  // Sync formData when inventory changes (e.g., Upon Order → Track Stock)
+  useEffect(() => {
+    const inv = inventoryList.find(i => i.id === formData.inventoryId);
+    if (inv && inv.id) {
+      // If inventory changed from Upon Order to Track Stock or vice versa
+      const shouldTrackInventory = !inv.isOnDemand;
+      const currentTrackInventory = formData.trackInventory;
+      
+      if (shouldTrackInventory !== currentTrackInventory) {
+        setFormData(prev => ({
+          ...prev,
+          trackInventory: shouldTrackInventory,
+          stock: shouldTrackInventory ? String(inv.stockQty || 0) : '',
+        }));
+      }
+    }
+  }, [inventoryList, formData.inventoryId, formData.trackInventory]);
+
   // ── Sync tier prices when groupChecks change (merge/unmerge) ──────────────────
   // This is the KEY fix: when user checks/unchecks merge boxes, sync all prices in a group
   useEffect(() => {
@@ -1359,7 +1377,7 @@ function ProductExpandRow({ product, inv, colSpan }) {
         <div style={{ padding: '1rem 1.25rem 1.25rem', display: 'flex', gap: '1rem', width: '100%' }}>
 
           {/* Description */}
-          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+          <div style={{ flex: '1 230px', minWidth: 0 }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Description</div>
             {product.description ? (
               <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5, opacity: 0.85, overflowWrap: 'break-word' }}>{product.description}</div>
@@ -1493,6 +1511,7 @@ export default function ProductListPage() {
   const [showBulkBar, setShowBulkBar] = useState(false);
   const [showBulkSelectDropdown, setShowBulkSelectDropdown] = useState(false);
   const bulkSelectRef = useRef(null);
+  const [editModalKey, setEditModalKey] = useState(0); // Force edit modal refresh
 
   // Reset bulk select when status filter changes
   useEffect(() => {
@@ -1667,7 +1686,11 @@ export default function ProductListPage() {
 
   const clearSelection = () => { setSelectedIds(new Set()); setShowBulkBar(false); setShowBulkSelectDropdown(false); };
 
-  const handleEdit = (product) => { setEditingProduct(product); setShowEditModal(true); };
+  const handleEdit = (product) => {
+    setEditingProduct(product);
+    setEditModalKey(prev => prev + 1); // Force modal refresh
+    setShowEditModal(true);
+  };
 
   const handleSaveEdit = (updatedProduct) => {
     // Show confirmation modal before saving
@@ -2407,6 +2430,7 @@ export default function ProductListPage() {
       {/* Full Edit Modal */}
       {showEditModal && editingProduct && (
         <EditProductModal
+          key={editModalKey}
           product={editingProduct}
           inventoryList={inventoryList}
           onClose={() => { setShowEditModal(false); setEditingProduct(null); }}

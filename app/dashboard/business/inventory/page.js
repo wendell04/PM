@@ -1686,6 +1686,7 @@ export default function InventoryPage() {
   const [showArchived, setShowArchived] = useState(false); // Toggle archived items visibility
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false); // For Add/Edit confirmation
   const [pendingItemData, setPendingItemData] = useState(null); // Temp storage before confirm
+  const [modalKey, setModalKey] = useState(0); // Force modal remount for fresh form
   
   // NEW: States for Archive/Delete with product reference checking
   const [archiveItem, setArchiveItem] = useState(null); // Item to archive/delete
@@ -1780,6 +1781,10 @@ export default function InventoryPage() {
   // Handle Add New Item
   const handleAddNew = () => {
     setEditingItem(null);
+    setPendingItemData(null);
+    setIsConfirmModalOpen(false);
+    // Force modal to remount with fresh state by using key
+    setModalKey(prev => prev + 1);
     setIsModalOpen(true);
   };
 
@@ -1948,21 +1953,30 @@ export default function InventoryPage() {
     
     // If sales outside system, create sales record
     if (reason === 'sales-outside') {
+      // Auto-generate customer name if empty
+      const generatedCustomerName = customerName && customerName.trim() !== ''
+        ? customerName
+        : `Outside-Customer ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '')}-${String(Date.now()).slice(-4)}`;
+      
       const salesRecord = {
         id: Date.now(),
         inventoryId: adjustmentItem.id,
         productName: adjustmentItem.name,
         category: adjustmentItem.category,
         quantity,
-        unitPrice: sellingPrice,
-        totalPrice: sellingPrice * quantity,
+        unitPrice: 0, // Not applicable for manual sales (may discount/pasobra)
+        totalPrice: sellingPrice, // sellingPrice is the TOTAL amount received (may discount/pasobra)
         saleDate,
-        customerName,
+        customerName: generatedCustomerName,
+        customerContact: 'N/A',
+        customerEmail: 'N/A',
         source: 'manual', // 'manual' for outside system, 'online' for storefront
         status: 'completed',
+        cost: 0, // Will be calculated from product cost
+        notes: 'Manual sale - price may include discount or surcharge',
         createdAt: new Date().toISOString()
       };
-      
+
       // Save to sales (LocalStorage for now)
       // TODO: MongoDB - Save to sales collection
       const existingSales = JSON.parse(localStorage.getItem('pmp_sales') || '[]');
@@ -2559,6 +2573,7 @@ export default function InventoryPage() {
 
       {/* ── Modals ─────────────────────────────────────────────────────────────── */}
       <InventoryModal
+        key={modalKey}
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false);
