@@ -1338,7 +1338,7 @@ function ConfirmEditModal({ isOpen, onClose, originalProduct, updatedProduct, in
   );
 }
 
-// ── Price Error Modal ──────────────────────────────────────────────────────────
+// ── Price Error Modal ─────────────────────────────────────────────�����────────────
 function PriceErrorModal({ isOpen, onClose, message }) {
   if (!isOpen) return null;
 
@@ -1837,7 +1837,9 @@ export default function ProductListPage() {
       const inv = getInventoryItem(p.inventoryId);
       return inv && inv.isActive === false;
     });
-    return { hasPublished, hasUnpublished, hasArchived, hasArchivedInventory };
+    // Check if mixed status (different statuses selected)
+    const mixedStatus = (hasPublished ? 1 : 0) + (hasUnpublished ? 1 : 0) + (hasArchived ? 1 : 0) > 1;
+    return { hasPublished, hasUnpublished, hasArchived, hasArchivedInventory, mixedStatus };
   };
 
   if (!isLoaded) {
@@ -1973,48 +1975,56 @@ export default function ProductListPage() {
           </span>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             {(() => {
-              const { hasPublished, hasUnpublished, hasArchived, hasArchivedInventory } = getSelectedItemsStatus();
+              const { hasPublished, hasUnpublished, hasArchived, hasArchivedInventory, mixedStatus } = getSelectedItemsStatus();
               const showPublish = hasUnpublished && statusFilter !== 'published' && statusFilter !== 'archived' && !hasArchivedInventory;
               const showUnpublish = hasPublished && statusFilter !== 'unpublished' && statusFilter !== 'archived' && !hasArchivedInventory;
               const showRestore = hasArchived && !hasArchivedInventory;
               return (
                 <>
-                  {showPublish && (
-                    <button className="btn-sm btn-primary" onClick={() => setBulkModal({ action: 'publish' })}>Publish</button>
-                  )}
-                  {showUnpublish && (
-                    <button className="btn-sm btn-secondary" onClick={() => setBulkModal({ action: 'unpublish' })}
-                      style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)' }}>Unpublish</button>
-                  )}
-                  {hasArchivedInventory ? (
-                    <button
-                      className="btn-sm btn-secondary"
-                      onClick={() => {
-                        // Redirect to Inventory page to restore inventory first
-                        router.push('/dashboard/business/inventory');
-                      }}
-                      style={{
-                        background: 'var(--dark2)',
-                        borderColor: 'var(--border)',
-                        color: 'var(--white)',
-                        cursor: 'pointer'
-                      }}>
-                      Restore Inventory First
-                    </button>
-                  ) : showRestore ? (
-                    <button
-                      className="btn-sm btn-primary"
-                      onClick={() => setBulkModal({ action: 'restore' })}
-                      style={{
-                        background: 'var(--dark2)',
-                        borderColor: 'var(--border)',
-                        color: 'var(--white)',
-                        cursor: 'pointer'
-                      }}>
-                      Restore
-                    </button>
+                  {mixedStatus ? (
+                    <span style={{ fontSize: '0.8rem', color: '#facc15', fontStyle: 'italic' }}>
+                      Mixed status selected. Please select products with the same status for bulk update.
+                    </span>
                   ) : (
-                    <button className="btn-sm btn-danger" onClick={() => setBulkModal({ action: 'remove' })}>Remove</button>
+                    <>
+                      {showPublish && (
+                        <button className="btn-sm btn-primary" onClick={() => setBulkModal({ action: 'publish' })}>Publish</button>
+                      )}
+                      {showUnpublish && (
+                        <button className="btn-sm btn-secondary" onClick={() => setBulkModal({ action: 'unpublish' })}
+                          style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)' }}>Unpublish</button>
+                      )}
+                      {hasArchivedInventory ? (
+                        <button
+                          className="btn-sm btn-secondary"
+                          onClick={() => {
+                            // Redirect to Inventory page to restore inventory first
+                            router.push('/dashboard/business/inventory');
+                          }}
+                          style={{
+                            background: 'var(--dark2)',
+                            borderColor: 'var(--border)',
+                            color: 'var(--white)',
+                            cursor: 'pointer'
+                          }}>
+                          Restore Inventory First
+                        </button>
+                      ) : showRestore ? (
+                        <button
+                          className="btn-sm btn-primary"
+                          onClick={() => setBulkModal({ action: 'restore' })}
+                          style={{
+                            background: 'var(--dark2)',
+                            borderColor: 'var(--border)',
+                            color: 'var(--white)',
+                            cursor: 'pointer'
+                          }}>
+                          Restore
+                        </button>
+                      ) : (
+                        <button className="btn-sm btn-danger" onClick={() => setBulkModal({ action: 'remove' })}>Remove</button>
+                      )}
+                    </>
                   )}
                 </>
               );

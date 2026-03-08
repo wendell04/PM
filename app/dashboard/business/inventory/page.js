@@ -2203,9 +2203,9 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
                   <button
                     type="button"
                     className={`combobox-item${supplierId === 'walk-in' ? ' active' : ''}`}
-                    onClick={() => handleSupplierSelect('walk-in', '— Unspecified')}
+                    onClick={() => handleSupplierSelect('walk-in', 'Unspecified')}
                   >
-                    — Unspecified
+                    Unspecified
                   </button>
                   {/* Supplier list */}
                   {suppliers && suppliers.map((supplier, idx) => (
