@@ -909,14 +909,14 @@ footer { background: var(--dark); border-top: 1px solid var(--border); }
 .auth-modal-body form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: .5rem;
   width: 100%;
 }
 
 .auth-field {
   display: flex;
   flex-direction: column;
-  gap: .4rem;
+  gap: .2rem;
   width: 100%;
 }
 .auth-field label {
@@ -957,10 +957,11 @@ footer { background: var(--dark); border-top: 1px solid var(--border); }
   box-shadow: 0 0 0 3px rgba(255,77,79,.2);
 }
 .error-message {
-  font-size: .75rem;
+  font-size: .70rem;
   color: #ff4d4f;
   display: block;
   font-weight: 500;
+  margin-top: 0;
 }
 
 .auth-input-wrap { position: relative; }
@@ -1802,4 +1803,3 @@ footer { background: var(--dark); border-top: 1px solid var(--border); }
   .footer-top { flex-direction: column; align-items: flex-start; gap: 1.5rem; }
   .footer-nav { gap: 1rem; }
 }
-
