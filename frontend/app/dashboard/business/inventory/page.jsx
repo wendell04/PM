@@ -24,6 +24,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { formatNumber, formatPrice } from '@/utils/format';
 
 // ── Reusable Number Input Component ───────────────────────────────────────────
 // Prevents negative values, e, E, -, +, and disables scroll wheel
