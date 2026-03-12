@@ -439,10 +439,10 @@ function InventoryExpandRow({ item, colSpan }) {
                   <span style={{ color: 'var(--gray)' }}>Total Stock:</span> <strong>{item.stockQty} pcs</strong>
                 </div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-                  <span style={{ color: 'var(--gray)' }}>Average Cost:</span> <strong style={{ color: '#d4a843' }}>₱{(item.averageCost || 0).toFixed(2)}</strong>
+                  <span style={{ color: 'var(--gray)' }}>Average Cost:</span> <strong style={{ color: '#d4a843' }}>{formatPrice(item.averageCost || 0)}</strong>
                 </div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-                  <span style={{ color: 'var(--gray)' }}>Overall Total Cost:</span> <strong style={{ color: '#d4a843' }}>₱{(item.stockQty * (item.averageCost || 0)).toFixed(2)}</strong>
+                  <span style={{ color: 'var(--gray)' }}>Overall Total Cost:</span> <strong style={{ color: '#d4a843' }}>{formatPrice(item.stockQty * (item.averageCost || 0))}</strong>
                 </div>
               </div>
             </div>
