@@ -2307,12 +2307,12 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
             {/* Auto-computed display */}
             {!isBulkPurchase && unitCost && quantity && (
               <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
-                Total Cost: ₱{(parseFloat(unitCost) * parseInt(quantity)).toFixed(2)}
+                Total Cost: {formatPrice(parseFloat(unitCost) * parseInt(quantity))}
               </p>
             )}
             {isBulkPurchase && totalCost && quantity && (
               <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
-                Unit Cost: ₱{(parseFloat(totalCost) / parseInt(quantity)).toFixed(2)} each
+                Unit Cost: {formatPrice(parseFloat(totalCost) / parseInt(quantity))} each
               </p>
             )}
 
