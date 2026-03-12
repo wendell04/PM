@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace App\Http\Controllers;
 
@@ -114,7 +114,6 @@ class InventoryController extends Controller
                 'unitCost'      => 'required|numeric|min:0',
             ]);
 
-            // Check for duplicate (same name + category)
             $duplicate = Inventory::where('name', $validated['name'])
                                   ->where('category', $validated['category'])
                                   ->where('isActive', true)
@@ -124,7 +123,6 @@ class InventoryController extends Controller
                 return response()->json(['error' => 'Duplicate item: An item with this name and category already exists.'], 422);
             }
 
-            // Create inventory item
             $inventory = Inventory::create([
                 'name'          => $validated['name'],
                 'category'      => $validated['category'],
@@ -140,7 +138,6 @@ class InventoryController extends Controller
                 'updatedAt'     => now(),
             ]);
 
-            // Create stock history entry
             StockHistory::create([
                 'inventoryId'  => $inventory->_id,
                 'supplierId'   => $validated['supplierId'] ?? null,
@@ -185,7 +182,6 @@ class InventoryController extends Controller
                 'supplierName'  => 'nullable|string',
             ]);
 
-            // Check for duplicate if name/category changed
             if (isset($validated['name']) || isset($validated['category'])) {
                 $duplicate = Inventory::where('name', $validated['name'] ?? $inventory->name)
                                       ->where('category', $validated['category'] ?? $inventory->category)
@@ -194,7 +190,7 @@ class InventoryController extends Controller
                                       ->first();
 
                 if ($duplicate) {
-                    return response()->json(['error' => 'Duplicate item: An item with this name and category already exists.'], 422);
+                    return response()->json(['error' => 'Duplicate item.'], 422);
                 }
             }
 
@@ -239,10 +235,8 @@ class InventoryController extends Controller
                 return response()->json(['error' => 'Insufficient stock.'], 422);
             }
 
-            // Update stock
             $inventory->stockQty = $newStock;
-            
-            // Update average cost if adding stock
+
             if ($quantity > 0 && isset($validated['unitCost'])) {
                 $totalCost = ($inventory->averageCost * ($inventory->stockQty - $quantity)) + ($validated['unitCost'] * $quantity);
                 $inventory->averageCost = $totalCost / $inventory->stockQty;
@@ -252,7 +246,6 @@ class InventoryController extends Controller
             $inventory->updatedAt = now();
             $inventory->save();
 
-            // Create stock history entry
             StockHistory::create([
                 'inventoryId'  => $inventory->_id,
                 'supplierId'   => $validated['supplierId'] ?? null,
@@ -286,7 +279,6 @@ class InventoryController extends Controller
                 return response()->json(['error' => 'Inventory item not found.'], 404);
             }
 
-            // Check if linked to products
             $linkedProducts = \App\Models\Product::where('inventoryId', $id)->count();
             if ($linkedProducts > 0) {
                 return response()->json(['error' => 'Cannot delete: Item is linked to ' . $linkedProducts . ' product(s).'], 422);

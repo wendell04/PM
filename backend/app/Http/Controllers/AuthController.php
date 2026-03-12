@@ -12,9 +12,20 @@ namespace App\Http\Controllers;
 
     class AuthController extends Controller
     {
+        // List of known disposable/temporary email domains
+        protected $disposableDomains = [
+            'tempmail.com', 'throwaway.com', 'guerrillamail.com', 'mailinator.com',
+            '10minutemail.com', 'fakeinbox.com', 'trashmail.com', 'temp-mail.org',
+            'getnada.com', 'maildrop.cc', 'sharklasers.com', 'grr.la',
+            'guerrillamail.info', 'grr.la', 'guerrillamail.biz', 'guerrillamail.de',
+            'spam4.me', 'mailnesia.com', 'yopmail.com', 'cool.fr.nf',
+            'jetable.org', 'mytrashmail.com', 'discard.email', 'emailondeck.com'
+        ];
+
         public function register(Request $request)
         {
             try {
+                // Validate email format and domain
                 $request->validate([
                     'firstName'   => 'required|string|min:2',
                     'lastName'    => 'required|string|min:2',
@@ -27,8 +38,35 @@ namespace App\Http\Controllers;
                     'password'    => 'required|string|min:8|confirmed',
                 ]);
 
-                User::where('email', $request->email)->where('is_verified', false)->delete();
+                // Additional email validation
+                $email = strtolower(trim($request->email));
                 
+                // Check if email is from a disposable domain
+                $domain = substr(strrchr($email, "@"), 1);
+                if (in_array($domain, $this->disposableDomains)) {
+                    return response()->json([
+                        'message' => 'Please use a legitimate email address. Temporary/disposable email services are not allowed.'
+                    ], 422);
+                }
+
+                // Validate email format more strictly
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    return response()->json([
+                        'message' => 'Please provide a valid email address.'
+                    ], 422);
+                }
+
+                // Check for common typos in email domains
+                $commonDomains = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com'];
+                if (!in_array($domain, $commonDomains) && !checkdnsrr($domain, 'MX')) {
+                    return response()->json([
+                        'message' => 'The email domain does not appear to be valid. Please check your email address.'
+                    ], 422);
+                }
+
+                // Delete any unverified accounts with this email
+                User::where('email', $request->email)->where('is_verified', false)->delete();
+
                 $plainCode = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
                 $hashedCode = hash('sha256', $plainCode);
                 $token = Str::random(60);
@@ -50,7 +88,13 @@ namespace App\Http\Controllers;
                     'verification_code_expires_at' => now()->addMinutes(10)->toDateTimeString(),
                 ]);
 
-                Mail::to($request->email)->send(new VerificationCodeMail($plainCode, $request->firstName));
+                try {
+                    Mail::to($request->email)->send(new VerificationCodeMail($plainCode, $request->firstName));
+                } catch (\Exception $e) {
+                    \Log::error('Failed to send verification email: ' . $e->getMessage());
+                    // Don't fail registration, but log the error
+                    // User can request resend code later
+                }
 
                 return response()->json([
                     'message' => 'Registration successful! Please check your email for the verification code.',
@@ -178,13 +222,15 @@ namespace App\Http\Controllers;
             }
         }
 
-        public function forgotPassword(Request $request) 
+        public function forgotPassword(Request $request)
         {
             try {
                 $request->validate(['email' => 'required|email']);
 
-                $user = User::where('email', $request ->email)->where('is_verified', true)->first();
+                // Only send reset code to verified users (users with existing accounts)
+                $user = User::where('email', $request->email)->where('is_verified', true)->first();
 
+                // Always return same message for security (don't reveal if email exists or verification status)
                 if (!$user) {
                     return response()->json(['message' => 'A reset code has been sent.']);
                 }
@@ -193,7 +239,7 @@ namespace App\Http\Controllers;
                 $hashedCode = hash('sha256', $plainCode);
 
                 $user->reset_token = $hashedCode;
-                $user->reset_token_expires_at = now()->addMinutes(10)->toDateTimeString();
+                $user->reset_token_expires_at = \Carbon\Carbon::now('Asia/Manila')->addMinutes(10)->toDateTimeString();
                 $user->save();
 
                 Mail::to($user->email)->send(new \App\Mail\ResetPasswordMail($plainCode, $user->firstName));
@@ -201,6 +247,44 @@ namespace App\Http\Controllers;
                 return response()->json(['message' => 'A reset code has been sent']);
             } catch (\Exception $e) {
                 \Log::error('ForgotPassword error: ' . $e->getMessage());
+                return response()->json(['error' => $e->getMessage()], 500);
+            }
+        }
+
+        public function verifyResetCode(Request $request)
+        {
+            try {
+                $request->validate([
+                    'email' => 'required|email',
+                    'code' => 'required|string|size:6',
+                ]);
+
+                $user = User::where('email', $request->email)->first();
+
+                if (!$user) {
+                    return response()->json(['message' => 'Invalid or expired code.'], 400);
+                }
+
+                if (!$user->reset_token || !$user->reset_token_expires_at) {
+                    return response()->json(['message' => 'Invalid or expired code.'], 400);
+                }
+
+                // Convert expiration time to Asia/Manila timezone for comparison
+                $expiresAt = \Carbon\Carbon::parse($user->reset_token_expires_at, 'UTC')->timezone('Asia/Manila');
+
+                if (\Carbon\Carbon::now('Asia/Manila')->gt($expiresAt)) {
+                    return response()->json(['message' => 'Code has expired. Please request a new one.'], 400);
+                }
+
+                if (hash('sha256', $request->code) !== $user->reset_token) {
+                    return response()->json(['message' => 'Invalid or expired code.'], 400);
+                }
+
+                return response()->json(['message' => 'Code verified successfully.']);
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                return response()->json(['errors' => $e->errors()], 422);
+            } catch (\Exception $e) {
+                \Log::error('VerifyResetCode error: ' . $e->getMessage());
                 return response()->json(['error' => $e->getMessage()], 500);
             }
         }
@@ -224,7 +308,10 @@ namespace App\Http\Controllers;
                     return response()->json(['message' => 'No reset request found. Please request a new code'], 400);
                 }
 
-                if (now()->gt($user->reset_token_expires_at)) {
+                // Convert expiration time to Asia/Manila timezone for comparison
+                $expiresAt = \Carbon\Carbon::parse($user->reset_token_expires_at, 'UTC')->timezone('Asia/Manila');
+                
+                if (\Carbon\Carbon::now('Asia/Manila')->gt($expiresAt)) {
                     return response()->json(['message' => 'Reset code has expired. Please request a new one'], 400);
                 }
 
@@ -312,13 +399,48 @@ namespace App\Http\Controllers;
 
                 $user->password = Hash::make($request->password);
                 $user->save();
-                
+
                 return response()->json(['message' => 'Password changed successfully.']);
             } catch (\Illuminate\Validation\ValidationException $e) {
                 return response()->json(['errors' => $e->errors()], 422);
             } catch (\Exception $e) {
                 \Log::error('UpdatePassword error: ' . $e->getMessage());
                 return response()->json(['error' => $e->getMessage()], 500);
+            }
+        }
+
+        public function contact(Request $request)
+        {
+            try {
+                $request->validate([
+                    'name' => 'required|string|min:2',
+                    'email' => 'required|email',
+                    'subject' => 'required|string',
+                    'message' => 'required|string',
+                ]);
+
+                $adminEmail = env('ADMIN_EMAIL', 'personalizemeprints@gmail.com');
+
+                // Send email to admin
+                \Mail::raw(
+                    "New Contact Form Submission\n\n" .
+                    "Name: {$request->name}\n" .
+                    "Email: {$request->email}\n" .
+                    "Subject: {$request->subject}\n\n" .
+                    "Message:\n{$request->message}",
+                    function ($message) use ($request, $adminEmail) {
+                        $message->to($adminEmail)
+                                ->subject("Contact Form: {$request->subject}")
+                                ->from($request->email, $request->name);
+                    }
+                );
+
+                return response()->json(['message' => 'Message sent successfully! We will get back to you soon.']);
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                return response()->json(['errors' => $e->errors()], 422);
+            } catch (\Exception $e) {
+                \Log::error('Contact form error: ' . $e->getMessage());
+                return response()->json(['error' => 'Failed to send message. Please try again.'], 500);
             }
         }
 

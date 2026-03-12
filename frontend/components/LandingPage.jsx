@@ -51,10 +51,9 @@ const PasswordStrength = ({password}) => {
 const LandingPage = ({onEnterShop}) => {
   const router = useRouter();
 
-  // If user is already logged in, go straight to shop; otherwise open login modal
+  // Allow everyone to browse products (no login required)
   const handleEnterShop = () => {
-    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-    if (token) { router.push('/shop'); } else { openModal('login'); }
+    router.push('/shop');
   };
 
   const [mobileMenuOpen, setMobileMenuOpen]   = useState(false);
@@ -204,9 +203,26 @@ const LandingPage = ({onEnterShop}) => {
     if (!contactForm.subject.trim()) newErrors.subject = 'Subject is required';
     if (!contactForm.message.trim()) newErrors.message = 'Message is required';
     setContactErrors(newErrors);
+    
     if (Object.keys(newErrors).length === 0) {
-      setContactSent(true);
-      setContactForm({name: '', email: '', subject: '', message: ''});
+      // Send email via backend
+      fetch(`${API_URL}/api/contact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(contactForm),
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.message) {
+          setContactSent(true);
+          setContactForm({name: '', email: '', subject: '', message: ''});
+        } else {
+          setContactErrors({ submit: data.error || 'Failed to send message. Please try again.' });
+        }
+      })
+      .catch(() => {
+        setContactErrors({ submit: 'Network error. Please try again later.' });
+      });
     }
   };
 
@@ -365,9 +381,9 @@ const LandingPage = ({onEnterShop}) => {
       const redirectPath = sessionStorage.getItem('redirectAfterLogin');
       sessionStorage.removeItem('redirectAfterLogin');
       
-      if (data.user.role === 'admin') { 
-        window.location.href = '/dashboard/business'; 
-        return; 
+      if (data.user.role === 'admin' || data.user.role === 'owner') {
+        window.location.href = '/dashboard/business';
+        return;
       }
       if (loginFromPricing) { setPricelistModalOpen(true); setLoginFromPricing(false); closeModal(); return; }
       closeModal();
@@ -637,7 +653,7 @@ const handleForgotResetPassword = async () => {
       <nav className={`navbar ${scrolled ? 'scrolled' : ''}`}>
         <div className="container">
           <div className="nav-inner">
-            <a href="#" className="nav-logo">
+            <a href="#" className="nav-logo" style={{ cursor: 'default' }} onClick={(e) => e.preventDefault()}>
               <img src="/logos/PersonalizeMe logo.png" alt="Personalize Me Prints" className="nav-logo-mark"/>
               <div className="nav-logo-text">PERSONALIZE <span>ME</span><br/>PRINTS</div>
             </a>
@@ -939,6 +955,9 @@ const handleForgotResetPassword = async () => {
                   </div>
                   <h3>Message Sent!</h3>
                   <p>Thanks for reaching out! We'll get back to you within 24 hours.</p>
+                  <button type="button" className="btn-primary" onClick={() => { setContactSent(false); setContactErrors({}); }} style={{marginTop: '1rem'}}>
+                    Send Another Message
+                  </button>
                 </div>
               ) : (
                 <form className="contact-form" onSubmit={handleContactSubmit}>
@@ -996,7 +1015,7 @@ const handleForgotResetPassword = async () => {
       <footer className="footer">
         <div className="container">
           <div className="footer-bottom" style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'1rem'}}>
-            <a href="#" className="nav-logo">
+            <a href="#" className="nav-logo" style={{ cursor: 'default' }} onClick={(e) => e.preventDefault()}>
               <img src="/logos/PersonalizeMe logo.png" alt="Personalize Me Prints" className="nav-logo-mark"/>
               <div className="nav-logo-text">PERSONALIZE<span>ME</span><br/>PRINTS</div>
             </a>

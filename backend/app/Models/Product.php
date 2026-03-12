@@ -36,12 +36,6 @@ class Product extends Model
     ];
 
     protected $casts = [
-        'tags'           => 'array',
-        'images'         => 'array',
-        'variantGroups'  => 'array',
-        'combinations'   => 'array',
-        'priceTiers'     => 'array',
-        'variantPrices'  => 'array',
         'price'          => 'float',
         'flatPrice'      => 'float',
         'trackInventory' => 'boolean',
@@ -55,12 +49,6 @@ class Product extends Model
     protected $attributes = [
         'isActive'    => true,
         'isPublished' => false,
-        'tags'        => [],
-        'images'      => [],
-        'variantGroups' => [],
-        'combinations'  => [],
-        'priceTiers'    => [],
-        'variantPrices' => [],
     ];
 
     public function inventory()

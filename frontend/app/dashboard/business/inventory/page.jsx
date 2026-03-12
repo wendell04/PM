@@ -421,30 +421,6 @@ function InventoryExpandRow({ item, colSpan }) {
                   })}
                 </tbody>
               </table>
-
-              {/* Summary */}
-              <div style={{
-                marginTop: '1rem',
-                padding: '0.75rem',
-                background: 'rgba(212, 168, 67, 0.1)',
-                border: '1px solid rgba(212, 168, 67, 0.3)',
-                borderRadius: '6px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '0.5rem'
-              }}>
-                <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-                  <span style={{ color: 'var(--gray)' }}>Total Stock:</span> <strong>{item.stockQty} pcs</strong>
-                </div>
-                <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-                  <span style={{ color: 'var(--gray)' }}>Average Cost:</span> <strong style={{ color: '#d4a843' }}>{formatPrice(item.averageCost || 0)}</strong>
-                </div>
-                <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-                  <span style={{ color: 'var(--gray)' }}>Overall Total Cost:</span> <strong style={{ color: '#d4a843' }}>{formatPrice(item.stockQty * (item.averageCost || 0))}</strong>
-                </div>
-              </div>
             </div>
           ) : (
             <div style={{
@@ -2381,12 +2357,12 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
               </div>
               <div className="confirm-row">
                 <span className="confirm-label">Unit Cost:</span>
-                <span className="confirm-value">₱{pendingData?.unitCost?.toFixed(2)}</span>
+                <span className="confirm-value">{formatPrice(pendingData?.unitCost || 0)}</span>
               </div>
               <div className="confirm-row">
                 <span className="confirm-label">Total Cost:</span>
                 <span className="confirm-value" style={{ color: '#facc15', fontWeight: '700' }}>
-                  ₱{pendingData?.totalCost?.toFixed(2)}
+                  {formatPrice(pendingData?.totalCost || 0)}
                 </span>
               </div>
               <div className="confirm-row">
@@ -2793,7 +2769,7 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
                   <div className="confirm-row">
                     <span className="confirm-label">Total Amount Received:</span>
                     <span className="confirm-value" style={{ color: '#4ade80', fontWeight: '700' }}>
-                      ₱{pendingData?.sellingPrice?.toFixed(2)}
+                      {formatPrice(pendingData?.sellingPrice || 0)}
                     </span>
                   </div>
                   {pendingData?.customerName && (

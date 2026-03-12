@@ -7,6 +7,9 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\JobOrderController;
+use App\Http\Controllers\AuditLogController;
+use App\Http\Controllers\SaleController;
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::post('/register',        [AuthController::class, 'register']);
@@ -15,7 +18,9 @@ Route::post('/logout',          [AuthController::class, 'logout']);
 Route::post('/verify-email',    [AuthController::class, 'verifyEmail']);
 Route::post('/resend-code',     [AuthController::class, 'resendCode']);
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/verify-reset-code', [AuthController::class, 'verifyResetCode']);
 Route::post('/reset-password',  [AuthController::class, 'resetPassword']);
+Route::post('/contact',         [AuthController::class, 'contact']); // Contact form
 
 // ─── Auth (Protected — any logged-in user) ───────────────────────────────────
 Route::get('/user', function (Request $request) {
@@ -63,3 +68,23 @@ Route::delete('/admin/inventory/{id}',      [InventoryController::class, 'destro
 // Orders Admin
 Route::get('/admin/orders',          [OrderController::class, 'adminIndex']);
 Route::put('/admin/orders/{id}',     [OrderController::class, 'adminUpdate']);
+
+// Job Orders Admin (Production Schedule)
+Route::get('/admin/job-orders',              [JobOrderController::class, 'index']);
+Route::get('/admin/job-orders/schedule',     [JobOrderController::class, 'schedule']);
+Route::get('/admin/job-orders/{id}',         [JobOrderController::class, 'show']);
+Route::post('/admin/job-orders',             [JobOrderController::class, 'store']);
+Route::put('/admin/job-orders/{id}',         [JobOrderController::class, 'update']);
+
+// Audit Logs Admin
+Route::get('/admin/audit-logs',              [AuditLogController::class, 'index']);
+Route::get('/admin/audit-logs/summary',      [AuditLogController::class, 'summary']);
+Route::get('/admin/audit-logs/inventory/{id}', [AuditLogController::class, 'byInventory']);
+Route::post('/admin/audit-logs',             [AuditLogController::class, 'store']);
+
+// Sales Admin
+Route::get('/admin/sales',                   [SaleController::class, 'index']);
+Route::get('/admin/sales/summary',           [SaleController::class, 'summary']);
+Route::get('/admin/sales/{id}',              [SaleController::class, 'show']);
+Route::post('/admin/sales',                  [SaleController::class, 'store']);
+Route::put('/admin/sales/{id}',              [SaleController::class, 'update']);

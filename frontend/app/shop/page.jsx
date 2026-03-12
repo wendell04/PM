@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useCart } from './layout';
 
@@ -70,6 +70,8 @@ function ProductCard({ product, onAddToCart }) {
             className={`shop-quick-add-btn ${isAdding ? 'adding' : ''}`}
             onClick={handleAddToCart}
             title="Add to Cart"
+            onMouseEnter={(e) => e.stopPropagation()}
+            onMouseLeave={(e) => e.stopPropagation()}
           >
             {isAdding ? (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -112,6 +114,38 @@ function ProductCard({ product, onAddToCart }) {
   );
 }
 
+// ─── Carousel Slide Data ──────────────────────────────────────────────────────
+const carouselSlides = [
+  {
+    title: 'Custom T-Shirts',
+    subtitle: 'Silkscreen & DTF Printing',
+    description: 'Premium quality prints that last. Perfect for teams, events, and merchandise.',
+    image: '/products/Tshit_printing.jpg',
+    gradient: 'linear-gradient(135deg, rgba(212, 168, 67, 0.3) 0%, rgba(196, 30, 58, 0.4) 100%)',
+  },
+  {
+    title: 'Custom Mugs',
+    subtitle: 'Ceramic & Magic Mugs',
+    description: 'Start your day with a personalized touch. Durable and dishwasher safe.',
+    image: '/products/mugs.jpg',
+    gradient: 'linear-gradient(135deg, rgba(196, 30, 58, 0.3) 0%, rgba(212, 168, 67, 0.4) 100%)',
+  },
+  {
+    title: 'Button Pins & Badges',
+    subtitle: 'Custom Promotional Items',
+    description: 'Perfect for events, promotions, and giveaways. Available in various sizes.',
+    image: '/products/ButtonPins.jpg',
+    gradient: 'linear-gradient(135deg, rgba(212, 168, 67, 0.3) 0%, rgba(100, 100, 100, 0.4) 100%)',
+  },
+  {
+    title: 'Stickers & Labels',
+    subtitle: 'Vinyl & Waterproof',
+    description: 'High-quality custom stickers for branding, packaging, and personal use.',
+    image: '/products/Stickers.jpg',
+    gradient: 'linear-gradient(135deg, rgba(100, 100, 100, 0.3) 0%, rgba(212, 168, 67, 0.4) 100%)',
+  },
+];
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ShopPage() {
   const [products, setProducts]   = useState([]);
@@ -121,6 +155,7 @@ export default function ShopPage() {
   const [search, setSearch]       = useState('');
   const [toast, setToast]         = useState(null);
   const { addToCart } = useCart();
+  const carouselRef = useRef(null);
 
   useEffect(() => {
     fetchProducts();
@@ -165,14 +200,53 @@ export default function ShopPage() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="shop-page-header">
-        <h1 className="shop-page-title">
-          Our <span className="gold-text">Products</span>
-        </h1>
-        <p className="shop-page-subtitle">
-          Browse our personalized items and place your order
-        </p>
+      {/* Hero Carousel */}
+      <div className="shop-carousel-container">
+        <div className="shop-carousel-track" ref={carouselRef}>
+          {carouselSlides.map((slide, index) => (
+            <div
+              key={index}
+              className="shop-carousel-slide"
+            >
+              {/* Background Image */}
+              <img
+                src={slide.image}
+                alt={slide.title}
+                className="shop-carousel-bg-image"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  e.target.parentElement.style.background = slide.gradient;
+                }}
+              />
+              {/* Gradient Overlay */}
+              <div className="shop-carousel-overlay" style={{ background: slide.gradient }} />
+              
+              <div className="shop-carousel-content">
+                <div className="shop-carousel-text">
+                  <span className="shop-carousel-subtitle">{slide.subtitle}</span>
+                  <h2 className="shop-carousel-title">{slide.title}</h2>
+                  <p className="shop-carousel-description">{slide.description}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Promo Banner */}
+      <div className="shop-promo-banner">
+        <div className="shop-promo-content">
+          <div className="shop-promo-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+            </svg>
+          </div>
+          <div className="shop-promo-text">
+            <strong>Bulk Order Discount!</strong>
+            <span>Get up to 50% off on orders of 500+ pieces. Perfect for corporate events and giveaways!</span>
+          </div>
+          <Link href="#contact" className="shop-promo-cta">Inquire Now</Link>
+        </div>
       </div>
 
       {/* Search + Filter bar */}
@@ -185,7 +259,7 @@ export default function ShopPage() {
           </svg>
           <input
             type="text"
-            placeholder="Search products..."
+            placeholder="Search products, categories, or tags..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="shop-search-input"
@@ -206,10 +280,18 @@ export default function ShopPage() {
         </div>
       </div>
 
+      {/* Results count */}
+      {!loading && filtered.length > 0 && (
+        <div className="shop-results-count">
+          Showing {filtered.length} of {products.length} products
+          {search && <span className="shop-search-term"> for "{search}"</span>}
+        </div>
+      )}
+
       {/* Grid */}
       {loading ? (
         <div className="shop-products-grid shop-products-grid-loading">
-          {[...Array(6)].map((_, i) => (
+          {[...Array(8)].map((_, i) => (
             <div key={i} className="shop-product-skeleton" />
           ))}
         </div>
@@ -246,6 +328,29 @@ export default function ShopPage() {
         </div>
       )}
 
+      {/* Social Proof Section */}
+      <div className="shop-social-proof">
+        <h3 className="shop-proof-title">Connect With Us</h3>
+        <div className="shop-social-links">
+          <a href="https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer" className="shop-social-link shop-social-fb">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073C24 5.404 18.627 0 12 0S0 5.404 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.267h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>
+            Facebook
+          </a>
+          <a href="https://www.instagram.com/personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-social-link shop-social-insta">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
+            Instagram
+          </a>
+          <a href="https://www.tiktok.com/@personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-social-link shop-social-tiktok">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.75a4.85 4.85 0 0 1-1.01-.06z"/></svg>
+            TikTok
+          </a>
+          <a href="https://shopee.ph/personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-social-link shop-social-shopee">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zm3 9a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+            Shopee
+          </a>
+        </div>
+      </div>
+
       {/* Toast Notification */}
       {toast && (
         <div className={`shop-toast ${toast.type}`}>
@@ -257,33 +362,350 @@ export default function ShopPage() {
       )}
 
       <style>{`
-        .shop-page-header {
-          margin-bottom: 2rem;
+        /* Carousel */
+        .shop-carousel-container {
+          position: relative;
+          border-radius: 16px;
+          overflow: hidden;
+          margin-bottom: 1.5rem;
+          height: 320px;
         }
 
-        .shop-page-title {
-          margin: 0 0 0.5rem;
-          font-size: 2rem;
-          font-weight: 700;
-          color: #f5f5f5;
-          font-family: 'Outfit', sans-serif;
+        .shop-carousel-track {
+          display: flex;
+          height: 100%;
+          transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        .shop-page-title .gold-text {
+        .shop-carousel-slide {
+          min-width: 25%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1rem;
+          position: relative;
+        }
+
+        .shop-carousel-bg-image {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          z-index: 0;
+        }
+
+        .shop-carousel-bg-image img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .shop-carousel-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          z-index: 1;
+        }
+
+        .shop-carousel-content {
+          position: relative;
+          z-index: 2;
+          display: flex;
+          align-items: center;
+          gap: 2.5rem;
+          max-width: 900px;
+        }
+
+        .shop-carousel-icon {
           color: #d4a843;
+          flex-shrink: 0;
         }
 
-        .shop-page-subtitle {
+        .shop-carousel-text {
+          text-align: left;
+        }
+
+        .shop-carousel-subtitle {
+          display: block;
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: rgba(212, 168, 67, 0.8);
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          margin-bottom: 0.5rem;
+        }
+
+        .shop-carousel-title {
+          margin: 0 0 0.75rem;
+          font-size: 2.5rem;
+          font-weight: 800;
+          color: #f5f5f5;
+          line-height: 1.1;
+        }
+
+        .shop-carousel-description {
           margin: 0;
-          color: #888;
-          font-size: 0.95rem;
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 1rem;
+          line-height: 1.6;
+          max-width: 450px;
         }
 
+        .shop-carousel-arrow {
+          position: absolute;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: rgba(0, 0, 0, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: #fff;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+          z-index: 10;
+        }
+
+        .shop-carousel-arrow:hover {
+          background: rgba(212, 168, 67, 0.8);
+          border-color: rgba(212, 168, 67, 0.5);
+          color: #0f0f0f;
+        }
+
+        .shop-carousel-prev {
+          left: 1rem;
+        }
+
+        .shop-carousel-next {
+          right: 1rem;
+        }
+
+        .shop-carousel-dots {
+          position: absolute;
+          bottom: 1.5rem;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          gap: 0.5rem;
+          z-index: 10;
+        }
+
+        .shop-carousel-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          background: transparent;
+          cursor: pointer;
+          transition: all 0.2s;
+          padding: 0;
+        }
+
+        .shop-carousel-dot.active {
+          background: #d4a843;
+          border-color: #d4a843;
+        }
+
+        .shop-carousel-dot:hover {
+          border-color: #d4a843;
+        }
+
+        /* Hero Banner (legacy - kept for compatibility) */
+        .shop-hero-banner {
+          background: linear-gradient(135deg, rgba(212, 168, 67, 0.15) 0%, rgba(196, 30, 58, 0.1) 100%);
+          border: 1px solid rgba(212, 168, 67, 0.3);
+          border-radius: 16px;
+          padding: 2.5rem;
+          margin-bottom: 1.5rem;
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 2rem;
+          align-items: center;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .shop-hero-banner::before {
+          content: '';
+          position: absolute;
+          top: -50%;
+          right: -10%;
+          width: 300px;
+          height: 300px;
+          background: radial-gradient(circle, rgba(212, 168, 67, 0.1) 0%, transparent 70%);
+          border-radius: 50%;
+          pointer-events: none;
+        }
+
+        .shop-hero-content {
+          position: relative;
+          z-index: 1;
+        }
+
+        .shop-hero-badge {
+          display: inline-block;
+          background: rgba(212, 168, 67, 0.2);
+          border: 1px solid rgba(212, 168, 67, 0.4);
+          border-radius: 20px;
+          padding: 0.4rem 1rem;
+          font-size: 0.8rem;
+          font-weight: 600;
+          color: #d4a843;
+          margin-bottom: 1rem;
+        }
+
+        .shop-hero-title {
+          margin: 0 0 0.75rem;
+          font-size: 2.25rem;
+          font-weight: 800;
+          color: #f5f5f5;
+          line-height: 1.2;
+        }
+
+        .shop-hero-title .gold-text {
+          background: linear-gradient(135deg, #d4a843 0%, #f0c953 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        .shop-hero-subtitle {
+          margin: 0 0 1.5rem;
+          color: #aaa;
+          font-size: 1rem;
+          line-height: 1.6;
+          max-width: 500px;
+        }
+
+        .shop-hero-features {
+          display: flex;
+          gap: 1.5rem;
+          flex-wrap: wrap;
+        }
+
+        .shop-hero-feature {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          color: #4ade80;
+          font-size: 0.9rem;
+          font-weight: 500;
+        }
+
+        .shop-hero-feature svg {
+          flex-shrink: 0;
+        }
+
+        .shop-hero-visual {
+          position: relative;
+          width: 180px;
+          height: 180px;
+        }
+
+        .shop-hero-orbit {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          animation: rotate 20s linear infinite;
+        }
+
+        @keyframes rotate {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .shop-hero-orbit-item {
+          position: absolute;
+          font-size: 2rem;
+          animation: counterRotate 20s linear infinite;
+        }
+
+        .shop-hero-orbit-item:nth-child(1) { top: 0; left: 50%; transform: translateX(-50%); }
+        .shop-hero-orbit-item:nth-child(2) { right: 0; top: 50%; transform: translateY(-50%); }
+        .shop-hero-orbit-item:nth-child(3) { bottom: 0; left: 50%; transform: translateX(-50%); }
+        .shop-hero-orbit-item:nth-child(4) { left: 0; top: 50%; transform: translateY(-50%); }
+
+        @keyframes counterRotate {
+          from { transform: rotate(0deg) translateX(-50%); }
+          to { transform: rotate(-360deg) translateX(-50%); }
+        }
+
+        /* Promo Banner */
+        .shop-promo-banner {
+          background: linear-gradient(135deg, #d4a843 0%, #c41e3a 100%);
+          border-radius: 12px;
+          padding: 1rem 1.5rem;
+          margin-bottom: 1.5rem;
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          animation: promoPulse 3s ease-in-out infinite;
+        }
+
+        @keyframes promoPulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.02); }
+        }
+
+        .shop-promo-content {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          width: 100%;
+        }
+
+        .shop-promo-icon {
+          font-size: 2rem;
+          flex-shrink: 0;
+        }
+
+        .shop-promo-text {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+        }
+
+        .shop-promo-text strong {
+          color: #0f0f0f;
+          font-size: 1rem;
+        }
+
+        .shop-promo-text span {
+          color: rgba(15, 15, 15, 0.8);
+          font-size: 0.85rem;
+        }
+
+        .shop-promo-cta {
+          background: #0f0f0f;
+          color: #d4a843;
+          padding: 0.6rem 1.25rem;
+          border-radius: 8px;
+          text-decoration: none;
+          font-weight: 700;
+          font-size: 0.85rem;
+          white-space: nowrap;
+          transition: all 0.2s;
+        }
+
+        .shop-promo-cta:hover {
+          background: #1a1a1a;
+          transform: translateY(-1px);
+        }
+
+        /* Filter Bar */
         .shop-filter-bar {
           display: flex;
           gap: 1rem;
           flex-wrap: wrap;
-          margin-bottom: 2rem;
+          margin-bottom: 1.5rem;
           align-items: center;
         }
 
@@ -303,7 +725,7 @@ export default function ShopPage() {
 
         .shop-search-input {
           width: 100%;
-          padding: 0.7rem 1rem 0.7rem 2.5rem;
+          padding: 0.75rem 1rem 0.75rem 2.5rem;
           background: #1a1a1a;
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 10px;
@@ -352,10 +774,23 @@ export default function ShopPage() {
           color: #d4a843;
         }
 
+        /* Results Count */
+        .shop-results-count {
+          font-size: 0.85rem;
+          color: #666;
+          margin-bottom: 1rem;
+        }
+
+        .shop-results-count .shop-search-term {
+          color: #888;
+          font-style: italic;
+        }
+
+        /* Products Grid */
         .shop-products-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-          gap: 1.5rem;
+          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+          gap: 1.25rem;
         }
 
         .shop-products-grid-loading {
@@ -363,7 +798,7 @@ export default function ShopPage() {
         }
 
         .shop-product-skeleton {
-          height: 340px;
+          height: 320px;
           border-radius: 12px;
           background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%);
           background-size: 200% 100%;
@@ -375,9 +810,10 @@ export default function ShopPage() {
           100% { background-position: -200% 0; }
         }
 
+        /* Empty State */
         .shop-empty-state {
           text-align: center;
-          padding: 5rem 2rem;
+          padding: 4rem 2rem;
           background: rgba(212, 168, 67, 0.03);
           border: 1px dashed rgba(212, 168, 67, 0.2);
           border-radius: 16px;
@@ -427,31 +863,144 @@ export default function ShopPage() {
           background: rgba(212, 168, 67, 0.25);
         }
 
-        @media (max-width: 768px) {
-          .shop-page-title {
-            font-size: 1.5rem;
-          }
+        /* Social Proof */
+        .shop-social-proof {
+          margin-top: 4rem;
+          padding: 2.5rem;
+          background: rgba(212, 168, 67, 0.05);
+          border: 1px solid rgba(212, 168, 67, 0.15);
+          border-radius: 16px;
+          text-align: center;
+        }
 
-          .shop-filter-bar {
-            flex-direction: column;
-            align-items: stretch;
-          }
+        .shop-proof-title {
+          margin: 0 0 2rem;
+          font-size: 1.25rem;
+          font-weight: 700;
+          color: #f5f5f5;
+        }
 
-          .shop-search-wrapper {
-            min-width: 100%;
-          }
+        .shop-proof-stats {
+          display: flex;
+          justify-content: center;
+          gap: 3rem;
+          flex-wrap: wrap;
+          margin-bottom: 2rem;
+        }
 
-          .shop-category-pills {
-            justify-content: center;
-          }
+        .shop-proof-stat {
+          text-align: center;
+        }
 
-          .shop-products-grid {
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 1rem;
-          }
+        .shop-proof-stat-num {
+          font-size: 2rem;
+          font-weight: 800;
+          background: linear-gradient(135deg, #d4a843 0%, #f0c953 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
 
-          .shop-empty-state {
-            padding: 3rem 1rem;
+        .shop-proof-stat-label {
+          font-size: 0.85rem;
+          color: #888;
+          margin-top: 0.25rem;
+        }
+
+        .shop-social-links {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 1rem;
+          flex-wrap: wrap;
+        }
+
+        .shop-social-label {
+          color: #666;
+          font-size: 0.9rem;
+        }
+
+        .shop-social-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.5rem 1rem;
+          border-radius: 8px;
+          text-decoration: none;
+          font-size: 0.85rem;
+          font-weight: 500;
+          transition: all 0.2s;
+        }
+
+        .shop-social-fb {
+          background: rgba(24, 119, 242, 0.15);
+          color: #1877f2;
+          border: 1px solid rgba(24, 119, 242, 0.3);
+        }
+
+        .shop-social-fb:hover {
+          background: rgba(24, 119, 242, 0.25);
+        }
+
+        .shop-social-insta {
+          background: linear-gradient(135deg, rgba(131, 58, 180, 0.15), rgba(253, 29, 29, 0.15), rgba(252, 176, 69, 0.15));
+          color: #e4405f;
+          border: 1px solid rgba(228, 64, 95, 0.3);
+        }
+
+        .shop-social-insta:hover {
+          background: linear-gradient(135deg, rgba(131, 58, 180, 0.25), rgba(253, 29, 29, 0.25), rgba(252, 176, 69, 0.25));
+        }
+
+        .shop-social-tiktok {
+          background: rgba(0, 0, 0, 0.3);
+          color: #fff;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .shop-social-tiktok:hover {
+          background: rgba(0, 0, 0, 0.5);
+        }
+
+        .shop-social-shopee {
+          background: rgba(238, 44, 100, 0.15);
+          color: #ee2c64;
+          border: 1px solid rgba(238, 44, 100, 0.3);
+        }
+
+        .shop-social-shopee:hover {
+          background: rgba(238, 44, 100, 0.25);
+        }
+
+        /* Toast */
+        .shop-toast {
+          position: fixed;
+          bottom: 2rem;
+          right: 2rem;
+          background: rgba(22, 22, 22, 0.95);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(74, 222, 128, 0.4);
+          border-radius: 12px;
+          padding: 1rem 1.5rem;
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          color: #4ade80;
+          font-weight: 500;
+          font-size: 0.9rem;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+          z-index: 1000;
+          animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
           }
         }
 
@@ -477,7 +1026,7 @@ export default function ShopPage() {
         }
 
         .shop-product-image-area {
-          height: 200px;
+          height: 180px;
           background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
           display: flex;
           align-items: center;
@@ -507,7 +1056,6 @@ export default function ShopPage() {
           color: rgba(255, 255, 255, 0.3);
         }
 
-        /* Quick Add to Cart Button */
         .shop-quick-add-btn {
           position: absolute;
           bottom: 10px;
@@ -549,55 +1097,6 @@ export default function ShopPage() {
           0% { transform: scale(1); }
           50% { transform: scale(1.1); }
           100% { transform: scale(1); }
-        }
-
-        /* Toast Notification */
-        .shop-toast {
-          position: fixed;
-          bottom: 2rem;
-          right: 2rem;
-          background: rgba(22, 22, 22, 0.95);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(74, 222, 128, 0.4);
-          border-radius: 12px;
-          padding: 1rem 1.5rem;
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          color: #4ade80;
-          font-weight: 500;
-          font-size: 0.9rem;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-          z-index: 1000;
-          animation: slideIn 0.3s ease;
-        }
-
-        @keyframes slideIn {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-
-        @media (max-width: 768px) {
-          .shop-quick-add-btn {
-            opacity: 1;
-            transform: translateY(0);
-            width: 36px;
-            height: 36px;
-            bottom: 8px;
-            right: 8px;
-          }
-
-          .shop-toast {
-            left: 1rem;
-            right: 1rem;
-            bottom: 1rem;
-          }
         }
 
         .shop-product-category-badge {
@@ -656,6 +1155,92 @@ export default function ShopPage() {
         .shop-product-variants {
           font-size: 0.75rem;
           color: #666;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+          .shop-hero-banner {
+            grid-template-columns: 1fr;
+            padding: 1.5rem;
+            text-align: center;
+          }
+
+          .shop-hero-title {
+            font-size: 1.75rem;
+          }
+
+          .shop-hero-features {
+            justify-content: center;
+          }
+
+          .shop-hero-visual {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto;
+          }
+
+          .shop-hero-orbit-item {
+            font-size: 1.5rem;
+          }
+
+          .shop-promo-banner {
+            flex-direction: column;
+            text-align: center;
+          }
+
+          .shop-promo-content {
+            flex-direction: column;
+          }
+
+          .shop-promo-cta {
+            width: 100%;
+            text-align: center;
+          }
+
+          .shop-filter-bar {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .shop-search-wrapper {
+            min-width: 100%;
+          }
+
+          .shop-category-pills {
+            justify-content: center;
+          }
+
+          .shop-products-grid {
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 1rem;
+          }
+
+          .shop-proof-stats {
+            gap: 2rem;
+          }
+
+          .shop-proof-stat-num {
+            font-size: 1.5rem;
+          }
+
+          .shop-quick-add-btn {
+            opacity: 1;
+            transform: translateY(0);
+            width: 36px;
+            height: 36px;
+            bottom: 8px;
+            right: 8px;
+          }
+
+          .shop-toast {
+            left: 1rem;
+            right: 1rem;
+            bottom: 1rem;
+          }
+
+          .shop-empty-state {
+            padding: 3rem 1rem;
+          }
         }
       `}</style>
     </div>

@@ -2,7 +2,7 @@
 
 /**
  * SALES MANAGEMENT PAGE (READ-ONLY)
- * 
+ *
  * Features:
  * - View all sales from the system (auto-generated)
  * - Filter by payment status (All, Paid, Pending 50%, Outside System, Cancelled)
@@ -14,6 +14,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { formatPrice } from '../../../../src/utils/format';
 
 // ── Order Detail Expand Row ─────────────────────────────────────────────────
 function OrderExpandRow({ order, colSpan }) {
@@ -42,14 +43,14 @@ function OrderExpandRow({ order, colSpan }) {
             <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
               {item.variant ? `${item.variant} × ${item.quantity}` : `× ${item.quantity}`}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>₱{(item.unitPrice || 0).toFixed(2)} each</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>{formatPrice(item.unitPrice || 0)} each</div>
           </div>
         ))
       ) : order.quantity ? (
         <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
           <div style={{ fontWeight: 600 }}>{order.productName || 'Product'}</div>
           <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>× {order.quantity} pcs</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>₱{(order.unitPrice || 0).toFixed(2)} each</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>{formatPrice(order.unitPrice || 0)} each</div>
         </div>
       ) : (
         <div style={{ fontSize: '0.85rem', color: 'var(--gray)', fontStyle: 'italic', opacity: 0.6 }}>—</div>
@@ -62,16 +63,16 @@ function OrderExpandRow({ order, colSpan }) {
       <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
           <span style={{ color: 'var(--gray)' }}>Total:</span>
-          <span style={{ fontWeight: 600, color: 'var(--gold)' }}>₱{(order.totalPrice || 0).toFixed(2)}</span>
+          <span style={{ fontWeight: 600, color: 'var(--gold)' }}>{formatPrice(order.totalPrice || 0)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
           <span style={{ color: 'var(--gray)' }}>Downpayment (50%):</span>
-          <span style={{ fontWeight: 600, color: '#4ade80' }}>₱{(order.downPayment || 0).toFixed(2)}</span>
+          <span style={{ fontWeight: 600, color: '#4ade80' }}>{formatPrice(order.downPayment || 0)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
           <span style={{ color: 'var(--gray)' }}>Balance:</span>
           <span style={{ fontWeight: 600, color: order.balance === 0 ? '#4ade80' : '#facc15' }}>
-            ₱{(order.balance || 0).toFixed(2)}
+            {formatPrice(order.balance || 0)}
           </span>
         </div>
         {order.balance === 0 && (
@@ -598,14 +599,14 @@ export default function SalesListPage() {
                       {/* Total Price */}
                       <td className="table-cell">
                         <span style={{ fontWeight: 600, color: 'var(--gold)', fontSize: '0.875rem' }}>
-                          ₱{order.totalPrice.toFixed(2)}
+                          {formatPrice(order.totalPrice || 0)}
                         </span>
                       </td>
 
                       {/* Downpayment */}
                       <td className="table-cell">
                         <span style={{ fontWeight: 600, color: order.downPayment > 0 ? '#4ade80' : 'var(--gray)', fontSize: '0.875rem' }}>
-                          {order.downPayment > 0 ? `₱${order.downPayment.toFixed(2)}` : '—'}
+                          {order.downPayment > 0 ? formatPrice(order.downPayment) : '—'}
                         </span>
                         {order.downPayment > 0 && (
                           <div style={{ fontSize: '0.65rem', color: '#4ade80', marginTop: '0.1rem' }}>
@@ -617,7 +618,7 @@ export default function SalesListPage() {
                       {/* Balance */}
                       <td className="table-cell">
                         <span style={{ fontWeight: 600, color: order.balance === 0 ? '#4ade80' : (order.status === 'cancelled' ? 'var(--gray)' : '#facc15'), fontSize: '0.875rem' }}>
-                          {order.status === 'cancelled' ? '—' : `₱${(order.balance || 0).toFixed(2)}`}
+                          {order.status === 'cancelled' ? '—' : formatPrice(order.balance || 0)}
                         </span>
                         {order.balance === 0 && order.status !== 'cancelled' && (
                           <div style={{ fontSize: '0.65rem', color: '#4ade80', marginTop: '0.1rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>

@@ -19,6 +19,45 @@ function resolvePrice(product, qty) {
   return product.flatPrice ?? 0;
 }
 
+// ── Login Required Modal ──────────────────────────────────────────────────────
+function LoginRequiredModal({ isOpen, onClose }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 9999 }}>
+      <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+        <div className="modal-header">
+          <h2 className="modal-title">Login Required</h2>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="modal-body" style={{ textAlign: 'center', padding: '2rem 1rem' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔐</div>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.5rem' }}>
+            Please Login or Register
+          </h3>
+          <p style={{ fontSize: '0.875rem', color: 'var(--gray)', lineHeight: 1.6 }}>
+            You need to have an account to place orders. This helps us process your order and keep you updated on its status.
+          </p>
+        </div>
+
+        <div className="modal-actions" style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+          <Link href="/#login" className="btn-primary" onClick={onClose} style={{ flex: 1 }}>
+            Login
+          </Link>
+          <Link href="/#register" className="btn-secondary" onClick={onClose} style={{ flex: 1, background: 'var(--gold)', borderColor: 'var(--gold)', color: '#000' }}>
+            Register
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CartPage() {
   const router = useRouter();
   const { cart, updateQty, removeFromCart, clearCart } = useCart();
@@ -28,6 +67,7 @@ export default function CartPage() {
   const [error, setError]       = useState(null);
   const [success, setSuccess]   = useState(null);
   const [removingId, setRemovingId] = useState(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   // Re-compute unit prices based on current qty
   const enrichedCart = cart.map(item => ({
@@ -48,10 +88,18 @@ export default function CartPage() {
   };
 
   async function handlePlaceOrder() {
+    // Check if user is logged in
+    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+    
+    if (!token) {
+      // User is not logged in - show login modal
+      setShowLoginModal(true);
+      return;
+    }
+
     setError(null);
     setLoading(true);
     try {
-      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
       const items = enrichedCart.map(i => ({
         productId:   i.product._id,
         variantId:   i.variantId ?? null,
@@ -345,6 +393,9 @@ export default function CartPage() {
           </p>
         </div>
       </div>
+
+      {/* Login Required Modal */}
+      <LoginRequiredModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
     </div>
   );
 }
