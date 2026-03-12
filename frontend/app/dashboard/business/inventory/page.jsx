@@ -1227,11 +1227,11 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
               {/* Auto-computed display - only for new items */}
               {!item && formData.isBulkPurchase && formData.totalCost && formData.stockQty ? (
                 <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
-                  Unit Cost: ₱{(parseFloat(formData.totalCost) / parseInt(formData.stockQty)).toFixed(2)} each
+                  Unit Cost: {formatPrice(parseFloat(formData.totalCost) / parseInt(formData.stockQty))} each
                 </p>
               ) : !item && formData.unitCost && formData.stockQty && (
                 <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
-                  Total: ₱{(parseFloat(formData.unitCost) * parseInt(formData.stockQty)).toFixed(2)}
+                  Total: {formatPrice(parseFloat(formData.unitCost) * parseInt(formData.stockQty))}
                 </p>
               )}
 
