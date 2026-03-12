@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { formatNumber, formatPrice } from '../../../src/utils/format';
 
 export default function CustomerDashboard() {
   const [activeTab, setActiveTab] = useState('products');
@@ -66,7 +67,7 @@ export default function CustomerDashboard() {
                   <div className="p-6">
                     <h3 className="text-lg font-medium text-gray-900">{product.name}</h3>
                     <p className="text-gray-500 text-sm">{product.category}</p>
-                    <p className="mt-2 text-lg font-semibold text-gray-900">₱{product.price}</p>
+                    <p className="mt-2 text-lg font-semibold text-gray-900">{formatPrice(product.price)}</p>
                     <button className="mt-4 w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition">
                       Customize & Order
                     </button>

@@ -24,6 +24,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { formatNumber, formatPrice } from '../../../../src/utils/format';
 
 // ── Reusable Number Input Component ───────────────────────────────────────────
 // Prevents negative values, e, E, -, +, and disables scroll wheel
@@ -405,10 +406,10 @@ function InventoryExpandRow({ item, colSpan }) {
                           )}
                         </td>
                         <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gold)', fontSize: '0.8rem' }}>
-                          ₱{(entry.unitCost || 0).toFixed(2)}
+                          {formatPrice(entry.unitCost || 0)}
                         </td>
                         <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gold)', fontSize: '0.8rem' }}>
-                          ₱{(entry.totalCost || 0).toFixed(2)}
+                          {formatPrice(entry.totalCost || 0)}
                         </td>
                         <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
                           {entry.reason === 'restock' ? 'Restock' : 
@@ -420,30 +421,6 @@ function InventoryExpandRow({ item, colSpan }) {
                   })}
                 </tbody>
               </table>
-
-              {/* Summary */}
-              <div style={{
-                marginTop: '1rem',
-                padding: '0.75rem',
-                background: 'rgba(212, 168, 67, 0.1)',
-                border: '1px solid rgba(212, 168, 67, 0.3)',
-                borderRadius: '6px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '0.5rem'
-              }}>
-                <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-                  <span style={{ color: 'var(--gray)' }}>Total Stock:</span> <strong>{item.stockQty} pcs</strong>
-                </div>
-                <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-                  <span style={{ color: 'var(--gray)' }}>Average Cost:</span> <strong style={{ color: '#d4a843' }}>₱{(item.averageCost || 0).toFixed(2)}</strong>
-                </div>
-                <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-                  <span style={{ color: 'var(--gray)' }}>Overall Total Cost:</span> <strong style={{ color: '#d4a843' }}>₱{(item.stockQty * (item.averageCost || 0)).toFixed(2)}</strong>
-                </div>
-              </div>
             </div>
           ) : (
             <div style={{
@@ -1226,11 +1203,11 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
               {/* Auto-computed display - only for new items */}
               {!item && formData.isBulkPurchase && formData.totalCost && formData.stockQty ? (
                 <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
-                  Unit Cost: ₱{(parseFloat(formData.totalCost) / parseInt(formData.stockQty)).toFixed(2)} each
+                  Unit Cost: {formatPrice(parseFloat(formData.totalCost) / parseInt(formData.stockQty))} each
                 </p>
               ) : !item && formData.unitCost && formData.stockQty && (
                 <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
-                  Total: ₱{(parseFloat(formData.unitCost) * parseInt(formData.stockQty)).toFixed(2)}
+                  Total: {formatPrice(parseFloat(formData.unitCost) * parseInt(formData.stockQty))}
                 </p>
               )}
 
@@ -2306,12 +2283,12 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
             {/* Auto-computed display */}
             {!isBulkPurchase && unitCost && quantity && (
               <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
-                Total Cost: ₱{(parseFloat(unitCost) * parseInt(quantity)).toFixed(2)}
+                Total Cost: {formatPrice(parseFloat(unitCost) * parseInt(quantity))}
               </p>
             )}
             {isBulkPurchase && totalCost && quantity && (
               <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
-                Unit Cost: ₱{(parseFloat(totalCost) / parseInt(quantity)).toFixed(2)} each
+                Unit Cost: {formatPrice(parseFloat(totalCost) / parseInt(quantity))} each
               </p>
             )}
 
@@ -2380,12 +2357,12 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
               </div>
               <div className="confirm-row">
                 <span className="confirm-label">Unit Cost:</span>
-                <span className="confirm-value">₱{pendingData?.unitCost?.toFixed(2)}</span>
+                <span className="confirm-value">{formatPrice(pendingData?.unitCost)}</span>
               </div>
               <div className="confirm-row">
                 <span className="confirm-label">Total Cost:</span>
                 <span className="confirm-value" style={{ color: '#facc15', fontWeight: '700' }}>
-                  ₱{pendingData?.totalCost?.toFixed(2)}
+                  {formatPrice(pendingData?.totalCost)}
                 </span>
               </div>
               <div className="confirm-row">
@@ -2792,7 +2769,7 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
                   <div className="confirm-row">
                     <span className="confirm-label">Total Amount Received:</span>
                     <span className="confirm-value" style={{ color: '#4ade80', fontWeight: '700' }}>
-                      ₱{pendingData?.sellingPrice?.toFixed(2)}
+                      {formatPrice(pendingData?.sellingPrice)}
                     </span>
                   </div>
                   {pendingData?.customerName && (
@@ -3287,17 +3264,8 @@ export default function InventoryPage() {
     // Convert from Upon Order to In Stock if needed
     const isConverting = additionItem.isOnDemand;
 
-    // Compute new average cost
-    const currentStock = additionItem.stockQty;
-    const currentAvgCost = additionItem.averageCost || 0;
-    const newStock = quantity;
-    const newCost = unitCost;
-    
-    // New average cost = (currentStock * currentAvgCost + newStock * newCost) / (currentStock + newStock)
-    const newTotalStock = currentStock + newStock;
-    const newAverageCost = newTotalStock > 0 
-      ? ((currentStock * currentAvgCost) + (newStock * newCost)) / newTotalStock 
-      : newCost;
+    // Increase stock
+    const newTotalStock = additionItem.stockQty + quantity;
 
     // Increase stock and update cost info
     setInventory(prev =>
@@ -3305,19 +3273,19 @@ export default function InventoryPage() {
         item.id === additionItem.id
           ? {
               ...item,
-              stockQty: item.stockQty + quantity,
+              stockQty: newTotalStock,
               isOnDemand: isConverting ? false : item.isOnDemand,  // Convert to In Stock
               lastSupplierId: supplierId,
               lastSupplierName: supplierName,
               lastUnitCost: unitCost,
-              averageCost: newAverageCost,
+              averageCost: unitCost,  // Use latest unit cost for FIFO reference
               updatedAt: new Date().toISOString()
             }
           : item
       )
     );
 
-    // Create stock history entry
+    // Create stock history entry (FIFO batch)
     const stockHistoryEntry = {
       inventoryId: additionItem.id,
       itemName: additionItem.name,
@@ -3329,8 +3297,7 @@ export default function InventoryPage() {
       totalCost: totalCost,
       reason: reason,
       stockBefore: additionItem.stockQty,
-      stockAfter: newTotalStock,
-      averageCostAfter: newAverageCost
+      stockAfter: newTotalStock
     };
     addStockHistory(stockHistoryEntry);
 

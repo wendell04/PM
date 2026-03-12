@@ -1,5 +1,7 @@
 'use client';
 
+import { formatNumber, formatPrice } from '../../../src/utils/format';
+
 /**
  * ADD PRODUCT PAGE
  *
@@ -707,16 +709,16 @@ function ProductPreviewModal({ product, onClose }) {
                       ) : product.priceType === 'fixed' ? (
                         product.variantPrices && Object.keys(product.variantPrices).length > 0 ? (
                           <span className="preview-price">
-                            ₱{fixedMinP}{fixedMaxP !== fixedMinP ? ` – ₱${fixedMaxP}` : ''} <span className="preview-price-unit">per item</span>
+                            {formatPrice(fixedMinP)}{fixedMaxP !== fixedMinP ? ` – ${formatPrice(fixedMaxP)}` : ''} <span className="preview-price-unit">per item</span>
                           </span>
                         ) : (
                           <span className="preview-price">
-                            ₱{product.price || '—'} <span className="preview-price-unit">per item</span>
+                            {formatPrice(product.price)} <span className="preview-price-unit">per item</span>
                           </span>
                         )
                       ) : minP ? (
                         <span className="preview-price">
-                          ₱{minP}{maxP !== minP ? ` – ₱${maxP}` : ''} <span className="preview-price-unit">per item</span>
+                          {formatPrice(minP)}{maxP !== minP ? ` – ${formatPrice(maxP)}` : ''} <span className="preview-price-unit">per item</span>
                         </span>
                       ) : (
                         <span className="preview-price-tbd">Price TBD</span>
@@ -743,12 +745,12 @@ function ProductPreviewModal({ product, onClose }) {
                       <div className="preview-tier-variants">
                         {product.combinations.map(c => (
                           <span key={c.id} className="preview-tier-variant-price">
-                            {c.label}: ₱{tier.prices[c.id] || '—'}
+                            {c.label}: {formatPrice(tier.prices[c.id])}
                           </span>
                         ))}
                       </div>
                     ) : (
-                      <span className="preview-tier-price">₱{tier.prices['__base__'] || '—'}</span>
+                      <span className="preview-tier-price">{formatPrice(tier.prices['__base__'])}</span>
                     )}
                   </div>
                 ))}
@@ -964,15 +966,15 @@ function ConfirmSaveProductModal({ isOpen, onClose, onConfirm, product }) {
       const prices = Object.values(product.variantPrices).map(p => parseFloat(p)).filter(p => p > 0);
       const minP = prices.length ? Math.min(...prices) : 0;
       const maxP = prices.length ? Math.max(...prices) : 0;
-      priceInfo = `₱${minP}${maxP !== minP ? ` – ₱${maxP}` : ''}`;
+      priceInfo = `${formatPrice(minP)}${maxP !== minP ? ` – ${formatPrice(maxP)}` : ''}`;
     } else if (product.price) {
-      priceInfo = `₱${product.price}`;
+      priceInfo = formatPrice(product.price);
     }
   } else if (product.priceType === 'tiered' && product.tiers) {
     const allPrices = product.tiers.flatMap(t => Object.values(t.prices).map(p => parseFloat(p)).filter(p => p > 0));
     const minP = allPrices.length ? Math.min(...allPrices) : 0;
     const maxP = allPrices.length ? Math.max(...allPrices) : 0;
-    priceInfo = `₱${minP}${maxP !== minP ? ` – ₱${maxP}` : ''} (tiered)`;
+    priceInfo = `${formatPrice(minP)}${maxP !== minP ? ` – ${formatPrice(maxP)}` : ''} (tiered)`;
   }
 
   // Stock info
@@ -2159,7 +2161,7 @@ export default function AddProductsPage() {
                 fixedMinP !== null && (
                   <div className="price-preview">
                     <p className="price-preview-value">
-                      ₱{fixedMinP}{fixedMaxP !== fixedMinP ? ` – ₱${fixedMaxP}` : ''}
+                      {formatPrice(fixedMinP)}{fixedMaxP !== fixedMinP ? ` – ${formatPrice(fixedMaxP)}` : ''}
                       <span className="price-preview-unit"> per item</span>
                     </p>
                   </div>
@@ -2168,7 +2170,7 @@ export default function AddProductsPage() {
                 fixedPrice && (
                   <div className="price-preview">
                     <p className="price-preview-value">
-                      ₱{fixedPrice}
+                      {formatPrice(fixedPrice)}
                       <span className="price-preview-unit"> per item</span>
                     </p>
                   </div>
@@ -2223,7 +2225,7 @@ export default function AddProductsPage() {
               {minP !== null && (
                 <div className="price-preview">
                   <p className="price-preview-value">
-                    ₱{minP}{maxP !== minP ? ` – ₱${maxP}` : ''}
+                    {formatPrice(minP)}{maxP !== minP ? ` – ${formatPrice(maxP)}` : ''}
                     <span className="price-preview-unit"> per item</span>
                   </p>
                   <p className="price-preview-note">

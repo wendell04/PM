@@ -2,7 +2,7 @@
 
 /**
  * SALES MANAGEMENT PAGE (READ-ONLY)
- * 
+ *
  * Features:
  * - View all sales from the system (auto-generated)
  * - Filter by payment status (All, Paid, Pending 50%, Outside System, Cancelled)
@@ -14,6 +14,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { formatNumber, formatPrice } from '../../../../src/utils/format';
 
 // ── Order Detail Expand Row ─────────────────────────────────────────────────
 function OrderExpandRow({ order, colSpan }) {
@@ -42,14 +43,14 @@ function OrderExpandRow({ order, colSpan }) {
             <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
               {item.variant ? `${item.variant} × ${item.quantity}` : `× ${item.quantity}`}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>₱{(item.unitPrice || 0).toFixed(2)} each</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>{formatPrice(item.unitPrice || 0)} each</div>
           </div>
         ))
       ) : order.quantity ? (
         <div style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
           <div style={{ fontWeight: 600 }}>{order.productName || 'Product'}</div>
           <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>× {order.quantity} pcs</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>₱{(order.unitPrice || 0).toFixed(2)} each</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>{formatPrice(order.unitPrice || 0)} each</div>
         </div>
       ) : (
         <div style={{ fontSize: '0.85rem', color: 'var(--gray)', fontStyle: 'italic', opacity: 0.6 }}>—</div>
@@ -62,16 +63,16 @@ function OrderExpandRow({ order, colSpan }) {
       <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
           <span style={{ color: 'var(--gray)' }}>Total:</span>
-          <span style={{ fontWeight: 600, color: 'var(--gold)' }}>₱{(order.totalPrice || 0).toFixed(2)}</span>
+          <span style={{ fontWeight: 600, color: 'var(--gold)' }}>{formatPrice(order.totalPrice || 0)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
           <span style={{ color: 'var(--gray)' }}>Downpayment (50%):</span>
-          <span style={{ fontWeight: 600, color: '#4ade80' }}>₱{(order.downPayment || 0).toFixed(2)}</span>
+          <span style={{ fontWeight: 600, color: '#4ade80' }}>{formatPrice(order.downPayment || 0)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
           <span style={{ color: 'var(--gray)' }}>Balance:</span>
           <span style={{ fontWeight: 600, color: order.balance === 0 ? '#4ade80' : '#facc15' }}>
-            ₱{(order.balance || 0).toFixed(2)}
+            {formatPrice(order.balance || 0)}
           </span>
         </div>
         {order.balance === 0 && (
@@ -322,82 +323,6 @@ export default function SalesListPage() {
           }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             </div>
-            
-            {/* Date Range Selector */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: 'var(--dark2)',
-              padding: '0.75rem 1rem',
-              borderRadius: '10px',
-              border: '1px solid var(--border)',
-            }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>From</label>
-                <input
-                  type="date"
-                  className="form-input"
-                  value={customDateRange.start}
-                  onChange={(e) => {
-                    setCustomDateRange(prev => ({ ...prev, start: e.target.value }));
-                    setDateFilter('custom');
-                  }}
-                  style={{
-                    background: 'var(--dark)',
-                    borderColor: 'var(--border)',
-                    color: 'var(--white)',
-                    fontSize: '0.85rem',
-                    padding: '0.4rem 0.6rem',
-                    borderRadius: '6px',
-                    minWidth: '140px',
-                  }}
-                />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>To</label>
-                <input
-                  type="date"
-                  className="form-input"
-                  value={customDateRange.end}
-                  onChange={(e) => {
-                    setCustomDateRange(prev => ({ ...prev, end: e.target.value }));
-                    setDateFilter('custom');
-                  }}
-                  style={{
-                    background: 'var(--dark)',
-                    borderColor: 'var(--border)',
-                    color: 'var(--white)',
-                    fontSize: '0.85rem',
-                    padding: '0.4rem 0.6rem',
-                    borderRadius: '6px',
-                    minWidth: '140px',
-                  }}
-                />
-              </div>
-              
-              <button
-                onClick={() => {
-                  const today = new Date().toISOString().split('T')[0];
-                  setCustomDateRange({ start: today, end: today });
-                  setDateFilter('today');
-                }}
-                style={{
-                  background: 'var(--gold)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  padding: '0.5rem 1rem',
-                  color: 'var(--black)',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  marginTop: '1.1rem',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                Today
-              </button>
-            </div>
           </div>
           
           {/* Analytics Cards */}
@@ -418,13 +343,13 @@ export default function SalesListPage() {
                 <span style={{ fontSize: '0.75rem', color: '#4ade80', textTransform: 'uppercase', fontWeight: 700 }}>Total Revenue</span>
               </div>
               <div style={{ fontSize: '2rem', fontWeight: 800, color: '#4ade80' }}>
-                ₱{summaryMetrics.revenue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {formatPrice(summaryMetrics.revenue)}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.5rem' }}>
                 From completed orders
               </div>
             </div>
-            
+
             {/* Total Profit Card */}
             <div style={{
               background: 'rgba(212, 168, 67, 0.1)',
@@ -436,7 +361,7 @@ export default function SalesListPage() {
                 <span style={{ fontSize: '0.75rem', color: '#d4a843', textTransform: 'uppercase', fontWeight: 700 }}>Total Profit</span>
               </div>
               <div style={{ fontSize: '2rem', fontWeight: 800, color: '#d4a843' }}>
-                ₱{summaryMetrics.profit.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {formatPrice(summaryMetrics.profit)}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.5rem' }}>
                 Revenue minus cost
@@ -598,14 +523,14 @@ export default function SalesListPage() {
                       {/* Total Price */}
                       <td className="table-cell">
                         <span style={{ fontWeight: 600, color: 'var(--gold)', fontSize: '0.875rem' }}>
-                          ₱{order.totalPrice.toFixed(2)}
+                          {formatPrice(order.totalPrice)}
                         </span>
                       </td>
 
                       {/* Downpayment */}
                       <td className="table-cell">
                         <span style={{ fontWeight: 600, color: order.downPayment > 0 ? '#4ade80' : 'var(--gray)', fontSize: '0.875rem' }}>
-                          {order.downPayment > 0 ? `₱${order.downPayment.toFixed(2)}` : '—'}
+                          {order.downPayment > 0 ? formatPrice(order.downPayment) : '—'}
                         </span>
                         {order.downPayment > 0 && (
                           <div style={{ fontSize: '0.65rem', color: '#4ade80', marginTop: '0.1rem' }}>
@@ -617,7 +542,7 @@ export default function SalesListPage() {
                       {/* Balance */}
                       <td className="table-cell">
                         <span style={{ fontWeight: 600, color: order.balance === 0 ? '#4ade80' : (order.status === 'cancelled' ? 'var(--gray)' : '#facc15'), fontSize: '0.875rem' }}>
-                          {order.status === 'cancelled' ? '—' : `₱${(order.balance || 0).toFixed(2)}`}
+                          {order.status === 'cancelled' ? '—' : formatPrice(order.balance || 0)}
                         </span>
                         {order.balance === 0 && order.status !== 'cancelled' && (
                           <div style={{ fontSize: '0.65rem', color: '#4ade80', marginTop: '0.1rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>

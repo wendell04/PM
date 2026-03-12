@@ -39,6 +39,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { formatNumber, formatPrice } from '../../../../src/utils/format';
 
 // TODO: MongoDB - Remove this constant, use database instead
 const ORDERS_KEY = 'pmp_orders';
@@ -551,8 +552,8 @@ export default function OrdersPage() {
                       </td>
                       <td className="table-cell" style={{ textAlign: 'center', color: 'var(--gray)' }}>{o.quantity} pcs</td>
                       <td className="table-cell">
-                        <div style={{ color: 'var(--gold)', fontSize: '1rem', fontWeight: 600 }}>₱{o.totalPrice?.toLocaleString()}</div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--gray)' }}>DP: ₱{o.downPayment?.toLocaleString()}</div>
+                        <div style={{ color: 'var(--gold)', fontSize: '1rem', fontWeight: 600 }}>{formatPrice(o.totalPrice)}</div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--gray)' }}>DP: {formatPrice(o.downPayment)}</div>
                       </td>
                       <td className="table-cell">
                         <span className="stock-status-badge" style={{ color: statusBadge.color, background: statusBadge.bg, borderColor: statusBadge.border }}>
@@ -605,15 +606,15 @@ export default function OrdersPage() {
                               <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.7 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ color: 'var(--gray)' }}>Total</span>
-                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{o.totalPrice?.toLocaleString()}</span>
+                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>{formatPrice(o.totalPrice)}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ color: 'var(--gray)' }}>Downpayment (50%)</span>
-                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{o.downPayment?.toLocaleString()}</span>
+                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>{formatPrice(o.downPayment)}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ color: 'var(--gray)' }}>Balance</span>
-                                  <span style={{ color: o.balance === 0 ? '#4ade80' : '#facc15', fontWeight: 600 }}>₱{o.balance?.toLocaleString()}</span>
+                                  <span style={{ color: o.balance === 0 ? '#4ade80' : '#facc15', fontWeight: 600 }}>{formatPrice(o.balance)}</span>
                                 </div>
                               </div>
                             </div>
@@ -839,8 +840,8 @@ export default function OrdersPage() {
                     <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{selectedJO.variant || 'N/A'}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--white)' }}>₱{selectedJO.totalPrice?.toLocaleString()}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>₱{selectedJO.unitPrice}/pc</div>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--white)' }}>{formatPrice(selectedJO.totalPrice)}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{formatPrice(selectedJO.unitPrice)}/pc</div>
                   </div>
                 </div>
               </div>
@@ -851,15 +852,15 @@ export default function OrdersPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
                   <div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Total Amount</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gold)' }}>₱{selectedJO.totalPrice?.toLocaleString()}</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gold)' }}>{formatPrice(selectedJO.totalPrice)}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Amount Paid</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gold)' }}>₱{selectedJO.downPayment?.toLocaleString()}</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gold)' }}>{formatPrice(selectedJO.downPayment)}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Balance</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: selectedJO.balance === 0 ? '#4ade80' : '#facc15' }}>₱{selectedJO.balance?.toLocaleString()}</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: selectedJO.balance === 0 ? '#4ade80' : '#facc15' }}>{formatPrice(selectedJO.balance)}</div>
                   </div>
                 </div>
               </div>

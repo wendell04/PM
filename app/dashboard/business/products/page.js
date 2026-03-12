@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { formatNumber, formatPrice } from '../../../../src/utils/format';
 
 // ── Reusable Number Input ──────────────────────────────────────────────────────
 function NumberInput({ value, onChange, min = 0, max, placeholder, className, disabled, step }) {
@@ -901,11 +902,11 @@ function EditProductModal({ product, inventoryList, onClose, onSave, onPriceErro
                   {hasVariants ? (
                     fixedMinP !== null && (
                       <div className="price-preview">
-                        <p className="price-preview-value">₱{fixedMinP}{fixedMaxP !== fixedMinP ? ` – ₱${fixedMaxP}` : ''}<span className="price-preview-unit"> per item</span></p>
+                        <p className="price-preview-value">{formatPrice(fixedMinP)}{fixedMaxP !== fixedMinP ? ` – ${formatPrice(fixedMaxP)}` : ''}<span className="price-preview-unit"> per item</span></p>
                       </div>
                     )
                   ) : (
-                    fixedPrice && <div className="price-preview"><p className="price-preview-value">₱{fixedPrice}<span className="price-preview-unit"> per item</span></p></div>
+                    fixedPrice && <div className="price-preview"><p className="price-preview-value">{formatPrice(fixedPrice)}<span className="price-preview-unit"> per item</span></p></div>
                   )}
                   {variantGroups.length >= 2 && combinations.length > 0 && (
                     <VariantGroupingCheckboxes variantGroups={variantGroups} groupChecks={groupChecks} onGroupChecksChange={setGroupChecks} />
@@ -932,7 +933,7 @@ function EditProductModal({ product, inventoryList, onClose, onSave, onPriceErro
                 <>
                   {minP !== null && (
                     <div className="price-preview">
-                      <p className="price-preview-value">₱{minP}{maxP !== minP ? ` – ₱${maxP}` : ''}<span className="price-preview-unit"> per item</span></p>
+                      <p className="price-preview-value">{formatPrice(minP)}{maxP !== minP ? ` – ${formatPrice(maxP)}` : ''}<span className="price-preview-unit"> per item</span></p>
                     </div>
                   )}
                   {variantGroups.length >= 2 && combinations.length > 0 && (
@@ -1112,15 +1113,15 @@ function ConfirmEditModal({ isOpen, onClose, originalProduct, updatedProduct, in
       const prices = Object.values(updatedProduct.variantPrices).map(p => parseFloat(p)).filter(p => p > 0);
       const minP = prices.length ? Math.min(...prices) : 0;
       const maxP = prices.length ? Math.max(...prices) : 0;
-      priceInfo = `₱${minP}${maxP !== minP ? ` – ₱${maxP}` : ''}`;
+      priceInfo = `${formatPrice(minP)}${maxP !== minP ? ` – ${formatPrice(maxP)}` : ''}`;
     } else if (updatedProduct.price) {
-      priceInfo = `₱${updatedProduct.price}`;
+      priceInfo = formatPrice(updatedProduct.price);
     }
   } else if (updatedProduct.priceType === 'tiered' && updatedProduct.tiers) {
     const allPrices = updatedProduct.tiers.flatMap(t => Object.values(t.prices).map(p => parseFloat(p)).filter(p => p > 0));
     const minP = allPrices.length ? Math.min(...allPrices) : 0;
     const maxP = allPrices.length ? Math.max(...allPrices) : 0;
-    priceInfo = `₱${minP}${maxP !== minP ? ` – ₱${maxP}` : ''} (tiered)`;
+    priceInfo = `${formatPrice(minP)}${maxP !== minP ? ` – ${formatPrice(maxP)}` : ''} (tiered)`;
   }
 
   // Stock info
@@ -1161,8 +1162,8 @@ function ConfirmEditModal({ isOpen, onClose, originalProduct, updatedProduct, in
   if (originalProduct.price !== updatedProduct.price && updatedProduct.priceType === 'fixed') {
     changes.push({
       field: 'Price',
-      old: originalProduct.price ? `₱${parseFloat(originalProduct.price).toFixed(2)}` : 'N/A',
-      new: updatedProduct.price ? `₱${parseFloat(updatedProduct.price).toFixed(2)}` : 'N/A'
+      old: originalProduct.price ? formatPrice(originalProduct.price) : 'N/A',
+      new: updatedProduct.price ? formatPrice(updatedProduct.price) : 'N/A'
     });
   }
   if (originalProduct.description !== updatedProduct.description) {
@@ -1422,7 +1423,7 @@ function ProductExpandRow({ product, inv, colSpan }) {
                       return (
                         <div key={t.id} style={{ fontSize: '0.78rem', overflowWrap: 'break-word' }}>
                           <span style={{ color: 'var(--gray)' }}>Tier {i + 1} ({t.minQty}–{t.maxQty || '∞'} pcs):</span>{' '}
-                          <span style={{ color: 'var(--gold)' }}>₱{min}{min !== max ? `–₱${max}` : ''}</span>
+                          <span style={{ color: 'var(--gold)' }}>{formatPrice(min)}{min !== max ? `–${formatPrice(max)}` : ''}</span>
                         </div>
                       );
                     })}
@@ -1433,14 +1434,14 @@ function ProductExpandRow({ product, inv, colSpan }) {
                     {combinations.slice(0, 6).map(c => (
                       <div key={c.id} style={{ fontSize: '0.78rem', overflowWrap: 'break-word' }}>
                         <span style={{ color: 'var(--gray)' }}>{c.label}:</span>{' '}
-                        <span style={{ color: 'var(--gold)' }}>₱{parseFloat(product.variantPrices[c.id] || 0).toFixed(2)}</span>
+                        <span style={{ color: 'var(--gold)' }}>{formatPrice(product.variantPrices[c.id] || 0)}</span>
                       </div>
                     ))}
                     {combinations.length > 6 && <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>+{combinations.length - 6} more...</div>}
                   </div>
                 )}
                 {product.priceType === 'fixed' && !product.variantPrices && (
-                  <span style={{ color: 'var(--gold)' }}>₱{parseFloat(product.price || 0).toFixed(2)}</span>
+                  <span style={{ color: 'var(--gold)' }}>{formatPrice(product.price || 0)}</span>
                 )}
                 {product.priceType === 'inquiry' && <span style={{ color: 'var(--primary)' }}>For Inquiry</span>}
               </div>
@@ -1593,8 +1594,8 @@ export default function ProductListPage() {
       return 'For Inquiry';
     }
     if (minPrice === Infinity) minPrice = 0;
-    if (minPrice === maxPrice) return `₱${Math.floor(minPrice)}`;
-    return `₱${Math.floor(minPrice)} – ₱${Math.floor(maxPrice)}`;
+    if (minPrice === maxPrice) return formatPrice(Math.floor(minPrice));
+    return `${formatPrice(Math.floor(minPrice))} – ${formatPrice(Math.floor(maxPrice))}`;
   };
 
   const getStockStatus = (product) => {
