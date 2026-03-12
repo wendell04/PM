@@ -406,10 +406,10 @@ function InventoryExpandRow({ item, colSpan }) {
                           )}
                         </td>
                         <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gold)', fontSize: '0.8rem' }}>
-                          ₱{(entry.unitCost || 0).toFixed(2)}
+                          {formatPrice(entry.unitCost || 0)}
                         </td>
                         <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gold)', fontSize: '0.8rem' }}>
-                          ₱{(entry.totalCost || 0).toFixed(2)}
+                          {formatPrice(entry.totalCost || 0)}
                         </td>
                         <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
                           {entry.reason === 'restock' ? 'Restock' : 
