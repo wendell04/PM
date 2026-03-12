@@ -6,6 +6,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\InventoryController;
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::post('/register',        [AuthController::class, 'register']);
@@ -29,8 +30,8 @@ Route::put('/profile',          [ProfileController::class, 'update']);
 Route::put('/profile/password', [ProfileController::class, 'updatePassword']);
 
 // ─── Products (Public — any logged-in customer can browse) ───────────────────
-Route::get('/products',         [ProductController::class, 'index']);
-Route::get('/products/{id}',    [ProductController::class, 'show']);
+Route::get('/products',             [ProductController::class, 'index']);
+Route::get('/products/{id}',        [ProductController::class, 'show']);
 
 // ─── Orders (Protected — authenticated customers only) ───────────────────────
 Route::get('/orders/my',        [OrderController::class, 'myOrders']);
@@ -40,10 +41,25 @@ Route::post('/orders',          [OrderController::class, 'store']);
 // ─── Admin Routes (Protected — owner/admin only) ─────────────────────────────
 // Middleware checks are done inside each controller method via isAdmin() helper.
 // You can later move these behind a middleware group when needed.
-Route::get('/admin/products',        [ProductController::class, 'adminIndex']);
-Route::post('/admin/products',       [ProductController::class, 'store']);
-Route::put('/admin/products/{id}',   [ProductController::class, 'update']);
-Route::delete('/admin/products/{id}',[ProductController::class, 'destroy']);
 
+// Products Admin
+Route::get('/admin/products',              [ProductController::class, 'adminIndex']);
+Route::get('/admin/products/available-inventory', [ProductController::class, 'availableInventory']);
+Route::post('/admin/products',             [ProductController::class, 'store']);
+Route::put('/admin/products/{id}',         [ProductController::class, 'update']);
+Route::delete('/admin/products/{id}',      [ProductController::class, 'destroy']);
+Route::post('/admin/products/{id}/toggle-publish', [ProductController::class, 'togglePublish']);
+Route::post('/admin/upload-image',         [ProductController::class, 'uploadImage']);
+
+// Inventory Admin
+Route::get('/admin/inventory',              [InventoryController::class, 'index']);
+Route::get('/admin/inventory/{id}',         [InventoryController::class, 'show']);
+Route::get('/admin/inventory/{id}/history', [InventoryController::class, 'history']);
+Route::post('/admin/inventory',             [InventoryController::class, 'store']);
+Route::put('/admin/inventory/{id}',         [InventoryController::class, 'update']);
+Route::post('/admin/inventory/{id}/adjust-stock', [InventoryController::class, 'adjustStock']);
+Route::delete('/admin/inventory/{id}',      [InventoryController::class, 'destroy']);
+
+// Orders Admin
 Route::get('/admin/orders',          [OrderController::class, 'adminIndex']);
 Route::put('/admin/orders/{id}',     [OrderController::class, 'adminUpdate']);

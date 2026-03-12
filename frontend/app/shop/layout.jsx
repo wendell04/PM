@@ -40,6 +40,8 @@ export default function ShopLayout({ children }) {
     const token = getToken();
     const u = getUser();
     if (!token || !u) {
+      // Store the intended destination
+      sessionStorage.setItem('redirectAfterLogin', '/shop');
       router.replace('/');
       return;
     }

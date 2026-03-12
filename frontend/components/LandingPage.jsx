@@ -358,12 +358,20 @@ const LandingPage = ({onEnterShop}) => {
         return;
       }
       const storage = rememberMe ? localStorage : sessionStorage;
-      storage.setItem('token', data.token);
-      storage.setItem('user', JSON.stringify(data.user));
-      if (data.user.role === 'admin') { window.location.href = '/dashboard/business'; return; }
+      storage.setItem('auth_token', data.token);
+      storage.setItem('auth_user', JSON.stringify(data.user));
+      
+      // Check for redirect destination
+      const redirectPath = sessionStorage.getItem('redirectAfterLogin');
+      sessionStorage.removeItem('redirectAfterLogin');
+      
+      if (data.user.role === 'admin') { 
+        window.location.href = '/dashboard/business'; 
+        return; 
+      }
       if (loginFromPricing) { setPricelistModalOpen(true); setLoginFromPricing(false); closeModal(); return; }
       closeModal();
-      router.push('/shop');
+      router.push(redirectPath || '/shop');
     } catch (err) {
       setLoginErrors({password: 'Network error. Make sure the backend server is running.'});
     } finally {

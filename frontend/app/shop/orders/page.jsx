@@ -48,7 +48,7 @@ export default function OrdersPage() {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
       const res = await fetch(`${API_URL}/api/orders/my`, {
         headers: { Authorization: `Bearer ${token}` },
       });

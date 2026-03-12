@@ -27,6 +27,7 @@ export default function CartPage() {
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(null);
   const [success, setSuccess]   = useState(null);
+  const [removingId, setRemovingId] = useState(null);
 
   // Re-compute unit prices based on current qty
   const enrichedCart = cart.map(item => ({
@@ -37,11 +38,20 @@ export default function CartPage() {
 
   const total = enrichedCart.reduce((sum, i) => sum + i.lineTotal, 0);
 
+  const handleRemoveItem = (productId, variantId) => {
+    const key = `${productId}_${variantId}`;
+    setRemovingId(key);
+    setTimeout(() => {
+      removeFromCart(productId, variantId);
+      setRemovingId(null);
+    }, 300);
+  };
+
   async function handlePlaceOrder() {
     setError(null);
     setLoading(true);
     try {
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
       const items = enrichedCart.map(i => ({
         productId:   i.product._id,
         variantId:   i.variantId ?? null,
@@ -73,47 +83,27 @@ export default function CartPage() {
   // ── Success screen ──────────────────────────────────────────────────────────
   if (success) {
     return (
-      <div style={{
-        maxWidth: '500px', margin: '4rem auto',
-        textAlign: 'center',
-      }}>
-        <div style={{
-          width: '72px', height: '72px', borderRadius: '50%',
-          background: 'rgba(74,222,128,0.1)',
-          border: '1px solid rgba(74,222,128,0.3)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          margin: '0 auto 1.5rem',
-        }}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+      <div className="cart-success-state">
+        <div className="cart-success-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
             stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
         </div>
-        <h2 style={{ margin: '0 0 0.5rem', color: '#f5f5f5', fontSize: '1.4rem' }}>Order Placed!</h2>
-        <p style={{ color: '#888', margin: '0 0 0.5rem', fontSize: '0.875rem' }}>
+        <h2 className="cart-success-title">Order Placed!</h2>
+        <p className="cart-success-text">
           Your order has been received. The owner will confirm it shortly.
         </p>
         {typeof success === 'string' && success !== 'success' && (
-          <p style={{ color: '#555', fontSize: '0.75rem', marginBottom: '1.5rem' }}>
-            Order ID: <span style={{ color: '#d4a843', fontFamily: 'monospace' }}>{success}</span>
+          <p className="cart-order-id">
+            Order ID: <span>{success}</span>
           </p>
         )}
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
-          <Link href="/shop/orders" style={{
-            padding: '0.65rem 1.25rem',
-            background: 'rgba(212,168,67,0.12)',
-            border: '1px solid rgba(212,168,67,0.3)',
-            borderRadius: '8px', color: '#d4a843',
-            textDecoration: 'none', fontSize: '0.875rem', fontWeight: 600,
-          }}>
+        <div className="cart-actions">
+          <Link href="/shop/orders" className="cart-view-orders-btn">
             View My Orders
           </Link>
-          <Link href="/shop" style={{
-            padding: '0.65rem 1.25rem',
-            background: '#d4a843', border: 'none',
-            borderRadius: '8px', color: '#0f0f0f',
-            textDecoration: 'none', fontSize: '0.875rem', fontWeight: 700,
-          }}>
+          <Link href="/shop" className="cart-continue-btn">
             Continue Shopping
           </Link>
         </div>
@@ -124,22 +114,17 @@ export default function CartPage() {
   // ── Empty cart ──────────────────────────────────────────────────────────────
   if (cart.length === 0) {
     return (
-      <div style={{ maxWidth: '500px', margin: '4rem auto', textAlign: 'center' }}>
-        <svg width="56" height="56" viewBox="0 0 24 24" fill="none"
-          stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-          style={{ marginBottom: '1rem' }}>
-          <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-          <line x1="3" y1="6" x2="21" y2="6"/>
-          <path d="M16 10a4 4 0 0 1-8 0"/>
-        </svg>
-        <p style={{ color: '#555', margin: '0 0 1.5rem', fontSize: '0.95rem' }}>Your cart is empty.</p>
-        <Link href="/shop" style={{
-          display: 'inline-block',
-          padding: '0.65rem 1.5rem',
-          background: '#d4a843', borderRadius: '8px',
-          color: '#0f0f0f', textDecoration: 'none',
-          fontWeight: 700, fontSize: '0.875rem',
-        }}>
+      <div className="cart-empty-state">
+        <div className="cart-empty-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
+            stroke="rgba(212,168,67,0.3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <path d="M16 10a4 4 0 0 1-8 0"/>
+          </svg>
+        </div>
+        <p className="cart-empty-text">Your cart is empty.</p>
+        <Link href="/shop" className="cart-continue-btn">
           Browse Products
         </Link>
       </div>
@@ -148,10 +133,9 @@ export default function CartPage() {
 
   // ── Cart ────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ maxWidth: '820px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
-        <Link href="/shop" style={{ color: '#777', textDecoration: 'none', fontSize: '0.85rem',
-          display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+    <div className="cart-page-wrapper">
+      <div className="cart-header">
+        <Link href="/shop" className="cart-back-link">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
@@ -159,16 +143,20 @@ export default function CartPage() {
           Back to Shop
         </Link>
         <span style={{ color: '#444' }}>/</span>
-        <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: '#f5f5f5' }}>
+        <h1 className="cart-title">
           Your Cart ({cart.length} item{cart.length !== 1 ? 's' : ''})
         </h1>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '1.5rem', alignItems: 'start' }}>
+      <style>{styles}</style>
+
+      <div className="cart-items-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '1.5rem', alignItems: 'start' }}>
         {/* Items */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {enrichedCart.map((item, idx) => (
-            <div key={idx} style={{
+        <div className="cart-items-list">
+          {enrichedCart.map((item, idx) => {
+            const isRemoving = removingId === `${item.product._id}_${item.variantId}`;
+            return (
+            <div key={idx} className={`cart-item-card${isRemoving ? ' removing' : ''}`} style={{
               background: '#161616',
               border: '1px solid rgba(255,255,255,0.07)',
               borderRadius: '12px',
@@ -238,8 +226,9 @@ export default function CartPage() {
 
               {/* Remove */}
               <button
-                onClick={() => removeFromCart(item.product._id, item.variantId)}
+                onClick={() => handleRemoveItem(item.product._id, item.variantId)}
                 title="Remove"
+                className="cart-remove-btn"
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer',
                   color: '#555', padding: '4px',
@@ -258,7 +247,8 @@ export default function CartPage() {
                 </svg>
               </button>
             </div>
-          ))}
+          );
+          })}
         </div>
 
         {/* Order summary */}
@@ -358,3 +348,462 @@ export default function CartPage() {
     </div>
   );
 }
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+const styles = `
+  .cart-page-wrapper {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+  }
+
+  .cart-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .cart-back-link {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: #888;
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    transition: all 0.2s;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .cart-back-link:hover {
+    color: #d4a843;
+    background: rgba(212, 168, 67, 0.1);
+    border-color: rgba(212, 168, 67, 0.3);
+  }
+
+  .cart-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #f5f5f5;
+  }
+
+  .cart-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .cart-item-card {
+    background: #161616;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 12px;
+    padding: 1rem;
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    transition: all 0.2s;
+  }
+
+  .cart-item-card:hover {
+    border-color: rgba(212, 168, 67, 0.2);
+    background: #1a1a1a;
+  }
+
+  .cart-item-card.removing {
+    opacity: 0;
+    transform: translateX(-20px);
+    transition: all 0.3s ease;
+  }
+
+  .cart-item-thumbnail {
+    width: 80px;
+    height: 80px;
+    flex-shrink: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #222;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cart-item-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .cart-item-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .cart-item-name {
+    font-weight: 600;
+    font-size: 1rem;
+    color: #f5f5f5;
+    margin: 0 0 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cart-item-variant {
+    font-size: 0.8rem;
+    color: #888;
+    margin-bottom: 0.25rem;
+  }
+
+  .cart-item-price {
+    font-size: 0.85rem;
+    color: #d4a843;
+    font-weight: 600;
+  }
+
+  .cart-qty-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .cart-qty-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: #1a1a1a;
+    color: #f5f5f5;
+    cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .cart-qty-btn:hover {
+    background: #d4a843;
+    color: #0f0f0f;
+    border-color: #d4a843;
+  }
+
+  .cart-qty-value {
+    min-width: 2rem;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #f5f5f5;
+  }
+
+  .cart-item-total {
+    min-width: 90px;
+    text-align: right;
+    font-weight: 700;
+    color: #d4a843;
+    font-size: 1rem;
+  }
+
+  .cart-remove-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #555;
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: all 0.2s;
+  }
+
+  .cart-remove-btn:hover {
+    color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.1);
+  }
+
+  .cart-summary-panel {
+    background: #161616;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 12px;
+    padding: 1.5rem;
+    position: sticky;
+    top: 90px;
+  }
+
+  .cart-summary-title {
+    margin: 0 0 1rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #f5f5f5;
+  }
+
+  .cart-summary-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .cart-summary-line {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    color: #888;
+  }
+
+  .cart-summary-divider {
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    padding-top: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .cart-summary-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.25rem;
+  }
+
+  .cart-summary-total-label {
+    font-weight: 700;
+    color: #f5f5f5;
+    font-size: 1rem;
+  }
+
+  .cart-summary-total-value {
+    font-weight: 700;
+    color: #d4a843;
+    font-size: 1.25rem;
+  }
+
+  .cart-notes-label {
+    display: block;
+    font-size: 0.8rem;
+    color: #777;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .cart-notes-input {
+    width: 100%;
+    padding: 0.75rem;
+    background: #111;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: #f5f5f5;
+    font-size: 0.85rem;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+    font-family: inherit;
+  }
+
+  .cart-notes-input:focus {
+    border-color: rgba(212, 168, 67, 0.5);
+  }
+
+  .cart-error-message {
+    background: rgba(255, 77, 79, 0.1);
+    border: 1px solid rgba(255, 77, 79, 0.3);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    color: #ff6b6b;
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+  }
+
+  .cart-place-order-btn {
+    width: 100%;
+    padding: 0.9rem 1.5rem;
+    background: #d4a843;
+    border: none;
+    border-radius: 10px;
+    color: #0f0f0f;
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .cart-place-order-btn:hover:not(:disabled) {
+    background: #e5b953;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(212, 168, 67, 0.3);
+  }
+
+  .cart-place-order-btn:disabled {
+    background: #5a4a1a;
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  .cart-disclaimer {
+    margin: 0.75rem 0 0;
+    font-size: 0.75rem;
+    color: #555;
+    text-align: center;
+  }
+
+  .cart-empty-state {
+    max-width: 500px;
+    margin: 4rem auto;
+    text-align: center;
+    padding: 3rem 2rem;
+    background: rgba(212, 168, 67, 0.03);
+    border: 1px dashed rgba(212, 168, 67, 0.2);
+    border-radius: 16px;
+  }
+
+  .cart-empty-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 1.5rem;
+    background: rgba(212, 168, 67, 0.1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cart-empty-text {
+    color: #555;
+    margin: 0 0 1.5rem;
+    font-size: 1rem;
+  }
+
+  .cart-continue-btn {
+    display: inline-block;
+    padding: 0.75rem 2rem;
+    background: #d4a843;
+    border-radius: 10px;
+    color: #0f0f0f;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }
+
+  .cart-continue-btn:hover {
+    background: #e5b953;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(212, 168, 67, 0.3);
+  }
+
+  .cart-success-state {
+    max-width: 500px;
+    margin: 4rem auto;
+    text-align: center;
+    padding: 3rem 2rem;
+    background: rgba(74, 222, 128, 0.03);
+    border: 1px dashed rgba(74, 222, 128, 0.3);
+    border-radius: 16px;
+  }
+
+  .cart-success-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 1.5rem;
+    background: rgba(74, 222, 128, 0.1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cart-success-title {
+    margin: 0 0 0.5rem;
+    color: #f5f5f5;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .cart-success-text {
+    color: #888;
+    margin: 0 0 0.5rem;
+    font-size: 0.95rem;
+  }
+
+  .cart-order-id {
+    color: #555;
+    font-size: 0.8rem;
+    margin-bottom: 2rem;
+  }
+
+  .cart-order-id span {
+    color: #d4a843;
+    font-family: monospace;
+  }
+
+  .cart-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .cart-view-orders-btn {
+    padding: 0.75rem 1.5rem;
+    background: rgba(212, 168, 67, 0.12);
+    border: 1px solid rgba(212, 168, 67, 0.3);
+    border-radius: 10px;
+    color: #d4a843;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }
+
+  .cart-view-orders-btn:hover {
+    background: rgba(212, 168, 67, 0.2);
+    border-color: rgba(212, 168, 67, 0.5);
+  }
+
+  @media (max-width: 768px) {
+    .cart-page-wrapper {
+      padding: 1.5rem 1rem;
+    }
+
+    .cart-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+
+    .cart-title {
+      font-size: 1.25rem;
+    }
+
+    .cart-item-card {
+      flex-wrap: wrap;
+    }
+
+    .cart-item-thumbnail {
+      width: 60px;
+      height: 60px;
+    }
+
+    .cart-summary-panel {
+      position: static;
+    }
+
+    .cart-actions {
+      flex-direction: column;
+    }
+
+    .cart-view-orders-btn,
+    .cart-continue-btn {
+      width: 100%;
+      text-align: center;
+    }
+  }
+`;

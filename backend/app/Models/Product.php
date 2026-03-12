@@ -10,31 +10,76 @@ class Product extends Model
     protected $collection = 'products';
 
     protected $fillable = [
+        'inventoryId',
         'name',
         'description',
         'category',
+        'subCategoryCode',
+        'subCategoryName',
         'tags',
         'images',
-        'variants',
-        'priceTiers',
+        'thumbnail',
+        'variantGroups',
+        'combinations',
+        'priceType',
+        'price',
         'flatPrice',
+        'priceTiers',
+        'variantPrices',
+        'trackInventory',
+        'stock',
+        'stockStatus',
+        'isPublished',
         'isActive',
+        'createdAt',
+        'updatedAt',
     ];
 
     protected $casts = [
-        'tags'      => 'array',
-        'images'    => 'array',
-        'variants'  => 'array',
-        'priceTiers'=> 'array',
-        'flatPrice' => 'float',
-        'isActive'  => 'boolean',
+        'tags'           => 'array',
+        'images'         => 'array',
+        'variantGroups'  => 'array',
+        'combinations'   => 'array',
+        'priceTiers'     => 'array',
+        'variantPrices'  => 'array',
+        'price'          => 'float',
+        'flatPrice'      => 'float',
+        'trackInventory' => 'boolean',
+        'stock'          => 'integer',
+        'isPublished'    => 'boolean',
+        'isActive'       => 'boolean',
+        'createdAt'      => 'datetime',
+        'updatedAt'      => 'datetime',
     ];
 
     protected $attributes = [
-        'isActive' => true,
-        'tags'     => '[]',
-        'images'   => '[]',
-        'variants' => '[]',
-        'priceTiers'=> '[]',
+        'isActive'    => true,
+        'isPublished' => false,
+        'tags'        => [],
+        'images'      => [],
+        'variantGroups' => [],
+        'combinations'  => [],
+        'priceTiers'    => [],
+        'variantPrices' => [],
     ];
+
+    public function inventory()
+    {
+        return $this->belongsTo(Inventory::class, 'inventoryId');
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('isActive', true);
+    }
+
+    public function scopePublished($query)
+    {
+        return $query->where('isPublished', true);
+    }
+
+    public function scopeByCategory($query, $category)
+    {
+        return $query->where('category', $category);
+    }
 }

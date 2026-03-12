@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useCart } from './layout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -19,9 +20,18 @@ function getDisplayPrice(product) {
 }
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
-function ProductCard({ product }) {
+function ProductCard({ product, onAddToCart }) {
   const [hovered, setHovered] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const hasImage = product.images?.length > 0;
+
+  const handleAddToCart = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsAdding(true);
+    onAddToCart(product);
+    setTimeout(() => setIsAdding(false), 500);
+  };
 
   return (
     <Link href={`/shop/${product._id}`} className="shop-product-card-link">
@@ -54,6 +64,25 @@ function ProductCard({ product }) {
           <div className="shop-product-category-badge">
             {product.category}
           </div>
+
+          {/* Quick Add to Cart Button */}
+          <button
+            className={`shop-quick-add-btn ${isAdding ? 'adding' : ''}`}
+            onClick={handleAddToCart}
+            title="Add to Cart"
+          >
+            {isAdding ? (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="16"/>
+                <line x1="8" y1="12" x2="16" y2="12"/>
+              </svg>
+            )}
+          </button>
         </div>
 
         {/* Info */}
@@ -90,6 +119,8 @@ export default function ShopPage() {
   const [error, setError]         = useState(null);
   const [category, setCategory]   = useState('All');
   const [search, setSearch]       = useState('');
+  const [toast, setToast]         = useState(null);
+  const { addToCart } = useCart();
 
   useEffect(() => {
     fetchProducts();
@@ -113,6 +144,12 @@ export default function ShopPage() {
       setLoading(false);
     }
   }
+
+  const handleAddToCart = (product) => {
+    addToCart(product, null, null, 1);
+    setToast({ message: `${product.name} added to cart!`, type: 'success' });
+    setTimeout(() => setToast(null), 2000);
+  };
 
   // Derived values
   const categories = ['All', ...new Set(products.map(p => p.category))];
@@ -204,8 +241,18 @@ export default function ShopPage() {
       ) : (
         <div className="shop-products-grid">
           {filtered.map(product => (
-            <ProductCard key={product._id} product={product} />
+            <ProductCard key={product._id} product={product} onAddToCart={handleAddToCart} />
           ))}
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`shop-toast ${toast.type}`}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          <span>{toast.message}</span>
         </div>
       )}
 
@@ -458,6 +505,99 @@ export default function ShopPage() {
         .shop-product-no-image div {
           font-size: 0.75rem;
           color: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Quick Add to Cart Button */
+        .shop-quick-add-btn {
+          position: absolute;
+          bottom: 10px;
+          right: 10px;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: rgba(212, 168, 67, 0.9);
+          border: 2px solid rgba(255, 255, 255, 0.2);
+          color: #0f0f0f;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          opacity: 0;
+          transform: translateY(10px);
+          transition: all 0.25s ease;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .shop-product-card:hover .shop-quick-add-btn {
+          opacity: 1;
+          transform: translateY(0);
+        }
+
+        .shop-quick-add-btn:hover {
+          background: #d4a843;
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(212, 168, 67, 0.4);
+        }
+
+        .shop-quick-add-btn.adding {
+          background: #4ade80;
+          border-color: rgba(74, 222, 128, 0.5);
+          animation: pulse 0.3s ease;
+        }
+
+        @keyframes pulse {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.1); }
+          100% { transform: scale(1); }
+        }
+
+        /* Toast Notification */
+        .shop-toast {
+          position: fixed;
+          bottom: 2rem;
+          right: 2rem;
+          background: rgba(22, 22, 22, 0.95);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(74, 222, 128, 0.4);
+          border-radius: 12px;
+          padding: 1rem 1.5rem;
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          color: #4ade80;
+          font-weight: 500;
+          font-size: 0.9rem;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+          z-index: 1000;
+          animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .shop-quick-add-btn {
+            opacity: 1;
+            transform: translateY(0);
+            width: 36px;
+            height: 36px;
+            bottom: 8px;
+            right: 8px;
+          }
+
+          .shop-toast {
+            left: 1rem;
+            right: 1rem;
+            bottom: 1rem;
+          }
         }
 
         .shop-product-category-badge {
