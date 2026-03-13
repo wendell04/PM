@@ -374,6 +374,7 @@ function InventoryExpandRow({ item, colSpan }) {
                     <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Remaining</th>
                     <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Unit Cost</th>
                     <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Total Cost</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Remaining Total Cost</th>
                     <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Reason</th>
                   </tr>
                 </thead>
@@ -411,9 +412,12 @@ function InventoryExpandRow({ item, colSpan }) {
                         <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gold)', fontSize: '0.8rem' }}>
                           {formatPrice(entry.totalCost || 0)}
                         </td>
+                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gold)', fontSize: '0.8rem', fontWeight: 600 }}>
+                          {formatPrice((entry.unitCost || 0) * (remainingQty || 0))}
+                        </td>
                         <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
-                          {entry.reason === 'restock' ? 'Restock' : 
-                           entry.reason === 'initial' ? 'Initial Stock' : 
+                          {entry.reason === 'restock' ? 'Restock' :
+                           entry.reason === 'initial' ? 'Initial Stock' :
                            entry.reason === 'correction-add' ? 'Correction' : entry.reason}
                         </td>
                       </tr>
@@ -3220,7 +3224,11 @@ export default function InventoryPage() {
       const generatedCustomerName = customerName && customerName.trim() !== ''
         ? customerName
         : `Outside-Customer ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '')}-${String(Date.now()).slice(-4)}`;
-      
+
+      // Calculate cost from inventory average cost
+      const avgCost = adjustmentItem.averageCost || adjustmentItem.lastUnitCost || 0;
+      const totalCost = avgCost * quantity;
+
       const salesRecord = {
         id: Date.now(),
         inventoryId: adjustmentItem.id,
@@ -3229,13 +3237,14 @@ export default function InventoryPage() {
         quantity,
         unitPrice: 0, // Not applicable for manual sales (may discount/pasobra)
         totalPrice: sellingPrice, // sellingPrice is the TOTAL amount received (may discount/pasobra)
-        saleDate,
+        orderDate: saleDate, // Use saleDate for date filtering
         customerName: generatedCustomerName,
         customerContact: 'N/A',
         customerEmail: 'N/A',
         source: 'manual', // 'manual' for outside system, 'online' for storefront
         status: 'completed',
-        cost: 0, // Will be calculated from product cost
+        balance: 0, // Fully paid (outside system sales are paid immediately)
+        cost: totalCost, // Calculate cost from inventory average cost
         notes: 'Manual sale - price may include discount or surcharge',
         createdAt: new Date().toISOString()
       };

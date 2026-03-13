@@ -938,6 +938,50 @@
   color: var(--gold);
   font-size: 0.85rem;
   font-weight: 600;
+  position: relative;
+}
+
+.variant-chip-image {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(212, 168, 67, 0.5);
+}
+
+.variant-chip-image-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(212, 168, 67, 0.2);
+  border: 1px dashed rgba(212, 168, 67, 0.5);
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.2s;
+}
+
+.variant-chip-image-btn:hover {
+  background: rgba(212, 168, 67, 0.3);
+  border-color: var(--gold);
+}
+
+.variant-chip-image-remove {
+  background: none;
+  border: none;
+  color: #f87171;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  transition: color 0.15s;
+  margin-left: 0.25rem;
+}
+
+.variant-chip-image-remove:hover {
+  color: #ef4444;
 }
 
 .variant-chip-remove {

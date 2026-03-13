@@ -91,6 +91,13 @@ const samplePendingOrders = [
   // 2 Pending orders - ordered TODAY (1 unpaid, 1 paid with DP)
   { id: 'ORD-001', customerName: 'Maria Santos', customerContact: '09171234567', customerEmail: 'maria@email.com', productName: 'Custom Mug', category: 'Mugs', variant: 'White 11oz', quantity: 25, unitPrice: 150, totalPrice: 3750, downPayment: 0, balance: 3750, orderStatus: 'Pending', designFile: 'design-001.png', designNotes: 'Awaiting design approval', paymentDate: null, isRush: false, joId: null, joStatus: null, targetCompletion: null, checkoutRestricted: true, createdAt: addDays(today, 0) },
   { id: 'ORD-002', customerName: 'Juan Dela Cruz', customerContact: '09281234567', customerEmail: 'juan@email.com', productName: 'Custom T-Shirt', category: 'T-Shirt', variant: 'L / Black', quantity: 10, unitPrice: 350, totalPrice: 3500, downPayment: 1750, balance: 1750, orderStatus: 'Pending', designFile: 'design-002.png', designNotes: 'Paid DP - ready for production', paymentDate: addDays(today, 0), isRush: false, joId: null, joStatus: null, targetCompletion: null, checkoutRestricted: false, createdAt: addDays(today, 0) },
+  
+  // DELAYED ORDER - Target was 10 days ago (for JO Schedule testing)
+  { id: 'ORD-007', customerName: 'Carlos Mendoza', customerContact: '09179998888', customerEmail: 'carlos@email.com', productName: 'Custom Hoodie', category: 'T-Shirt', variant: 'XL / Navy', quantity: 20, unitPrice: 550, totalPrice: 11000, downPayment: 5500, balance: 5500, orderStatus: 'In Production', designFile: 'design-007.png', designNotes: 'Delayed - production backlog', paymentDate: addDays(today, -10), isRush: false, joId: 'JOB-007', joStatus: 'Queued', targetCompletion: addDays(today, -10), checkoutRestricted: false, createdAt: addDays(today, -10) },
+  
+  // NEAR DEADLINE ORDER - Target is tomorrow (1 day left)
+  { id: 'ORD-008', customerName: 'Lisa Fernandez', customerContact: '09283334444', customerEmail: 'lisa@email.com', productName: 'Custom Cap', category: 'Accessories', variant: 'One Size / Red', quantity: 50, unitPrice: 120, totalPrice: 6000, downPayment: 6000, balance: 0, orderStatus: 'In Production', designFile: 'design-008.png', designNotes: 'Due tomorrow - prioritize', paymentDate: addDays(today, -3), isRush: false, joId: 'JOB-008', joStatus: 'Queued', targetCompletion: addDays(today, 1), checkoutRestricted: false, createdAt: addDays(today, -3) },
+  
   // 4 In Production orders - ordered YESTERDAY (already moved to production, have JOs)
   { id: 'ORD-003', customerName: 'Ana Reyes', customerContact: '09171112222', customerEmail: 'ana@email.com', productName: 'Custom Sticker', category: 'Stickers', variant: 'Vinyl 3"', quantity: 100, unitPrice: 15, totalPrice: 1500, downPayment: 1500, balance: 0, orderStatus: 'In Production', designFile: 'design-003.png', designNotes: 'Approved', paymentDate: addDays(today, -1), isRush: false, joId: 'JOB-001', joStatus: 'Queued', targetCompletion: addDays(today, 6), checkoutRestricted: false, createdAt: addDays(today, -1) },
   { id: 'ORD-004', customerName: 'Pedro Cruz', customerContact: '09281112222', customerEmail: 'pedro@email.com', productName: 'Ceramic Mug', category: 'Mugs', variant: 'White 15oz', quantity: 40, unitPrice: 180, totalPrice: 7200, downPayment: 7200, balance: 0, orderStatus: 'In Production', designFile: 'design-004.png', designNotes: 'Approved', paymentDate: addDays(today, -1), isRush: false, joId: 'JOB-002', joStatus: 'Queued', targetCompletion: addDays(today, 6), checkoutRestricted: false, createdAt: addDays(today, -1) },
@@ -127,6 +134,10 @@ export default function OrdersPage() {
   const [selectedJO, setSelectedJO] = useState(null);
   const [showUnpaidWarning, setShowUnpaidWarning] = useState(false);
   const [pendingStatusUpdate, setPendingStatusUpdate] = useState(null);
+
+  // Print modal form state
+  const [printDescription, setPrintDescription] = useState('');
+  const [printDesignImages, setPrintDesignImages] = useState([]); // Multiple images
 
   useEffect(() => {
     // TODO: MongoDB - Replace with API call:
@@ -592,9 +603,31 @@ export default function OrdersPage() {
                                 <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Job Order</div>
                                 <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5 }}>
                                   <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{o.joId}</div>
-                                  <div style={{ color: o.isRush ? '#f87171' : 'var(--white)', fontWeight: 600 }}>{o.isRush ? 'Rush' : 'Standard'}</div>
+                                  <div style={{ color: o.isRush ? '#f97316' : 'var(--white)', fontWeight: 600 }}>{o.isRush ? 'Rush' : 'Standard'}</div>
                                   <div style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>Target: {o.targetCompletion ? new Date(o.targetCompletion).toLocaleDateString() : 'N/A'}</div>
-                                  <div style={{ color: o.joStatus === 'In Progress' ? '#6366f1' : '#facc15', fontWeight: 600 }}>{o.joStatus || 'Queued'}</div>
+                                  {(() => {
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    const targetDate = o.targetCompletion ? new Date(o.targetCompletion) : null;
+                                    const isDelayed = targetDate && targetDate < today;
+                                    const daysLeft = targetDate ? Math.ceil((targetDate - today) / (1000 * 60 * 60 * 24)) : null;
+                                    const daysLate = isDelayed ? Math.abs(daysLeft) : 0;
+                                    
+                                    if (isDelayed) {
+                                      return (
+                                        <>
+                                          <div style={{ color: '#f87171', fontWeight: 600 }}>Priority</div>
+                                          <div style={{ color: '#f87171', fontSize: '0.75rem', fontWeight: 600 }}>⚠ {daysLate} day{daysLate !== 1 ? 's' : ''} late</div>
+                                        </>
+                                      );
+                                    }
+                                    return (
+                                      <>
+                                        <div style={{ color: o.joStatus === 'In Progress' ? '#6366f1' : '#facc15', fontWeight: 600 }}>{o.joStatus || 'Queued'}</div>
+                                        <div style={{ color: 'var(--gray)', fontSize: '0.75rem', fontWeight: 600 }}>{daysLeft} day{daysLeft !== 1 ? 's' : ''} left</div>
+                                      </>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             )}
@@ -647,6 +680,10 @@ export default function OrdersPage() {
               <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#f87171' }}></div>
+                  <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>Delayed</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#f97316' }}></div>
                   <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>Rush Order</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -655,27 +692,52 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              {/* JO Cards - Sorted by urgency (nearest deadline first) */}
+              {/* JO Cards - Sorted by priority (Delayed first, then Rush, then by deadline) */}
               {/* TODO: MongoDB - Replace with API call: GET /api/job-orders?status=active&sort=priority */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {orders
                   .filter(o => o.downPayment > 0 && o.orderStatus === 'In Production' && o.joStatus !== 'Completed')
                   .sort((a, b) => {
-                    // Calculate days left for each
-                    const daysLeftA = a.targetCompletion ? Math.ceil((new Date(a.targetCompletion) - new Date()) / (1000 * 60 * 60 * 24)) : 999;
-                    const daysLeftB = b.targetCompletion ? Math.ceil((new Date(b.targetCompletion) - new Date()) / (1000 * 60 * 60 * 24)) : 999;
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
+                    // Calculate days status for each
+                    const targetA = a.targetCompletion ? new Date(a.targetCompletion) : null;
+                    const targetB = b.targetCompletion ? new Date(b.targetCompletion) : null;
+                    
+                    const isDelayedA = targetA && targetA < today;
+                    const isDelayedB = targetB && targetB < today;
+                    
+                    const daysLeftA = targetA ? Math.ceil((targetA - today) / (1000 * 60 * 60 * 24)) : 999;
+                    const daysLeftB = targetB ? Math.ceil((targetB - today) / (1000 * 60 * 60 * 24)) : 999;
+                    
+                    const daysLateA = isDelayedA ? Math.abs(daysLeftA) : 0;
+                    const daysLateB = isDelayedB ? Math.abs(daysLeftB) : 0;
 
-                    // Rush orders first
+                    // Delayed orders first (most delayed first)
+                    if (isDelayedA && !isDelayedB) return -1;
+                    if (!isDelayedA && isDelayedB) return 1;
+                    if (isDelayedA && isDelayedB) return daysLateB - daysLateA; // Most delayed first
+                    
+                    // Rush orders next
                     if (a.isRush && !b.isRush) return -1;
                     if (!a.isRush && b.isRush) return 1;
-                    // Then by days left (urgent first)
+                    
+                    // Then by days left (nearest deadline first)
                     return daysLeftA - daysLeftB;
                   })
                   .map(o => {
-                    const daysLeft = o.targetCompletion ? Math.ceil((new Date(o.targetCompletion) - new Date()) / (1000 * 60 * 60 * 24)) : null;
-                    const isUrgent = daysLeft !== null && daysLeft <= 2;
-                    const priorityColor = o.isRush ? '#f87171' : isUrgent ? '#facc15' : 'transparent';
-                    const priorityTextColor = o.isRush ? '#f87171' : isUrgent ? '#facc15' : 'var(--white)';
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const targetDate = o.targetCompletion ? new Date(o.targetCompletion) : null;
+                    const isDelayed = targetDate && targetDate < today;
+                    const daysLeft = targetDate ? Math.ceil((targetDate - today) / (1000 * 60 * 60 * 24)) : null;
+                    const daysLate = isDelayed ? Math.abs(daysLeft) : 0;
+                    
+                    // Priority colors: Delayed (red) > Rush (orange) > Near Deadline (yellow)
+                    const isUrgent = !isDelayed && daysLeft !== null && daysLeft <= 2;
+                    const priorityColor = isDelayed ? '#f87171' : (o.isRush ? '#f97316' : (isUrgent ? '#facc15' : 'transparent'));
+                    const priorityTextColor = isDelayed ? '#f87171' : (o.isRush ? '#f97316' : (isUrgent ? '#facc15' : 'var(--white)'));
                     const statusColor = o.joStatus === 'In Progress' ? '#6366f1' : '#facc15';
 
                     return (
@@ -705,16 +767,25 @@ export default function OrdersPage() {
                         {/* Center: Timeline */}
                         <div style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>
-                            {o.isRush ? 'RUSH ORDER' : 'Standard'}
+                            {isDelayed ? (
+                              <span style={{ color: '#f87171', fontWeight: 700 }}>DELAYED</span>
+                            ) : o.isRush ? (
+                              'RUSH ORDER'
+                            ) : (
+                              'Standard'
+                            )}
                           </div>
                           {o.targetCompletion && (
-                            <div style={{ fontSize: '0.875rem', color: daysLeft <= 2 ? '#facc15' : 'var(--white)' }}>
+                            <div style={{ fontSize: '0.875rem', color: priorityTextColor }}>
                               Due: {new Date(o.targetCompletion).toLocaleDateString()}
                             </div>
                           )}
                           {daysLeft !== null && (
-                            <div style={{ fontSize: '0.75rem', color: daysLeft <= 2 ? '#f87171' : 'var(--gray)' }}>
-                              {daysLeft} day{daysLeft !== 1 ? 's' : ''} left
+                            <div style={{ fontSize: '0.75rem', color: isDelayed ? '#f87171' : (daysLeft <= 2 ? '#f87171' : 'var(--gray)') }}>
+                              {isDelayed
+                                ? `${daysLate} day${daysLate !== 1 ? 's' : ''} late`
+                                : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`
+                              }
                             </div>
                           )}
                         </div>
@@ -727,36 +798,31 @@ export default function OrdersPage() {
                             borderRadius: '12px',
                             fontSize: '0.75rem',
                             fontWeight: 600,
-                            background: statusColor === '#6366f1' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(250, 204, 21, 0.2)',
-                            color: statusColor,
+                            background: isDelayed 
+                              ? 'rgba(248, 113, 113, 0.2)' 
+                              : (statusColor === '#6366f1' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(250, 204, 21, 0.2)'),
+                            color: isDelayed ? '#f87171' : statusColor,
                             marginBottom: '0.5rem'
                           }}>
-                            {o.joStatus || 'Queued'}
+                            {isDelayed ? 'Priority' : (o.joStatus || 'Queued')}
                           </div>
                           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                             <button
                               className="btn-sm btn-secondary"
                               onClick={() => {
                                 setSelectedJO(o);
+                                setPrintDescription('');
+                                setPrintDesignImages([]);
                                 setShowPrintModal(true);
                               }}
                               style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
                             >
                               Print
                             </button>
-                            {o.joStatus !== 'In Progress' && (
+                            {!isDelayed && o.joStatus !== 'In Progress' && (
                               <button
                                 className="btn-sm btn-primary"
                                 onClick={() => {
-                                  // TODO: MongoDB - Replace with API call:
-                                  // PUT /api/job-orders/:id/start
-                                  // Body: { joStatus: 'In Progress' }
-                                  // 
-                                  // Backend should:
-                                  // 1. Update joStatus to 'In Progress'
-                                  // 2. Record start timestamp in database
-                                  // 3. Return updated order
-                                  
                                   // Start production - update JO status to In Progress
                                   setOrders(prev => prev.map(ord =>
                                     ord.id === o.id ? { ...ord, joStatus: 'In Progress' } : ord
@@ -800,75 +866,223 @@ export default function OrdersPage() {
             <div className="modal-body">
               {/* JO Header */}
               <div style={{ textAlign: 'center', marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '2px solid var(--border)' }}>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.5rem' }}>PERSONALIZE ME</h2>
-                <div style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>Job Order Details</div>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.5rem', letterSpacing: '2px' }}>PERSONALIZE ME</h2>
+                <div style={{ fontSize: '0.875rem', color: 'var(--gray)', letterSpacing: '1px' }}>Job Order for Production</div>
               </div>
 
-              {/* JO Info Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
-                <div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Customer</div>
-                  <div style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--white)' }}>{selectedJO.customerName}</div>
-                  <div style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>{selectedJO.customerContact}</div>
-                  <div style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>{selectedJO.customerEmail}</div>
+              {/* JO Info - Priority & Target */}
+              <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(249, 250, 251, 0.1)', borderRadius: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>JO ID</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--white)' }}>{selectedJO.joId || 'PENDING'}</div>
+                  </div>
+                  <div style={{
+                    padding: '0.5rem 1.25rem',
+                    borderRadius: '20px',
+                    fontSize: '0.875rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    border: '2px solid',
+                    color: selectedJO.isRush ? '#f87171' : '#10b981',
+                    borderColor: selectedJO.isRush ? '#f87171' : '#10b981',
+                    background: selectedJO.isRush ? 'rgba(248, 113, 113, 0.1)' : 'rgba(16, 185, 129, 0.1)'
+                  }}>
+                    {selectedJO.isRush ? 'RUSH ORDER' : 'STANDARD'}
+                  </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Order Info</div>
-                  <div style={{ fontSize: '0.875rem', color: 'var(--white)', marginBottom: '0.25rem' }}>
-                    <span style={{ color: 'var(--gray)' }}>JO ID:</span> {selectedJO.joId || 'PENDING'}
-                  </div>
-                  <div style={{ fontSize: '0.875rem', color: 'var(--white)', marginBottom: '0.25rem' }}>
-                    <span style={{ color: 'var(--gray)' }}>Priority:</span> <span style={{ color: selectedJO.isRush ? '#f87171' : 'var(--white)' }}>{selectedJO.isRush ? 'Rush' : 'Standard'}</span>
-                  </div>
-                  <div style={{ fontSize: '0.875rem', color: 'var(--white)' }}>
-                    <span style={{ color: 'var(--gray)' }}>Target:</span> {selectedJO.targetCompletion ? new Date(selectedJO.targetCompletion).toLocaleDateString() : 'N/A'}
+                  <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Target Completion Date</div>
+                  <div style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--white)' }}>
+                    {selectedJO.targetCompletion ? new Date(selectedJO.targetCompletion).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
                   </div>
                 </div>
               </div>
 
-              {/* Product Details */}
+              {/* Customer Info */}
               <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Product Details</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 600 }}>Customer Information</div>
+                <div style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.75rem' }}>{selectedJO.customerName}</div>
+                <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>{selectedJO.customerContact}</div>
+                <div style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>{selectedJO.customerEmail}</div>
+              </div>
+
+              {/* Product Specifications */}
+              <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(217, 119, 6, 0.1)', borderRadius: '8px', border: '2px solid rgba(217, 119, 6, 0.3)' }}>
+                <div style={{ fontSize: '0.72rem', color: '#d97706', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 600, borderBottom: '2px solid #d97706', paddingBottom: '0.5rem' }}>Product Specifications (For Production)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem' }}>
                   <div>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>{selectedJO.productName}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{selectedJO.category}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Product Name</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--white)' }}>{selectedJO.productName}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--white)' }}>Qty: {selectedJO.quantity} pcs</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{selectedJO.variant || 'N/A'}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Category</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--white)' }}>{selectedJO.category}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--white)' }}>₱{selectedJO.totalPrice?.toLocaleString()}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>₱{selectedJO.unitPrice}/pc</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Variant / Specs</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--white)' }}>{selectedJO.variant || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Quantity to Produce</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#d97706' }}>{selectedJO.quantity} pcs</div>
                   </div>
                 </div>
               </div>
 
-              {/* Payment Details */}
+              {/* Design File & Description */}
               <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Payment Details</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-                  <div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Total Amount</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gold)' }}>₱{selectedJO.totalPrice?.toLocaleString()}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Amount Paid</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gold)' }}>₱{selectedJO.downPayment?.toLocaleString()}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Balance</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: selectedJO.balance === 0 ? '#4ade80' : '#facc15' }}>₱{selectedJO.balance?.toLocaleString()}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Design for Printing</div>
+                
+                {/* Design Images Upload */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>Design File Images (Optional)</div>
+                  <div style={{ 
+                    border: '2px dashed var(--border)', 
+                    borderRadius: '8px', 
+                    padding: '1.5rem',
+                    textAlign: 'center',
+                    background: printDesignImages.length > 0 ? 'rgba(99, 102, 241, 0.1)' : 'rgba(0,0,0,0.2)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onClick={() => document.getElementById('designImagesInput').click()}
+                  >
+                    {printDesignImages.length > 0 ? (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.75rem' }}>
+                          {printDesignImages.length} image{printDesignImages.length > 1 ? 's' : ''} uploaded - Click to add more
+                        </div>
+                        <div style={{ 
+                          display: 'grid', 
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+                          gap: '0.75rem',
+                          marginBottom: '0.75rem'
+                        }}>
+                          {printDesignImages.map((img, idx) => (
+                            <div key={idx} style={{ position: 'relative' }}>
+                              <img 
+                                src={img} 
+                                alt={`Design ${idx + 1}`} 
+                                style={{ 
+                                  width: '100%', 
+                                  aspectRatio: '1:1', 
+                                  objectFit: 'cover', 
+                                  borderRadius: '8px',
+                                  border: '1px solid var(--border)'
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPrintDesignImages(printDesignImages.filter((_, i) => i !== idx));
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  top: '-6px',
+                                  right: '-6px',
+                                  background: '#f87171',
+                                  border: '2px solid var(--dark)',
+                                  borderRadius: '50%',
+                                  width: '24px',
+                                  height: '24px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: 'white',
+                                  fontSize: '0.875rem',
+                                  fontWeight: 'bold',
+                                  cursor: 'pointer',
+                                  padding: 0
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPrintDesignImages([]);
+                          }}
+                          style={{
+                            background: 'rgba(248, 113, 113, 0.2)',
+                            border: '1px solid rgba(248, 113, 113, 0.4)',
+                            borderRadius: '6px',
+                            padding: '0.25rem 0.75rem',
+                            color: '#f87171',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Remove All Images
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--gray)', marginBottom: '0.75rem' }}>
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                          <circle cx="8.5" cy="8.5" r="1.5"/>
+                          <polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                        <div style={{ fontSize: '0.875rem', color: 'var(--white)', marginBottom: '0.25rem' }}>Click to upload design images</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>PNG, JPG, GIF - Multiple images supported (Optional)</div>
+                      </div>
+                    )}
+                    <input
+                      id="designImagesInput"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (files.length > 0) {
+                          const newImages = [];
+                          let loaded = 0;
+                          
+                          files.forEach((file) => {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              if (event.target?.result) {
+                                newImages.push(event.target.result);
+                              }
+                              loaded++;
+                              if (loaded === files.length) {
+                                setPrintDesignImages([...printDesignImages, ...newImages]);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          });
+                        }
+                      }}
+                    />
                   </div>
                 </div>
-              </div>
 
-              {/* Status */}
-              <div style={{ textAlign: 'center', padding: '1rem', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '8px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Current Status</div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: selectedJO.joStatus === 'In Progress' ? '#6366f1' : '#facc15' }}>
-                  {selectedJO.joStatus || 'Queued'}
+                {/* Description Input */}
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>Print Description / Notes (Optional)</div>
+                  <textarea
+                    className="form-input"
+                    value={printDescription}
+                    onChange={(e) => setPrintDescription(e.target.value)}
+                    placeholder="Add any special instructions for printing..."
+                    rows={3}
+                    style={{
+                      background: 'var(--dark)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      padding: '0.75rem',
+                      color: 'var(--white)',
+                      fontSize: '0.875rem',
+                      width: '100%',
+                      resize: 'vertical'
+                    }}
+                  />
                 </div>
               </div>
             </div>
@@ -881,23 +1095,187 @@ export default function OrdersPage() {
                 type="button"
                 className="btn-primary"
                 onClick={() => {
-                  // Print functionality
-                  const printContent = document.querySelector('.modal-content');
+                  // Print functionality - Create clean Word-like document
                   const printWindow = window.open('', '', 'width=800,height=600');
+                  
+                  // Get design images HTML if any - FLEXIBLE (maintains original aspect ratio)
+                  const designImagesHtml = printDesignImages.length > 0 
+                    ? `<div style="margin: 20px 0; padding: 15px; border: 2px solid #333; border-radius: 8px; page-break-inside: avoid;">
+                        <h3 style="margin: 0 0 15px 0; color: #000; font-size: 14px; text-transform: uppercase; border-bottom: 2px solid #000; padding-bottom: 5px;">Design References (${printDesignImages.length} image${printDesignImages.length > 1 ? 's' : ''})</h3>
+                        <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-start;">
+                          ${printDesignImages.map(img => `<div style="flex: 0 1 auto; width: calc(33.333% - 10px); min-width: 150px; max-width: 250px;">
+                            <img src="${img}" style="width: 100%; height: auto; display: block; border: 1px solid #ddd; border-radius: 4px;" />
+                          </div>`).join('')}
+                        </div>
+                      </div>` 
+                    : '';
+                  
+                  // Get description HTML if any
+                  const descriptionHtml = printDescription.trim()
+                    ? `<div style="margin: 20px 0; padding: 15px; border: 2px solid #333; border-radius: 8px;">
+                        <h3 style="margin: 0 0 10px 0; color: #000; font-size: 14px; text-transform: uppercase;">Print Instructions</h3>
+                        <p style="margin: 0; color: #000; font-size: 13px; white-space: pre-wrap; line-height: 1.5;">${printDescription}</p>
+                      </div>`
+                    : '';
+                  
                   printWindow.document.write(`
                     <html>
                       <head>
                         <title>Job Order - ${selectedJO.joId || 'PENDING'}</title>
                         <style>
-                          body { font-family: Arial, sans-serif; padding: 2rem; color: #000; }
-                          * { color: #000 !important; }
+                          @media print {
+                            @page { margin: 0.5in; }
+                          }
+                          body { 
+                            font-family: Arial, sans-serif; 
+                            padding: 30px; 
+                            color: #000; 
+                            background: #fff;
+                            line-height: 1.5;
+                          }
+                          h1 { 
+                            font-size: 24px; 
+                            font-weight: bold; 
+                            margin: 0 0 5px 0; 
+                            text-align: center;
+                            text-transform: uppercase;
+                            letter-spacing: 2px;
+                          }
+                          h2 { 
+                            font-size: 14px; 
+                            margin: 0 0 25px 0; 
+                            text-align: center;
+                            color: #666;
+                            font-weight: normal;
+                            letter-spacing: 1px;
+                          }
+                          h3 {
+                            font-size: 14px;
+                            font-weight: bold;
+                            margin: 0 0 10px 0;
+                            text-transform: uppercase;
+                            border-bottom: 2px solid #000;
+                            padding-bottom: 5px;
+                          }
+                          .section {
+                            margin: 20px 0;
+                            padding: 15px;
+                            border: 2px solid #333;
+                            border-radius: 8px;
+                            page-break-inside: avoid;
+                          }
+                          .grid-2 {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr;
+                            gap: 20px;
+                          }
+                          .label {
+                            font-size: 11px;
+                            color: #666;
+                            text-transform: uppercase;
+                            margin-bottom: 5px;
+                            font-weight: 600;
+                          }
+                          .value {
+                            font-size: 14px;
+                            color: #000;
+                            font-weight: 600;
+                          }
+                          .value-large {
+                            font-size: 16px;
+                            font-weight: bold;
+                          }
+                          .footer {
+                            margin-top: 30px;
+                            padding-top: 20px;
+                            border-top: 2px solid #000;
+                            text-align: center;
+                            font-size: 11px;
+                            color: #666;
+                          }
+                          .priority-badge {
+                            display: inline-block;
+                            padding: 6px 16px;
+                            border-radius: 20px;
+                            font-size: 12px;
+                            font-weight: bold;
+                            text-transform: uppercase;
+                            border: 2px solid;
+                          }
                         </style>
                       </head>
-                      <body>${printContent.innerHTML}</body>
+                      <body>
+                        <h1>PERSONALIZE ME</h1>
+                        <h2>Job Order for Production</h2>
+                        
+                        <div class="section" style="background: #f9fafb;">
+                          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <div>
+                              <div class="label">JO ID</div>
+                              <div class="value-large">${selectedJO.joId || 'PENDING'}</div>
+                            </div>
+                            <div>
+                              <span class="priority-badge" style="color: ${selectedJO.isRush ? '#dc2626' : '#059669'}; border-color: ${selectedJO.isRush ? '#dc2626' : '#059669'}; background: ${selectedJO.isRush ? '#fef2f2' : '#f0fdf4'};">
+                                ${selectedJO.isRush ? 'RUSH ORDER' : 'STANDARD'}
+                              </span>
+                            </div>
+                          </div>
+                          <div class="label">Target Completion Date</div>
+                          <div class="value-large">${selectedJO.targetCompletion ? new Date(selectedJO.targetCompletion).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}</div>
+                        </div>
+                        
+                        <div class="section">
+                          <h3>Customer Information</h3>
+                          <div style="margin-top: 10px;">
+                            <div class="label">Customer Name</div>
+                            <div class="value-large">${selectedJO.customerName}</div>
+                            <div style="margin-top: 10px;">
+                              <div class="label">Contact Number</div>
+                              <div class="value">${selectedJO.customerContact}</div>
+                            </div>
+                            <div style="margin-top: 10px;">
+                              <div class="label">Email Address</div>
+                              <div class="value">${selectedJO.customerEmail}</div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div class="section" style="border-color: #d97706;">
+                          <h3 style="color: #d97706; border-color: #d97706;">Product Specifications (For Production)</h3>
+                          <div class="grid-2" style="margin-top: 15px;">
+                            <div>
+                              <div class="label">Product Name</div>
+                              <div class="value-large">${selectedJO.productName}</div>
+                            </div>
+                            <div>
+                              <div class="label">Category</div>
+                              <div class="value">${selectedJO.category}</div>
+                            </div>
+                            <div>
+                              <div class="label">Variant / Specs</div>
+                              <div class="value-large">${selectedJO.variant || 'N/A'}</div>
+                            </div>
+                            <div>
+                              <div class="label">Quantity to Produce</div>
+                              <div class="value-large" style="color: #d97706; font-size: 20px;">${selectedJO.quantity} pcs</div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        ${designImagesHtml}
+                        ${descriptionHtml}
+                        
+                        <div class="footer">
+                          <div><strong>Printed:</strong> ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                          <div style="margin-top: 8px;">Internal Production Document • For manufacturing use only</div>
+                        </div>
+                      </body>
                     </html>
                   `);
                   printWindow.document.close();
-                  printWindow.print();
+                  setTimeout(() => {
+                    printWindow.print();
+                  }, 250);
                   setShowPrintModal(false);
                 }}
               >

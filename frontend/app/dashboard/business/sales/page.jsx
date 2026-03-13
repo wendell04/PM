@@ -116,16 +116,43 @@ export default function SalesListPage() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentFilter, setPaymentFilter] = useState(''); // '', 'paid', 'pending-50', 'outside-system', 'cancelled'
-  const [dateFilter, setDateFilter] = useState('all'); // 'all', 'today', 'this-week', 'this-month', 'this-year', 'custom'
-  const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
+  const [dateFilter, setDateFilter] = useState('all'); // 'all', 'today', 'this-week', 'this-month', 'custom'
+  const [customDateRange, setCustomDateRange] = useState({ fromMonth: 0, toMonth: 0, year: 2025 });
   const [expandedRows, setExpandedRows] = useState(new Set());
+  const [inventory, setInventory] = useState([]);
+
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const YEARS = [2025, 2026, 2027, 2028];
 
   // TODO: Replace localStorage with MongoDB API calls
   useEffect(() => {
     const storedSales = JSON.parse(localStorage.getItem('pmp_sales') || '[]');
-    
-    // Don't add dummy data - use actual sales from localStorage only
-    setSales(storedSales);
+    const storedInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
+
+    // Update sales with cost from inventory for manual sales
+    const updatedSales = storedSales.map(sale => {
+      // Ensure orderDate is set for proper filtering
+      const saleWithDate = {
+        ...sale,
+        orderDate: sale.orderDate || sale.saleDate || sale.createdAt || new Date().toISOString()
+      };
+      
+      if (saleWithDate.source === 'manual' && (!saleWithDate.cost || saleWithDate.cost === 0) && saleWithDate.inventoryId) {
+        // Find the inventory item to get the average cost
+        const invItem = storedInventory.find(inv => inv.id === saleWithDate.inventoryId);
+        if (invItem) {
+          const avgCost = invItem.averageCost || invItem.lastUnitCost || 0;
+          return {
+            ...saleWithDate,
+            cost: avgCost * (saleWithDate.quantity || 1)
+          };
+        }
+      }
+      return saleWithDate;
+    });
+
+    setSales(updatedSales);
+    setInventory(storedInventory);
     setIsLoaded(true);
   }, []);
 
@@ -176,20 +203,25 @@ export default function SalesListPage() {
       
       // Date filter
       let matchesDate = true;
-      const orderDate = new Date(order.orderDate);
+      const orderDate = new Date(order.orderDate || order.createdAt);
       const today = new Date();
-      
-      if (dateFilter === 'today') {
-        matchesDate = orderDate.toDateString() === today.toDateString();
+      today.setHours(0, 0, 0, 0);
+      orderDate.setHours(0, 0, 0, 0);
+
+      if (dateFilter === 'all') {
+        matchesDate = true; // Show all sales
+      } else if (dateFilter === 'today') {
+        matchesDate = orderDate.getTime() === today.getTime();
       } else if (dateFilter === 'this-week') {
         const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
         matchesDate = orderDate >= weekAgo;
       } else if (dateFilter === 'this-month') {
         matchesDate = orderDate.getMonth() === today.getMonth() && orderDate.getFullYear() === today.getFullYear();
-      } else if (dateFilter === 'this-year') {
-        matchesDate = orderDate.getFullYear() === today.getFullYear();
-      } else if (dateFilter === 'custom' && customDateRange.start && customDateRange.end) {
-        matchesDate = orderDate >= new Date(customDateRange.start) && orderDate <= new Date(customDateRange.end);
+      } else if (dateFilter === 'custom') {
+        const fromMonth = customDateRange.fromMonth;
+        const toMonth = customDateRange.toMonth;
+        const year = customDateRange.year;
+        matchesDate = orderDate.getFullYear() === year && orderDate.getMonth() >= fromMonth && orderDate.getMonth() <= toMonth;
       }
       
       return matchesSearch && matchesPayment && matchesDate;
@@ -201,21 +233,45 @@ export default function SalesListPage() {
     const allSalesForMetrics = sales; // Use ALL sales data, not filtered
 
     const totalSales = allSalesForMetrics.filter(o => o.status !== 'cancelled').length;
+    
     // Include manual (outside system) orders in paid calculation
-    const paidOrders = allSalesForMetrics.filter(o => 
-      o.status !== 'cancelled' && o.balance === 0
-    );
-    const pending50Orders = allSalesForMetrics.filter(o => 
+    // A sale is considered paid if: balance === 0 OR status === 'completed' OR (no balance field and source === 'manual')
+    const paidOrders = allSalesForMetrics.filter(o => {
+      if (o.status === 'cancelled') return false;
+      if (o.balance === 0) return true;
+      if (o.status === 'completed') return true;
+      // For manual sales without balance field, consider them paid
+      if (o.source === 'manual' && (o.balance === undefined || o.balance === null)) return true;
+      return false;
+    });
+    
+    const pending50Orders = allSalesForMetrics.filter(o =>
       o.status !== 'cancelled' && o.downPayment > 0 && o.balance > 0 && o.source !== 'manual'
     );
     const outsideSystemOrders = allSalesForMetrics.filter(o => o.source === 'manual');
     const cancelledOrders = allSalesForMetrics.filter(o => o.status === 'cancelled');
 
     // Include ALL paid orders (including manual/outside system)
-    const totalRevenue = paidOrders.reduce((sum, o) => sum + o.totalPrice, 0);
-    const totalCost = paidOrders.reduce((sum, o) => sum + (o.cost || 0), 0);
+    const totalRevenue = paidOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
+
+    // Calculate total cost - use cost from sale if available, otherwise calculate from inventory
+    const totalCost = paidOrders.reduce((sum, o) => {
+      if (o.cost && o.cost > 0) {
+        return sum + o.cost;
+      }
+      // For sales without cost, try to calculate from inventory
+      if (o.inventoryId && inventory.length > 0) {
+        const invItem = inventory.find(inv => inv.id === o.inventoryId);
+        if (invItem) {
+          const avgCost = invItem.averageCost || invItem.lastUnitCost || 0;
+          return sum + (avgCost * (o.quantity || 1));
+        }
+      }
+      return sum;
+    }, 0);
+
     const totalProfit = totalRevenue - totalCost;
-    
+
     // Count unique products sold
     const productsSold = new Set();
     allSalesForMetrics.forEach(order => {
@@ -227,7 +283,7 @@ export default function SalesListPage() {
         });
       }
     });
-    
+
     return {
       totalSales,
       paid: paidOrders.length,
@@ -240,7 +296,7 @@ export default function SalesListPage() {
       paidOrders, // For displaying count in cards
       topProductsCount: productsSold.size,
     };
-  }, [sales]); // Only depend on sales, not filteredSales
+  }, [sales, inventory]);
 
   if (!isLoaded) {
     return (
@@ -304,7 +360,7 @@ export default function SalesListPage() {
           </div>
         </div>
 
-        {/* Sales Analytics Module with Date Range */}
+        {/* Sales Analytics Module */}
         <div style={{
           background: 'var(--dark)',
           border: '1px solid var(--border)',
@@ -312,7 +368,7 @@ export default function SalesListPage() {
           padding: '1.5rem',
           marginTop: '1rem',
         }}>
-          {/* Module Header with Date Range */}
+          {/* Module Header */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -321,84 +377,6 @@ export default function SalesListPage() {
             flexWrap: 'wrap',
             gap: '1rem',
           }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            </div>
-            
-            {/* Date Range Selector */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              background: 'var(--dark2)',
-              padding: '0.75rem 1rem',
-              borderRadius: '10px',
-              border: '1px solid var(--border)',
-            }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>From</label>
-                <input
-                  type="date"
-                  className="form-input"
-                  value={customDateRange.start}
-                  onChange={(e) => {
-                    setCustomDateRange(prev => ({ ...prev, start: e.target.value }));
-                    setDateFilter('custom');
-                  }}
-                  style={{
-                    background: 'var(--dark)',
-                    borderColor: 'var(--border)',
-                    color: 'var(--white)',
-                    fontSize: '0.85rem',
-                    padding: '0.4rem 0.6rem',
-                    borderRadius: '6px',
-                    minWidth: '140px',
-                  }}
-                />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>To</label>
-                <input
-                  type="date"
-                  className="form-input"
-                  value={customDateRange.end}
-                  onChange={(e) => {
-                    setCustomDateRange(prev => ({ ...prev, end: e.target.value }));
-                    setDateFilter('custom');
-                  }}
-                  style={{
-                    background: 'var(--dark)',
-                    borderColor: 'var(--border)',
-                    color: 'var(--white)',
-                    fontSize: '0.85rem',
-                    padding: '0.4rem 0.6rem',
-                    borderRadius: '6px',
-                    minWidth: '140px',
-                  }}
-                />
-              </div>
-              
-              <button
-                onClick={() => {
-                  const today = new Date().toISOString().split('T')[0];
-                  setCustomDateRange({ start: today, end: today });
-                  setDateFilter('today');
-                }}
-                style={{
-                  background: 'var(--gold)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  padding: '0.5rem 1rem',
-                  color: 'var(--black)',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  marginTop: '1.1rem',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                Today
-              </button>
-            </div>
           </div>
           
           {/* Analytics Cards */}
@@ -475,6 +453,67 @@ export default function SalesListPage() {
           </span>
           <input type="text" className="search-input" placeholder="Search customer or order number..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
           {searchQuery && <button className="search-clear" onClick={() => setSearchQuery('')}>×</button>}
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <select value={dateFilter} onChange={e => setDateFilter(e.target.value)} style={{
+            padding: '0.5rem 0.75rem',
+            background: 'var(--dark2)',
+            border: '1px solid var(--border)',
+            borderRadius: '6px',
+            color: 'var(--white)',
+            fontSize: '0.875rem',
+            cursor: 'pointer',
+            minWidth: '120px'
+          }}>
+            <option value="all" style={{ background: 'var(--dark)', color: 'var(--white)' }}>All Time</option>
+            <option value="today" style={{ background: 'var(--dark)', color: 'var(--white)' }}>Today</option>
+            <option value="this-week" style={{ background: 'var(--dark)', color: 'var(--white)' }}>This Week</option>
+            <option value="this-month" style={{ background: 'var(--dark)', color: 'var(--white)' }}>This Month</option>
+            <option value="custom" style={{ background: 'var(--dark)', color: 'var(--white)' }}>Custom Range</option>
+          </select>
+
+          {dateFilter === 'custom' && (
+            <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+              <select value={customDateRange.fromMonth} onChange={e => setCustomDateRange(prev => ({ ...prev, fromMonth: parseInt(e.target.value) }))} style={{
+                padding: '0.5rem 0.5rem',
+                background: 'var(--dark2)',
+                border: '1px solid var(--border)',
+                borderRadius: '6px',
+                color: 'var(--white)',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                minWidth: '100px'
+              }}>
+                {MONTHS.map((m, i) => <option key={i} value={i} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{m}</option>)}
+              </select>
+              <span style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>to</span>
+              <select value={customDateRange.toMonth} onChange={e => setCustomDateRange(prev => ({ ...prev, toMonth: parseInt(e.target.value) }))} style={{
+                padding: '0.5rem 0.5rem',
+                background: 'var(--dark2)',
+                border: '1px solid var(--border)',
+                borderRadius: '6px',
+                color: 'var(--white)',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                minWidth: '100px'
+              }}>
+                {MONTHS.map((m, i) => <option key={i} value={i} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{m}</option>)}
+              </select>
+              <select value={customDateRange.year} onChange={e => setCustomDateRange(prev => ({ ...prev, year: parseInt(e.target.value) }))} style={{
+                padding: '0.5rem 0.5rem',
+                background: 'var(--dark2)',
+                border: '1px solid var(--border)',
+                borderRadius: '6px',
+                color: 'var(--white)',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                minWidth: '80px'
+              }}>
+                {YEARS.map(y => <option key={y} value={y} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{y}</option>)}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 

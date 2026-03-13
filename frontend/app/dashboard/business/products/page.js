@@ -356,6 +356,20 @@ function EditProductModal({ product, inventoryList, onClose, onSave, onPriceErro
   const [groupChecks, setGroupChecks] = useState({});
   const [duplicateWarning, setDuplicateWarning] = useState('');
   const [variantWarning, setVariantWarning] = useState('');
+  const [optionImages, setOptionImages] = useState(() => {
+    // Initialize with existing images from product
+    const initialImages = {};
+    (product.variantGroups || []).forEach(group => {
+      (group.options || []).forEach(opt => {
+        if (opt.image) {
+          initialImages[`${group.id}-${opt.id}`] = {
+            preview: typeof opt.image === 'string' ? opt.image : opt.image.preview
+          };
+        }
+      });
+    });
+    return initialImages;
+  });
 
   const [thumbnail, setThumbnail] = useState(product.thumbnail ? { preview: product.thumbnail } : null);
   const [images, setImages] = useState((product.images || []).map((url, i) => ({ id: i, preview: url })));
@@ -535,6 +549,31 @@ function EditProductModal({ product, inventoryList, onClose, onSave, onPriceErro
 
   const updateGroupName = (gid, name) => setVariantGroups(variantGroups.map(g => g.id === gid ? { ...g, name } : g));
 
+  // ── Variant Option Image Helpers ──────────────────────────────────────────────
+  const handleOptionImageChange = (groupId, optionId, file) => {
+    if (!file) return;
+    const preview = URL.createObjectURL(file);
+    const imageKey = `${groupId}-${optionId}`;
+    setOptionImages(prev => ({ ...prev, [imageKey]: { file, preview } }));
+  };
+
+  const removeOptionImage = (groupId, optionId) => {
+    const imageKey = `${groupId}-${optionId}`;
+    setOptionImages(prev => {
+      const next = { ...prev };
+      delete next[imageKey];
+      return next;
+    });
+  };
+
+  const getOptionImage = (groupId, optionId, existingImage) => {
+    const imageKey = `${groupId}-${optionId}`;
+    if (optionImages[imageKey]) return optionImages[imageKey].preview;
+    if (existingImage && typeof existingImage === 'object') return existingImage.preview;
+    if (typeof existingImage === 'string') return existingImage;
+    return null;
+  };
+
   const addOption = (gid) => {
     const val = (optionInputs[gid] || '').trim();
     if (!val) return;
@@ -679,6 +718,20 @@ function EditProductModal({ product, inventoryList, onClose, onSave, onPriceErro
     }
 
     const stockVal = formData.trackInventory ? parseInt(formData.stock) || 0 : null;
+    
+    // Merge option images into variantGroups before saving
+    const variantGroupsWithImages = variantGroups.map(group => ({
+      ...group,
+      options: group.options.map(opt => {
+        const imageKey = `${group.id}-${opt.id}`;
+        const optionImage = optionImages[imageKey] || opt.image;
+        return {
+          ...opt,
+          image: optionImage ? (optionImage.preview || optionImage) : null
+        };
+      })
+    }));
+    
     const updatedProduct = {
       ...product,
       inventoryId: formData.inventoryId || null,
@@ -691,7 +744,7 @@ function EditProductModal({ product, inventoryList, onClose, onSave, onPriceErro
         ? hasVariants ? { variantPrices: fixedPriceVariants, price: undefined } : { price: fixedPrice, variantPrices: undefined }
         : { tiers }
       ),
-      variantGroups,
+      variantGroups: variantGroupsWithImages,
       combinations,
       thumbnail: thumbnail?.preview || null,
       images: images.map(img => img.preview),
@@ -858,12 +911,44 @@ function EditProductModal({ product, inventoryList, onClose, onSave, onPriceErro
                       <button type="button" className="btn-remove-group" onClick={() => removeGroup(group.id)}>Remove</button>
                     </div>
                     <div className="variant-options">
-                      {group.options.map(opt => (
-                        <span key={opt.id} className="variant-chip">
-                          {opt.value}
-                          <button type="button" className="variant-chip-remove" onClick={() => removeOption(group.id, opt.id)}>×</button>
-                        </span>
-                      ))}
+                      {group.options.map(opt => {
+                        const optionImage = getOptionImage(group.id, opt.id, opt.image);
+                        return (
+                          <span key={opt.id} className="variant-chip">
+                            {optionImage && (
+                              <img src={optionImage} alt={opt.value} className="variant-chip-image" />
+                            )}
+                            {opt.value}
+                            <button type="button" className="variant-chip-remove" onClick={() => removeOption(group.id, opt.id)}>×</button>
+                            <label className="variant-chip-image-btn" title="Add/Change image">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                <circle cx="8.5" cy="8.5" r="1.5"/>
+                                <polyline points="21 15 16 10 5 21"/>
+                              </svg>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                style={{ display: 'none' }}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) handleOptionImageChange(group.id, opt.id, file);
+                                }}
+                              />
+                            </label>
+                            {optionImage && (
+                              <button
+                                type="button"
+                                className="variant-chip-image-remove"
+                                onClick={() => removeOptionImage(group.id, opt.id)}
+                                title="Remove image"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </span>
+                        );
+                      })}
                       <input type="text" className="variant-option-input"
                         value={optionInputs[group.id] || ''}
                         onChange={e => setOptionInputs(prev => ({ ...prev, [group.id]: e.target.value }))}
