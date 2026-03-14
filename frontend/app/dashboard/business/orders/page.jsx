@@ -230,7 +230,7 @@ export default function OrdersPage() {
             <p className="page-subtitle">Manage customer orders and design approvals.</p>
           </div>
           <button className="btn-primary" onClick={() => setShowJOQueuing(true)}>
-            JO Schedule
+            Job Schedule
           </button>
         </div>
 

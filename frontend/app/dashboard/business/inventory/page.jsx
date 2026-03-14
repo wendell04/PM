@@ -23,7 +23,7 @@
  * 6. Remove LocalStorage references
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { formatNumber, formatPrice } from '../../../../src/utils/format';
 
 // ── Reusable Number Input Component ───────────────────────────────────────────
@@ -295,6 +295,42 @@ export function deductStockFIFO(inventoryId, quantityToDeduct) {
   };
 }
 
+// FIFO: Deduct from specific batch
+export function deductStockFromBatch(inventoryId, batchId, quantityToDeduct) {
+  const history = getStockHistory(inventoryId);
+  
+  // Find the specific batch
+  const batchIndex = history.findIndex(h => h.batchId === batchId);
+  if (batchIndex === -1) {
+    return { success: false, error: 'Batch not found' };
+  }
+  
+  const batch = history[batchIndex];
+  const availableQty = batch.remainingQty || batch.quantity;
+  
+  if (availableQty < quantityToDeduct) {
+    return { 
+      success: false, 
+      error: `Insufficient quantity in batch. Available: ${availableQty}, Requested: ${quantityToDeduct}`
+    };
+  }
+  
+  // Deduct from the batch
+  const updatedHistory = [...history];
+  updatedHistory[batchIndex] = {
+    ...batch,
+    remainingQty: availableQty - quantityToDeduct
+  };
+  
+  saveStockHistory(updatedHistory);
+  
+  return {
+    success: true,
+    deducted: quantityToDeduct,
+    remaining: quantityToDeduct - quantityToDeduct
+  };
+}
+
 // Get current stock from FIFO batches
 export function getCurrentStockFromFIFO(inventoryId) {
   const history = getStockHistory(inventoryId);
@@ -331,96 +367,744 @@ const initialInventory = [];
 //   updatedAt: Date             // Last update timestamp
 // }
 
-// ── Inventory Expand Row Component ────────────────────────────────────────────
-// Shows supplier and cost history when row is expanded
-// FIFO: Shows remaining quantity per batch
-function InventoryExpandRow({ item, colSpan }) {
-  const history = getStockHistory(item.id);
-  const scrollRef = useRef(null);
+// ── Batch Details Modal Component (Resibo Format) ──────────────────────────────
+// Displays batch details like a supplier invoice/delivery receipt
+function BatchDetailsModal({ batch, item, isOpen, onClose }) {
+  if (!isOpen || !batch || !item) return null;
 
-  // Sort by date (oldest first) - FIFO order
-  const sortedHistory = [...history].sort((a, b) =>
+  const movements = batch.movements || [];
+  const sortedMovements = [...movements].sort((a, b) => 
     new Date(a.createdAt) - new Date(b.createdAt)
   );
 
+  // Calculate summary statistics
+  const totalReceived = movements.filter(m => m.type === 'received').reduce((sum, m) => sum + m.quantity, 0);
+  const totalSold = movements.filter(m => m.type === 'sold').reduce((sum, m) => sum + Math.abs(m.quantity), 0);
+  const totalDamaged = movements.filter(m => m.type === 'damaged').reduce((sum, m) => sum + Math.abs(m.quantity), 0);
+  const returnCredit = totalDamaged * batch.unitCost;
+
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'width=800,height=600');
+    
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Batch Details - ${batch.batchId}</title>
+          <style>
+            @media print {
+              @page { margin: 0.5in; }
+              body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+            }
+            body {
+              font-family: Arial, sans-serif;
+              padding: 30px;
+              color: #000;
+              background: #fff;
+              line-height: 1.5;
+            }
+            h1 {
+              font-size: 20px;
+              font-weight: bold;
+              margin: 0 0 5px 0;
+              text-align: center;
+              text-transform: uppercase;
+              color: #000;
+            }
+            h2 {
+              font-size: 14px;
+              margin: 0 0 20px 0;
+              text-align: center;
+              color: #666;
+              font-weight: normal;
+            }
+            h3 {
+              font-size: 14px;
+              font-weight: bold;
+              margin: 0 0 10px 0;
+              text-transform: uppercase;
+              border-bottom: 2px solid #000;
+              padding-bottom: 5px;
+            }
+            .invoice-header {
+              background: #f9fafb;
+              padding: 15px;
+              border: 2px solid #333;
+              border-radius: 8px;
+              margin-bottom: 20px;
+            }
+            .invoice-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 10px;
+            }
+            .label {
+              font-size: 11px;
+              color: #666;
+              text-transform: uppercase;
+              margin-bottom: 3px;
+              font-weight: 600;
+            }
+            .value {
+              font-size: 13px;
+              color: #000;
+              font-weight: 600;
+            }
+            .section {
+              margin: 20px 0;
+              padding: 15px;
+              border: 2px solid #333;
+              border-radius: 8px;
+            }
+            .summary-grid {
+              display: grid;
+              grid-template-columns: repeat(4, 1fr);
+              gap: 15px;
+              margin: 15px 0;
+            }
+            .summary-card {
+              padding: 10px;
+              background: #f3f4f6;
+              border-radius: 6px;
+              text-align: center;
+            }
+            .summary-label {
+              font-size: 10px;
+              color: #666;
+              text-transform: uppercase;
+              margin-bottom: 5px;
+            }
+            .summary-value {
+              font-size: 16px;
+              font-weight: 700;
+              color: #000;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 12px;
+              margin: 15px 0;
+            }
+            th {
+              padding: 8px;
+              text-align: center;
+              border-bottom: 2px solid #000;
+              font-weight: 600;
+              font-size: 11px;
+              text-transform: uppercase;
+            }
+            td {
+              padding: 6px;
+              border-bottom: 1px solid #ddd;
+              text-align: center;
+            }
+            .footer {
+              margin-top: 30px;
+              padding-top: 20px;
+              border-top: 2px solid #000;
+              text-align: center;
+              font-size: 10px;
+              color: #666;
+            }
+            .type-badge {
+              display: inline-block;
+              padding: 3px 8px;
+              border-radius: 4px;
+              font-size: 10px;
+              font-weight: 600;
+              text-transform: uppercase;
+            }
+            .type-received { background: #dcfce7; color: #16a34a; }
+            .type-sold { background: #dbeafe; color: #2563eb; }
+            .type-damaged { background: #fee2e2; color: #dc2626; }
+            .type-other { background: #fef3c7; color: #d97706; }
+          </style>
+        </head>
+        <body>
+          <h1>Supplier Invoice / Delivery Receipt</h1>
+          <h2>Batch Details - ${batch.batchId}</h2>
+          
+          <div class="invoice-header">
+            <div class="invoice-grid">
+              <div>
+                <div class="label">Supplier</div>
+                <div class="value">${batch.supplierName || 'N/A'}</div>
+              </div>
+              <div>
+                <div class="label">Invoice Number</div>
+                <div class="value">${batch.invoiceNumber || 'N/A'}</div>
+              </div>
+              <div>
+                <div class="label">Delivery Date</div>
+                <div class="value">${new Date(batch.dateReceived).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+              </div>
+              <div>
+                <div class="label">Batch ID</div>
+                <div class="value">${batch.batchId}</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="section">
+            <h3>Item Information</h3>
+            <div class="invoice-grid">
+              <div>
+                <div class="label">Product Name</div>
+                <div class="value">${item.name}</div>
+              </div>
+              <div>
+                <div class="label">Category</div>
+                <div class="value">${item.category}</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="section">
+            <h3>Stock Summary</h3>
+            <div class="summary-grid">
+              <div class="summary-card">
+                <div class="summary-label">Original Qty</div>
+                <div class="summary-value">${batch.originalQty} pcs</div>
+              </div>
+              <div class="summary-card">
+                <div class="summary-label">Remaining</div>
+                <div class="summary-value" style="color: ${batch.remainingQty === 0 ? '#dc2626' : '#d97706'}">${batch.remainingQty} pcs</div>
+              </div>
+              <div class="summary-card">
+                <div class="summary-label">Unit Cost</div>
+                <div class="summary-value">₱${formatPrice(batch.unitCost)}</div>
+              </div>
+              <div class="summary-card">
+                <div class="summary-label">Total Value</div>
+                <div class="summary-value">₱${formatPrice(batch.totalCost)}</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="section">
+            <h3>Movement History</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Change</th>
+                  <th>Remaining</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${sortedMovements.map(mov => `
+                  <tr>
+                    <td>${new Date(mov.createdAt).toLocaleDateString()}</td>
+                    <td>
+                      <span class="type-badge type-${mov.type === 'received' ? 'received' : mov.type === 'sold' ? 'sold' : mov.type === 'damaged' ? 'damaged' : 'other'}">
+                        ${mov.type}
+                      </span>
+                    </td>
+                    <td style="color: ${mov.quantity > 0 ? '#16a34a' : '#dc2626'}; font-weight: 600;">
+                      ${mov.quantity > 0 ? '+' : ''}${mov.quantity}
+                    </td>
+                    <td style="font-weight: 600;">${mov.remainingAfter} pcs</td>
+                    <td>${mov.reason || '—'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          
+          <div class="section" style="background: #f9fafb;">
+            <h3>Summary</h3>
+            <div class="invoice-grid">
+              <div>
+                <div class="label">Total Received</div>
+                <div class="value" style="color: #16a34a;">${totalReceived} pcs</div>
+              </div>
+              <div>
+                <div class="label">Total Sold</div>
+                <div class="value" style="color: #2563eb;">${totalSold} pcs</div>
+              </div>
+              <div>
+                <div class="label">Total Damaged</div>
+                <div class="value" style="color: #dc2626;">${totalDamaged} pcs</div>
+              </div>
+              <div>
+                <div class="label">Return Credit</div>
+                <div class="value" style="color: #d97706;">₱${formatPrice(returnCredit)}</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="footer">
+            <div><strong>Printed:</strong> ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+            <div style="margin-top: 8px;">Internal Batch Record • For inventory tracking only</div>
+          </div>
+        </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    setTimeout(() => {
+      printWindow.print();
+      onClose();
+    }, 250);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '1000px', width: '90%' }}>
+        <div className="modal-header">
+          <h2 className="modal-title">{batch.batchId} - Batch Details</h2>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+          {/* Invoice Header */}
+          <div style={{
+            background: 'rgba(249, 250, 251, 0.1)',
+            border: '2px solid var(--border)',
+            borderRadius: '8px',
+            padding: '1.5rem',
+            marginBottom: '1.5rem'
+          }}>
+            <h3 style={{ margin: '0 0 1rem 0', color: 'var(--white)', fontSize: '1.125rem', textTransform: 'uppercase', textAlign: 'center' }}>
+              Supplier Invoice / Delivery Receipt
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Supplier</div>
+                <div style={{ fontWeight: 600, color: 'var(--white)' }}>{batch.supplierName || 'N/A'}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Invoice Number</div>
+                <div style={{ fontWeight: 600, color: 'var(--white)' }}>{batch.invoiceNumber || 'N/A'}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Delivery Date</div>
+                <div style={{ fontWeight: 600, color: 'var(--white)' }}>
+                  {new Date(batch.dateReceived).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Batch ID</div>
+                <div style={{ fontWeight: 600, color: 'var(--white)', fontFamily: 'monospace' }}>{batch.batchId}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Item Information */}
+          <div style={{
+            background: 'rgba(0,0,0,0.2)',
+            borderRadius: '8px',
+            padding: '1rem',
+            marginBottom: '1.5rem'
+          }}>
+            <h3 style={{ margin: '0 0 1rem 0', color: 'var(--white)', fontSize: '0.875rem', textTransform: 'uppercase' }}>Item Information</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>Product Name</div>
+                <div style={{ fontWeight: 600, color: 'var(--white)' }}>{item.name}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>Category</div>
+                <div style={{ fontWeight: 600, color: 'var(--white)' }}>{item.category}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Stock Summary Cards */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: '1rem',
+            marginBottom: '1.5rem'
+          }}>
+            <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Original Qty</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>{batch.originalQty} pcs</div>
+            </div>
+            <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Remaining</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: batch.remainingQty === 0 ? '#f87171' : '#facc15' }}>
+                {batch.remainingQty} pcs
+              </div>
+            </div>
+            <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Unit Cost</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gold)' }}>₱{formatPrice(batch.unitCost)}</div>
+            </div>
+            <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Total Value</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gold)' }}>₱{formatPrice(batch.totalCost)}</div>
+            </div>
+          </div>
+
+          {/* Movement History Table */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h3 style={{ margin: '0 0 1rem 0', color: 'var(--white)', fontSize: '0.875rem', textTransform: 'uppercase' }}>Movement History</h3>
+            <div style={{
+              maxHeight: '300px',
+              overflowY: 'auto',
+              border: '1px solid var(--border)',
+              borderRadius: '6px'
+            }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border)', background: 'rgba(0,0,0,0.2)' }}>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>Date</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>Type</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>Change</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>Remaining</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedMovements.map((mov, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>
+                        {new Date(mov.createdAt).toLocaleDateString()}
+                      </td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '0.25rem 0.75rem',
+                          borderRadius: '4px',
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          background: mov.type === 'received' ? 'rgba(74, 222, 128, 0.2)' :
+                                     mov.type === 'sold' ? 'rgba(99, 102, 241, 0.2)' :
+                                     mov.type === 'damaged' ? 'rgba(248, 113, 113, 0.2)' :
+                                     'rgba(250, 204, 21, 0.2)',
+                          color: mov.type === 'received' ? '#4ade80' :
+                                 mov.type === 'sold' ? '#6366f1' :
+                                 mov.type === 'damaged' ? '#f87171' :
+                                 '#facc15'
+                        }}>
+                          {mov.type}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: mov.quantity > 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>
+                        {mov.quantity > 0 ? '+' : ''}{mov.quantity}
+                      </td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#facc15', fontWeight: 600 }}>
+                        {mov.remainingAfter} pcs
+                      </td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                        {mov.reason || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Summary Section */}
+          <div style={{
+            background: 'rgba(217, 119, 6, 0.1)',
+            border: '2px solid rgba(217, 119, 6, 0.3)',
+            borderRadius: '8px',
+            padding: '1rem',
+            marginBottom: '1rem'
+          }}>
+            <h3 style={{ margin: '0 0 1rem 0', color: '#d97706', fontSize: '0.875rem', textTransform: 'uppercase' }}>Summary</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>Total Received</div>
+                <div style={{ fontWeight: 600, color: '#4ade80', fontSize: '1.125rem' }}>{totalReceived} pcs</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>Total Sold</div>
+                <div style={{ fontWeight: 600, color: '#6366f1', fontSize: '1.125rem' }}>{totalSold} pcs</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>Total Damaged</div>
+                <div style={{ fontWeight: 600, color: '#f87171', fontSize: '1.125rem' }}>{totalDamaged} pcs</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>Return Credit</div>
+                <div style={{ fontWeight: 600, color: '#d97706', fontSize: '1.125rem' }}>₱{formatPrice(returnCredit)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Close
+          </button>
+          <button type="button" className="btn-primary" onClick={handlePrint}>
+            Print Batch Details
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Inventory Expand Row Component ────────────────────────────────────────────
+// Shows supplier and cost history when row is expanded
+// FIFO: Shows remaining quantity per batch with expandable movement history
+function InventoryExpandRow({ item, colSpan }) {
+  const history = getStockHistory(item.id);
+  const scrollRef = useRef(null);
+  const [expandedBatches, setExpandedBatches] = useState(new Set());
+
+  // Toggle batch expansion
+  const toggleBatchExpand = (batchId) => {
+    setExpandedBatches(prev => {
+      const next = new Set(prev);
+      if (next.has(batchId)) {
+        next.delete(batchId);
+      } else {
+        next.add(batchId);
+      }
+      return next;
+    });
+  };
+
+  // Group history by batch
+  const batchesByDate = useMemo(() => {
+    const batches = {};
+    history.forEach(entry => {
+      if (entry.batchId) {
+        if (!batches[entry.batchId]) {
+          batches[entry.batchId] = {
+            batchId: entry.batchId,
+            supplierId: entry.supplierId,
+            supplierName: entry.supplierName,
+            invoiceNumber: entry.invoiceNumber,
+            dateReceived: entry.dateReceived || entry.createdAt,
+            originalQty: 0,
+            remainingQty: 0,
+            unitCost: entry.unitCost || 0,
+            totalCost: entry.totalCost || 0,
+            movements: []
+          };
+        }
+        batches[entry.batchId].movements.push(entry);
+        
+        // Track original qty from first received entry
+        if (entry.type === 'received' && !batches[entry.batchId].originalQty) {
+          batches[entry.batchId].originalQty = entry.quantity;
+        }
+        
+        // Get latest remaining qty
+        batches[entry.batchId].remainingQty = entry.remainingQty !== undefined ? entry.remainingQty : batches[entry.batchId].remainingQty;
+      }
+    });
+    
+    // Convert to array and sort by date (FIFO)
+    return Object.values(batches).sort((a, b) => 
+      new Date(a.dateReceived) - new Date(b.dateReceived)
+    );
+  }, [history]);
+
   // Auto-scroll to bottom to show summary when expanded
   useEffect(() => {
-    if (scrollRef.current && sortedHistory.length > 0) {
+    if (scrollRef.current && batchesByDate.length > 0) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [sortedHistory.length]);
+  }, [batchesByDate.length]);
 
   return (
     <tr>
       <td colSpan={colSpan} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
         <div style={{ padding: '1rem 1.25rem 1.25rem', display: 'block', width: '100%' }}>
-          {/* History Table */}
-          {sortedHistory.length > 0 ? (
-            <div 
+          {/* Batch History */}
+          {batchesByDate.length > 0 ? (
+            <div
               ref={scrollRef}
               style={{
-                maxHeight: sortedHistory.length <= 2 ? 'none' : '140px',  // Scrollable only if more than 2 rows
-                overflowY: sortedHistory.length <= 2 ? 'visible' : 'auto',
+                maxHeight: batchesByDate.length <= 2 ? 'none' : '200px',
+                overflowY: batchesByDate.length <= 2 ? 'visible' : 'auto',
                 border: '1px solid var(--border)',
                 borderRadius: '6px'
               }}
             >
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Date</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Supplier</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Original Qty</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Remaining</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Unit Cost</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Total Cost</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Remaining Total Cost</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.75rem' }}>Reason</th>
+                  <tr style={{ borderBottom: '2px solid var(--border)', background: 'rgba(0,0,0,0.2)' }}>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 700, fontSize: '0.75rem' }}>Batch ID</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.75rem' }}>Date</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.75rem' }}>Supplier</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.75rem' }}>Original</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.75rem' }}>Remaining</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.75rem' }}>Unit Cost</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.75rem' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedHistory.map((entry, idx) => {
-                    const remainingQty = entry.remainingQty !== undefined ? entry.remainingQty : entry.quantity;
-                    const isDepleted = remainingQty === 0;
+                  {batchesByDate.map((batch, idx) => {
+                    const isExpanded = expandedBatches.has(batch.batchId);
+                    const isDepleted = batch.remainingQty === 0;
+                    const batchMovements = batch.movements.sort((a, b) => 
+                      new Date(a.createdAt) - new Date(b.createdAt)
+                    );
                     
                     return (
-                      <tr key={idx} style={{ 
-                        borderBottom: '1px solid rgba(255,255,255,0.05)',
-                        opacity: isDepleted ? 0.5 : 1,
-                        background: isDepleted ? 'rgba(0,0,0,0.1)' : 'transparent'
-                      }}>
-                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
-                          {new Date(entry.createdAt).toLocaleDateString()}
-                        </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--white)', fontSize: '0.8rem' }}>
-                          {entry.supplierName || '— Walk-in / Unspecified'}
-                        </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--white)', fontSize: '0.8rem' }}>
-                          {entry.quantity} pcs
-                        </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.8rem', fontWeight: '600' }}>
-                          <span style={{ color: '#facc15' }}>
-                            {remainingQty} pcs
-                          </span>
-                          {remainingQty === 0 && (
-                            <div style={{ fontSize: '0.65rem', color: '#f87171', marginTop: '0.1rem' }}>Depleted</div>
-                          )}
-                        </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gold)', fontSize: '0.8rem' }}>
-                          {formatPrice(entry.unitCost || 0)}
-                        </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gold)', fontSize: '0.8rem' }}>
-                          {formatPrice(entry.totalCost || 0)}
-                        </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gold)', fontSize: '0.8rem', fontWeight: 600 }}>
-                          {formatPrice((entry.unitCost || 0) * (remainingQty || 0))}
-                        </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
-                          {entry.reason === 'restock' ? 'Restock' :
-                           entry.reason === 'initial' ? 'Initial Stock' :
-                           entry.reason === 'correction-add' ? 'Correction' : entry.reason}
-                        </td>
-                      </tr>
+                      <React.Fragment key={batch.batchId}>
+                        <tr style={{
+                          borderBottom: '1px solid rgba(255,255,255,0.05)',
+                          background: isDepleted ? 'rgba(0,0,0,0.1)' : (isExpanded ? 'rgba(99, 102, 241, 0.08)' : 'transparent'),
+                          transition: 'all 0.2s'
+                        }}>
+                          <td style={{ padding: '0.75rem' }}>
+                            <button
+                              onClick={() => toggleBatchExpand(batch.batchId)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--primary)',
+                                cursor: 'pointer',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                padding: 0,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                              }}
+                            >
+                              <span style={{ transition: 'transform 0.2s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                              {batch.batchId}
+                            </button>
+                            {batch.invoiceNumber && (
+                              <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
+                                Inv: {batch.invoiceNumber}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                            {new Date(batch.dateReceived).toLocaleDateString()}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--white)', fontSize: '0.8rem' }}>
+                            {batch.supplierName || '— Walk-in'}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--white)', fontSize: '0.8rem' }}>
+                            {batch.originalQty} pcs
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8rem', fontWeight: '600' }}>
+                            <span style={{ color: isDepleted ? '#f87171' : '#facc15' }}>
+                              {batch.remainingQty} pcs
+                            </span>
+                            {isDepleted && (
+                              <div style={{ fontSize: '0.65rem', color: '#f87171', marginTop: '0.1rem' }}>Depleted</div>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gold)', fontSize: '0.8rem' }}>
+                            ₱{formatPrice(batch.unitCost)}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            <button
+                              onClick={() => {
+                                // Open batch details modal
+                                const event = new CustomEvent('openBatchDetails', { detail: { batch, item } });
+                                window.dispatchEvent(event);
+                              }}
+                              style={{
+                                background: 'rgba(99, 102, 241, 0.2)',
+                                border: '1px solid var(--primary)',
+                                borderRadius: '4px',
+                                padding: '0.25rem 0.75rem',
+                                color: 'var(--primary)',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.target.style.background = 'var(--primary)';
+                                e.target.style.color = 'var(--black)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.target.style.background = 'rgba(99, 102, 241, 0.2)';
+                                e.target.style.color = 'var(--primary)';
+                              }}
+                            >
+                              View Details →
+                            </button>
+                          </td>
+                        </tr>
+                        
+                        {/* Expanded Movement History */}
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={7} style={{ padding: '1rem', background: 'rgba(0,0,0,0.15)' }}>
+                              <div style={{ marginBottom: '0.75rem', fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600, textTransform: 'uppercase' }}>
+                                Movement History for {batch.batchId}
+                              </div>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                <thead>
+                                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.7rem' }}>Date</th>
+                                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.7rem' }}>Type</th>
+                                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.7rem' }}>Change</th>
+                                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.7rem' }}>Remaining</th>
+                                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.7rem' }}>Notes</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {batchMovements.map((mov, movIdx) => (
+                                    <tr key={movIdx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                      <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)' }}>
+                                        {new Date(mov.createdAt).toLocaleDateString()}
+                                      </td>
+                                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                                        <span style={{
+                                          padding: '0.2rem 0.5rem',
+                                          borderRadius: '4px',
+                                          fontSize: '0.65rem',
+                                          fontWeight: 600,
+                                          background: mov.type === 'received' ? 'rgba(74, 222, 128, 0.2)' :
+                                                         mov.type === 'sold' ? 'rgba(99, 102, 241, 0.2)' :
+                                                         mov.type === 'damaged' ? 'rgba(248, 113, 113, 0.2)' :
+                                                         'rgba(250, 204, 21, 0.2)',
+                                          color: mov.type === 'received' ? '#4ade80' :
+                                                 mov.type === 'sold' ? '#6366f1' :
+                                                 mov.type === 'damaged' ? '#f87171' :
+                                                 '#facc15'
+                                        }}>
+                                          {mov.type}
+                                        </span>
+                                      </td>
+                                      <td style={{ padding: '0.5rem', textAlign: 'center', color: mov.quantity > 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>
+                                        {mov.quantity > 0 ? '+' : ''}{mov.quantity}
+                                      </td>
+                                      <td style={{ padding: '0.5rem', textAlign: 'center', color: '#facc15', fontWeight: 600 }}>
+                                        {mov.remainingAfter} pcs
+                                      </td>
+                                      <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.75rem' }}>
+                                        {mov.reason || '—'}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              
+                              {/* Batch Summary */}
+                              <div style={{ 
+                                marginTop: '1rem', 
+                                padding: '0.75rem', 
+                                background: 'rgba(0,0,0,0.2)', 
+                                borderRadius: '6px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                              }}>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
+                                  <span style={{ color: '#4ade80', fontWeight: 600 }}>{batch.remainingQty} pcs</span> remaining from 
+                                  <span style={{ color: 'var(--white)', fontWeight: 600 }}> {batch.originalQty} pcs</span> original
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--gold)', fontWeight: 600 }}>
+                                  Remaining Value: ₱{formatPrice(batch.unitCost * batch.remainingQty)}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
@@ -434,7 +1118,7 @@ function InventoryExpandRow({ item, colSpan }) {
               fontSize: '0.875rem',
               fontStyle: 'italic'
             }}>
-              No stock history yet. Add stock to see history.
+              No batch history yet. Add stock to see batch tracking.
             </div>
           )}
         </div>
@@ -448,15 +1132,17 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
   const [formData, setFormData] = useState({
     name: '',
     category: 'Mugs',
-    stockQty: 0,
+    initialStock: '',  // Empty by default, shows "0" as placeholder
     minStockLevel: 10,
     isOnDemand: false,
-    isActive: true,  // NEW: For soft delete - defaults to true for new items
+    isActive: true,
     supplierId: 'unspecified',
     supplierName: 'Unspecified',
     unitCost: '',
     isBulkPurchase: false,
-    totalCost: ''
+    totalCost: '',
+    invoiceNumber: '',  // NEW: Required if initialStock > 0
+    deliveryDate: new Date().toISOString().split('T')[0]  // NEW: Required if initialStock > 0
   });
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -478,7 +1164,7 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
       setFormData({
         name: item.name || '',
         category: item.category || 'Mugs',
-        stockQty: item.stockQty || 0,
+        initialStock: item.stockQty || 0,
         minStockLevel: item.minStockLevel || 10,
         isOnDemand: item.isOnDemand || false,
         isActive: item.isActive !== undefined ? item.isActive : true,
@@ -486,13 +1172,15 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
         supplierName: item.lastSupplierName || 'Unspecified',
         unitCost: item.lastUnitCost ? String(item.lastUnitCost) : '',
         isBulkPurchase: false,
-        totalCost: ''
+        totalCost: '',
+        invoiceNumber: '',
+        deliveryDate: new Date().toISOString().split('T')[0]
       });
     } else {
       setFormData({
         name: '',
         category: 'Mugs',
-        stockQty: 0,
+        initialStock: '',  // Empty string, not 0!
         minStockLevel: 10,
         isOnDemand: false,
         isActive: true,
@@ -500,7 +1188,9 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
         supplierName: 'Unspecified',
         unitCost: '',
         isBulkPurchase: false,
-        totalCost: ''
+        totalCost: '',
+        invoiceNumber: '',
+        deliveryDate: new Date().toISOString().split('T')[0]
       });
     }
   }, [item]);
@@ -586,14 +1276,14 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
     setFormData(prev => {
       const unitCost = value;
       let totalCost = prev.totalCost;
-      
+
       // Auto-compute total cost if not in bulk mode
-      if (!prev.isBulkPurchase && unitCost !== '' && prev.stockQty !== '') {
-        const qty = parseInt(prev.stockQty) || 0;
+      if (!prev.isBulkPurchase && unitCost !== '' && prev.initialStock !== '') {
+        const qty = parseInt(prev.initialStock) || 0;
         const cost = parseFloat(unitCost) || 0;
         totalCost = String(qty * cost);
       }
-      
+
       return {
         ...prev,
         unitCost,
@@ -701,15 +1391,15 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
       return;
     }
 
-    // Validate stock quantity for new items (not Upon Order)
-    if (!item && !formData.isOnDemand && (!formData.stockQty || parseInt(formData.stockQty) < 0)) {
+    // Validate stock quantity for new items
+    if (!item && formData.initialStock !== '' && formData.initialStock !== null && parseInt(formData.initialStock) < 0) {
       setValidationMessage('Please enter a valid stock quantity');
       setShowValidationModal(true);
       return;
     }
 
-    // Validate unit cost (required unless Upon Order)
-    if (!formData.isOnDemand && !formData.unitCost) {
+    // Validate unit cost (only required if initialStock > 0)
+    if (formData.initialStock !== '' && formData.initialStock !== null && parseInt(formData.initialStock) > 0 && !formData.unitCost) {
       setValidationMessage('Please enter the unit cost (original price)');
       setShowValidationModal(true);
       return;
@@ -746,7 +1436,7 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
     onSave({
       ...formData,
       name: normalizedName,
-      stockQty: item ? item.stockQty : parseInt(formData.stockQty),  // Preserve stock when editing
+      stockQty: item ? item.stockQty : parseInt(formData.initialStock) || 0,  // Use initialStock for new items
       minStockLevel: parseInt(formData.minStockLevel),
       isActive: formData.isActive !== undefined ? formData.isActive : true,  // Preserve active status
       deletedAt: formData.isActive === false ? new Date() : null,  // Set deletedAt when archived
@@ -948,14 +1638,14 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
               <>
                 <div className="form-group">
                   <label className="form-label">
-                    {!item ? 'Current Stock *' : `Current Stock: ${formData.stockQty} pcs (locked)`}
+                    {!item ? 'Quantity' : `Current Stock: ${formData.initialStock} pcs (locked)`}
                   </label>
                   {!item ? (
                     <NumberInput
                       className="form-input"
-                      name="stockQty"
-                      value={formData.stockQty}
-                      onChange={e => setFormData(prev => ({ ...prev, stockQty: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
+                      name="initialStock"
+                      value={formData.initialStock}
+                      onChange={e => setFormData(prev => ({ ...prev, initialStock: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
                       min={0}
                       placeholder="0"
                       onKeyDown={(e) => {
@@ -969,13 +1659,13 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
                     <input
                       type="text"
                       className="form-input"
-                      value={`${formData.stockQty} pcs`}
+                      value={`${formData.initialStock} pcs`}
                       readOnly
                       style={{ opacity: 0.6, cursor: 'not-allowed', background: 'rgba(0,0,0,0.2)' }}
                     />
                   )}
                   <p className="form-hint">
-                    {!item ? 'Initial stock quantity for this new item.' : 'Use + / − buttons in table to adjust stock.'}
+                    {!item ? 'Leave empty if the item to be sold is Upon Order' : 'Use + / − buttons in table to adjust stock.'}
                   </p>
                 </div>
 
@@ -1005,226 +1695,192 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
             )}
           </div>
 
-          {/* Upon Order Checkbox - Full width */}
-          <div className="form-group">
-            <label className="form-checkbox-label" style={isLinked && formData.stockQty > 0 ? { opacity: 0.6, cursor: 'not-allowed' } : {}}>
-              <input
-                type="checkbox"
-                name="isOnDemand"
-                className="form-checkbox"
-                checked={formData.isOnDemand}
-                onChange={handleInputChange}
-                disabled={isLinked && formData.stockQty > 0}
-                style={{ cursor: isLinked && formData.stockQty > 0 ? 'not-allowed' : 'pointer' }}
-              />
-              <span className="checkbox-text">
-                Upon Order / Supplied (stock ignored)
-                {isLinked && formData.stockQty > 0 ? (
-                  <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                    </svg>
-                    Locked (In Use)
-                  </span>
-                ) : isLinked && formData.stockQty === 0 ? (
-                  <span style={{ color: '#facc15', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                    Can Switch (Stock is 0)
-                  </span>
-                ) : null}
-              </span>
-            </label>
-            {isLinked && formData.stockQty > 0 ? (
-              <p className="form-hint" style={{ color: '#f59e0b' }}>
-                Cannot switch to "Upon Order" while stock is available ({formData.stockQty} pcs). Wait until stocks are depleted.
-              </p>
-            ) : isLinked && formData.stockQty === 0 ? (
-              <p className="form-hint" style={{ color: '#facc15' }}>
-                If stock is 0, you can switch to "Upon Order" mode if you want to stop tracking stock for this item.
-              </p>
-            ) : (
-              <p className="form-hint">
-                When enabled, stock levels will be bypassed and item will always show as available.
-              </p>
-            )}
-          </div>
+          {/* Info Note - Auto-detect Upon Order */}
+          {!item && (
+            <div style={{
+              background: 'rgba(99, 102, 241, 0.1)',
+              border: '1px solid rgba(99, 102, 241, 0.3)',
+              borderRadius: '8px',
+              padding: '1rem',
+              margin: '1.5rem 0'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: '#6366f1', flexShrink: 0 }}>
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 16v-4M12 8h.01"/>
+                </svg>
+                <div>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600, marginBottom: '0.25rem' }}>
+                    Stock Type Auto-Detection
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                    Leave Quantity empty for <strong>Upon Order</strong> items (made-to-order).<br/>
+                    Enter quantity for <strong>Track Stock</strong> items (requires supplier invoice).
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
-          {/* Supplier Field (always shown, even for Upon Order) - LOCKED in Edit mode */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div className="form-group">
-              <label className="form-label">
-                Supplier <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
-                {item && (
-                  <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                    </svg>
-                    Locked
-                  </span>
-                )}
-              </label>
-              <div className="combobox-root" ref={supplierDropdownRef}>
-                <div className="combobox-field">
+          {/* Supplier Invoice Section - Full width, shows ONLY if initialStock > 0 AND not editing */}
+          {!item && formData.initialStock !== '' && formData.initialStock !== null && parseInt(formData.initialStock) > 0 && (
+            <div style={{
+              background: 'rgba(217, 119, 6, 0.1)',
+              border: '2px solid rgba(217, 119, 6, 0.3)',
+              borderRadius: '8px',
+              padding: '1.5rem',
+              margin: '1.5rem 0'
+            }}>
+              <h4 style={{
+                margin: '0 0 1.5rem 0',
+                color: '#d97706',
+                fontSize: '0.875rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                Supplier Invoice Information (Required)
+              </h4>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div className="form-group">
+                  <label className="form-label">Supplier</label>
+                  <div className="combobox-root" ref={supplierDropdownRef}>
+                    <div className="combobox-field">
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={formData.supplierName}
+                        readOnly
+                        onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <button
+                        type="button"
+                        className="combobox-toggle"
+                        onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
+                      >
+                        {showSupplierDropdown ? '▲' : '▼'}
+                      </button>
+                    </div>
+                    {showSupplierDropdown && (
+                      <div className="combobox-menu" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                        <button
+                          type="button"
+                          className={`combobox-item${formData.supplierId === 'unspecified' ? ' active' : ''}`}
+                          onClick={() => {
+                            setFormData(prev => ({ ...prev, supplierId: 'unspecified', supplierName: 'Unspecified' }));
+                            setShowSupplierDropdown(false);
+                          }}
+                        >
+                          — Unspecified
+                        </button>
+                        {suppliers && suppliers.map((supplier, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            className={`combobox-item${formData.supplierId === supplier.id ? ' active' : ''}`}
+                            onClick={() => {
+                              setFormData(prev => ({ ...prev, supplierId: supplier.id, supplierName: supplier.name }));
+                              setShowSupplierDropdown(false);
+                            }}
+                          >
+                            {supplier.name}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="combobox-item combobox-add"
+                          onClick={() => setShowAddSupplierModal(true)}
+                        >
+                          <span>+</span> Add New Supplier...
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    {formData.isBulkPurchase ? 'Total Amount Paid' : 'Unit Cost Each'} 
+                    <span className="required">*</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
+                    <div className="tier-price-cell" style={{ flex: 1 }}>
+                      <span className="peso">₱</span>
+                      <input
+                        type="number"
+                        className="tier-input no-spinner"
+                        value={formData.isBulkPurchase ? formData.totalCost : formData.unitCost}
+                        onChange={e => formData.isBulkPurchase ? handleTotalCostChange(e.target.value) : handleUnitCostChange(e.target.value)}
+                        placeholder={formData.isBulkPurchase ? '0.00' : '0.00'}
+                        min="0"
+                        step="0.01"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                    
+                    {/* Bulk Purchase Toggle - Side by side */}
+                    <label className="form-checkbox-label" style={{ marginBottom: '0.875rem', whiteSpace: 'nowrap' }}>
+                      <input
+                        type="checkbox"
+                        className="form-checkbox"
+                        checked={formData.isBulkPurchase}
+                        onChange={handleBulkPurchaseToggle}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <span className="checkbox-text" style={{ fontSize: '0.75rem' }}>
+                        {formData.isBulkPurchase ? 'Per Unit' : 'Total Amount'}
+                      </span>
+                    </label>
+                  </div>
+                  {formData.isBulkPurchase && formData.totalCost && formData.initialStock !== '' && parseInt(formData.initialStock) > 0 && (
+                    <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
+                      Unit Cost: {formatPrice(parseFloat(formData.totalCost) / parseInt(formData.initialStock))} each
+                    </p>
+                  )}
+                  {!formData.isBulkPurchase && formData.unitCost && formData.initialStock !== '' && parseInt(formData.initialStock) > 0 && (
+                    <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
+                      Total: {formatPrice(parseFloat(formData.unitCost) * parseInt(formData.initialStock))}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div className="form-group">
+                  <label className="form-label">Invoice Number <span className="required">*</span></label>
                   <input
                     type="text"
                     className="form-input"
-                    value={formData.supplierName}
-                    readOnly
-                    onClick={() => !item && setShowSupplierDropdown(!showSupplierDropdown)}
-                    style={item ? { cursor: 'not-allowed', opacity: 0.6, background: 'rgba(0,0,0,0.2)' } : { cursor: 'pointer' }}
-                    disabled={item}
+                    value={formData.invoiceNumber}
+                    onChange={e => setFormData(prev => ({ ...prev, invoiceNumber: e.target.value }))}
+                    placeholder="e.g., INV-2026-001"
                   />
-                  {!item && (
-                    <button
-                      type="button"
-                      className="combobox-toggle"
-                      onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
-                    >
-                      {showSupplierDropdown ? '▲' : '▼'}
-                    </button>
-                  )}
+                  <p className="form-hint">From supplier's delivery receipt or invoice</p>
                 </div>
-                {showSupplierDropdown && !item && (
-                  <div className="combobox-menu" style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                    {/* Unspecified option */}
-                    <button
-                      type="button"
-                      className={`combobox-item${formData.supplierId === 'unspecified' ? ' active' : ''}`}
-                      onClick={() => handleSupplierSelect('unspecified', 'Unspecified')}
-                    >
-                      Unspecified
-                    </button>
-                    {/* Supplier list */}
-                    {suppliers && suppliers.map((supplier, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        className={`combobox-item${formData.supplierId === supplier.id ? ' active' : ''}`}
-                        onClick={() => handleSupplierSelect(supplier.id, supplier.name)}
-                      >
-                        {supplier.name}
-                      </button>
-                    ))}
-                    {/* Add new supplier option */}
-                    <button
-                      type="button"
-                      className="combobox-item combobox-add"
-                      onClick={() => handleSupplierSelect('__new__', '')}
-                    >
-                      <span>+</span> Add New Supplier...
-                    </button>
-                  </div>
-                )}
+
+                <div className="form-group">
+                  <label className="form-label">Delivery Date <span className="required">*</span></label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={formData.deliveryDate}
+                    onChange={e => setFormData(prev => ({ ...prev, deliveryDate: e.target.value }))}
+                  />
+                  <p className="form-hint">Date items were received</p>
+                </div>
               </div>
-              <p className="form-hint">
-                {item
-                  ? 'Use the + button in the inventory table to add stock.'
-                  : 'Select a supplier or "Unspecified" for cash purchases.'}
-              </p>
             </div>
-
-            {/* Unit Cost Field - LOCKED in Edit mode */}
-            <div className="form-group">
-              <label className="form-label">
-                Unit Cost Each
-                {!formData.isOnDemand && <span className="required">*</span>}
-                {formData.isOnDemand && <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}> (Optional)</span>}
-                {item && (
-                  <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '0.5rem', fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                    </svg>
-                    Locked
-                  </span>
-                )}
-              </label>
-
-              {!item && (
-                /* Bulk Purchase Toggle - only for new items */
-                <label className="form-checkbox-label" style={{ marginBottom: '0.75rem' }}>
-                  <input
-                    type="checkbox"
-                    className="form-checkbox"
-                    checked={formData.isBulkPurchase}
-                    onChange={handleBulkPurchaseToggle}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  <span className="checkbox-text">
-                    Bulk Purchase (Enter Total Cost instead)
-                  </span>
-                </label>
-              )}
-
-              <div className="tier-price-cell">
-                <span className="peso">₱</span>
-                {!item && formData.isBulkPurchase ? (
-                  <input
-                    type="number"
-                    className="tier-input no-spinner"
-                    value={formData.totalCost}
-                    onChange={e => handleTotalCostChange(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (['e', 'E', '+', '-'].includes(e.key)) {
-                        e.preventDefault();
-                      }
-                    }}
-                    onWheel={(e) => {
-                      e.target.blur();
-                      e.preventDefault();
-                    }}
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                    disabled={formData.isOnDemand}
-                    style={formData.isOnDemand ? { opacity: 0.6, cursor: 'not-allowed', background: 'rgba(0,0,0,0.2)' } : {}}
-                  />
-                ) : (
-                  <input
-                    type="number"
-                    className="tier-input no-spinner"
-                    value={formData.unitCost}
-                    onChange={e => !item && handleUnitCostChange(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (['e', 'E', '+', '-'].includes(e.key)) {
-                        e.preventDefault();
-                      }
-                    }}
-                    onWheel={(e) => {
-                      e.target.blur();
-                      e.preventDefault();
-                    }}
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                    disabled={item || formData.isOnDemand}
-                    style={(item || formData.isOnDemand) ? { opacity: 0.6, cursor: 'not-allowed', background: 'rgba(0,0,0,0.2)' } : {}}
-                  />
-                )}
-              </div>
-
-              {/* Auto-computed display - only for new items */}
-              {!item && formData.isBulkPurchase && formData.totalCost && formData.stockQty ? (
-                <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
-                  Unit Cost: {formatPrice(parseFloat(formData.totalCost) / parseInt(formData.stockQty))} each
-                </p>
-              ) : !item && formData.unitCost && formData.stockQty && (
-                <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
-                  Total: {formatPrice(parseFloat(formData.unitCost) * parseInt(formData.stockQty))}
-                </p>
-              )}
-
-              <p className="form-hint" style={{ marginTop: '0.5rem' }}>
-                {formData.isOnDemand
-                  ? 'Optional for Upon Order. Update when restocking.'
-                  : item
-                    ? 'Average cost updates when you add stock via the + button.'
-                    : 'Required for profit tracking.'}
-              </p>
-            </div>
-          </div>
-          {/* End of Supplier/Cost grid */}
+          )}
 
           <div className="modal-actions">
             <button type="button" className="btn-secondary" onClick={onClose}>
@@ -1894,6 +2550,8 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
   const [quantity, setQuantity] = useState('');
   const [supplierId, setSupplierId] = useState('walk-in');
   const [supplierName, setSupplierName] = useState('Unspecified');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString().split('T')[0]);
   const [unitCost, setUnitCost] = useState('');
   const [isBulkPurchase, setIsBulkPurchase] = useState(false);
   const [totalCost, setTotalCost] = useState('');
@@ -1906,6 +2564,13 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
   const [validationMessage, setValidationMessage] = useState('');
   const reasonDropdownRef = useRef(null);
   const supplierDropdownRef = useRef(null);
+
+  // Auto-generate Batch ID
+  const generateBatchId = () => {
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 1000);
+    return `BATCH-${timestamp}-${random}`;
+  };
 
   // Close reason dropdown when clicking outside
   useEffect(() => {
@@ -1925,7 +2590,7 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
       setQuantity('');
       setShowConfirmModal(false);
       setPendingData(null);
-      
+
       // Auto-populate supplier from item's last supplier
       if (item.lastSupplierId) {
         setSupplierId(item.lastSupplierId);
@@ -1934,9 +2599,14 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
         setSupplierId('walk-in');
         setSupplierName('Unspecified');
       }
-      
+
       // Auto-populate unit cost from item's last cost
       setUnitCost(item.lastUnitCost ? String(item.lastUnitCost) : '');
+      
+      // Reset invoice fields
+      setInvoiceNumber('');
+      setDeliveryDate(new Date().toISOString().split('T')[0]);
+      
       setIsBulkPurchase(false);
       setTotalCost('');
     }
@@ -2028,19 +2698,50 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
       return;
     }
 
+    // Validate invoice number and delivery date for restock
+    if (reason === 'restock') {
+      if (!invoiceNumber || invoiceNumber.trim() === '') {
+        setValidationMessage('Please enter the invoice number from supplier');
+        setShowValidationModal(true);
+        return;
+      }
+      if (!deliveryDate) {
+        setValidationMessage('Please enter the delivery date');
+        setShowValidationModal(true);
+        return;
+      }
+    }
+
     // Compute total cost
     const qty = parseInt(quantity);
     const cost = parseFloat(unitCost);
     const computedTotalCost = qty * cost;
 
-    // Store pending data and show confirmation modal
+    // Generate batch ID
+    const batchId = generateBatchId();
+
+    // Store pending data with batch information and show confirmation modal
     const adjustmentData = {
       reason,
       quantity: qty,
       supplierId: supplierId === 'walk-in' ? null : supplierId,
       supplierName,
+      invoiceNumber: reason === 'restock' ? invoiceNumber : null,
+      deliveryDate: reason === 'restock' ? deliveryDate : new Date().toISOString().split('T')[0],
       unitCost: cost,
-      totalCost: computedTotalCost
+      totalCost: computedTotalCost,
+      batchData: {
+        batchId,
+        supplierId: supplierId === 'walk-in' ? null : supplierId,
+        supplierName,
+        invoiceNumber: reason === 'restock' ? invoiceNumber : null,
+        dateReceived: reason === 'restock' ? deliveryDate : new Date().toISOString().split('T')[0],
+        originalQty: qty,
+        remainingQty: qty,
+        unitCost: cost,
+        totalCost: computedTotalCost,
+        status: 'active'
+      }
     };
 
     setPendingData(adjustmentData);
@@ -2215,6 +2916,60 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
             </p>
           </div>
 
+          {/* Supplier Invoice Information - Show only for Restock */}
+          {reason === 'restock' && (
+            <div style={{
+              background: 'rgba(217, 119, 6, 0.1)',
+              border: '2px solid rgba(217, 119, 6, 0.3)',
+              borderRadius: '8px',
+              padding: '1rem',
+              marginBottom: '1rem'
+            }}>
+              <h4 style={{ 
+                margin: '0 0 1rem 0', 
+                color: '#d97706',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                borderBottom: '2px solid #d97706',
+                paddingBottom: '0.5rem'
+              }}>
+                Supplier Invoice / Delivery Receipt
+              </h4>
+              
+              <div className="form-group">
+                <label className="form-label">
+                  Invoice Number <span className="required">*</span>
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={invoiceNumber}
+                  onChange={e => setInvoiceNumber(e.target.value)}
+                  placeholder="e.g., INV-2026-001"
+                />
+                <p className="form-hint">
+                  From supplier's delivery receipt or invoice
+                </p>
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">
+                  Delivery Date <span className="required">*</span>
+                </label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={deliveryDate}
+                  onChange={e => setDeliveryDate(e.target.value)}
+                />
+                <p className="form-hint">
+                  Date items were received
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Unit Cost and Bulk Purchase Fields */}
           <div className="form-group">
             <label className="form-label">
@@ -2290,7 +3045,7 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
                 Total Cost: {formatPrice(parseFloat(unitCost) * parseInt(quantity))}
               </p>
             )}
-            {isBulkPurchase && totalCost && quantity && (
+            {isBulkPurchase && totalCost && quantity && parseInt(quantity) > 0 && (
               <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
                 Unit Cost: {formatPrice(parseFloat(totalCost) / parseInt(quantity))} each
               </p>
@@ -2437,19 +3192,45 @@ function ConfirmModal({ title, message, confirmLabel, confirmClass, onConfirm, o
 // ── Manual Stock Adjustment Modal ───────────────────────────────────���─────────
 // NEW: Modal for reducing stock with audit log
 // Reasons: Sales Outside System, Damaged Stock, Stock Correction
-function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
+function StockAdjustmentModal({ isOpen, onClose, onConfirm, item, inventory }) {
   const [reason, setReason] = useState('sales-outside'); // 'sales-outside', 'damaged', 'correction-remove'
   const [quantity, setQuantity] = useState('');
   const [sellingPrice, setSellingPrice] = useState('');
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
   const [remarks, setRemarks] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [selectedBatchId, setSelectedBatchId] = useState('');
+  const [selectedBatch, setSelectedBatch] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingData, setPendingData] = useState(null);
   const [showValidationModal, setShowValidationModal] = useState(false);
   const [validationMessage, setValidationMessage] = useState('');
   const [showReasonDropdown, setShowReasonDropdown] = useState(false);
   const reasonDropdownRef = useRef(null);
+
+  // Get available batches for this item (FIFO - oldest first)
+  const availableBatches = useMemo(() => {
+    if (!inventory || !item) return [];
+    const itemData = inventory.find(inv => inv.id === item.id);
+    const itemBatches = itemData?.batches || [];
+    return itemBatches
+      .filter(batch => batch.remainingQty > 0)
+      .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
+  }, [inventory, item]);
+
+  // Auto-select oldest batch (FIFO) and update selected batch object
+  useEffect(() => {
+    if (availableBatches.length > 0) {
+      setSelectedBatchId(availableBatches[0].batchId);
+      setSelectedBatch(availableBatches[0]);
+    }
+  }, [availableBatches]);
+
+  // Update selected batch when dropdown changes
+  useEffect(() => {
+    const batch = availableBatches.find(b => b.batchId === selectedBatchId);
+    setSelectedBatch(batch || null);
+  }, [selectedBatchId, availableBatches]);
 
   useEffect(() => {
     if (isOpen && item) {
@@ -2474,6 +3255,13 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
       return;
     }
 
+    // Validate batch selection
+    if (!selectedBatchId || !selectedBatch) {
+      setValidationMessage('Please select a batch');
+      setShowValidationModal(true);
+      return;
+    }
+
     // For sales outside system, require selling price
     if (reason === 'sales-outside' && !sellingPrice) {
       setValidationMessage('Please enter the sold price');
@@ -2481,14 +3269,22 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
       return;
     }
 
-    // Store pending data and show confirmation modal for ALL reasons
+    // Store pending data with batch information and show confirmation modal
     const adjustmentData = {
       reason,
       quantity: parseInt(quantity),
       sellingPrice: reason === 'sales-outside' ? parseFloat(sellingPrice) : 0,
       saleDate: reason === 'sales-outside' ? saleDate : null,
       remarks: remarks || null,
-      customerName: customerName || null
+      customerName: customerName || null,
+      batchId: selectedBatchId,
+      batchData: selectedBatch ? {
+        batchId: selectedBatch.batchId,
+        supplierId: selectedBatch.supplierId,
+        supplierName: selectedBatch.supplierName,
+        unitCost: selectedBatch.unitCost,
+        remainingQty: selectedBatch.remainingQty
+      } : null
     };
 
     // Show confirmation modal for all reasons
@@ -2623,6 +3419,60 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item }) {
               </p>
             )}
           </div>
+
+          {/* Batch Selection (FIFO) */}
+          {availableBatches.length > 0 && (
+            <div style={{
+              background: 'rgba(217, 119, 6, 0.1)',
+              border: '2px solid rgba(217, 119, 6, 0.3)',
+              borderRadius: '8px',
+              padding: '1rem',
+              marginBottom: '1.25rem'
+            }}>
+              <label className="form-label" style={{ color: '#d97706', marginBottom: '0.75rem', display: 'block', fontWeight: 600 }}>
+                Select Batch (FIFO - Oldest First)
+              </label>
+              <select
+                className="form-input"
+                value={selectedBatchId}
+                onChange={e => setSelectedBatchId(e.target.value)}
+                style={{
+                  background: 'var(--dark)',
+                  borderColor: 'var(--border)',
+                  color: 'var(--white)',
+                  fontSize: '0.875rem',
+                  padding: '0.75rem',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace'
+                }}
+              >
+                {availableBatches.map(batch => (
+                  <option key={batch.batchId} value={batch.batchId} style={{ background: 'var(--dark)', color: 'var(--white)', padding: '0.5rem' }}>
+                    {batch.batchId} | {new Date(batch.dateReceived).toLocaleDateString()} | {batch.remainingQty}pcs @ ₱{formatPrice(batch.unitCost)}
+                  </option>
+                ))}
+              </select>
+              {selectedBatch && quantity && (
+                <div style={{ 
+                  marginTop: '0.75rem', 
+                  padding: '0.75rem',
+                  background: 'rgba(0,0,0,0.2)',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem'
+                }}>
+                  <div style={{ marginBottom: '0.5rem', color: 'var(--gray)' }}>
+                    <span style={{ color: 'var(--white)', fontWeight: 600 }}>Invoice:</span> {selectedBatch.invoiceNumber || 'N/A'}
+                  </div>
+                  <div style={{ color: '#d97706', fontWeight: 700, fontSize: '1rem' }}>
+                    💰 Return Value: ₱{formatPrice(selectedBatch.unitCost * parseInt(quantity))} 
+                    <span style={{ fontSize: '0.875rem', fontWeight: 400, color: 'var(--gray)' }}>
+                      ({quantity} × ₱{formatPrice(selectedBatch.unitCost)})
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Dynamic Fields based on reason */}
           {reason === 'sales-outside' && (
@@ -2946,6 +3796,11 @@ export default function InventoryPage() {
   const [showSupplierDeleteConfirm, setShowSupplierDeleteConfirm] = useState(false); // Supplier delete confirmation modal
   const [showSupplierInUseError, setShowSupplierInUseError] = useState(false); // Supplier in use error modal
 
+  // NEW: States for Batch Details Modal
+  const [showBatchDetailsModal, setShowBatchDetailsModal] = useState(false);
+  const [selectedBatch, setSelectedBatch] = useState(null);
+  const [selectedBatchItem, setSelectedBatchItem] = useState(null);
+
   // Handle supplier delete confirmation
   const handleConfirmDeleteSupplier = () => {
     if (!deleteSupplierId) return;
@@ -3030,7 +3885,7 @@ export default function InventoryPage() {
   const filteredInventory = inventory.filter(item => {
     // EXCLUDE archived items by default
     if (item.isActive === false) return false;
-    
+
     const query = searchQuery.toLowerCase();
     const matchesSearch = item.name.toLowerCase().includes(query) || item.category.toLowerCase().includes(query);
 
@@ -3046,6 +3901,22 @@ export default function InventoryPage() {
 
     return matchesSearch && matchesStatus;
   });
+
+  // NEW: Event listener for opening batch details modal
+  useEffect(() => {
+    const handleOpenBatchDetails = (event) => {
+      const { batch, item } = event.detail;
+      setSelectedBatch(batch);
+      setSelectedBatchItem(item);
+      setShowBatchDetailsModal(true);
+    };
+
+    window.addEventListener('openBatchDetails', handleOpenBatchDetails);
+
+    return () => {
+      window.removeEventListener('openBatchDetails', handleOpenBatchDetails);
+    };
+  }, []);
 
   // NEW: Filter for archived items (for separate view)
   const archivedInventory = inventory.filter(item => item.isActive === false);
@@ -3151,17 +4022,21 @@ export default function InventoryPage() {
     );
   };
 
-  // NEW: Handle stock adjustment (Manual Stock Out)
+  // NEW: Handle stock adjustment (Manual Stock Out) with batch tracking
   // TODO: MongoDB - Replace with API calls
   const handleStockAdjustment = (adjustmentData) => {
     if (!adjustmentItem) return;
 
-    const { reason, quantity, sellingPrice, saleDate, remarks, customerName } = adjustmentData;
+    const { reason, quantity, sellingPrice, saleDate, remarks, customerName, batchId, batchData } = adjustmentData;
 
     const newStockQty = Math.max(0, adjustmentItem.stockQty - quantity);
 
-    // FIFO: Deduct from oldest batch first
-    const fifoResult = deductStockFIFO(adjustmentItem.id, quantity);
+    // Use batch cost if available, otherwise use average cost
+    const unitCost = batchData?.unitCost || adjustmentItem.averageCost || adjustmentItem.lastUnitCost || 0;
+    const totalCost = unitCost * quantity;
+
+    // FIFO: Deduct from selected batch first
+    const fifoResult = deductStockFromBatch(adjustmentItem.id, batchId, quantity);
 
     // ──────────────────────────────────────────────────────────────
     // TODO: MongoDB - Wrap in Transaction
@@ -3225,13 +4100,14 @@ export default function InventoryPage() {
         ? customerName
         : `Outside-Customer ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '')}-${String(Date.now()).slice(-4)}`;
 
-      // Calculate cost from inventory average cost
-      const avgCost = adjustmentItem.averageCost || adjustmentItem.lastUnitCost || 0;
+      // Calculate cost from batch or inventory average cost
+      const avgCost = batchData?.unitCost || adjustmentItem.averageCost || adjustmentItem.lastUnitCost || 0;
       const totalCost = avgCost * quantity;
 
       const salesRecord = {
         id: Date.now(),
         inventoryId: adjustmentItem.id,
+        batchId: batchId,  // Track which batch was sold
         productName: adjustmentItem.name,
         category: adjustmentItem.category,
         quantity,
@@ -3244,7 +4120,7 @@ export default function InventoryPage() {
         source: 'manual', // 'manual' for outside system, 'online' for storefront
         status: 'completed',
         balance: 0, // Fully paid (outside system sales are paid immediately)
-        cost: totalCost, // Calculate cost from inventory average cost
+        cost: totalCost, // Calculate cost from batch/average cost
         notes: 'Manual sale - price may include discount or surcharge',
         createdAt: new Date().toISOString()
       };
@@ -3263,12 +4139,12 @@ export default function InventoryPage() {
     setShowAdjustmentSuccess(true);
   };
 
-  // NEW: Handle stock addition (Manual Stock In)
+  // NEW: Handle stock addition (Manual Stock In) with batch tracking
   // TODO: MongoDB - Replace with API calls
   const handleStockAddition = (additionData) => {
     if (!additionItem) return;
 
-    const { reason, quantity, supplierId, supplierName, unitCost, totalCost, remarks } = additionData;
+    const { reason, quantity, supplierId, supplierName, unitCost, totalCost, remarks, batchData } = additionData;
 
     // Convert from Upon Order to In Stock if needed
     const isConverting = additionItem.isOnDemand;
@@ -3278,14 +4154,14 @@ export default function InventoryPage() {
     const currentAvgCost = additionItem.averageCost || 0;
     const newStock = quantity;
     const newCost = unitCost;
-    
+
     // New average cost = (currentStock * currentAvgCost + newStock * newCost) / (currentStock + newStock)
     const newTotalStock = currentStock + newStock;
-    const newAverageCost = newTotalStock > 0 
-      ? ((currentStock * currentAvgCost) + (newStock * newCost)) / newTotalStock 
+    const newAverageCost = newTotalStock > 0
+      ? ((currentStock * currentAvgCost) + (newStock * newCost)) / newTotalStock
       : newCost;
 
-    // Increase stock and update cost info
+    // Increase stock and update cost info AND add batch
     setInventory(prev =>
       prev.map(item =>
         item.id === additionItem.id
@@ -3297,15 +4173,17 @@ export default function InventoryPage() {
               lastSupplierName: supplierName,
               lastUnitCost: unitCost,
               averageCost: newAverageCost,
+              batches: batchData ? [...(item.batches || []), batchData] : item.batches,  // ADD BATCH!
               updatedAt: new Date().toISOString()
             }
           : item
       )
     );
 
-    // Create stock history entry
+    // Create stock history entry WITH BATCH ID
     const stockHistoryEntry = {
       inventoryId: additionItem.id,
+      batchId: batchData?.batchId,  // ADD BATCH ID!
       itemName: additionItem.name,
       category: additionItem.category,
       supplierId: supplierId || null,
@@ -3316,13 +4194,17 @@ export default function InventoryPage() {
       reason: reason,
       stockBefore: additionItem.stockQty,
       stockAfter: newTotalStock,
-      averageCostAfter: newAverageCost
+      averageCostAfter: newAverageCost,
+      type: 'received',  // ADD TYPE!
+      remainingQty: quantity,  // ADD REMAINING!
+      dateReceived: batchData?.dateReceived || new Date().toISOString()  // ADD DATE!
     };
     addStockHistory(stockHistoryEntry);
 
-    // Create audit log entry
+    // Create audit log entry WITH BATCH ID
     const auditLog = {
       id: Date.now(),
+      batchId: batchData?.batchId,  // ADD BATCH ID!
       inventoryId: additionItem.id,
       itemName: additionItem.name,
       category: additionItem.category,
@@ -3357,11 +4239,36 @@ export default function InventoryPage() {
   // CURRENT: Stores locally, saves to LocalStorage via useEffect
   // FUTURE: POST /api/inventory (new) or PUT /api/inventory/:id (update)
   const handleSave = (itemData) => {
-    // Store pending data and show confirmation modal
-    setPendingItemData({
+    // VALIDATION: If initialStock > 0, require invoice number and delivery date
+    if (!editingItem && itemData.initialStock !== '' && itemData.initialStock !== null && parseInt(itemData.initialStock) > 0) {
+      if (!itemData.invoiceNumber || itemData.invoiceNumber.trim() === '') {
+        setValidationMessage('Please enter invoice number for initial stock');
+        setShowValidationModal(true);
+        return;
+      }
+      if (!itemData.deliveryDate) {
+        setValidationMessage('Please enter delivery date for initial stock');
+        setShowValidationModal(true);
+        return;
+      }
+    }
+
+    // Auto-detect isOnDemand based on quantity
+    const isOnDemand = !itemData.initialStock || itemData.initialStock === 0 || itemData.initialStock === '';
+
+    // Store pending data with batch info and show confirmation modal
+    const pendingData = {
       ...itemData,
-      id: editingItem ? editingItem.id : crypto.randomUUID()
-    });
+      id: editingItem ? editingItem.id : crypto.randomUUID(),
+      // Include invoice data for batch creation
+      invoiceNumber: itemData.invoiceNumber,
+      deliveryDate: itemData.deliveryDate,
+      supplierId: itemData.supplierId,
+      supplierName: itemData.supplierName,
+      isOnDemand: isOnDemand  // Auto-detect!
+    };
+    
+    setPendingItemData(pendingData);
     setIsConfirmModalOpen(true);
   };
 
@@ -3396,18 +4303,39 @@ export default function InventoryPage() {
         )
       );
     } else {
-      // Add new item
+      // Add new item WITH BATCH if initialStock > 0
+      let batches = [];
+
+      // Create batch if has initial stock and invoice
+      if (pendingItemData.initialStock && parseInt(pendingItemData.initialStock) > 0 && pendingItemData.invoiceNumber) {
+        batches = [{
+          batchId: `BATCH-${Date.now()}`,
+          supplierId: pendingItemData.supplierId || null,
+          supplierName: pendingItemData.supplierName || 'Unspecified',
+          invoiceNumber: pendingItemData.invoiceNumber,
+          dateReceived: pendingItemData.deliveryDate,
+          originalQty: parseInt(pendingItemData.initialStock),
+          remainingQty: parseInt(pendingItemData.initialStock),
+          unitCost: parseFloat(pendingItemData.unitCost) || 0,
+          totalCost: parseInt(pendingItemData.initialStock) * (parseFloat(pendingItemData.unitCost) || 0),
+          status: 'active'
+        }];
+      }
+
       const newItem = {
         ...pendingItemData,
+        stockQty: parseInt(pendingItemData.initialStock) || 0,  // Map initialStock to stockQty
+        batches: batches,  // ADD BATCHES!
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
       setInventory(prev => [...prev, newItem]);
-      
+
       // Create initial stock history entry if has stock and cost
       if (!pendingItemData.isOnDemand && pendingItemData.stockQty > 0 && pendingItemData.lastUnitCost) {
         const stockHistoryEntry = {
           inventoryId: newItem.id,
+          batchId: batches.length > 0 ? batches[0].batchId : null,  // ADD BATCH ID!
           itemName: newItem.name,
           category: newItem.category,
           supplierId: pendingItemData.lastSupplierId,
@@ -3418,7 +4346,9 @@ export default function InventoryPage() {
           reason: 'initial',
           stockBefore: 0,
           stockAfter: pendingItemData.stockQty,
-          averageCostAfter: pendingItemData.averageCost || pendingItemData.lastUnitCost
+          averageCostAfter: pendingItemData.averageCost || pendingItemData.lastUnitCost,
+          type: 'received',  // ADD TYPE
+          remainingQty: pendingItemData.stockQty  // ADD REMAINING
         };
         addStockHistory(stockHistoryEntry);
       }
@@ -3997,6 +4927,7 @@ export default function InventoryPage() {
         }}
         onConfirm={handleStockAdjustment}
         item={adjustmentItem}
+        inventory={inventory}
       />
 
       {/* NEW: Stock Addition Modal */}
@@ -4209,6 +5140,20 @@ export default function InventoryPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* NEW: Batch Details Modal (Resibo Format) */}
+      {showBatchDetailsModal && selectedBatch && (
+        <BatchDetailsModal
+          batch={selectedBatch}
+          item={selectedBatchItem}
+          isOpen={showBatchDetailsModal}
+          onClose={() => {
+            setShowBatchDetailsModal(false);
+            setSelectedBatch(null);
+            setSelectedBatchItem(null);
+          }}
+        />
       )}
     </div>
   );
