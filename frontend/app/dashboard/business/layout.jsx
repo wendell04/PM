@@ -145,6 +145,7 @@ export default function BusinessDashboardLayout({ children }) {
       <aside className={`admin-sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <Link href="/" className="sidebar-logo">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logos/PersonalizeMe logo.png" alt="Personalize Me Prints" className="sidebar-logo-img" />
             <div className="sidebar-logo-text">
               PERSONALIZE <span>ME</span><br />PRINTS

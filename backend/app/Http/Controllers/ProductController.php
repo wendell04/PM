@@ -41,8 +41,8 @@ class ProductController extends Controller
 
             return response()->json($products);
         } catch (\Exception $e) {
-            Log::error('ProductController@index: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch products.'], 500);
+            Log::error('ProductController@index: Failed to fetch products', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while fetching products.'], 500);
         }
     }
 
@@ -64,8 +64,8 @@ class ProductController extends Controller
 
             return response()->json($product);
         } catch (\Exception $e) {
-            Log::error('ProductController@show: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch product.'], 500);
+            Log::error('ProductController@show: Failed to fetch product ' . $id, ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while fetching the product.'], 500);
         }
     }
 
@@ -75,14 +75,16 @@ class ProductController extends Controller
      * GET /api/admin/products
      * Returns all products (including unpublished/inactive) for admin dashboard
      */
-    public function adminIndex()
+    public function adminIndex(Request $request)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            
             $products = Product::with('inventory')->orderBy('created_at', 'desc')->get();
             return response()->json($products);
         } catch (\Exception $e) {
-            Log::error('ProductController@adminIndex: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch products.'], 500);
+            Log::error('ProductController@adminIndex: Failed to fetch products', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while fetching products.'], 500);
         }
     }
 
@@ -90,9 +92,11 @@ class ProductController extends Controller
      * GET /api/admin/products/available-inventory
      * Returns inventory items NOT yet linked to products
      */
-    public function availableInventory()
+    public function availableInventory(Request $request)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             // Get all inventory IDs that are already linked to products
             $linkedInventoryIds = Product::whereNotNull('inventoryId')
                                          ->pluck('inventoryId')
@@ -107,8 +111,8 @@ class ProductController extends Controller
 
             return response()->json($available);
         } catch (\Exception $e) {
-            Log::error('ProductController@availableInventory: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch available inventory.'], 500);
+            Log::error('ProductController@availableInventory: Failed to fetch available inventory', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while fetching available inventory.'], 500);
         }
     }
 
@@ -119,6 +123,8 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $validated = $request->validate([
                 'inventoryId'       => 'required|exists:inventory,_id',
                 'category'          => 'required|string|max:100',
@@ -206,10 +212,11 @@ class ProductController extends Controller
 
             return response()->json($product, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('ProductController@store: Validation failed', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            Log::error('ProductController@store: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to create product.'], 500);
+            Log::error('ProductController@store: Failed to create product', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while creating the product.'], 500);
         }
     }
 
@@ -220,6 +227,8 @@ class ProductController extends Controller
     public function update(Request $request, $id)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $product = Product::find($id);
 
             if (!$product) {
@@ -290,10 +299,11 @@ class ProductController extends Controller
 
             return response()->json($product);
         } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('ProductController@update: Validation failed for product ' . $id, ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            Log::error('ProductController@update: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to update product.'], 500);
+            Log::error('ProductController@update: Failed to update product ' . $id, ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while updating the product.'], 500);
         }
     }
 
@@ -301,9 +311,11 @@ class ProductController extends Controller
      * DELETE /api/admin/products/{id}
      * Soft-deletes (deactivates) a product
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $product = Product::find($id);
 
             if (!$product) {
@@ -315,8 +327,8 @@ class ProductController extends Controller
 
             return response()->json(['message' => 'Product deactivated successfully.']);
         } catch (\Exception $e) {
-            Log::error('ProductController@destroy: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to delete product.'], 500);
+            Log::error('ProductController@destroy: Failed to delete product ' . $id, ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while deleting the product.'], 500);
         }
     }
 
@@ -324,9 +336,11 @@ class ProductController extends Controller
      * POST /api/admin/products/{id}/toggle-publish
      * Toggle product publish status
      */
-    public function togglePublish($id)
+    public function togglePublish(Request $request, $id)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $product = Product::find($id);
 
             if (!$product) {
@@ -342,8 +356,8 @@ class ProductController extends Controller
                 'isPublished' => $product->isPublished
             ]);
         } catch (\Exception $e) {
-            Log::error('ProductController@togglePublish: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to update publish status.'], 500);
+            Log::error('ProductController@togglePublish: Failed for product ' . $id, ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while updating the publish status.'], 500);
         }
     }
 
@@ -354,6 +368,8 @@ class ProductController extends Controller
     public function uploadImage(Request $request)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $validated = $request->validate([
                 'image' => 'required|image|max:5120', // 5MB max
                 'folder' => 'nullable|string|max:100',
@@ -392,10 +408,11 @@ class ProductController extends Controller
 
             return response()->json(['error' => 'Failed to upload image.'], 500);
         } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('ProductController@uploadImage: Validation failed', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            Log::error('ProductController@uploadImage: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to upload image.'], 500);
+            Log::error('ProductController@uploadImage: Failed to upload image', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while uploading the image.'], 500);
         }
     }
 }

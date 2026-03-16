@@ -43,6 +43,7 @@ function ProductCard({ product, onAddToCart }) {
         {/* Image area */}
         <div className="shop-product-image-area">
           {hasImage ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={product.images[0]}
               alt={product.name}
@@ -209,6 +210,7 @@ export default function ShopPage() {
               className="shop-carousel-slide"
             >
               {/* Background Image */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={slide.image}
                 alt={slide.title}

@@ -16,6 +16,8 @@ class AuditLogController extends Controller
     public function index(Request $request)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $query = AuditLog::orderBy('createdAt', 'desc');
 
             if ($request->filled('inventoryId')) {
@@ -47,9 +49,11 @@ class AuditLogController extends Controller
      * GET /api/admin/audit-logs/inventory/{inventoryId}
      * Returns audit logs for a specific inventory item
      */
-    public function byInventory($inventoryId)
+    public function byInventory(Request $request, $inventoryId)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $auditLogs = AuditLog::where('inventoryId', $inventoryId)
                                  ->orderBy('createdAt', 'desc')
                                  ->get();
@@ -68,6 +72,8 @@ class AuditLogController extends Controller
     public function store(Request $request)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $validated = $request->validate([
                 'inventoryId'   => 'required|string',
                 'productName'   => 'required|string',
@@ -121,6 +127,8 @@ class AuditLogController extends Controller
     public function summary(Request $request)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $query = AuditLog::query();
 
             if ($request->filled('startDate')) {

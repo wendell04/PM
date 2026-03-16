@@ -1,77 +1,69 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import {
+    createContext,
+    useContext,
+    useState,
+    useEffect
+} from 'react';
 
-const AuthContext = createContext();
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-export function useAuth() {
-  return useContext(AuthContext);
+const AuthContext = createContext(null);
+
+export function AuthProvider({children}) {
+    const [currentUser, setCurrentUser] = useState(null);
+
+    useEffect(() => {
+        const stored = localStorage.getItem('auth_user') || sessionStorage.getItem('auth_user');
+        if (stored) {
+            try {
+                setCurrentUser(JSON.parse(stored));
+            } catch {
+                setCurrentUser(null);
+            }
+        }
+    }, []);
+
+    const logout = async () => {
+        try {
+            const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+            if (token) {
+                await fetch(`${API_URL}/api/logout`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                    },
+                });
+            }
+        } catch (err) {
+            console.error('Logout error: ', err);
+        } finally {
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('auth_user');
+            sessionStorage.removeItem('auth_token');
+            sessionStorage.removeItem('auth_user');
+            setCurrentUser(null);
+        }
+    };
+
+    const updateUser = (updateData) => {
+        const isLocal = !!localStorage.getItem('auth_user');
+        const storage = isLocal ? localStorage : sessionStorage;
+        const current = JSON.parse(storage.getItem('auth_user') || '{}');
+        const merged = {...current, ...updateData};
+        storage.setItem('auth_user', JSON.stringify(merged));
+        setCurrentUser(merged); 
+    };
+
+    return (
+        <AuthContext.Provider value={{currentUser, setCurrentUser, updateUser, logout}}>
+            {children}
+        </AuthContext.Provider>
+    );
 }
 
-export function AuthProvider({ children }) {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  // Check if user is logged in on initial load
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setCurrentUser(JSON.parse(storedUser));
-    }
-    setLoading(false);
-  }, []);
-
-  const login = (email, password, userType = 'customer') => {
-    // Mock authentication - in a real app, you would verify credentials with a backend
-    // In the future, user type will be determined by the backend based on the user's account
-    if (email && password) {
-      const user = {
-        id: Date.now(),
-        email,
-        userType, // This will eventually come from the backend
-        name: email.split('@')[0], // Just for demo purposes
-      };
-      
-      setCurrentUser(user);
-      localStorage.setItem('user', JSON.stringify(user));
-      return true;
-    }
-    return false;
-  };
-
-  const signup = (name, email, password, userType = 'customer') => {
-    // Mock signup - in a real app, you would send data to a backend
-    // In the future, user type will be determined by the backend based on the user's account
-    if (name && email && password) {
-      const user = {
-        id: Date.now(),
-        email,
-        userType, // This will eventually come from the backend
-        name,
-      };
-      
-      setCurrentUser(user);
-      localStorage.setItem('user', JSON.stringify(user));
-      return true;
-    }
-    return false;
-  };
-
-  const logout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('user');
-  };
-
-  const value = {
-    currentUser,
-    login,
-    signup,
-    logout,
-  };
-
-  return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
+export function useAuth() {
+    return useContext(AuthContext);
 }

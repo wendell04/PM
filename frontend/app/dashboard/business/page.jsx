@@ -1,5 +1,7 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element */
+
 /**
  * ADD PRODUCT PAGE
  *
@@ -36,7 +38,7 @@
  * - Subcategories stored in product documents
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 // ── Reusable Number Input Component ───────────────────────────────────────────
@@ -179,15 +181,15 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label 
   );
 
   // Get display name for selected inventory item
-  const getDisplayName = (id) => {
+  const getDisplayName = useCallback((id) => {
     const item = availableInventoryList.find(inv => inv.id === id) || inventoryList.find(inv => inv.id === id);
     if (!item) return '';
     return `${item.name} (${item.category}) - ${item.isOnDemand ? 'Upon Order' : `${item.stockQty} stocks`}`;
-  };
+  }, [availableInventoryList, inventoryList]);
 
   useEffect(() => {
     setInputVal(value ? getDisplayName(value) : '');
-  }, [value, availableInventoryList]);
+  }, [value, getDisplayName]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -1409,6 +1411,7 @@ export default function AddProductsPage() {
   };
 
   // ── Sync tier prices when groupChecks change (merge/unmerge) ──
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!hasVariants || tiers.length === 0) return;
 
@@ -1441,9 +1444,11 @@ export default function AddProductsPage() {
 
       return changed ? { ...tier, prices: newPrices } : tier;
     }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupChecks]);
 
   // ── Sync fixed prices when groupChecks change (merge/unmerge) ──
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!hasVariants) return;
 
@@ -1476,6 +1481,7 @@ export default function AddProductsPage() {
 
       return changed ? newPrices : prev;
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupChecks]);
 
   // ── Update fixed price with merged group sync ──

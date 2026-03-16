@@ -1,11 +1,13 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element */
+
 /**
  * PRODUCT LIST PAGE - with Full Edit Modal
  * Edit modal now reuses the full Add Products form UI, pre-filled with existing product data.
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 // ── Reusable Number Input ──────────────────────────────────────────────────────
@@ -93,13 +95,13 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label,
     item.isActive !== false && !linkedProductIds.has(item.id)
   );
 
-  const getDisplayName = (id) => {
+  const getDisplayName = useCallback((id) => {
     const item = availableInventoryList.find(inv => inv.id === id) || inventoryList.find(inv => inv.id === id);
     if (!item) return '';
     return `${item.name} (${item.category}) - ${item.isOnDemand ? 'Upon Order' : `${item.stockQty} stocks`}`;
-  };
+  }, [availableInventoryList, inventoryList]);
 
-  useEffect(() => { setInputVal(value ? getDisplayName(value) : ''); }, [value, availableInventoryList]);
+  useEffect(() => { setInputVal(value ? getDisplayName(value) : ''); }, [value, getDisplayName]);
 
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -401,6 +403,7 @@ function EditProductModal({ product, inventoryList, onClose, onSave, onPriceErro
 
   // ── Sync tier prices when groupChecks change (merge/unmerge) ──────────────────
   // This is the KEY fix: when user checks/unchecks merge boxes, sync all prices in a group
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!hasVariants || tiers.length === 0 || variantGroups.length < 2) return;
 
@@ -435,9 +438,11 @@ function EditProductModal({ product, inventoryList, onClose, onSave, onPriceErro
 
       return changed ? { ...tier, prices: newPrices } : tier;
     }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupChecks]);
 
   // ── Sync fixed prices when groupChecks change ────────────────────────────────
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!hasVariants || variantGroups.length < 2) return;
 
@@ -471,6 +476,7 @@ function EditProductModal({ product, inventoryList, onClose, onSave, onPriceErro
 
       return changed ? newPrices : prev;
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupChecks]);
 
   // ── Inventory change handler ──

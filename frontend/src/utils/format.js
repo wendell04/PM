@@ -1,4 +1,4 @@
-/**
+11/**
  * Format number with comma separators (e.g., 10000.00 → 10,000.00)
  * @param {number|string|null|undefined} num - The number to format
  * @returns {string} Formatted number with commas

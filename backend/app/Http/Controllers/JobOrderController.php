@@ -16,6 +16,8 @@ class JobOrderController extends Controller
     public function index(Request $request)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $query = JobOrder::orderBy('targetCompletion', 'asc');
 
             if ($request->filled('status')) {
@@ -43,9 +45,11 @@ class JobOrderController extends Controller
      * GET /api/admin/job-orders/{id}
      * Returns a single job order by ID
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $jobOrder = JobOrder::find($id);
 
             if (!$jobOrder) {
@@ -66,6 +70,8 @@ class JobOrderController extends Controller
     public function store(Request $request)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $validated = $request->validate([
                 'orderId'          => 'required|string|exists:orders,_id',
                 'product'          => 'required|array',
@@ -120,6 +126,8 @@ class JobOrderController extends Controller
     public function update(Request $request, $id)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $jobOrder = JobOrder::find($id);
 
             if (!$jobOrder) {
@@ -163,6 +171,8 @@ class JobOrderController extends Controller
     public function schedule(Request $request)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $query = JobOrder::where('joStatus', '!=', 'Completed');
 
             if ($request->filled('startDate')) {

@@ -7,6 +7,7 @@ use App\Models\StockHistory;
 use App\Models\Supplier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class InventoryController extends Controller
 {
@@ -47,8 +48,8 @@ class InventoryController extends Controller
 
             return response()->json($inventory);
         } catch (\Exception $e) {
-            Log::error('InventoryController@index: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch inventory.'], 500);
+            Log::error('InventoryController@index: Failed to fetch inventory', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while fetching inventory.'], 500);
         }
     }
 
@@ -67,8 +68,8 @@ class InventoryController extends Controller
 
             return response()->json($inventory);
         } catch (\Exception $e) {
-            Log::error('InventoryController@show: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch inventory item.'], 500);
+            Log::error('InventoryController@show: Failed to fetch inventory item ' . $id, ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while fetching the inventory item.'], 500);
         }
     }
 
@@ -91,8 +92,8 @@ class InventoryController extends Controller
 
             return response()->json($history);
         } catch (\Exception $e) {
-            Log::error('InventoryController@history: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch stock history.'], 500);
+            Log::error('InventoryController@history: Failed to fetch stock history for item ' . $id, ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while fetching the stock history.'], 500);
         }
     }
 
@@ -103,6 +104,8 @@ class InventoryController extends Controller
     public function store(Request $request)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $validated = $request->validate([
                 'name'          => 'required|string|max:255',
                 'category'      => 'required|string|max:100',
@@ -151,10 +154,11 @@ class InventoryController extends Controller
 
             return response()->json($inventory, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('InventoryController@store: Validation failed', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            Log::error('InventoryController@store: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to create inventory item.'], 500);
+            Log::error('InventoryController@store: Failed to create inventory item', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while creating the inventory item.'], 500);
         }
     }
 
@@ -165,6 +169,8 @@ class InventoryController extends Controller
     public function update(Request $request, $id)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $inventory = Inventory::find($id);
 
             if (!$inventory) {
@@ -200,10 +206,11 @@ class InventoryController extends Controller
 
             return response()->json($inventory);
         } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('InventoryController@update: Validation failed for item ' . $id, ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            Log::error('InventoryController@update: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to update inventory item.'], 500);
+            Log::error('InventoryController@update: Failed to update inventory item ' . $id, ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while updating the inventory item.'], 500);
         }
     }
 
@@ -214,6 +221,8 @@ class InventoryController extends Controller
     public function adjustStock(Request $request, $id)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $inventory = Inventory::find($id);
 
             if (!$inventory) {
@@ -228,41 +237,47 @@ class InventoryController extends Controller
                 'unitCost'     => 'nullable|numeric|min:0',
             ]);
 
-            $quantity = $validated['quantity'];
-            $newStock = $inventory->stockQty + $quantity;
+            $inventory = DB::connection('mongodb')->transaction(function() use ($validated, $inventory) {
+                $quantity = $validated['quantity'];
+                $newStock = $inventory->stockQty + $quantity;
 
-            if ($newStock < 0) {
-                return response()->json(['error' => 'Insufficient stock.'], 422);
-            }
+                if ($newStock < 0) {
+                    throw new \Exception('Insufficient stock.');
+                }
 
-            $inventory->stockQty = $newStock;
+                $inventory->stockQty = $newStock;
 
-            if ($quantity > 0 && isset($validated['unitCost'])) {
-                $totalCost = ($inventory->averageCost * ($inventory->stockQty - $quantity)) + ($validated['unitCost'] * $quantity);
-                $inventory->averageCost = $totalCost / $inventory->stockQty;
-                $inventory->lastUnitCost = $validated['unitCost'];
-            }
+                if ($quantity > 0 && isset($validated['unitCost'])) {
+                    $currentTotalCost = ($inventory->averageCost ?? 0) * ($newStock - $quantity);
+                    $newAdditionCost = ($validated['unitCost'] * $quantity);
+                    $inventory->averageCost = ($currentTotalCost + $newAdditionCost) / $newStock;
+                    $inventory->lastUnitCost = $validated['unitCost'];
+                }
 
-            $inventory->updatedAt = now();
-            $inventory->save();
+                $inventory->updatedAt = now();
+                $inventory->save();
 
-            StockHistory::create([
-                'inventoryId'  => $inventory->_id,
-                'supplierId'   => $validated['supplierId'] ?? null,
-                'quantity'     => abs($quantity),
-                'remainingQty' => $newStock,
-                'unitCost'     => $validated['unitCost'] ?? $inventory->averageCost,
-                'totalCost'    => abs($quantity) * ($validated['unitCost'] ?? $inventory->averageCost),
-                'reason'       => $validated['reason'],
-                'createdAt'    => now(),
-            ]);
+                StockHistory::create([
+                    'inventoryId'  => $inventory->_id,
+                    'supplierId'   => $validated['supplierId'] ?? null,
+                    'quantity'     => abs($quantity),
+                    'remainingQty' => $newStock,
+                    'unitCost'     => $validated['unitCost'] ?? $inventory->averageCost,
+                    'totalCost'    => abs($quantity) * ($validated['unitCost'] ?? $inventory->averageCost),
+                    'reason'       => $validated['reason'],
+                    'createdAt'    => now(),
+                ]);
+
+                return $inventory;
+            });
 
             return response()->json($inventory);
         } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('InventoryController@adjustStock: Validation failed for item ' . $id, ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            Log::error('InventoryController@adjustStock: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to adjust stock.'], 500);
+            Log::error('InventoryController@adjustStock: Failed to adjust stock for item ' . $id, ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while adjusting stock.'], 500);
         }
     }
 
@@ -270,9 +285,11 @@ class InventoryController extends Controller
      * DELETE /api/inventory/{id}
      * Soft-deletes an inventory item
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         try {
+            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+
             $inventory = Inventory::find($id);
 
             if (!$inventory) {
@@ -290,8 +307,8 @@ class InventoryController extends Controller
 
             return response()->json(['message' => 'Inventory item deactivated successfully.']);
         } catch (\Exception $e) {
-            Log::error('InventoryController@destroy: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to delete inventory item.'], 500);
+            Log::error('InventoryController@destroy: Failed to delete inventory item ' . $id, ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'An unexpected error occurred while deleting the inventory item.'], 500);
         }
     }
 }

@@ -4,10 +4,11 @@ namespace App\Models;
 
 use MongoDB\Laravel\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use Notifiable;
+    use HasApiTokens, Notifiable;
 
     protected $connection = 'mongodb';
     protected $collection = 'users';
@@ -27,6 +28,8 @@ class User extends Authenticatable
         'verification_code_expires_at',
         'reset_token',
         'reset_token_expires_at',
+        'reset_code',
+        'reset_code_expires_at',
         'lastLogin',
         'avatar',
     ];

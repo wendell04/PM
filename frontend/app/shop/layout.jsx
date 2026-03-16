@@ -238,9 +238,9 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [passwordHovered, setPasswordHovered] = useState(false);
-  const [passwordFocused, setPasswordFocused] = useState(false);
   const [tAndCModalOpen, setTAndCModalOpen] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [confirmTouched, setConfirmTouched] = useState(false);
 
   const validateField = (field, value) => {
     switch (field) {
@@ -443,37 +443,31 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
                   maxLength={64}
                   value={formData.password}
                   onChange={e => handleRegisterChange('password', e.target.value)}
-                  onMouseEnter={() => setPasswordHovered(true)}
-                  onMouseLeave={() => setPasswordHovered(false)}
-                  onFocus={() => setPasswordFocused(true)}
-                  onBlur={() => setPasswordFocused(false)}
+                  onFocus={() => setPasswordTouched(true)}
                   className={errors.password ? 'error' : ''}
                 />
                 <button type="button" className="auth-eye" onClick={() => setShowPassword(v => !v)}>
                   {showPassword ? <EyeOpen /> : <EyeClosed />}
                 </button>
               </div>
-              {(passwordHovered || passwordFocused) && (
-                <div style={{ position: 'absolute', top: '0', left: 'calc(100% + 10px)', width: '180px', background: 'var(--dark2,#1a1a1a)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem', zIndex: 100, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
-                  <div style={{ position: 'absolute', left: '-6px', top: '16px', width: '10px', height: '10px', background: 'var(--dark2,#1a1a1a)', border: '1px solid var(--border)', borderRight: 'none', borderTop: 'none', transform: 'rotate(45deg)' }} />
-                  {passwordFocused && formData.password.length > 0
-                    ? <PasswordStrength password={formData.password} />
-                    : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                        {[
-                          { label: 'At least 8 characters', pass: formData.password.length >= 8 },
-                          { label: 'One uppercase letter', pass: /[A-Z]/.test(formData.password) },
-                          { label: 'One lowercase letter', pass: /[a-z]/.test(formData.password) },
-                          { label: 'One number', pass: /\d/.test(formData.password) },
-                          { label: 'One special character', pass: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password) },
-                        ].map((c, i) => (
-                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.72rem', color: c.pass ? '#4ade80' : 'var(--gray)', transition: 'color 0.2s' }}>
-                            <span style={{ fontSize: '0.65rem' }}>{c.pass ? '✓' : '·'}</span>{c.label}
-                          </div>
-                        ))}
+              {(passwordTouched || formData.password.length > 0) && (
+                <div style={{ marginTop: '0.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    {[
+                      { label: 'At least 8 characters', pass: formData.password.length >= 8 },
+                      { label: 'One uppercase letter', pass: /[A-Z]/.test(formData.password) },
+                      { label: 'One lowercase letter', pass: /[a-z]/.test(formData.password) },
+                      { label: 'One number', pass: /\d/.test(formData.password) },
+                      { label: 'One special character', pass: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password) },
+                    ].map((c, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: c.pass ? '#4ade80' : 'var(--gray)', transition: 'color 0.2s' }}>
+                        <span style={{ fontSize: '0.72rem' }}>{c.pass ? '✓' : '·'}</span>{c.label}
                       </div>
-                    )
-                  }
+                    ))}
+                  </div>
+                  <div style={{ marginTop: '0.55rem' }}>
+                    <PasswordStrength password={formData.password} />
+                  </div>
                 </div>
               )}
               {errors.password && <span className="error-message">{errors.password}</span>}
@@ -488,12 +482,20 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
                   autoComplete="new-password"
                   value={formData.confirmPassword}
                   onChange={e => handleRegisterChange('confirmPassword', e.target.value)}
+                  onFocus={() => setConfirmTouched(true)}
                   className={errors.confirmPassword ? 'error' : ''}
                 />
                 <button type="button" className="auth-eye" onClick={() => setShowConfirm(v => !v)}>
                   {showConfirm ? <EyeOpen /> : <EyeClosed />}
                 </button>
               </div>
+              {(confirmTouched || formData.confirmPassword.length > 0) && (
+                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: formData.confirmPassword.length === 0 ? 'var(--gray)' : (formData.confirmPassword === formData.password ? '#4ade80' : '#ef4444') }}>
+                  {formData.confirmPassword.length === 0
+                    ? 'Re-enter your password to confirm.'
+                    : (formData.confirmPassword === formData.password ? '✓ Passwords match' : 'Passwords do not match')}
+                </div>
+              )}
               {errors.confirmPassword && <span className="error-message">{errors.confirmPassword}</span>}
             </div>
           </div>
@@ -571,6 +573,7 @@ export default function ShopLayout({ children }) {
   const [scrolled, setScrolled] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalType, setAuthModalType] = useState('login'); // 'login' or 'register'
+  const [authModalInstanceKey, setAuthModalInstanceKey] = useState(0);
 
   // Load user info (public access - no login required to browse)
   useEffect(() => {
@@ -589,11 +592,13 @@ export default function ShopLayout({ children }) {
   const handleLoginClick = () => {
     setAuthModalType('login');
     setAuthModalOpen(true);
+    setAuthModalInstanceKey(k => k + 1);
   };
 
   const handleRegisterClick = () => {
     setAuthModalType('register');
     setAuthModalOpen(true);
+    setAuthModalInstanceKey(k => k + 1);
   };
 
   // Handle successful login
@@ -611,6 +616,7 @@ export default function ShopLayout({ children }) {
     
     setUser(userData);
     setAuthModalOpen(false);
+    setAuthModalInstanceKey(k => k + 1);
   };
 
   // Handle successful registration
@@ -619,10 +625,16 @@ export default function ShopLayout({ children }) {
     localStorage.setItem('auth_user', JSON.stringify(userData));
     sessionStorage.setItem('auth_token', token);
     sessionStorage.setItem('auth_user', JSON.stringify(userData));
+
+    // Redirect admin/owner to dashboard
+    if (userData.role === 'admin' || userData.role === 'owner') {
+      window.location.href = '/dashboard/business';
+      return;
+    }
+
     setUser(userData);
     setAuthModalOpen(false);
-    // Redirect to landing page to complete onboarding
-    router.push('/');
+    setAuthModalInstanceKey(k => k + 1);
   };
 
   // Persist cart changes
@@ -715,6 +727,7 @@ export default function ShopLayout({ children }) {
 
               {/* Logo - Non-clickable brand mark */}
               <div className="shop-navbar-logo">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/logos/PersonalizeMe logo.png" alt="Personalize Me Prints" className="shop-navbar-logo-img" />
                 <div className="shop-navbar-logo-text">
                   PERSONALIZE <span>ME</span><br />PRINTS
@@ -814,22 +827,23 @@ export default function ShopLayout({ children }) {
 
         {/* ── Auth Modal (Same as Landing Page) ── */}
         {authModalOpen && (
-          <div className="auth-overlay" onClick={() => setAuthModalOpen(false)} style={{ zIndex: 1000 }}>
+          <div className="auth-overlay" onClick={() => { setAuthModalOpen(false); setAuthModalInstanceKey(k => k + 1); }} style={{ zIndex: 1000 }}>
             <div className="auth-modal" onClick={e => e.stopPropagation()}>
               <div className="auth-modal-header">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="auth-modal-logo"/>
                 <div>
                   <h2>{authModalType === 'login' ? 'Welcome Back' : 'Create Account'}</h2>
                   <p>{authModalType === 'login' ? 'Sign in to continue shopping' : 'Join Personalize Me Prints'}</p>
                 </div>
-                <button className="auth-close" onClick={() => setAuthModalOpen(false)}>✕</button>
+                <button className="auth-close" onClick={() => { setAuthModalOpen(false); setAuthModalInstanceKey(k => k + 1); }}>✕</button>
               </div>
 
               <div className="auth-modal-body">
                 {authModalType === 'login' ? (
-                  <LoginForm onSuccess={handleLoginSuccess} onSwitchToRegister={() => setAuthModalType('register')} />
+                  <LoginForm key={`login-${authModalInstanceKey}`} onSuccess={handleLoginSuccess} onSwitchToRegister={() => setAuthModalType('register')} />
                 ) : (
-                  <RegisterForm onSuccess={handleRegisterSuccess} onSwitchToLogin={() => setAuthModalType('login')} />
+                  <RegisterForm key={`register-${authModalInstanceKey}`} onSuccess={handleRegisterSuccess} onSwitchToLogin={() => setAuthModalType('login')} />
                 )}
               </div>
             </div>

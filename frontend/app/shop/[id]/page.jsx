@@ -62,31 +62,31 @@ export default function ProductDetailPage() {
   const [added, setAdded]           = useState(false);
 
   useEffect(() => {
-    fetchProduct();
-  }, [id]);
-
-  async function fetchProduct() {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      const res = await fetch(`${API_URL}/api/products/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error('Not found');
-      const data = await res.json();
-      setProduct(data);
-      if (data.variants?.length) setSelectedVariant(data.variants[0]);
-    } catch {
-      if (id.startsWith('stub-')) {
-        setProduct(STUB);
-        if (STUB.variants?.length) setSelectedVariant(STUB.variants[0]);
-      } else {
-        router.replace('/shop');
+    async function fetchProduct() {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+        const res = await fetch(`${API_URL}/api/products/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error('Not found');
+        const data = await res.json();
+        setProduct(data);
+        if (data.variants?.length) setSelectedVariant(data.variants[0]);
+      } catch {
+        if (id.startsWith('stub-')) {
+          setProduct(STUB);
+          if (STUB.variants?.length) setSelectedVariant(STUB.variants[0]);
+        } else {
+          router.replace('/shop');
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
     }
-  }
+
+    fetchProduct();
+  }, [id, router]);
 
   function handleAddToCart() {
     if (!product) return;
@@ -152,6 +152,7 @@ export default function ProductDetailPage() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             {hasImages ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={product.images[activeImage]}
                 alt={product.name}
@@ -188,6 +189,7 @@ export default function ProductDetailPage() {
                     cursor: 'pointer', padding: 0, background: 'none',
                   }}
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </button>
               ))}

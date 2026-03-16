@@ -11,12 +11,12 @@
             </div>
             <div class="body" style="padding: 36px 40px;">
                 <p style="color: #aaa; font-size: 14px; line-height: 1.7; margin: 0 0 16px;">Hi, <span style="color: #f5f5f5; font-weight: 600;">{{$firstName}}</span>!</p>
-                <p style="color: #aaa; font-size: 14px; line-height: 1.7; margin: 0 0 16px;">Thank you for registering. Use the verification code below to activate your account:</p>
-                <div class="code-box" style="background: #222; border: 2px solid #d4a843; border-radius: 12px; text-align: center; padding: 24px; margin: 24px 0;">
-                    <div class="code" style="font-size: 42px; font-weight: 900; color: #d4a843; letter-spacing: 12px; font-family: monospace;">{{$code}}</div>
-                    <small style="color: #888; font-size: 12px; display: block; margin-top: 8px;">This code expires in 10 minutes</small>
+                <p style="color: #aaa; font-size: 14px; line-height: 1.7; margin: 0 0 16px;">We received a request to reset your password. Click the button below to continue. You'll be asked to verify a code on the website.</p>
+                <div style="text-align: center; margin: 24px 0;">
+                    <a href="{{$resetUrl}}" class="button" style="display: inline-block; background: linear-gradient(135deg, #b8922f, #d4a843); color: #0f0f0f; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 700; font-size: 14px; margin: 16px 0; text-align: center;">Reset My Password</a>
                 </div>
-                <p style="color: #aaa; font-size: 14px; line-height: 1.7; margin: 0;">If you did not create an account, you can safely ignore this email.</p>
+                <p style="color: #aaa; font-size: 14px; line-height: 1.7; margin: 0 0 16px;">If you did not request a password reset, you can safely ignore this email.</p>
+                <p style="color: #aaa; font-size: 14px; line-height: 1.7; margin: 0;"><strong style="color: #f5f5f5;">For your security:</strong> This link will expire in 30 minutes.</p>
             </div>
             <div class="footer" style="padding: 20px 40px; border-top: 1px solid #2a2a2a; text-align: center;">
                 <p style="color: #555; font-size: 11px; margin: 0;">&copy; {{(date('Y'))}} Personalize Me Prints. All rights reserved.</p>
