@@ -3,6 +3,21 @@
    Uses existing variables from custom-styles.css
    ============================================================ */
 
+/* Hide number input spinner arrows */
+input[type="text"][inputMode="numeric"]::-webkit-inner-spin-button,
+input[type="text"][inputMode="numeric"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="text"][inputMode="numeric"],
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* ══════════════════════════════════════
    LAYOUT
 ══════════════════════════════════════ */
@@ -388,17 +403,38 @@
 .form-input[type="number"]::-webkit-inner-spin-button,
 .form-input[type="number"]::-webkit-outer-spin-button,
 .no-spinner::-webkit-inner-spin-button,
-.no-spinner::-webkit-outer-spin-button {
+.no-spinner::-webkit-outer-spin-button,
+input[type="text"][inputMode="numeric"]::-webkit-inner-spin-button,
+input[type="text"][inputMode="numeric"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   -moz-appearance: textfield;
   appearance: none;
   margin: 0;
 }
 
-.form-input[type="number"] {
+.form-input[type="number"],
+.form-input[type="text"][inputMode="numeric"],
+input[type="text"][inputMode="numeric"] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+/* Prevent scroll wheel from changing number input values */
+.tier-input,
+.no-spinner,
+input[type="text"][inputMode="numeric"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.tier-input::-webkit-inner-spin-button,
+.tier-input::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button,
+.no-spinner::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 
 .form-textarea {
   min-height: 120px;

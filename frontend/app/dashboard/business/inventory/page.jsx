@@ -31,29 +31,36 @@ import { formatNumber, formatPrice } from '../../../../src/utils/format';
 function NumberInput({ value, onChange, min = 0, max, placeholder, className, disabled }) {
   const handleChange = (e) => {
     const val = e.target.value;
-    // Allow empty string or valid non-negative number
-    if (val === '' || /^-?\d*$/.test(val)) {
+    // Allow empty string or digits only (no negatives, no decimals, no special chars)
+    if (val === '' || /^\d+$/.test(val)) {
       const num = val === '' ? '' : Math.max(min, parseInt(val) || min);
       onChange({ ...e, target: { ...e.target, value: num } });
     }
   };
 
   const handleKeyDown = (e) => {
-    // Block e, E, +, -
+    // Block e, E, +, -, .
     if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+      e.preventDefault();
+      return;
+    }
+    // Allow: 0-9, Backspace, Delete, Tab, Arrow keys
+    if (!/^\d$/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
       e.preventDefault();
     }
   };
 
   const handleWheel = (e) => {
-    // Prevent scroll wheel from changing value
-    e.target.blur();
+    // Prevent scroll wheel from changing value - remove focus
+    if (document.activeElement === e.target) {
+      e.target.blur();
+    }
     e.preventDefault();
   };
 
   return (
     <input
-      type="number"
+      type="text"
       className={className}
       value={value}
       onChange={handleChange}
@@ -63,6 +70,9 @@ function NumberInput({ value, onChange, min = 0, max, placeholder, className, di
       max={max}
       placeholder={placeholder}
       disabled={disabled}
+      inputMode="numeric"
+      pattern="[0-9]*"
+      style={{ ...className?.style, MozAppearance: 'textfield' }}
     />
   );
 }
@@ -727,18 +737,20 @@ function BatchDetailsModal({ batch, item, isOpen, onClose }) {
               <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>{batch.originalQty} pcs</div>
             </div>
             <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Remaining</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: batch.remainingQty === 0 ? '#f87171' : '#facc15' }}>
-                {batch.remainingQty} pcs
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Good Stock</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#4ade80' }}>
+                {batch.goodQty || (batch.originalQty - (batch.damagedQty || 0))} pcs
+              </div>
+            </div>
+            <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Damaged</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f87171' }}>
+                {batch.damagedQty || 0} pcs
               </div>
             </div>
             <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Unit Cost</div>
               <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gold)' }}>₱{formatPrice(batch.unitCost)}</div>
-            </div>
-            <div style={{ padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Total Value</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gold)' }}>₱{formatPrice(batch.totalCost)}</div>
             </div>
           </div>
 
@@ -756,7 +768,9 @@ function BatchDetailsModal({ batch, item, isOpen, onClose }) {
                   <tr style={{ borderBottom: '2px solid var(--border)', background: 'rgba(0,0,0,0.2)' }}>
                     <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>Date</th>
                     <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>Type</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>Change</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>Total</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>Good</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>Damaged</th>
                     <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>Remaining</th>
                     <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>Notes</th>
                   </tr>
@@ -787,6 +801,12 @@ function BatchDetailsModal({ batch, item, isOpen, onClose }) {
                       </td>
                       <td style={{ padding: '0.75rem', textAlign: 'center', color: mov.quantity > 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>
                         {mov.quantity > 0 ? '+' : ''}{mov.quantity}
+                      </td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#4ade80', fontWeight: 600 }}>
+                        {mov.goodQty || (mov.quantity > 0 ? mov.quantity : 0)}
+                      </td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#f87171', fontWeight: 600 }}>
+                        {mov.damagedQty || 0}
                       </td>
                       <td style={{ padding: '0.75rem', textAlign: 'center', color: '#facc15', fontWeight: 600 }}>
                         {mov.remainingAfter} pcs
@@ -829,6 +849,22 @@ function BatchDetailsModal({ batch, item, isOpen, onClose }) {
               </div>
             </div>
           </div>
+
+          {/* Notes/Remarks Section - Display batch-level notes */}
+          {batch.notes && batch.notes.trim() !== '' && (
+            <div style={{
+              background: 'rgba(99, 102, 241, 0.1)',
+              border: '2px solid rgba(99, 102, 241, 0.3)',
+              borderRadius: '8px',
+              padding: '1rem',
+              marginBottom: '1rem'
+            }}>
+              <h3 style={{ margin: '0 0 0.75rem 0', color: '#6366f1', fontSize: '0.875rem', textTransform: 'uppercase' }}>Notes / Remarks</h3>
+              <p style={{ fontSize: '0.875rem', color: 'var(--white)', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                {batch.notes}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="modal-actions">
@@ -878,6 +914,8 @@ function InventoryExpandRow({ item, colSpan }) {
             invoiceNumber: entry.invoiceNumber,
             dateReceived: entry.dateReceived || entry.createdAt,
             originalQty: 0,
+            goodQty: 0,
+            damagedQty: 0,
             remainingQty: 0,
             unitCost: entry.unitCost || 0,
             totalCost: entry.totalCost || 0,
@@ -885,12 +923,15 @@ function InventoryExpandRow({ item, colSpan }) {
           };
         }
         batches[entry.batchId].movements.push(entry);
-        
+
         // Track original qty from first received entry
         if (entry.type === 'received' && !batches[entry.batchId].originalQty) {
           batches[entry.batchId].originalQty = entry.quantity;
+          // Also set goodQty and damagedQty from the first received entry
+          batches[entry.batchId].goodQty = entry.goodQty || entry.quantity;
+          batches[entry.batchId].damagedQty = entry.damagedQty || 0;
         }
-        
+
         // Get latest remaining qty
         batches[entry.batchId].remainingQty = entry.remainingQty !== undefined ? entry.remainingQty : batches[entry.batchId].remainingQty;
       }
@@ -952,24 +993,9 @@ function InventoryExpandRow({ item, colSpan }) {
                           transition: 'all 0.2s'
                         }}>
                           <td style={{ padding: '0.75rem' }}>
-                            <button
-                              onClick={() => toggleBatchExpand(batch.batchId)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: 'var(--primary)',
-                                cursor: 'pointer',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                padding: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem'
-                              }}
-                            >
-                              <span style={{ transition: 'transform 0.2s', display: 'inline-block', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--white)' }}>
                               {batch.batchId}
-                            </button>
+                            </span>
                             {batch.invoiceNumber && (
                               <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
                                 Inv: {batch.invoiceNumber}
@@ -986,8 +1012,8 @@ function InventoryExpandRow({ item, colSpan }) {
                             {batch.originalQty} pcs
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8rem', fontWeight: '600' }}>
-                            <span style={{ color: isDepleted ? '#f87171' : '#facc15' }}>
-                              {batch.remainingQty} pcs
+                            <span style={{ color: isDepleted ? '#f87171' : '#4ade80' }}>
+                              {batch.goodQty || (batch.remainingQty - (batch.damagedQty || 0))} pcs
                             </span>
                             {isDepleted && (
                               <div style={{ fontSize: '0.65rem', color: '#f87171', marginTop: '0.1rem' }}>Depleted</div>
@@ -1023,87 +1049,10 @@ function InventoryExpandRow({ item, colSpan }) {
                                 e.target.style.color = 'var(--primary)';
                               }}
                             >
-                              View Details →
+                              View Details
                             </button>
                           </td>
                         </tr>
-                        
-                        {/* Expanded Movement History */}
-                        {isExpanded && (
-                          <tr>
-                            <td colSpan={7} style={{ padding: '1rem', background: 'rgba(0,0,0,0.15)' }}>
-                              <div style={{ marginBottom: '0.75rem', fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600, textTransform: 'uppercase' }}>
-                                Movement History for {batch.batchId}
-                              </div>
-                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                                <thead>
-                                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.7rem' }}>Date</th>
-                                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.7rem' }}>Type</th>
-                                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.7rem' }}>Change</th>
-                                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.7rem' }}>Remaining</th>
-                                    <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.7rem' }}>Notes</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {batchMovements.map((mov, movIdx) => (
-                                    <tr key={movIdx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                      <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)' }}>
-                                        {new Date(mov.createdAt).toLocaleDateString()}
-                                      </td>
-                                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-                                        <span style={{
-                                          padding: '0.2rem 0.5rem',
-                                          borderRadius: '4px',
-                                          fontSize: '0.65rem',
-                                          fontWeight: 600,
-                                          background: mov.type === 'received' ? 'rgba(74, 222, 128, 0.2)' :
-                                                         mov.type === 'sold' ? 'rgba(99, 102, 241, 0.2)' :
-                                                         mov.type === 'damaged' ? 'rgba(248, 113, 113, 0.2)' :
-                                                         'rgba(250, 204, 21, 0.2)',
-                                          color: mov.type === 'received' ? '#4ade80' :
-                                                 mov.type === 'sold' ? '#6366f1' :
-                                                 mov.type === 'damaged' ? '#f87171' :
-                                                 '#facc15'
-                                        }}>
-                                          {mov.type}
-                                        </span>
-                                      </td>
-                                      <td style={{ padding: '0.5rem', textAlign: 'center', color: mov.quantity > 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>
-                                        {mov.quantity > 0 ? '+' : ''}{mov.quantity}
-                                      </td>
-                                      <td style={{ padding: '0.5rem', textAlign: 'center', color: '#facc15', fontWeight: 600 }}>
-                                        {mov.remainingAfter} pcs
-                                      </td>
-                                      <td style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.75rem' }}>
-                                        {mov.reason || '—'}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                              
-                              {/* Batch Summary */}
-                              <div style={{ 
-                                marginTop: '1rem', 
-                                padding: '0.75rem', 
-                                background: 'rgba(0,0,0,0.2)', 
-                                borderRadius: '6px',
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center'
-                              }}>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-                                  <span style={{ color: '#4ade80', fontWeight: 600 }}>{batch.remainingQty} pcs</span> remaining from 
-                                  <span style={{ color: 'var(--white)', fontWeight: 600 }}> {batch.originalQty} pcs</span> original
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--gold)', fontWeight: 600 }}>
-                                  Remaining Value: ₱{formatPrice(batch.unitCost * batch.remainingQty)}
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
                       </React.Fragment>
                     );
                   })}
@@ -1383,10 +1332,17 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     // Validate product name
     if (!formData.name.trim()) {
       setValidationMessage('Please enter a product name');
+      setShowValidationModal(true);
+      return;
+    }
+
+    // Validate damaged quantity doesn't exceed total quantity
+    if (!item && formData.initialStock && formData.damagedOnArrival && parseInt(formData.damagedOnArrival) > parseInt(formData.initialStock)) {
+      setValidationMessage('Damaged quantity cannot exceed total quantity');
       setShowValidationModal(true);
       return;
     }
@@ -1403,6 +1359,20 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
       setValidationMessage('Please enter the unit cost (original price)');
       setShowValidationModal(true);
       return;
+    }
+
+    // Validate invoice number and delivery date (required if initialStock > 0)
+    if (formData.initialStock !== '' && formData.initialStock !== null && parseInt(formData.initialStock) > 0) {
+      if (!formData.invoiceNumber || formData.invoiceNumber.trim() === '') {
+        setValidationMessage('Please enter invoice number for initial stock');
+        setShowValidationModal(true);
+        return;
+      }
+      if (!formData.deliveryDate) {
+        setValidationMessage('Please enter delivery date for initial stock');
+        setShowValidationModal(true);
+        return;
+      }
     }
 
     // Normalize the name: Trim whitespace and convert to Proper Case
@@ -1632,71 +1602,91 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
             </div>
           </div>
 
-          {/* Row 2: Stock Qty | Min Level */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            {!formData.isOnDemand && (
-              <>
-                <div className="form-group">
-                  <label className="form-label">
-                    {!item ? 'Quantity' : `Current Stock: ${formData.initialStock} pcs (locked)`}
-                  </label>
-                  {!item ? (
-                    <NumberInput
-                      className="form-input"
-                      name="initialStock"
-                      value={formData.initialStock}
-                      onChange={e => setFormData(prev => ({ ...prev, initialStock: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
-                      min={0}
-                      placeholder="0"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          return false;
-                        }
-                      }}
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={`${formData.initialStock} pcs`}
-                      readOnly
-                      style={{ opacity: 0.6, cursor: 'not-allowed', background: 'rgba(0,0,0,0.2)' }}
-                    />
-                  )}
-                  <p className="form-hint">
-                    {!item ? 'Leave empty if the item to be sold is Upon Order' : 'Use + / − buttons in table to adjust stock.'}
-                  </p>
-                </div>
+          {/* Auto-Generated SKU Field - Shows only when product name is filled */}
+          {formData.name && formData.name.trim() !== '' && (
+            <div className="form-group">
+              <label className="form-label">
+                SKU (Auto-Generated)
+                <span style={{ color: 'var(--gray)', fontSize: '0.75rem', fontWeight: '400', marginLeft: '0.5rem' }}>
+                  (Read-Only)
+                </span>
+              </label>
+              <input
+                type="text"
+                className="form-input"
+                value={(() => {
+                  const prefix = (formData.category || 'ITEM').substring(0, 3).toUpperCase();
+                  const year = new Date().getFullYear();
+                  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+                  return `${prefix}-${year}-${random}`;
+                })()}
+                readOnly
+                style={{ background: 'rgba(0,0,0,0.2)', cursor: 'not-allowed', opacity: 0.7 }}
+              />
+              <p className="form-hint">
+                {/* TODO: MongoDB - Generate SKU using incremental ID from database */}
+                {/* Schema: Add sku field to inventory schema (unique, indexed) */}
+                Auto-generated based on category. Format: [CATEGORY]-[YEAR]-[ID]
+              </p>
+            </div>
+          )}
 
-                <div className="form-group">
-                  <label className="form-label">Min. Stock Level</label>
-                  <NumberInput
-                    className="form-input"
-                    name="minStockLevel"
-                    value={formData.minStockLevel}
-                    onChange={e => setFormData(prev => ({ ...prev, minStockLevel: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
-                    min={0}
-                    placeholder="10"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        return false;
-                      }
-                    }}
-                    readOnly={item}
-                    style={item ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
-                  />
-                  <p className="form-hint">
-                    You'll receive a low stock warning when current stock falls below this level.
-                  </p>
-                </div>
-              </>
-            )}
+          {/* Row 2: Quantity | Min Level - Shows only when product name is filled */}
+          {formData.name && formData.name.trim() !== '' && (
+            <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="form-group">
+              <label className="form-label">
+                Quantity
+                <span style={{ color: 'var(--gray)', fontSize: '0.75rem', fontWeight: '400', marginLeft: '0.5rem' }}>
+                  (Optional)
+                </span>
+              </label>
+              <NumberInput
+                className="form-input"
+                name="initialStock"
+                value={formData.initialStock}
+                onChange={e => setFormData(prev => ({ ...prev, initialStock: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
+                min={0}
+                placeholder="0"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    return false;
+                  }
+                }}
+              />
+              <p className="form-hint">
+                Leave empty for Upon Order items
+              </p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Min. Stock Level</label>
+              <NumberInput
+                className="form-input"
+                name="minStockLevel"
+                value={formData.minStockLevel}
+                onChange={e => setFormData(prev => ({ ...prev, minStockLevel: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
+                min={0}
+                placeholder="10"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    return false;
+                  }
+                }}
+                readOnly={item}
+                style={item ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
+              />
+              <p className="form-hint">
+                You'll receive a low stock warning when current stock falls below this level.
+              </p>
+            </div>
           </div>
 
-          {/* Info Note - Auto-detect Upon Order */}
-          {!item && (
+          {/* Stock Type Auto-Detection Info */}
+          {!item && (!formData.initialStock || formData.initialStock === 0) && (
             <div style={{
               background: 'rgba(99, 102, 241, 0.1)',
               border: '1px solid rgba(99, 102, 241, 0.3)',
@@ -1719,6 +1709,30 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+          </>
+          )}
+
+          {/* Damaged on Arrival Field - Shows ONLY if quantity > 0 */}
+          {!item && formData.initialStock && formData.initialStock > 0 && (
+            <div className="form-group">
+              <label className="form-label">
+                Damaged on Arrival
+                <span style={{ color: 'var(--gray)', fontSize: '0.75rem', fontWeight: '400', marginLeft: '0.5rem' }}>
+                  (Optional)
+                </span>
+              </label>
+              <NumberInput
+                className="form-input"
+                value={formData.damagedOnArrival || ''}
+                onChange={e => setFormData(prev => ({ ...prev, damagedOnArrival: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
+                min={0}
+                placeholder="0"
+              />
+              <p className="form-hint">
+                Items damaged during delivery
+              </p>
             </div>
           )}
 
@@ -1817,14 +1831,31 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
                     <div className="tier-price-cell" style={{ flex: 1 }}>
                       <span className="peso">₱</span>
                       <input
-                        type="number"
+                        type="text"
                         className="tier-input no-spinner"
                         value={formData.isBulkPurchase ? formData.totalCost : formData.unitCost}
-                        onChange={e => formData.isBulkPurchase ? handleTotalCostChange(e.target.value) : handleUnitCostChange(e.target.value)}
+                        onChange={e => {
+                          const val = e.target.value;
+                          // Allow empty string or digits with optional decimal
+                          if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                            formData.isBulkPurchase ? handleTotalCostChange(val) : handleUnitCostChange(val);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          // Block e, E, +, -
+                          if (['e', 'E', '+', '-', ' '].includes(e.key)) {
+                            e.preventDefault();
+                          }
+                        }}
+                        onWheel={(e) => {
+                          e.target.blur();
+                          e.preventDefault();
+                        }}
                         placeholder={formData.isBulkPurchase ? '0.00' : '0.00'}
                         min="0"
                         step="0.01"
                         style={{ width: '100%' }}
+                        inputMode="decimal"
                       />
                     </div>
                     
@@ -1844,12 +1875,22 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
                   </div>
                   {formData.isBulkPurchase && formData.totalCost && formData.initialStock !== '' && parseInt(formData.initialStock) > 0 && (
                     <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
-                      Unit Cost: {formatPrice(parseFloat(formData.totalCost) / parseInt(formData.initialStock))} each
+                      Unit Cost: {formatPrice(parseFloat(formData.totalCost) / parseInt(formData.initialStock))}
+                      {formData.damagedOnArrival && parseInt(formData.damagedOnArrival) > 0 && (
+                        <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>
+                          {' '} ({formatPrice((parseFloat(formData.totalCost) / parseInt(formData.initialStock)) * (parseInt(formData.initialStock) - parseInt(formData.damagedOnArrival)))} Good: {parseInt(formData.initialStock) - parseInt(formData.damagedOnArrival)} | {formatPrice((parseFloat(formData.totalCost) / parseInt(formData.initialStock)) * parseInt(formData.damagedOnArrival))} Damaged: {parseInt(formData.damagedOnArrival)})
+                        </span>
+                      )}
                     </p>
                   )}
                   {!formData.isBulkPurchase && formData.unitCost && formData.initialStock !== '' && parseInt(formData.initialStock) > 0 && (
                     <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
                       Total: {formatPrice(parseFloat(formData.unitCost) * parseInt(formData.initialStock))}
+                      {formData.damagedOnArrival && parseInt(formData.damagedOnArrival) > 0 && (
+                        <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>
+                          {' '} ({formatPrice(parseFloat(formData.unitCost) * (parseInt(formData.initialStock) - parseInt(formData.damagedOnArrival)))} Good: {parseInt(formData.initialStock) - parseInt(formData.damagedOnArrival)} | {formatPrice(parseFloat(formData.unitCost) * parseInt(formData.damagedOnArrival))} Damaged: {parseInt(formData.damagedOnArrival)})
+                        </span>
+                      )}
                     </p>
                   )}
                 </div>
@@ -1865,7 +1906,7 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
                     onChange={e => setFormData(prev => ({ ...prev, invoiceNumber: e.target.value }))}
                     placeholder="e.g., INV-2026-001"
                   />
-                  <p className="form-hint">From supplier's delivery receipt or invoice</p>
+                  <p className="form-hint">From supplier's delivery receipt or invoice (Invoice/SI/OR/Serial Number)</p>
                 </div>
 
                 <div className="form-group">
@@ -1877,6 +1918,57 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
                     onChange={e => setFormData(prev => ({ ...prev, deliveryDate: e.target.value }))}
                   />
                   <p className="form-hint">Date items were received</p>
+                </div>
+              </div>
+
+              {/* Notes/Remarks Field - For delivery discrepancies, issues, etc. */}
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label">
+                  Notes / Remarks <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
+                </label>
+                <textarea
+                  className="form-textarea"
+                  value={formData.notes || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="e.g., Invoice shows 100 but only 90 arrived. Supplier promised to send remaining 10 next week."
+                  rows={3}
+                />
+                <p className="form-hint">
+                  Add notes about delivery discrepancies, damaged items, or any issues with this batch.
+                </p>
+              </div>
+
+              {/* Receipt Upload - Optional */}
+              <div className="form-group" style={{ marginTop: '1rem', marginBottom: '0' }}>
+                <label className="form-label">
+                  Upload Receipt <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
+                </label>
+                <div style={{
+                  border: '2px dashed var(--border)',
+                  borderRadius: '8px',
+                  padding: '1.5rem',
+                  textAlign: 'center',
+                  background: 'rgba(0,0,0,0.2)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--gray)', marginBottom: '0.75rem' }}>
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--white)', marginBottom: '0.25rem' }}>
+                    Click to upload receipt image
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
+                    PNG, JPG, PDF - Max 5MB (Optional)
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    style={{ display: 'none' }}
+                    id="receiptUploadItem"
+                  />
                 </div>
               </div>
             </div>
@@ -2548,6 +2640,7 @@ function ArchiveConfirmModal({
 function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAddSupplier }) {
   const [reason, setReason] = useState('restock'); // 'restock', 'correction-add'
   const [quantity, setQuantity] = useState('');
+  const [damagedOnArrival, setDamagedOnArrival] = useState('');  // NEW: Damaged on arrival
   const [supplierId, setSupplierId] = useState('walk-in');
   const [supplierName, setSupplierName] = useState('Unspecified');
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -2555,6 +2648,7 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
   const [unitCost, setUnitCost] = useState('');
   const [isBulkPurchase, setIsBulkPurchase] = useState(false);
   const [totalCost, setTotalCost] = useState('');
+  const [notes, setNotes] = useState('');  // NEW: Notes/Remarks field
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingData, setPendingData] = useState(null);
   const [showReasonDropdown, setShowReasonDropdown] = useState(false);
@@ -2565,11 +2659,14 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
   const reasonDropdownRef = useRef(null);
   const supplierDropdownRef = useRef(null);
 
-  // Auto-generate Batch ID
+  // Auto-generate Batch ID (YYYYMMDD-SEQ format)
   const generateBatchId = () => {
-    const timestamp = Date.now();
-    const random = Math.floor(Math.random() * 1000);
-    return `BATCH-${timestamp}-${random}`;
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const seq = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `${year}${month}${day}-${seq}`;
   };
 
   // Close reason dropdown when clicking outside
@@ -2691,6 +2788,13 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
       return;
     }
 
+    // Validate damaged on arrival doesn't exceed quantity
+    if (damagedOnArrival && parseInt(damagedOnArrival) >= parseInt(quantity)) {
+      setValidationMessage('Damaged on arrival must be less than quantity');
+      setShowValidationModal(true);
+      return;
+    }
+
     // Validate unit cost
     if (!unitCost) {
       setValidationMessage('Please enter the unit cost (original price)');
@@ -2712,10 +2816,12 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
       }
     }
 
-    // Compute total cost
+    // Calculate good quantity (excluding damaged)
     const qty = parseInt(quantity);
+    const damaged = damagedOnArrival ? parseInt(damagedOnArrival) : 0;
+    const goodQty = qty - damaged;
     const cost = parseFloat(unitCost);
-    const computedTotalCost = qty * cost;
+    const computedTotalCost = goodQty * cost;  // Only pay for good items
 
     // Generate batch ID
     const batchId = generateBatchId();
@@ -2723,7 +2829,8 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
     // Store pending data with batch information and show confirmation modal
     const adjustmentData = {
       reason,
-      quantity: qty,
+      quantity: goodQty,  // Use good quantity
+      damagedOnArrival: damaged,  // Track damaged separately
       supplierId: supplierId === 'walk-in' ? null : supplierId,
       supplierName,
       invoiceNumber: reason === 'restock' ? invoiceNumber : null,
@@ -2736,8 +2843,10 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
         supplierName,
         invoiceNumber: reason === 'restock' ? invoiceNumber : null,
         dateReceived: reason === 'restock' ? deliveryDate : new Date().toISOString().split('T')[0],
-        originalQty: qty,
-        remainingQty: qty,
+        originalQty: qty,  // Total quantity (including damaged)
+        goodQty: goodQty,  // Good quantity only
+        damagedQty: damaged,  // Damaged quantity
+        remainingQty: goodQty,  // Good quantity only (remaining sellable stock)
         unitCost: cost,
         totalCost: computedTotalCost,
         status: 'active'
@@ -2761,7 +2870,7 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '750px', width: '90%' }}>
         <div className="modal-header">
           <h2 className="modal-title">Add Stock</h2>
           <button className="modal-close" onClick={onClose}>
@@ -2852,69 +2961,28 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
               value={quantity}
               onChange={e => handleQuantityChange(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
               min={1}
-              placeholder=""
+              placeholder="0"
             />
           </div>
 
-          {/* Supplier Field */}
-          <div className="form-group">
-            <label className="form-label">
-              Supplier <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
-            </label>
-            <div className="combobox-root" ref={supplierDropdownRef}>
-              <div className="combobox-field">
-                <input
-                  type="text"
-                  className="form-input"
-                  value={supplierName}
-                  readOnly
-                  onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
-                  style={{ cursor: 'pointer' }}
-                />
-                <button
-                  type="button"
-                  className="combobox-toggle"
-                  onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
-                >
-                  {showSupplierDropdown ? '▲' : '▼'}
-                </button>
-              </div>
-              {showSupplierDropdown && (
-                <div className="combobox-menu" style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                  {/* Walk-in option */}
-                  <button
-                    type="button"
-                    className={`combobox-item${supplierId === 'walk-in' ? ' active' : ''}`}
-                    onClick={() => handleSupplierSelect('walk-in', '— Unspecified')}
-                  >
-                    — Unspecified
-                  </button>
-                  {/* Supplier list */}
-                  {suppliers && suppliers.map((supplier, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      className={`combobox-item${supplierId === supplier.id ? ' active' : ''}`}
-                      onClick={() => handleSupplierSelect(supplier.id, supplier.name)}
-                    >
-                      {supplier.name}
-                    </button>
-                  ))}
-                  {/* Add new supplier option */}
-                  <button
-                    type="button"
-                    className="combobox-item combobox-add"
-                    onClick={() => handleSupplierSelect('__new__', '')}
-                  >
-                    <span>+</span> Add New Supplier...
-                  </button>
-                </div>
-              )}
+          {/* Damaged on Arrival Field */}
+          {reason === 'restock' && (
+            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+              <label className="form-label">
+                Damaged on Arrival <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
+              </label>
+              <NumberInput
+                className="form-input no-spinner"
+                value={damagedOnArrival}
+                onChange={e => setDamagedOnArrival(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0))}
+                min={0}
+                placeholder="0"
+              />
+              <p className="form-hint">
+                Optional: Items damaged during delivery. Leave empty if all items are good.
+              </p>
             </div>
-            <p className="form-hint">
-              Select a supplier or leave as "Unspecified" for cash purchases.
-            </p>
-          </div>
+          )}
 
           {/* Supplier Invoice Information - Show only for Restock */}
           {reason === 'restock' && (
@@ -2922,139 +2990,241 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
               background: 'rgba(217, 119, 6, 0.1)',
               border: '2px solid rgba(217, 119, 6, 0.3)',
               borderRadius: '8px',
-              padding: '1rem',
-              marginBottom: '1rem'
+              padding: '1.5rem',
+              marginBottom: '1.5rem'
             }}>
-              <h4 style={{ 
-                margin: '0 0 1rem 0', 
+              <h4 style={{
+                margin: '0 0 1.5rem 0',
                 color: '#d97706',
                 fontSize: '0.875rem',
-                fontWeight: 600,
+                fontWeight: 700,
                 textTransform: 'uppercase',
-                borderBottom: '2px solid #d97706',
-                paddingBottom: '0.5rem'
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
               }}>
-                Supplier Invoice / Delivery Receipt
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                Supplier Invoice Information (Required)
               </h4>
-              
-              <div className="form-group">
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div className="form-group">
+                  <label className="form-label">Supplier</label>
+                  <div className="combobox-root" ref={supplierDropdownRef}>
+                    <div className="combobox-field">
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={supplierName}
+                        readOnly
+                        onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <button
+                        type="button"
+                        className="combobox-toggle"
+                        onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
+                      >
+                        {showSupplierDropdown ? '▲' : '▼'}
+                      </button>
+                    </div>
+                    {showSupplierDropdown && (
+                      <div className="combobox-menu" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                        <button
+                          type="button"
+                          className={`combobox-item${supplierId === 'walk-in' ? ' active' : ''}`}
+                          onClick={() => handleSupplierSelect('walk-in', '— Unspecified')}
+                        >
+                          — Unspecified
+                        </button>
+                        {suppliers && suppliers.map((supplier, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            className={`combobox-item${supplierId === supplier.id ? ' active' : ''}`}
+                            onClick={() => handleSupplierSelect(supplier.id, supplier.name)}
+                          >
+                            {supplier.name}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="combobox-item combobox-add"
+                          onClick={() => handleSupplierSelect('__new__', '')}
+                        >
+                          <span>+</span> Add New Supplier...
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    {isBulkPurchase ? 'Total Amount Paid' : 'Unit Cost Each'}
+                    <span className="required">*</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
+                    <div className="tier-price-cell" style={{ flex: 1 }}>
+                      <span className="peso">₱</span>
+                      <input
+                        type="text"
+                        className="tier-input no-spinner"
+                        value={isBulkPurchase ? totalCost : unitCost}
+                        onChange={e => {
+                          const val = e.target.value;
+                          // Allow empty string or digits with optional decimal
+                          if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                            isBulkPurchase ? handleTotalCostChange(val) : handleUnitCostChange(val);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          // Block e, E, +, -, space
+                          if (['e', 'E', '+', '-', ' '].includes(e.key)) {
+                            e.preventDefault();
+                          }
+                        }}
+                        onWheel={(e) => {
+                          e.target.blur();
+                          e.preventDefault();
+                        }}
+                        placeholder={isBulkPurchase ? '0.00' : '0.00'}
+                        min="0"
+                        step="0.01"
+                        style={{ width: '100%' }}
+                        inputMode="decimal"
+                      />
+                    </div>
+
+                    {/* Bulk Purchase Toggle - Side by side */}
+                    <label className="form-checkbox-label" style={{ marginBottom: '0.875rem', whiteSpace: 'nowrap' }}>
+                      <input
+                        type="checkbox"
+                        className="form-checkbox"
+                        checked={isBulkPurchase}
+                        onChange={handleBulkPurchaseToggle}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <span className="checkbox-text" style={{ fontSize: '0.75rem' }}>
+                        {isBulkPurchase ? 'Per Unit' : 'Total Amount'}
+                      </span>
+                    </label>
+                  </div>
+                  {/* Calculate using TOTAL quantity (SAP standard - damaged items still have value) */}
+                  {isBulkPurchase && totalCost && quantity && parseInt(quantity) > 0 && (
+                    <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
+                      Unit Cost: {formatPrice(parseFloat(totalCost) / parseInt(quantity))}
+                      {damagedOnArrival && parseInt(damagedOnArrival) > 0 && (
+                        <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>
+                          {' '} ({formatPrice((parseFloat(totalCost) / parseInt(quantity)) * (parseInt(quantity) - parseInt(damagedOnArrival)))} Good: {parseInt(quantity) - parseInt(damagedOnArrival)} | {formatPrice((parseFloat(totalCost) / parseInt(quantity)) * parseInt(damagedOnArrival))} Damaged: {parseInt(damagedOnArrival)})
+                        </span>
+                      )}
+                    </p>
+                  )}
+                  {!isBulkPurchase && unitCost && quantity && parseInt(quantity) > 0 && (
+                    <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
+                      Total: ₱{formatPrice(parseFloat(unitCost) * parseInt(quantity))}
+                      {damagedOnArrival && parseInt(damagedOnArrival) > 0 && (
+                        <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>
+                          {' '} ({formatPrice(parseFloat(unitCost) * (parseInt(quantity) - parseInt(damagedOnArrival)))} Good: {parseInt(quantity) - parseInt(damagedOnArrival)} | {formatPrice(parseFloat(unitCost) * parseInt(damagedOnArrival))} Damaged: {parseInt(damagedOnArrival)})
+                        </span>
+                      )}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div className="form-group">
+                  <label className="form-label">
+                    Document Number
+                    <span className="required">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={invoiceNumber}
+                    onChange={e => setInvoiceNumber(e.target.value)}
+                    placeholder="e.g., INV-2026-001"
+                  />
+                  <p className="form-hint">
+                    Enter the document number from your receipt (Invoice/SI/OR/Serial Number)
+                  </p>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    Delivery Date <span className="required">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={deliveryDate}
+                    onChange={e => setDeliveryDate(e.target.value)}
+                  />
+                  <p className="form-hint">
+                    Date items were received
+                  </p>
+                </div>
+              </div>
+
+              {/* Notes/Remarks Field - For delivery discrepancies, issues, etc. */}
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
                 <label className="form-label">
-                  Invoice Number <span className="required">*</span>
+                  Notes / Remarks <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
                 </label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={invoiceNumber}
-                  onChange={e => setInvoiceNumber(e.target.value)}
-                  placeholder="e.g., INV-2026-001"
+                <textarea
+                  className="form-textarea"
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  placeholder="e.g., Invoice shows 100 but only 90 arrived. Supplier promised to send remaining 10 next week."
+                  rows={3}
                 />
                 <p className="form-hint">
-                  From supplier's delivery receipt or invoice
+                  Add notes about delivery discrepancies, damaged items, or any issues with this batch.
                 </p>
               </div>
-              
-              <div className="form-group">
+
+              {/* Receipt Upload - Optional */}
+              <div className="form-group" style={{ marginBottom: '1rem' }}>
                 <label className="form-label">
-                  Delivery Date <span className="required">*</span>
+                  Upload Receipt <span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>(Optional)</span>
                 </label>
-                <input
-                  type="date"
-                  className="form-input"
-                  value={deliveryDate}
-                  onChange={e => setDeliveryDate(e.target.value)}
-                />
-                <p className="form-hint">
-                  Date items were received
-                </p>
+                <div style={{
+                  border: '2px dashed var(--border)',
+                  borderRadius: '8px',
+                  padding: '1.5rem',
+                  textAlign: 'center',
+                  background: 'rgba(0,0,0,0.2)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--gray)', marginBottom: '0.75rem' }}>
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--white)', marginBottom: '0.25rem' }}>
+                    Click to upload receipt image
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
+                    PNG, JPG, PDF - Max 5MB (Optional)
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    style={{ display: 'none' }}
+                    id="receiptUpload"
+                  />
+                </div>
               </div>
             </div>
           )}
-
-          {/* Unit Cost and Bulk Purchase Fields */}
-          <div className="form-group">
-            <label className="form-label">
-              {isBulkPurchase ? 'Total Amount Paid' : 'Unit Cost Each'} 
-              <span className="required">*</span>
-            </label>
-            
-            {/* Bulk Purchase Toggle */}
-            <label className="form-checkbox-label" style={{ marginBottom: '0.75rem' }}>
-              <input
-                type="checkbox"
-                className="form-checkbox"
-                checked={isBulkPurchase}
-                onChange={handleBulkPurchaseToggle}
-                style={{ cursor: 'pointer' }}
-              />
-              <span className="checkbox-text">
-                Bulk Purchase (Enter Total Cost instead)
-              </span>
-            </label>
-
-            {!isBulkPurchase ? (
-              // Unit Cost Input
-              <div className="tier-price-cell">
-                <span className="peso">₱</span>
-                <input
-                  type="number"
-                  className="tier-input no-spinner"
-                  value={unitCost}
-                  onChange={e => handleUnitCostChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (['e', 'E', '+', '-'].includes(e.key)) {
-                      e.preventDefault();
-                    }
-                  }}
-                  onWheel={(e) => {
-                    e.target.blur();
-                    e.preventDefault();
-                  }}
-                  placeholder="0.00"
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-            ) : (
-              // Total Cost Input
-              <div className="tier-price-cell">
-                <span className="peso">₱</span>
-                <input
-                  type="number"
-                  className="tier-input no-spinner"
-                  value={totalCost}
-                  onChange={e => handleTotalCostChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (['e', 'E', '+', '-'].includes(e.key)) {
-                      e.preventDefault();
-                    }
-                  }}
-                  onWheel={(e) => {
-                    e.target.blur();
-                    e.preventDefault();
-                  }}
-                  placeholder="0.00"
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-            )}
-
-            {/* Auto-computed display */}
-            {!isBulkPurchase && unitCost && quantity && (
-              <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
-                Total Cost: {formatPrice(parseFloat(unitCost) * parseInt(quantity))}
-              </p>
-            )}
-            {isBulkPurchase && totalCost && quantity && parseInt(quantity) > 0 && (
-              <p className="form-hint" style={{ color: '#4ade80', marginTop: '0.5rem' }}>
-                Unit Cost: {formatPrice(parseFloat(totalCost) / parseInt(quantity))} each
-              </p>
-            )}
-
-            <p className="form-hint" style={{ marginTop: '0.5rem' }}>
-              Required for profit tracking. This is your original cost per piece.
-            </p>
-          </div>
         </div>
 
         <div className="modal-actions">
@@ -3104,6 +3274,14 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, onAdd
                   +{pendingData?.quantity} pcs
                 </span>
               </div>
+              {pendingData?.damagedOnArrival > 0 && (
+                <div className="confirm-row">
+                  <span className="confirm-label">Damaged on Arrival:</span>
+                  <span className="confirm-value" style={{ color: '#f87171', fontWeight: '700' }}>
+                    −{pendingData?.damagedOnArrival} pcs
+                  </span>
+                </div>
+              )}
               <div className="confirm-row">
                 <span className="confirm-label">New Stock Total:</span>
                 <span className="confirm-value" style={{ color: '#4ade80', fontWeight: '700' }}>
@@ -3305,7 +3483,7 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item, inventory }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '750px', width: '90%' }}>
         <div className="modal-header">
           <h2 className="modal-title">Reduce Stock</h2>
           <button className="modal-close" onClick={onClose}>
@@ -3464,7 +3642,7 @@ function StockAdjustmentModal({ isOpen, onClose, onConfirm, item, inventory }) {
                     <span style={{ color: 'var(--white)', fontWeight: 600 }}>Invoice:</span> {selectedBatch.invoiceNumber || 'N/A'}
                   </div>
                   <div style={{ color: '#d97706', fontWeight: 700, fontSize: '1rem' }}>
-                    💰 Return Value: ₱{formatPrice(selectedBatch.unitCost * parseInt(quantity))} 
+                    Return Value: ₱{formatPrice(selectedBatch.unitCost * parseInt(quantity))}
                     <span style={{ fontSize: '0.875rem', fontWeight: 400, color: 'var(--gray)' }}>
                       ({quantity} × ₱{formatPrice(selectedBatch.unitCost)})
                     </span>
@@ -4188,7 +4366,9 @@ export default function InventoryPage() {
       category: additionItem.category,
       supplierId: supplierId || null,
       supplierName: supplierName || '— Walk-in / Unspecified',
-      quantity: quantity,
+      quantity: batchData?.originalQty || quantity,  // Use original qty (including damaged)
+      goodQty: batchData?.goodQty || quantity,  // Good quantity only
+      damagedQty: batchData?.damagedQty || 0,  // Damaged quantity
       unitCost: unitCost,
       totalCost: totalCost,
       reason: reason,
@@ -4196,7 +4376,7 @@ export default function InventoryPage() {
       stockAfter: newTotalStock,
       averageCostAfter: newAverageCost,
       type: 'received',  // ADD TYPE!
-      remainingQty: quantity,  // ADD REMAINING!
+      remainingQty: batchData?.goodQty || quantity,  // Good quantity only (remaining sellable stock)
       dateReceived: batchData?.dateReceived || new Date().toISOString()  // ADD DATE!
     };
     addStockHistory(stockHistoryEntry);
@@ -4239,27 +4419,22 @@ export default function InventoryPage() {
   // CURRENT: Stores locally, saves to LocalStorage via useEffect
   // FUTURE: POST /api/inventory (new) or PUT /api/inventory/:id (update)
   const handleSave = (itemData) => {
-    // VALIDATION: If initialStock > 0, require invoice number and delivery date
-    if (!editingItem && itemData.initialStock !== '' && itemData.initialStock !== null && parseInt(itemData.initialStock) > 0) {
-      if (!itemData.invoiceNumber || itemData.invoiceNumber.trim() === '') {
-        setValidationMessage('Please enter invoice number for initial stock');
-        setShowValidationModal(true);
-        return;
-      }
-      if (!itemData.deliveryDate) {
-        setValidationMessage('Please enter delivery date for initial stock');
-        setShowValidationModal(true);
-        return;
-      }
-    }
-
     // Auto-detect isOnDemand based on quantity
     const isOnDemand = !itemData.initialStock || itemData.initialStock === 0 || itemData.initialStock === '';
+
+    // Auto-generate SKU if not exists (TODO: MongoDB - Use incremental ID from database)
+    const generateSKU = () => {
+      const prefix = (itemData.category || 'ITEM').substring(0, 3).toUpperCase();
+      const year = new Date().getFullYear();
+      const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      return `${prefix}-${year}-${random}`;
+    };
 
     // Store pending data with batch info and show confirmation modal
     const pendingData = {
       ...itemData,
       id: editingItem ? editingItem.id : crypto.randomUUID(),
+      sku: itemData.sku || generateSKU(),  // Auto-generate SKU
       // Include invoice data for batch creation
       invoiceNumber: itemData.invoiceNumber,
       deliveryDate: itemData.deliveryDate,
@@ -4267,7 +4442,7 @@ export default function InventoryPage() {
       supplierName: itemData.supplierName,
       isOnDemand: isOnDemand  // Auto-detect!
     };
-    
+
     setPendingItemData(pendingData);
     setIsConfirmModalOpen(true);
   };
@@ -4308,23 +4483,37 @@ export default function InventoryPage() {
 
       // Create batch if has initial stock and invoice
       if (pendingItemData.initialStock && parseInt(pendingItemData.initialStock) > 0 && pendingItemData.invoiceNumber) {
+        // Generate batch ID using YYYYMMDD-SEQ format
+        const date = new Date(pendingItemData.deliveryDate);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const seq = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        const batchId = `${year}${month}${day}-${seq}`;
+        
         batches = [{
-          batchId: `BATCH-${Date.now()}`,
+          batchId: batchId,
           supplierId: pendingItemData.supplierId || null,
           supplierName: pendingItemData.supplierName || 'Unspecified',
           invoiceNumber: pendingItemData.invoiceNumber,
           dateReceived: pendingItemData.deliveryDate,
           originalQty: parseInt(pendingItemData.initialStock),
-          remainingQty: parseInt(pendingItemData.initialStock),
+          damagedQty: parseInt(pendingItemData.damagedOnArrival) || 0,  // Save damaged to batch!
+          goodQty: parseInt(pendingItemData.initialStock) - (parseInt(pendingItemData.damagedOnArrival) || 0),  // Good qty!
+          remainingQty: parseInt(pendingItemData.initialStock) - (parseInt(pendingItemData.damagedOnArrival) || 0),  // Good stock only!
           unitCost: parseFloat(pendingItemData.unitCost) || 0,
           totalCost: parseInt(pendingItemData.initialStock) * (parseFloat(pendingItemData.unitCost) || 0),
+          notes: pendingItemData.notes || '',  // NEW: Batch-level notes for discrepancies, delivery issues, etc.
           status: 'active'
         }];
+        // TODO: MongoDB - Add 'notes' field to Batch schema
+        // Schema update: { ..., notes: { type: String, default: '' } }
       }
 
       const newItem = {
         ...pendingItemData,
-        stockQty: parseInt(pendingItemData.initialStock) || 0,  // Map initialStock to stockQty
+        stockQty: parseInt(pendingItemData.initialStock) - (parseInt(pendingItemData.damagedOnArrival) || 0),  // Good stock only!
+        damagedQty: parseInt(pendingItemData.damagedOnArrival) || 0,  // Save damaged qty to item!
         batches: batches,  // ADD BATCHES!
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -4335,20 +4524,22 @@ export default function InventoryPage() {
       if (!pendingItemData.isOnDemand && pendingItemData.stockQty > 0 && pendingItemData.lastUnitCost) {
         const stockHistoryEntry = {
           inventoryId: newItem.id,
-          batchId: batches.length > 0 ? batches[0].batchId : null,  // ADD BATCH ID!
+          batchId: batches.length > 0 ? batches[0].batchId : null,
           itemName: newItem.name,
           category: newItem.category,
           supplierId: pendingItemData.lastSupplierId,
           supplierName: pendingItemData.lastSupplierName || '— Walk-in / Unspecified',
           quantity: pendingItemData.stockQty,
+          damagedQty: pendingItemData.damagedOnArrival || 0,
+          goodQty: pendingItemData.stockQty - (pendingItemData.damagedOnArrival || 0),
           unitCost: pendingItemData.lastUnitCost,
           totalCost: pendingItemData.stockQty * pendingItemData.lastUnitCost,
           reason: 'initial',
           stockBefore: 0,
-          stockAfter: pendingItemData.stockQty,
+          stockAfter: pendingItemData.stockQty - (pendingItemData.damagedOnArrival || 0),
           averageCostAfter: pendingItemData.averageCost || pendingItemData.lastUnitCost,
-          type: 'received',  // ADD TYPE
-          remainingQty: pendingItemData.stockQty  // ADD REMAINING
+          type: 'received',
+          remainingQty: pendingItemData.stockQty - (pendingItemData.damagedOnArrival || 0)
         };
         addStockHistory(stockHistoryEntry);
       }
@@ -4411,11 +4602,13 @@ export default function InventoryPage() {
     }
   };
 
-  // Get stock status
+  // Get stock status (stockQty is already good stock)
   const getStockStatus = (item) => {
     if (item.isOnDemand) {
       return { status: 'upon-order', label: 'Upon Order', className: 'stock-status-upon-order' };
     }
+    
+    // stockQty is already good stock, no need to subtract damagedQty
     if (item.stockQty === 0) {
       return { status: 'out-of-stock', label: 'Out of Stock', className: 'stock-status-out' };
     }
@@ -4647,6 +4840,9 @@ export default function InventoryPage() {
                       </td>
                     <td className="table-cell-name">
                       <span className="product-name">{item.name}</span>
+                      <div style={{ fontSize: '0.73rem', color: 'var(--gray)', marginTop: '0.15rem' }}>
+                        SKU: {item.sku || 'N/A'}
+                      </div>
                     </td>
                     <td className="table-cell">
                       <span className="category-badge">{item.category}</span>
@@ -4671,8 +4867,9 @@ export default function InventoryPage() {
                           <span
                             className={`stock-value-inline ${stockStatus.status === 'out-of-stock' ? 'stock-value-zero' : ''}`}
                             style={{ minWidth: '40px', display: 'inline-block', textAlign: 'center' }}
+                            title={item.damagedQty ? `${item.damagedQty} pcs damaged (not sellable)` : ''}
                           >
-                            {item.stockQty}
+                            {item.stockQty}  {/* Already good stock! */}
                           </span>
                           <button
                             className="btn-sm btn-secondary"
