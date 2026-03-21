@@ -917,17 +917,45 @@ export default function BannerManagementPage() {
 
           {/* Image Upload */}
           <div className="banner-card">
-            <h2 className="banner-card-title" style={{ marginBottom: '1rem' }}>Banner Image</h2>
-            <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={(e) => handleImageUpload(e.target.files[0])} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 className="banner-card-title" style={{ margin: 0 }}>Banner Image</h2>
+              {isLive && (
+                <span style={{
+                  fontSize: '0.7rem', fontWeight: 600, color: '#d4a843',
+                  background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)',
+                  borderRadius: '4px', padding: '0.2rem 0.5rem',
+                  textTransform: 'uppercase', letterSpacing: '0.05em',
+                }}>
+                  Unpublish to change
+                </span>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              style={{ display: 'none' }}
+              onChange={(e) => !isLive && handleImageUpload(e.target.files[0])}
+              disabled={isLive}
+            />
             <div
-              className={`banner-upload-area ${dragOver ? 'drag-over' : ''}`}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              className={`banner-upload-area ${dragOver && !isLive ? 'drag-over' : ''}`}
+              onDragOver={(e) => { e.preventDefault(); if (!isLive) setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
+              onDrop={(e) => { if (!isLive) handleDrop(e); else e.preventDefault(); }}
+              onClick={() => { if (!isLive) fileInputRef.current?.click(); }}
+              style={{
+                opacity: isLive ? 0.45 : 1,
+                cursor: isLive ? 'not-allowed' : 'pointer',
+                pointerEvents: isLive ? 'none' : 'auto',
+              }}
             >
-              <p className="banner-upload-text">Drop image here or click to upload</p>
-              <p className="banner-upload-hint">Recommended: 1920x600px (PNG, WebP, JPEG)</p>
+              <p className="banner-upload-text">
+                {isLive ? 'Image locked while published' : 'Drop image here or click to upload'}
+              </p>
+              <p className="banner-upload-hint">
+                {isLive ? 'Unpublish the banner to replace the image' : 'Recommended: 1920x600px (PNG, WebP, JPEG)'}
+              </p>
             </div>
           </div>
         </div>
