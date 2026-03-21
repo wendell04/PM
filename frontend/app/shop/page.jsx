@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useCart } from './layout';
+import { getBanners, getActiveBanners } from '@/lib/bannerUtils';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -155,12 +156,71 @@ export default function ShopPage() {
   const [category, setCategory]   = useState('All');
   const [search, setSearch]       = useState('');
   const [toast, setToast]         = useState(null);
+  const [banners, setBanners] = useState([]);
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const { addToCart } = useCart();
   const carouselRef = useRef(null);
+  const autoplayRef = useRef(null);
 
   useEffect(() => {
     fetchProducts();
+    loadBanners();
   }, []);
+
+  /**
+   * Load all active banners for carousel
+   * 🔧 TODO: Replace with API call when backend is ready
+   */
+  function loadBanners() {
+    try {
+      const activeBanners = getActiveBanners();
+      if (activeBanners.length > 0) {
+        // Sort by order
+        const sorted = activeBanners.sort((a, b) => (a.order || 0) - (b.order || 0));
+        setBanners(sorted);
+      } else {
+        setBanners([]);
+      }
+    } catch (error) {
+      console.error('Error loading banners:', error);
+      setBanners([]);
+    }
+  }
+
+  // Auto-play carousel
+  useEffect(() => {
+    if (!isAutoPlaying || banners.length <= 1) return;
+
+    autoplayRef.current = setInterval(() => {
+      setCurrentSlide(prev => (prev + 1) % banners.length);
+    }, 5000); // Change every 5 seconds
+
+    return () => {
+      if (autoplayRef.current) {
+        clearInterval(autoplayRef.current);
+      }
+    };
+  }, [isAutoPlaying, banners.length]);
+
+  // Navigate carousel
+  const goToSlide = (index) => {
+    setCurrentSlide(index);
+    setIsAutoPlaying(false);
+    setTimeout(() => setIsAutoPlaying(true), 10000);
+  };
+
+  const nextSlide = () => {
+    setCurrentSlide(prev => (prev + 1) % banners.length);
+    setIsAutoPlaying(false);
+    setTimeout(() => setIsAutoPlaying(true), 10000);
+  };
+
+  const prevSlide = () => {
+    setCurrentSlide(prev => (prev - 1 + banners.length) % banners.length);
+    setIsAutoPlaying(false);
+    setTimeout(() => setIsAutoPlaying(true), 10000);
+  };
 
   async function fetchProducts() {
     setLoading(true);
@@ -201,55 +261,83 @@ export default function ShopPage() {
 
   return (
     <div>
-      {/* Hero Carousel */}
-      <div className="shop-carousel-container">
-        <div className="shop-carousel-track" ref={carouselRef}>
-          {carouselSlides.map((slide, index) => (
-            <div
-              key={index}
-              className="shop-carousel-slide"
-            >
-              {/* Background Image */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={slide.image}
-                alt={slide.title}
-                className="shop-carousel-bg-image"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  e.target.parentElement.style.background = slide.gradient;
-                }}
-              />
-              {/* Gradient Overlay */}
-              <div className="shop-carousel-overlay" style={{ background: slide.gradient }} />
-              
-              <div className="shop-carousel-content">
-                <div className="shop-carousel-text">
-                  <span className="shop-carousel-subtitle">{slide.subtitle}</span>
-                  <h2 className="shop-carousel-title">{slide.title}</h2>
-                  <p className="shop-carousel-description">{slide.description}</p>
+      {/* Hero Carousel - Dynamic from Banner Management */}
+      {banners.length > 0 && (
+        <div className="shop-carousel-container">
+          <div className="shop-carousel-track">
+            {banners.map((banner, index) => (
+              <div
+                key={banner.id}
+                className={`shop-carousel-slide ${index === currentSlide ? 'active' : ''}`}
+                style={{ opacity: index === currentSlide ? 1 : 0 }}
+              >
+                {banner.image ? (
+                  <img
+                    src={banner.image}
+                    alt={banner.headline}
+                    className="shop-carousel-bg-image"
+                    style={{ objectFit: 'cover', objectPosition: 'center center' }}
+                  />
+                ) : (
+                  <div className="shop-carousel-bg-image shop-carousel-placeholder">
+                    <span>No Image</span>
+                  </div>
+                )}
+                {/* Only show overlay if there's text to protect */}
+                {(banner.headline || banner.subtext) && (
+                  <div className="shop-carousel-overlay" />
+                )}
+
+                <div className="shop-carousel-content">
+                  <div className="shop-carousel-text">
+                    {banner.headline && (
+                      <h2 className="shop-carousel-title">{banner.headline}</h2>
+                    )}
+                    {banner.subtext && (
+                      <p className="shop-carousel-description">{banner.subtext}</p>
+                    )}
+                    {banner.ctaLabel && (
+                      <Link href={banner.ctaLink || '/shop'} className="shop-carousel-cta">
+                        {banner.ctaLabel}
+                      </Link>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </div>
+            ))}
+          </div>
 
-      {/* Promo Banner */}
-      <div className="shop-promo-banner">
-        <div className="shop-promo-content">
-          <div className="shop-promo-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-            </svg>
-          </div>
-          <div className="shop-promo-text">
-            <strong>Bulk Order Discount!</strong>
-            <span>Get up to 50% off on orders of 500+ pieces. Perfect for corporate events and giveaways!</span>
-          </div>
-          <Link href="#contact" className="shop-promo-cta">Inquire Now</Link>
+          {/* Carousel Navigation - Only show if multiple banners */}
+          {banners.length > 1 && (
+            <>
+              <button className="shop-carousel-nav shop-carousel-prev" onClick={prevSlide}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+              </button>
+              <button className="shop-carousel-nav shop-carousel-next" onClick={nextSlide}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+            </>
+          )}
+
+          {/* Carousel Dots - Only show if multiple banners */}
+          {banners.length > 1 && (
+            <div className="shop-carousel-dots">
+              {banners.map((_, index) => (
+                <button
+                  key={index}
+                  className={`shop-carousel-dot ${index === currentSlide ? 'active' : ''}`}
+                  onClick={() => goToSlide(index)}
+                  title={`Go to slide ${index + 1}`}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       {/* Search + Filter bar */}
       <div className="shop-filter-bar">
@@ -370,23 +458,32 @@ export default function ShopPage() {
           border-radius: 16px;
           overflow: hidden;
           margin-bottom: 1.5rem;
-          height: 320px;
+          aspect-ratio: 16/5;
         }
 
         .shop-carousel-track {
-          display: flex;
+          position: relative;
           height: 100%;
-          transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+          width: 100%;
         }
 
         .shop-carousel-slide {
-          min-width: 25%;
-          height: 100%;
+          position: absolute;
+          inset: 0;
           display: flex;
           align-items: center;
-          justify-content: center;
-          padding: 1rem;
-          position: relative;
+          justify-content: flex-start;
+          transition: opacity 0.5s ease;
+        }
+
+        .shop-carousel-slide.active {
+          opacity: 1;
+          z-index: 1;
+        }
+
+        .shop-carousel-slide:not(.active) {
+          opacity: 0;
+          z-index: 0;
         }
 
         .shop-carousel-bg-image {
@@ -402,6 +499,16 @@ export default function ShopPage() {
           width: 100%;
           height: 100%;
           object-fit: cover;
+          object-position: center center;
+        }
+
+        .shop-carousel-placeholder {
+          background: var(--dark2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--gray);
+          font-size: 1.25rem;
         }
 
         .shop-carousel-overlay {
@@ -411,20 +518,23 @@ export default function ShopPage() {
           width: 100%;
           height: 100%;
           z-index: 1;
+          background: linear-gradient(
+            to right,
+            rgba(0, 0, 0, 0.85) 0%,
+            rgba(0, 0, 0, 0.65) 20%,
+            rgba(0, 0, 0, 0.4) 40%,
+            rgba(0, 0, 0, 0.2) 60%,
+            transparent 100%
+          );
         }
 
         .shop-carousel-content {
           position: relative;
           z-index: 2;
-          display: flex;
-          align-items: center;
-          gap: 2.5rem;
-          max-width: 900px;
-        }
-
-        .shop-carousel-icon {
-          color: #d4a843;
-          flex-shrink: 0;
+          padding: 4rem;
+          padding-left: 6rem;
+          max-width: 600px;
+          text-align: left;
         }
 
         .shop-carousel-text {
@@ -683,6 +793,25 @@ export default function ShopPage() {
         .shop-promo-text span {
           color: rgba(15, 15, 15, 0.8);
           font-size: 0.85rem;
+        }
+
+        .shop-carousel-cta {
+          display: inline-block;
+          background: linear-gradient(135deg, #d4a843, #b8941f);
+          color: #0f0f0f;
+          padding: 0.75rem 1.5rem;
+          border-radius: 8px;
+          text-decoration: none;
+          font-weight: 700;
+          font-size: 0.875rem;
+          white-space: nowrap;
+          transition: all 0.2s;
+          margin-top: 1rem;
+        }
+
+        .shop-carousel-cta:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(212, 168, 67, 0.4);
         }
 
         .shop-promo-cta {

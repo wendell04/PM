@@ -130,6 +130,130 @@ input[type="number"] {
   font-weight: 700;
 }
 
+/* ══════════════════════════════════════
+   DROPDOWN NAVIGATION
+══════════════════════════════════════ */
+
+.sidebar-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sidebar-nav-parent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.875rem;
+  padding: 0.875rem 1rem;
+  border-radius: 8px;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--gray-light);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  text-align: left;
+}
+
+.sidebar-nav-parent:hover {
+  background: linear-gradient(135deg, rgba(212, 168, 67, 0.15), rgba(212, 168, 67, 0.08));
+  color: var(--gold);
+  border-color: rgba(212, 168, 67, 0.3);
+}
+
+.sidebar-nav-parent.active {
+  background: linear-gradient(135deg, var(--gold-light), var(--gold-dark));
+  background-size: 200% 200%;
+  color: var(--black);
+  border-color: var(--gold);
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(212, 168, 67, 0.3);
+}
+
+.nav-chevron {
+  flex-shrink: 0;
+  transition: transform 0.25s ease;
+  color: var(--gray);
+}
+
+.nav-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.sidebar-nav-parent.active .nav-chevron {
+  color: var(--gold);
+}
+
+.sidebar-nav-children {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-left: 1.5rem;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.3s ease, opacity 0.25s ease;
+}
+
+.sidebar-nav-children.expanded {
+  max-height: 300px;
+  opacity: 1;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.sidebar-nav-child {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--gray-light);
+  font-weight: 500;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  position: relative;
+}
+
+.sidebar-nav-child::before {
+  content: '';
+  position: absolute;
+  left: -1.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 1px;
+  background: var(--border);
+  transition: background 0.2s;
+}
+
+.sidebar-nav-child:hover {
+  background: linear-gradient(90deg, rgba(212, 168, 67, 0.08), transparent);
+  color: var(--gold);
+  border-color: rgba(212, 168, 67, 0.2);
+}
+
+.sidebar-nav-child:hover::before {
+  background: var(--gold);
+}
+
+.sidebar-nav-child.active {
+  background: linear-gradient(90deg, rgba(212, 168, 67, 0.15), rgba(212, 168, 67, 0.05));
+  color: var(--gold);
+  border-color: rgba(212, 168, 67, 0.3);
+  font-weight: 700;
+}
+
+.sidebar-nav-child.active::before {
+  background: var(--gold);
+  width: 16px;
+}
+
 .nav-icon {
   font-size: 1.25rem;
   width: 24px;

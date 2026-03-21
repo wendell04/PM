@@ -125,14 +125,34 @@ export default function BusinessDashboardLayout({ children }) {
     }
   };
 
+  const [expandedItems, setExpandedItems] = useState(['Product CMS']);
+
   const navItems = [
-    { name: 'Add Products', href: '/dashboard/business' },
-    { name: 'Product List', href: '/dashboard/business/products' },
+    {
+      name: 'Product CMS',
+      children: [
+        { name: 'Add Products', href: '/dashboard/business' },
+        { name: 'Product List', href: '/dashboard/business/products' },
+        { name: 'Storefront Banners', href: '/dashboard/business/products/banners' },
+      ],
+    },
     { name: 'Orders', href: '/dashboard/business/orders' },
     { name: 'Inventory', href: '/dashboard/business/inventory' },
     { name: 'Sales', href: '/dashboard/business/sales' },
     { name: 'Reports', href: '/dashboard/business/reports' },
   ];
+
+  const toggleExpanded = (itemName) => {
+    setExpandedItems(prev =>
+      prev.includes(itemName)
+        ? prev.filter(name => name !== itemName)
+        : [...prev, itemName]
+    );
+  };
+
+  const isChildActive = (children) => {
+    return children.some(child => pathname === child.href);
+  };
 
   return (
     <div className="admin-dashboard-wrapper">
@@ -155,16 +175,58 @@ export default function BusinessDashboardLayout({ children }) {
         </div>
 
         <nav className="sidebar-nav">
-          {navItems.map((item) => (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={`sidebar-nav-item ${pathname === item.href ? 'active' : ''}`}
-              onClick={() => setSidebarOpen(false)}
-            >
-              <span className="nav-text">{item.name}</span>
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            if (item.children) {
+              const isExpanded = expandedItems.includes(item.name);
+              const hasActiveChild = isChildActive(item.children);
+
+              return (
+                <div key={item.name} className="sidebar-nav-group">
+                  <button
+                    type="button"
+                    className={`sidebar-nav-parent ${hasActiveChild ? 'active' : ''}`}
+                    onClick={() => toggleExpanded(item.name)}
+                  >
+                    <span className="nav-text">{item.name}</span>
+                    <svg
+                      className={`nav-chevron ${isExpanded ? 'rotated' : ''}`}
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+                  <div className={`sidebar-nav-children ${isExpanded ? 'expanded' : ''}`}>
+                    {item.children.map((child) => (
+                      <Link
+                        key={child.name}
+                        href={child.href}
+                        className={`sidebar-nav-child ${pathname === child.href ? 'active' : ''}`}
+                        onClick={() => setSidebarOpen(false)}
+                      >
+                        <span className="nav-text">{child.name}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                className={`sidebar-nav-item ${pathname === item.href ? 'active' : ''}`}
+                onClick={() => setSidebarOpen(false)}
+              >
+                <span className="nav-text">{item.name}</span>
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="sidebar-footer" style={{ position: 'relative' }}>
