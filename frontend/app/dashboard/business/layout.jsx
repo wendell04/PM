@@ -131,9 +131,9 @@ export default function BusinessDashboardLayout({ children }) {
     {
       name: 'Product CMS',
       children: [
-        { name: 'Add Products', href: '/dashboard/business' },
+        { name: 'Add Products', href: '/dashboard/business/products/add' },
         { name: 'Product List', href: '/dashboard/business/products' },
-        { name: 'Storefront Banners', href: '/dashboard/business/products/banners' },
+        { name: 'Storefront Banners', href: '/dashboard/business/banners' },
       ],
     },
     { name: 'Orders', href: '/dashboard/business/orders' },
