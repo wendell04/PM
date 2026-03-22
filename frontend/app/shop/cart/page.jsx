@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useCart } from '../layout';
+import ErrorBoundary from '../../../components/ErrorBoundary';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -147,14 +149,14 @@ export default function CartPage() {
         qty: i.qty,
       }));
 
-      const res = await fetch(`${API_URL}/api/orders`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ items, notes }),
-      });
+      }, 15000);
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to place order.');
@@ -225,7 +227,8 @@ export default function CartPage() {
 
   // ── Cart ────────────────────────────────────────────────────────────────────
   return (
-    <div className="cart-page-wrapper">
+    <ErrorBoundary>
+      <div className="cart-page-wrapper">
       <div className="cart-header">
         <Link href="/shop" className="cart-back-link">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -481,6 +484,7 @@ export default function CartPage() {
       {/* Login Required Modal */}
       <LoginRequiredModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
     </div>
+    </ErrorBoundary>
   );
 }
 

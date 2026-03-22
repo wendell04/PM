@@ -1,17 +1,16 @@
 'use client';
 
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { CartContext, useCart as useGlobalCart } from '../../context/CartContext';
+import { fetchCart, syncCart, mergeCart } from '@/lib/cartApi';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-// ─── Cart Context ─────────────────────────────────────────────────────────────
-export const CartContext = createContext(null);
-
-export function useCart() {
-  return useContext(CartContext);
-}
+// Re-export the global useCart for shop pages to use
+export { useGlobalCart as useCart };
 
 // ─── Auth Helper ──────────────────────────────────────────────────────────────
 function getToken() {
@@ -23,6 +22,40 @@ function getUser() {
     const raw = localStorage.getItem('auth_user') || sessionStorage.getItem('auth_user');
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
+}
+
+// ─── Cart Conversion Helpers ──────────────────────────────────────────────────
+// Convert MongoDB format → Layout format
+function toLayoutItem(item) {
+  return {
+    product: {
+      _id: item.productId,
+      name: item.productName,
+      image: item.image,
+      thumbnail: item.image,
+      price: item.unitPrice,
+      flatPrice: item.unitPrice,
+    },
+    variantId: item.variantId || null,
+    variantName: item.variantName || null,
+    qty: item.qty,
+    unitPrice: item.unitPrice,
+    lineTotal: item.lineTotal || (item.qty * item.unitPrice),
+  };
+}
+
+// Convert Layout format → MongoDB format
+function toMongoItem(item) {
+  return {
+    productId: item.product?._id || item.productId,
+    productName: item.product?.name || item.productName,
+    variantId: item.variantId || null,
+    variantName: item.variantName || null,
+    qty: item.qty,
+    unitPrice: item.unitPrice || item.product?.flatPrice || item.product?.price || 0,
+    lineTotal: item.lineTotal || (item.qty * (item.unitPrice || item.product?.flatPrice || item.product?.price || 0)),
+    image: item.product?.image || item.product?.thumbnail || item.image || null,
+  };
 }
 
 // ─── Login Form Component ─────────────────────────────────────────────────────
@@ -40,21 +73,16 @@ function LoginForm({ onSuccess, onSwitchToRegister }) {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_URL}/api/login`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
-      });
+      }, 15000);
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Login failed');
 
-      // Handle remember me
-      const storage = rememberMe ? localStorage : sessionStorage;
-      storage.setItem('auth_token', data.token);
-      storage.setItem('auth_user', JSON.stringify(data.user));
-
-      onSuccess(data.user, data.token);
+      onSuccess(data.user, data.token, rememberMe);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -241,6 +269,7 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
   const [tAndCModalOpen, setTAndCModalOpen] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [confirmTouched, setConfirmTouched] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   const validateField = (field, value) => {
     switch (field) {
@@ -312,7 +341,7 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_URL}/api/register`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -325,7 +354,7 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
           password: formData.password,
           password_confirmation: formData.confirmPassword,
         }),
-      });
+      }, 15000);
 
       const data = await res.json();
       if (!res.ok) {
@@ -339,7 +368,7 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
         return;
       }
 
-      onSuccess(data.user, data.token);
+      onSuccess(data.user, data.token, rememberMe);
     } catch (err) {
       setErrors({ email: 'Network error. Make sure the backend server is running.' });
     } finally {
@@ -500,6 +529,27 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
             </div>
           </div>
 
+          <div className="auth-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <label className="auth-check" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.88rem', color: 'var(--gray)' }}>
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={e => setRememberMe(e.target.checked)}
+                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--gold)' }}
+              />
+              <span>Remember Me</span>
+              <span
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: '14px', height: '14px', borderRadius: '50%', verticalAlign: 'middle',
+                  background: 'var(--border)', color: 'var(--gray)', fontSize: '0.65rem',
+                  cursor: 'help', flexShrink: 0
+                }}
+                title="Keep you logged in for 30 days. Don't use on shared devices."
+              >?</span>
+            </label>
+          </div>
+
           <button type="button" className="btn-auth-submit"
             onClick={() => { if (!validateForm()) return; setTAndCModalOpen(true); }}>
             Proceed to Terms &amp; Conditions
@@ -566,8 +616,12 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
 // ─── Layout ───────────────────────────────────────────────────────────────────
 export default function ShopLayout({ children }) {
   const router = useRouter();
+  const { setCartItems } = useGlobalCart();
   const [user, setUser]       = useState(null);
   const [cart, setCart]       = useState([]);
+  const [cartInitialized, setCartInitialized] = useState(false);
+  const pendingCartAdds = useRef([]);
+  const syncTimeoutRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -581,12 +635,51 @@ export default function ShopLayout({ children }) {
     const u = getUser();
     setUser(u);
 
-    // Load persisted cart from sessionStorage
-    try {
-      const saved = sessionStorage.getItem('shop_cart');
-      if (saved) setCart(JSON.parse(saved));
-    } catch {}
+    // Load cart from appropriate source
+    const token = getToken();
+    if (token && u) {
+      // Logged in user - fetch cart from MongoDB
+      fetchCart()
+        .then(cartData => {
+          const mongoItems = cartData?.items || [];
+          const layoutItems = mongoItems.map(toLayoutItem);
+          setCart(layoutItems);
+          setCartItems(mongoItems);
+          setCartInitialized(true);
+          // Process any items added before init
+          processPendingAdds();
+        })
+        .catch(() => {
+          setCart([]);
+          setCartItems([]);
+          setCartInitialized(true);
+          processPendingAdds();
+        });
+    } else {
+      // Guest user - load from localStorage (matches CartContext GUEST_CART_KEY)
+      try {
+        const saved = localStorage.getItem('pmp_guest_cart');
+        if (saved) {
+          const mongoItems = JSON.parse(saved);
+          const layoutItems = mongoItems.map(toLayoutItem);
+          setCart(layoutItems);
+          setCartItems(mongoItems);
+        }
+      } catch {}
+      setCartInitialized(true);
+      processPendingAdds();
+    }
   }, []);
+
+  // Process pending cart items added before initialization
+  function processPendingAdds() {
+    if (pendingCartAdds.current.length === 0) return;
+    const pending = [...pendingCartAdds.current];
+    pendingCartAdds.current = [];
+    pending.forEach(({ product, variantId, variantName, qty }) => {
+      setTimeout(() => addToCartCore(product, variantId, variantName, qty), 0);
+    });
+  }
 
   // Handle login/register button clicks
   const handleLoginClick = () => {
@@ -602,29 +695,48 @@ export default function ShopLayout({ children }) {
   };
 
   // Handle successful login
-  const handleLoginSuccess = (userData, token) => {
-    localStorage.setItem('auth_token', token);
-    localStorage.setItem('auth_user', JSON.stringify(userData));
-    sessionStorage.setItem('auth_token', token);
-    sessionStorage.setItem('auth_user', JSON.stringify(userData));
-    
+  const handleLoginSuccess = async (userData, token, rememberMe = false) => {
+    const storage = rememberMe ? localStorage : sessionStorage;
+    storage.setItem('auth_token', token);
+    storage.setItem('auth_user', JSON.stringify(userData));
+
     // Redirect admin/owner to dashboard
     if (userData.role === 'admin' || userData.role === 'owner') {
       window.location.href = '/dashboard/business';
       return;
     }
-    
+
     setUser(userData);
     setAuthModalOpen(false);
     setAuthModalInstanceKey(k => k + 1);
+
+    // Merge guest cart with user cart after login
+    // This must happen AFTER token is saved so cartApi can use it
+    try {
+      const guestCart = localStorage.getItem('pmp_guest_cart');
+      if (guestCart) {
+        const guestItems = JSON.parse(guestCart);
+        if (guestItems && guestItems.length > 0) {
+          const mergedCart = await mergeCart(guestItems);
+          // Update both cart systems
+          const mongoItems = mergedCart?.items || [];
+          const layoutItems = mongoItems.map(toLayoutItem);
+          setCart(layoutItems);        // local display
+          setCartItems(mongoItems);    // cart badge
+          localStorage.removeItem('pmp_guest_cart');
+        }
+      }
+    } catch (err) {
+      console.warn('Cart merge failed:', err);
+      // Don't block login if merge fails
+    }
   };
 
   // Handle successful registration
-  const handleRegisterSuccess = (userData, token) => {
-    localStorage.setItem('auth_token', token);
-    localStorage.setItem('auth_user', JSON.stringify(userData));
-    sessionStorage.setItem('auth_token', token);
-    sessionStorage.setItem('auth_user', JSON.stringify(userData));
+  const handleRegisterSuccess = async (userData, token, rememberMe = false) => {
+    const storage = rememberMe ? localStorage : sessionStorage;
+    storage.setItem('auth_token', token);
+    storage.setItem('auth_user', JSON.stringify(userData));
 
     // Redirect admin/owner to dashboard
     if (userData.role === 'admin' || userData.role === 'owner') {
@@ -635,6 +747,27 @@ export default function ShopLayout({ children }) {
     setUser(userData);
     setAuthModalOpen(false);
     setAuthModalInstanceKey(k => k + 1);
+
+    // Merge guest cart with user cart after registration
+    // This must happen AFTER token is saved so cartApi can use it
+    try {
+      const guestCart = localStorage.getItem('pmp_guest_cart');
+      if (guestCart) {
+        const guestItems = JSON.parse(guestCart);
+        if (guestItems && guestItems.length > 0) {
+          const mergedCart = await mergeCart(guestItems);
+          // Update both cart systems
+          const mongoItems = mergedCart?.items || [];
+          const layoutItems = mongoItems.map(toLayoutItem);
+          setCart(layoutItems);        // local display
+          setCartItems(mongoItems);    // cart badge
+          localStorage.removeItem('pmp_guest_cart');
+        }
+      }
+    } catch (err) {
+      console.warn('Cart merge failed:', err);
+      // Don't block registration if merge fails
+    }
   };
 
   // Persist cart changes
@@ -652,48 +785,118 @@ export default function ShopLayout({ children }) {
   }, []);
 
   // ── Cart helpers ────────────────────────────────────────────────────────────
-  function addToCart(product, variantId, variantName, qty = 1) {
+
+  // Core add logic (used by both addToCart and pending)
+  function addToCartCore(product, variantId, variantName, qty = 1) {
     setCart(prev => {
       const key = `${product._id}_${variantId ?? 'none'}`;
-      const existing = prev.find(i => `${i.product._id}_${i.variantId ?? 'none'}` === key);
-      if (existing) {
+      const exists = prev.find(i =>
+        `${i.product._id}_${i.variantId ?? 'none'}` === key
+      );
+      if (exists) {
         return prev.map(i =>
           `${i.product._id}_${i.variantId ?? 'none'}` === key
-            ? { ...i, qty: i.qty + qty }
+            ? { ...i, qty: i.qty + qty, lineTotal: (i.qty + qty) * i.unitPrice }
             : i
         );
       }
-      return [...prev, { product, variantId, variantName, qty }];
+      const unitPrice = product.flatPrice || product.price || 0;
+      return [...prev, {
+        product,
+        variantId: variantId || null,
+        variantName: variantName || null,
+        qty,
+        unitPrice,
+        lineTotal: qty * unitPrice,
+      }];
     });
   }
 
+  function addToCart(product, variantId, variantName, qty = 1) {
+    if (!cartInitialized) {
+      // Queue for when cart is ready
+      pendingCartAdds.current.push({ product, variantId, variantName, qty });
+      return;
+    }
+    addToCartCore(product, variantId, variantName, qty);
+  }
+
   function removeFromCart(productId, variantId) {
-    setCart(prev => prev.filter(
-      i => !(i.product._id === productId && i.variantId === variantId)
+    setCart(prev => prev.filter(i =>
+      !(i.product._id === productId && (i.variantId ?? null) === (variantId ?? null))
     ));
   }
 
-  function updateQty(productId, variantId, qty) {
-    if (qty < 1) { removeFromCart(productId, variantId); return; }
-    setCart(prev => prev.map(i =>
-      i.product._id === productId && i.variantId === variantId
-        ? { ...i, qty }
-        : i
-    ));
+  function updateQty(productId, variantId, newQty) {
+    const qty = Math.max(0, parseInt(newQty) || 0);
+    setCart(prev => {
+      if (qty === 0) {
+        return prev.filter(i =>
+          !(i.product._id === productId && (i.variantId ?? null) === (variantId ?? null))
+        );
+      }
+      return prev.map(i =>
+        i.product._id === productId && (i.variantId ?? null) === (variantId ?? null)
+          ? { ...i, qty, lineTotal: qty * i.unitPrice }
+          : i
+      );
+    });
   }
 
-  function clearCart() { setCart([]); }
+  function clearCartLocal() {
+    setCart([]);
+    setCartItems([]);
+    syncCartToStorage([]);
+  }
+
+  // Sync cart to correct storage based on auth state
+  function syncCartToStorage(mongoItems) {
+    const token = getToken();
+    if (token) {
+      // Logged in: sync to MongoDB (non-blocking)
+      syncCart(mongoItems).catch(err =>
+        console.warn('Cart sync failed:', err)
+      );
+    } else {
+      // Guest: save to localStorage
+      try {
+        localStorage.setItem('pmp_guest_cart', JSON.stringify(mongoItems));
+      } catch {}
+    }
+  }
 
   const cartCount = cart.reduce((sum, i) => sum + i.qty, 0);
+
+  // Sync cart to CartContext and storage whenever cart changes
+  useEffect(() => {
+    // Skip sync before cart is initialized
+    if (!cartInitialized) return;
+
+    // Convert to MongoDB format
+    const mongoItems = cart.map(toMongoItem);
+
+    // Sync to CartContext (badge count)
+    setCartItems(mongoItems);
+
+    // Debounce the storage sync to avoid spamming the backend
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    syncTimeoutRef.current = setTimeout(() => {
+      syncCartToStorage(mongoItems);
+    }, 800);
+
+    return () => {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    };
+  }, [cart, cartInitialized]);
 
   // ── Logout ─────────────────────────────────────────────────────────────────
   async function handleLogout() {
     const token = getToken();
     try {
-      await fetch(`${API_URL}/api/logout`, {
+      await fetchWithTimeout(`${API_URL}/api/logout`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
-      });
+      }, 10000);
     } catch {}
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
@@ -707,7 +910,7 @@ export default function ShopLayout({ children }) {
   if (!mounted) return null;
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQty, clearCart, cartCount }}>
+    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQty, clearCart: clearCartLocal, cartCount }}>
       <div className="shop-wrapper">
         {/* ── Navbar ── */}
         <nav className={`shop-navbar ${scrolled ? 'scrolled' : ''}`}>

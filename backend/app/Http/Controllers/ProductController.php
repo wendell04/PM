@@ -39,10 +39,9 @@ class ProductController extends Controller
 
             $products = $query->orderBy('created_at', 'desc')->get();
 
-            return response()->json($products);
+            return $this->successResponse('Products fetched successfully.', $products);
         } catch (\Exception $e) {
-            Log::error('ProductController@index: Failed to fetch products', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while fetching products.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching products.');
         }
     }
 
@@ -59,13 +58,12 @@ class ProductController extends Controller
                               ->first();
 
             if (!$product) {
-                return response()->json(['error' => 'Product not found.'], 404);
+                return $this->notFoundResponse('Product');
             }
 
-            return response()->json($product);
+            return $this->successResponse('Product fetched successfully.', $product);
         } catch (\Exception $e) {
-            Log::error('ProductController@show: Failed to fetch product ' . $id, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while fetching the product.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching the product.');
         }
     }
 
@@ -78,13 +76,14 @@ class ProductController extends Controller
     public function adminIndex(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
-            
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
+
             $products = Product::with('inventory')->orderBy('created_at', 'desc')->get();
-            return response()->json($products);
+            return $this->successResponse('Products fetched successfully.', $products);
         } catch (\Exception $e) {
-            Log::error('ProductController@adminIndex: Failed to fetch products', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while fetching products.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching products.');
         }
     }
 
@@ -95,7 +94,9 @@ class ProductController extends Controller
     public function availableInventory(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             // Get all inventory IDs that are already linked to products
             $linkedInventoryIds = Product::whereNotNull('inventoryId')
@@ -109,10 +110,9 @@ class ProductController extends Controller
                                   ->orderBy('name', 'asc')
                                   ->get();
 
-            return response()->json($available);
+            return $this->successResponse('Available inventory fetched successfully.', $available);
         } catch (\Exception $e) {
-            Log::error('ProductController@availableInventory: Failed to fetch available inventory', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while fetching available inventory.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching available inventory.');
         }
     }
 
@@ -123,7 +123,9 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $validated = $request->validate([
                 'inventoryId'       => 'required|exists:inventory,_id',
@@ -161,7 +163,7 @@ class ProductController extends Controller
                                 ->first();
 
             if ($duplicate) {
-                return response()->json(['error' => 'Duplicate product: A product with this category and sub-category already exists.'], 422);
+                return $this->errorResponse('Duplicate product: A product with this category and sub-category already exists.', 422);
             }
 
             // Validate inventory link (1:1 relationship)
@@ -169,13 +171,13 @@ class ProductController extends Controller
                                       ->where('isActive', true)
                                       ->first();
             if ($existingProduct) {
-                return response()->json(['error' => 'This inventory item is already linked to another product.'], 422);
+                return $this->errorResponse('This inventory item is already linked to another product.', 422);
             }
 
             // Get inventory to auto-fill stock if trackInventory is enabled
             $inventory = Inventory::find($validated['inventoryId']);
             if (!$inventory) {
-                return response()->json(['error' => 'Inventory item not found.'], 404);
+                return $this->notFoundResponse('Inventory item');
             }
 
             // Auto-set stock from inventory if not provided
@@ -210,13 +212,11 @@ class ProductController extends Controller
 
             $product = Product::create($validated);
 
-            return response()->json($product, 201);
+            return $this->successResponse('Product created successfully.', $product, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('ProductController@store: Validation failed', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('ProductController@store: Failed to create product', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while creating the product.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while creating the product.');
         }
     }
 
@@ -227,12 +227,14 @@ class ProductController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $product = Product::find($id);
 
             if (!$product) {
-                return response()->json(['error' => 'Product not found.'], 404);
+                return $this->notFoundResponse('Product');
             }
 
             $validated = $request->validate([
@@ -273,7 +275,7 @@ class ProductController extends Controller
                                     ->first();
 
                 if ($duplicate) {
-                    return response()->json(['error' => 'Duplicate product: A product with this category and sub-category already exists.'], 422);
+                    return $this->errorResponse('Duplicate product: A product with this category and sub-category already exists.', 422);
                 }
             }
 
@@ -284,7 +286,7 @@ class ProductController extends Controller
                                           ->where('isActive', true)
                                           ->first();
                 if ($existingProduct) {
-                    return response()->json(['error' => 'This inventory item is already linked to another product.'], 422);
+                    return $this->errorResponse('This inventory item is already linked to another product.', 422);
                 }
 
                 // Update stock from new inventory
@@ -297,13 +299,11 @@ class ProductController extends Controller
             $validated['updatedAt'] = now();
             $product->update($validated);
 
-            return response()->json($product);
+            return $this->successResponse('Product updated successfully.', $product);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('ProductController@update: Validation failed for product ' . $id, ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('ProductController@update: Failed to update product ' . $id, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while updating the product.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while updating the product.');
         }
     }
 
@@ -314,21 +314,22 @@ class ProductController extends Controller
     public function destroy(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $product = Product::find($id);
 
             if (!$product) {
-                return response()->json(['error' => 'Product not found.'], 404);
+                return $this->notFoundResponse('Product');
             }
 
             // Soft delete — keep data, just hide from store
             $product->update(['isActive' => false, 'updatedAt' => now()]);
 
-            return response()->json(['message' => 'Product deactivated successfully.']);
+            return $this->successResponse('Product deactivated successfully.');
         } catch (\Exception $e) {
-            Log::error('ProductController@destroy: Failed to delete product ' . $id, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while deleting the product.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while deleting the product.');
         }
     }
 
@@ -339,25 +340,25 @@ class ProductController extends Controller
     public function togglePublish(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $product = Product::find($id);
 
             if (!$product) {
-                return response()->json(['error' => 'Product not found.'], 404);
+                return $this->notFoundResponse('Product');
             }
 
             $product->isPublished = !$product->isPublished;
             $product->updatedAt = now();
             $product->save();
 
-            return response()->json([
-                'message' => 'Product publish status updated.',
+            return $this->successResponse('Product publish status updated.', [
                 'isPublished' => $product->isPublished
             ]);
         } catch (\Exception $e) {
-            Log::error('ProductController@togglePublish: Failed for product ' . $id, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while updating the publish status.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while updating the publish status.');
         }
     }
 
@@ -368,7 +369,9 @@ class ProductController extends Controller
     public function uploadImage(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $validated = $request->validate([
                 'image' => 'required|image|max:5120', // 5MB max
@@ -379,7 +382,7 @@ class ProductController extends Controller
             $uploadPreset = config('services.cloudinary.upload_preset');
 
             if (!$cloudName || !$uploadPreset) {
-                return response()->json(['error' => 'Cloudinary configuration missing.'], 500);
+                return $this->errorResponse('Cloudinary configuration missing.', 500);
             }
 
             $file = $request->file('image');
@@ -398,7 +401,7 @@ class ProductController extends Controller
 
             if ($response->successful()) {
                 $data = $response->json();
-                return response()->json([
+                return $this->successResponse('Image uploaded successfully.', [
                     'url' => $data['secure_url'],
                     'public_id' => $data['public_id'],
                     'width' => $data['width'],
@@ -406,13 +409,11 @@ class ProductController extends Controller
                 ]);
             }
 
-            return response()->json(['error' => 'Failed to upload image.'], 500);
+            return $this->errorResponse('Failed to upload image.', 500);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('ProductController@uploadImage: Validation failed', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('ProductController@uploadImage: Failed to upload image', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while uploading the image.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while uploading the image.');
         }
     }
 }

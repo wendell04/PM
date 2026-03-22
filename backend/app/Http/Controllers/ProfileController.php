@@ -17,7 +17,7 @@ class ProfileController extends Controller
             $user = User::where('api_token', hash('sha256', $token))->first();
 
             if (!$user) {
-                return response()->json(['message' => 'Unauthorized.'], 401);
+                return $this->unauthorizedResponse();
             }
 
             $request->validate([
@@ -35,23 +35,19 @@ class ProfileController extends Controller
             $user->address = $request->address;
             $user->save();
 
-            return response()->json([
-                'message' => 'Profile Updated Successfully.',
-                'user' => [
-                    'firstName' => $user->firstName,
-                    'lastName' => $user->lastName,
-                    'email' => $user->email,
-                    'phoneNumber' => $user->phoneNumber,
-                    'address' => $user->address,
-                    'role' => $user->role,
-                    'lastLogin' => $user->lastLogin,
-                ],
+            return $this->successResponse('Profile updated successfully.', [
+                'firstName' => $user->firstName,
+                'lastName' => $user->lastName,
+                'email' => $user->email,
+                'phoneNumber' => $user->phoneNumber,
+                'address' => $user->address,
+                'role' => $user->role,
+                'lastLogin' => $user->lastLogin,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('ProfileController@update: Failed for user ' . $user->email, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred.');
         }
     }
 
@@ -62,7 +58,7 @@ class ProfileController extends Controller
             $user = User::where('api_token', hash('sha256', $token))->first();
 
             if (!$user) {
-                return response()->json(['message' => 'Unauthorized.'], 401);
+                return $this->unauthorizedResponse();
             }
 
             $request->validate([
@@ -71,18 +67,17 @@ class ProfileController extends Controller
             ]);
 
             if (!Hash::check($request->currentPassword, $user->password)) {
-                return response()->json(['message' => 'Current password is incorrect.'], 400);
+                return $this->errorResponse('Current password is incorrect.', 400);
             }
 
             $user->password = Hash::make($request->password);
             $user->save();
 
-            return response()->json(['message' => 'Password changed successfully.']);
+            return $this->successResponse('Password changed successfully.');
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('ProfileController@updatePassword: Failed for user ' . $user->email, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred.');
         }
     }
 }

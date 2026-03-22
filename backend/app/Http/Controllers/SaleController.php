@@ -6,7 +6,6 @@ use App\Models\Sale;
 use App\Models\Inventory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
 
 class SaleController extends Controller
 {
@@ -17,7 +16,9 @@ class SaleController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $query = Sale::orderBy('saleDate', 'desc');
 
@@ -43,43 +44,37 @@ class SaleController extends Controller
 
             $sales = $query->limit(100)->get();
 
-            return response()->json($sales);
+            return $this->successResponse('Sales fetched successfully.', $sales);
         } catch (\Exception $e) {
-            Log::error('SaleController@index: Failed to fetch sales', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while fetching sales.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching sales.');
         }
     }
 
-    /**
-     * GET /api/admin/sales/{id}
-     * Returns a single sale record by ID
-     */
     public function show(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $sale = Sale::find($id);
 
             if (!$sale) {
-                return response()->json(['error' => 'Sale record not found.'], 404);
+                return $this->notFoundResponse('Sale record');
             }
 
-            return response()->json($sale);
+            return $this->successResponse('Sale fetched successfully.', $sale);
         } catch (\Exception $e) {
-            Log::error('SaleController@show: Failed to fetch sale ' . $id, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while fetching the sale record.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching the sale record.');
         }
     }
 
-    /**
-     * POST /api/admin/sales
-     * Creates a new sale record
-     */
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $validated = $request->validate([
                 'inventoryId'    => 'required|string',
@@ -98,76 +93,68 @@ class SaleController extends Controller
                 'notes'          => 'nullable|string',
             ]);
 
-            $sale = DB::connection('mongodb')->transaction(function() use ($validated) {
-                // Generate Sale ID
-                $lastSale = Sale::orderBy('saleId', 'desc')->first();
-                $lastNumber = $lastSale ? intval(substr($lastSale->saleId, 5)) : 0;
-                $newSaleId = 'SALE-' . str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
+            // Generate Sale ID (no transaction wrapper for MongoDB compatibility)
+            $lastSale = Sale::orderBy('saleId', 'desc')->first();
+            $lastNumber = $lastSale ? intval(substr($lastSale->saleId, 5)) : 0;
+            $newSaleId = 'SALE-' . str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
 
-                // Calculate profit if cost provided
-                $cost = $validated['cost'] ?? 0;
-                $profit = $validated['totalPrice'] - $cost;
+            // Calculate profit if cost provided
+            $cost = $validated['cost'] ?? 0;
+            $profit = $validated['totalPrice'] - $cost;
 
-                // Deduct from Inventory if not Upon Order
-                $inventory = Inventory::find($validated['inventoryId']);
-                if (!$inventory) {
-                    throw new \Exception('Inventory item not found.');
+            // Deduct from Inventory if not Upon Order
+            $inventory = Inventory::find($validated['inventoryId']);
+            if (!$inventory) {
+                throw new \Exception('Inventory item not found.');
+            }
+
+            if (!$inventory->isOnDemand) {
+                if ($inventory->stockQty < $validated['quantity']) {
+                    throw new \Exception("Insufficient stock for '{$inventory->name}'. Available: {$inventory->stockQty}");
                 }
+                $inventory->stockQty -= $validated['quantity'];
+                $inventory->save();
+            }
 
-                if (!$inventory->isOnDemand) {
-                    if ($inventory->stockQty < $validated['quantity']) {
-                        throw new \Exception("Insufficient stock for '{$inventory->name}'. Available: {$inventory->stockQty}");
-                    }
-                    $inventory->stockQty -= $validated['quantity'];
-                    $inventory->save();
-                }
+            $sale = Sale::create([
+                'saleId'          => $newSaleId,
+                'inventoryId'     => $validated['inventoryId'],
+                'productName'     => $validated['productName'],
+                'category'        => $validated['category'],
+                'quantity'        => $validated['quantity'],
+                'unitPrice'       => $validated['unitPrice'],
+                'totalPrice'      => $validated['totalPrice'],
+                'cost'            => $cost,
+                'profit'          => $profit,
+                'saleDate'        => $validated['saleDate'],
+                'customerName'    => $validated['customerName'] ?? 'N/A',
+                'customerContact' => $validated['customerContact'] ?? 'N/A',
+                'customerEmail'   => $validated['customerEmail'] ?? 'N/A',
+                'source'          => $validated['source'] ?? 'manual',
+                'status'          => $validated['status'] ?? 'completed',
+                'notes'           => $validated['notes'] ?? '',
+                'createdAt'       => now(),
+            ]);
 
-                $sale = Sale::create([
-                    'saleId'          => $newSaleId,
-                    'inventoryId'     => $validated['inventoryId'],
-                    'productName'     => $validated['productName'],
-                    'category'        => $validated['category'],
-                    'quantity'        => $validated['quantity'],
-                    'unitPrice'       => $validated['unitPrice'],
-                    'totalPrice'      => $validated['totalPrice'],
-                    'cost'            => $cost,
-                    'profit'          => $profit,
-                    'saleDate'        => $validated['saleDate'],
-                    'customerName'    => $validated['customerName'] ?? 'N/A',
-                    'customerContact' => $validated['customerContact'] ?? 'N/A',
-                    'customerEmail'   => $validated['customerEmail'] ?? 'N/A',
-                    'source'          => $validated['source'] ?? 'manual',
-                    'status'          => $validated['status'] ?? 'completed',
-                    'notes'           => $validated['notes'] ?? '',
-                    'createdAt'       => now(),
-                ]);
-
-                return $sale;
-            });
-
-            return response()->json($sale, 201);
+            return $this->successResponse('Sale created successfully.', $sale, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('SaleController@store: Validation failed', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('SaleController@store: Failed to create sale record', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while creating the sale record.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while creating the sale record.');
         }
     }
 
-    /**
-     * PUT /api/admin/sales/{id}
-     * Updates a sale record
-     */
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $sale = Sale::find($id);
 
             if (!$sale) {
-                return response()->json(['error' => 'Sale record not found.'], 404);
+                return $this->notFoundResponse('Sale record');
             }
 
             $validated = $request->validate([
@@ -177,23 +164,20 @@ class SaleController extends Controller
 
             $sale->update($validated);
 
-            return response()->json($sale);
+            return $this->successResponse('Sale updated successfully.', $sale);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('SaleController@update: Failed to update sale ' . $id, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while updating the sale record.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while updating the sale record.');
         }
     }
 
-    /**
-     * GET /api/admin/sales/summary
-     * Returns sales summary statistics
-     */
     public function summary(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $query = Sale::where('status', 'completed');
 
@@ -218,8 +202,8 @@ class SaleController extends Controller
             $onlineSales = Sale::where('status', 'completed')
                 ->where('source', 'online')
                 ->sum('totalPrice');
-                
-            return response()->json([
+
+            return $this->successResponse('Sales summary fetched successfully.', [
                 'totalSales' => $totalSales,
                 'totalRevenue' => $totalRevenue,
                 'totalCost' => $totalCost,
@@ -228,8 +212,7 @@ class SaleController extends Controller
                 'onlineSales' => $onlineSales,
             ]);
         } catch (\Exception $e) {
-            Log::error('SaleController@summary: Failed to fetch sales summary', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while fetching the sales summary.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching the sales summary.');
         }
     }
 }

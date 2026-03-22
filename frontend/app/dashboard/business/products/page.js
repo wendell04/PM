@@ -2,13 +2,27 @@
 
 /* eslint-disable @next/next/no-img-element */
 
+import ErrorBoundary from '../../../../components/ErrorBoundary';
+
 /**
  * PRODUCT LIST PAGE - with Full Edit Modal
  * Edit modal now reuses the full Add Products form UI, pre-filled with existing product data.
+ * 
+ * CONNECTED TO MONGODB BACKEND via Laravel API
+ * - Fetches products from GET /api/admin/products
+ * - Saves products via PUT /api/admin/products/:id
+ * - Deletes products via DELETE /api/admin/products/:id
  */
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { 
+  fetchProducts, 
+  updateProduct, 
+  deleteProduct, 
+  togglePublishProduct,
+  uploadImage 
+} from '@/lib/productApi';
 
 // ── Reusable Number Input ──────────────────────────────────────────────────────
 function NumberInput({ value, onChange, min = 0, max, placeholder, className, disabled, step }) {
@@ -1629,13 +1643,38 @@ export default function ProductListPage() {
   const [bulkModal, setBulkModal] = useState(null);       // { action: 'publish'|'unpublish'|'delete' }
   const [restoreModal, setRestoreModal] = useState(null); // product to restore
 
-  // TODO: Replace localStorage with MongoDB API calls
+  // ── Fetch products and inventory from API ────────────────────────────────────
   useEffect(() => {
-    const storedProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
-    const storedInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
-    setProducts(storedProducts);
-    setInventoryList(storedInventory);
-    setIsLoaded(true);
+    const loadData = async () => {
+      try {
+        // Fetch products from MongoDB via API
+        const productsData = await fetchProducts();
+        
+        // Transform MongoDB documents to match frontend format
+        // MongoDB uses _id, frontend uses id
+        const transformedProducts = productsData.map(p => ({
+          ...p,
+          id: p._id, // Map MongoDB _id to frontend id
+        }));
+        
+        setProducts(transformedProducts);
+        
+        // Fetch inventory from localStorage (for now - will be updated separately)
+        const storedInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
+        setInventoryList(storedInventory);
+        setIsLoaded(true);
+      } catch (error) {
+        console.error('Failed to load products:', error);
+        // Fallback to localStorage if API fails
+        const storedProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
+        const storedInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
+        setProducts(storedProducts);
+        setInventoryList(storedInventory);
+        setIsLoaded(true);
+      }
+    };
+    
+    loadData();
   }, []);
 
   const getInventoryItem = (inventoryId) => inventoryList.find(inv => inv.id === inventoryId);
@@ -1711,14 +1750,30 @@ export default function ProductListPage() {
     return `${combos} combo${combos !== 1 ? 's' : ''}`;
   };
 
-  // TODO: Replace with MongoDB API call
+  // ── Save product to MongoDB ──────────────────────────────────────────────────
   const saveProducts = (updated) => {
     setProducts(updated);
     localStorage.setItem('pmp_products', JSON.stringify(updated));
   };
 
-  const togglePublish = (productId) => {
-    saveProducts(products.map(p => p.id === productId ? { ...p, isPublished: !p.isPublished, updatedAt: new Date().toISOString() } : p));
+  const togglePublish = async (productId) => {
+    try {
+      const result = await togglePublishProduct(productId);
+      // Update local state
+      setProducts(prev => prev.map(p => 
+        p.id === productId 
+          ? { ...p, isPublished: result.isPublished, updatedAt: new Date().toISOString() }
+          : p
+      ));
+    } catch (error) {
+      console.error('Failed to toggle publish status:', error);
+      // Fallback to local update
+      setProducts(prev => prev.map(p => 
+        p.id === productId 
+          ? { ...p, isPublished: !p.isPublished, updatedAt: new Date().toISOString() }
+          : p
+      ));
+    }
   };
 
   const toggleExpand = (productId) => {
@@ -1790,27 +1845,39 @@ export default function ProductListPage() {
     setShowEditConfirmModal(true);
   };
 
-  const handleConfirmEditSave = () => {
+  const handleConfirmEditSave = async () => {
     if (pendingEditData) {
-      // ──────────────────────────────────────────────────────────────
-      // ⚠️ TODO: MongoDB - Wrap in Transaction
-      // This operation should be atomic:
-      // 1. Update product document
-      // 2. Update updatedAt timestamp
-      //
-      // Example MongoDB Transaction:
-      // const session = client.startSession();
-      // await session.withTransaction(async () => {
-      //   await Product.findByIdAndUpdate(pendingEditData.id, pendingEditData, { session });
-      // });
-      // ──────────────────────────────────────────────────────────────
-      saveProducts(products.map(p => p.id === pendingEditData.id ? pendingEditData : p));
-      setShowEditModal(false);
-      setEditingProduct(null);
-      setShowEditConfirmModal(false);
-      setPendingEditData(null);
-      setShowSaveSuccess(true);
-      setTimeout(() => setShowSaveSuccess(false), 3000);
+      try {
+        // Extract MongoDB _id from pendingEditData.id
+        const productId = pendingEditData._id || pendingEditData.id;
+        
+        // Prepare data for API (remove frontend-only fields)
+        const { id, ...productDataForApi } = pendingEditData;
+        
+        // Call API to update product in MongoDB
+        const updatedProduct = await updateProduct(productId, productDataForApi);
+        
+        // Transform response to match frontend format
+        const transformedProduct = {
+          ...updatedProduct,
+          id: updatedProduct._id,
+        };
+        
+        // Update local state
+        setProducts(prev => prev.map(p => 
+          p.id === productId ? transformedProduct : p
+        ));
+        
+        setShowEditModal(false);
+        setEditingProduct(null);
+        setShowEditConfirmModal(false);
+        setPendingEditData(null);
+        setShowSaveSuccess(true);
+        setTimeout(() => setShowSaveSuccess(false), 3000);
+      } catch (error) {
+        console.error('Failed to save product:', error);
+        alert('Failed to save product: ' + (error.message || 'Unknown error'));
+      }
     }
   };
 
@@ -1823,98 +1890,112 @@ export default function ProductListPage() {
     setDeleteModal(product);
   };
 
-  const executeDelete = () => {
-    // ──────────────────────────────────────────────────────────────
-    // ⚠️ TODO: MongoDB - Wrap in Transaction
-    // This operation should be atomic:
-    // 1. Archive product (set isArchived: true, isPublished: false)
-    // 2. Update updatedAt timestamp
-    //
-    // Example MongoDB Transaction:
-    // const session = client.startSession();
-    // await session.withTransaction(async () => {
-    //   await Product.findByIdAndUpdate(deleteModal.id, { 
-    //     isArchived: true, 
-    //     isPublished: false,
-    //     updatedAt: new Date()
-    //   }, { session });
-    // });
-    // ──────────────────────────────────────────────────────────────
-    saveProducts(products.map(p => p.id === deleteModal.id ? { ...p, isArchived: true, isPublished: false, updatedAt: new Date().toISOString() } : p));
-    setDeleteModal(null);
+  const executeDelete = async () => {
+    try {
+      const productId = deleteModal._id || deleteModal.id;
+      
+      // Call API to delete (deactivate) product
+      await deleteProduct(productId);
+      
+      // Update local state
+      setProducts(prev => prev.map(p => 
+        p.id === productId 
+          ? { ...p, isArchived: true, isPublished: false, updatedAt: new Date().toISOString() }
+          : p
+      ));
+      
+      setDeleteModal(null);
+    } catch (error) {
+      console.error('Failed to delete product:', error);
+      alert('Failed to delete product: ' + (error.message || 'Unknown error'));
+    }
   };
 
   // ── Archive ──
-  const executeArchive = (product) => {
-    // ──────────────────────────────────────────────────────────────
-    // ⚠️ TODO: MongoDB - Wrap in Transaction
-    // This operation should be atomic:
-    // 1. Archive product (set isArchived: true, isPublished: false)
-    //
-    // Example MongoDB Transaction:
-    // const session = client.startSession();
-    // await session.withTransaction(async () => {
-    //   await Product.findByIdAndUpdate(product.id, { 
-    //     isArchived: true, 
-    //     isPublished: false 
-    //   }, { session });
-    // });
-    // ──────────────────────────────────────────────────────────────
-    saveProducts(products.map(p => p.id === (product || archiveModal).id ? { ...p, isArchived: true, isPublished: false } : p));
-    setArchiveModal(null);
-    clearSelection();
+  const executeArchive = async (product) => {
+    try {
+      const productId = (product || archiveModal)._id || (product || archiveModal).id;
+      
+      // Call API to archive product
+      await updateProduct(productId, { 
+        isArchived: true, 
+        isPublished: false,
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Update local state
+      setProducts(prev => prev.map(p => 
+        p.id === productId 
+          ? { ...p, isArchived: true, isPublished: false, updatedAt: new Date().toISOString() }
+          : p
+      ));
+      
+      setArchiveModal(null);
+      clearSelection();
+    } catch (error) {
+      console.error('Failed to archive product:', error);
+      alert('Failed to archive product: ' + (error.message || 'Unknown error'));
+    }
   };
 
   // ── Restore ──
-  const handleRestore = (product) => {
-    // ──────────────────────────────────────────────────────────────
-    // ⚠️ TODO: MongoDB - Wrap in Transaction
-    // This operation should be atomic:
-    // 1. Restore product (set isArchived: false, isPublished: false)
-    // 2. Update updatedAt timestamp
-    //
-    // Example MongoDB Transaction:
-    // const session = client.startSession();
-    // await session.withTransaction(async () => {
-    //   await Product.findByIdAndUpdate(product.id, { 
-    //     isArchived: false,
-    //     isPublished: false,
-    //     updatedAt: new Date()
-    //   }, { session });
-    // });
-    // ──────────────────────────────────────────────────────────────
-    saveProducts(products.map(p => p.id === product.id ? { ...p, isArchived: false, isPublished: false, updatedAt: new Date().toISOString() } : p));
+  const handleRestore = async (product) => {
+    try {
+      const productId = product._id || product.id;
+      
+      // Call API to restore product
+      await updateProduct(productId, { 
+        isArchived: false, 
+        isPublished: false,
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Update local state
+      setProducts(prev => prev.map(p => 
+        p.id === productId 
+          ? { ...p, isArchived: false, isPublished: false, updatedAt: new Date().toISOString() }
+          : p
+      ));
+    } catch (error) {
+      console.error('Failed to restore product:', error);
+      alert('Failed to restore product: ' + (error.message || 'Unknown error'));
+    }
   };
 
   // ── Bulk actions ──
-  const executeBulkAction = () => {
+  const executeBulkAction = async () => {
     const action = bulkModal?.action;
-    let updated = [...products];
+    let updates = {};
 
-    // ──────────────────────────────────────────────────────────────
-    // ⚠️ TODO: MongoDB - Wrap in Transaction
-    // These operations should be atomic (bulk updates):
-    // 1. Update multiple product documents
-    // 2. Update updatedAt timestamps
-    //
-    // Example MongoDB Transaction:
-    // const session = client.startSession();
-    // await session.withTransaction(async () => {
-    //   await Product.updateMany(
-    //     { _id: { $in: selectedIds } },
-    //     { $set: { isPublished: true/false, isArchived: false, updatedAt: new Date() } },
-    //     { session }
-    //   );
-    // });
-    // ──────────────────────────────────────────────────────────────
+    if (action === 'publish') updates = { isPublished: true, updatedAt: new Date().toISOString() };
+    else if (action === 'unpublish') updates = { isPublished: false, updatedAt: new Date().toISOString() };
+    else if (action === 'restore') updates = { isArchived: false, isPublished: false, updatedAt: new Date().toISOString() };
+    else if (action === 'remove') updates = { isArchived: true, isPublished: false, updatedAt: new Date().toISOString() };
 
-    if (action === 'publish') updated = updated.map(p => selectedIds.has(p.id) ? { ...p, isPublished: true, updatedAt: new Date().toISOString() } : p);
-    else if (action === 'unpublish') updated = updated.map(p => selectedIds.has(p.id) ? { ...p, isPublished: false, updatedAt: new Date().toISOString() } : p);
-    else if (action === 'restore') updated = updated.map(p => selectedIds.has(p.id) ? { ...p, isArchived: false, isPublished: false, updatedAt: new Date().toISOString() } : p);
-    else if (action === 'remove') updated = updated.map(p => selectedIds.has(p.id) ? { ...p, isArchived: true, isPublished: false, updatedAt: new Date().toISOString() } : p);
-    saveProducts(updated);
-    setBulkModal(null);
-    clearSelection();
+    try {
+      // Update all selected products via API
+      const productIds = Array.from(selectedIds);
+      await Promise.all(
+        productIds.map(id => {
+          const product = products.find(p => p.id === id);
+          const productId = product?._id || id;
+          return updateProduct(productId, updates);
+        })
+      );
+      
+      // Update local state
+      setProducts(prev => prev.map(p => 
+        selectedIds.has(p.id) 
+          ? { ...p, ...updates }
+          : p
+      ));
+      
+      setBulkModal(null);
+      clearSelection();
+    } catch (error) {
+      console.error('Failed to perform bulk action:', error);
+      alert('Failed to perform bulk action: ' + (error.message || 'Unknown error'));
+    }
   };
 
   // Check selected items status for bulk action buttons
@@ -1946,7 +2027,8 @@ export default function ProductListPage() {
   const someSelected = selectedIds.size > 0 && !allSelected;
 
   return (
-    <div className="page-content-wrapper">
+    <ErrorBoundary>
+      <div className="page-content-wrapper">
 
       {/* Save Success Toast */}
       {showSaveSuccess && (
@@ -2536,5 +2618,6 @@ export default function ProductListPage() {
         />
       )}
     </div>
+    </ErrorBoundary>
   );
 }

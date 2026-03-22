@@ -16,7 +16,9 @@ class JobOrderController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $query = JobOrder::orderBy('targetCompletion', 'asc');
 
@@ -34,43 +36,37 @@ class JobOrderController extends Controller
 
             $jobOrders = $query->get();
 
-            return response()->json($jobOrders);
+            return $this->successResponse('Job orders fetched successfully.', $jobOrders);
         } catch (\Exception $e) {
-            Log::error('JobOrderController@index: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch job orders.'], 500);
+            return $this->serverErrorResponse($e, 'Failed to fetch job orders.');
         }
     }
 
-    /**
-     * GET /api/admin/job-orders/{id}
-     * Returns a single job order by ID
-     */
     public function show(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $jobOrder = JobOrder::find($id);
 
             if (!$jobOrder) {
-                return response()->json(['error' => 'Job order not found.'], 404);
+                return $this->notFoundResponse('Job order');
             }
 
-            return response()->json($jobOrder);
+            return $this->successResponse('Job order fetched successfully.', $jobOrder);
         } catch (\Exception $e) {
-            Log::error('JobOrderController@show: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch job order.'], 500);
+            return $this->serverErrorResponse($e, 'Failed to fetch job order.');
         }
     }
 
-    /**
-     * POST /api/admin/job-orders
-     * Creates a new job order
-     */
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $validated = $request->validate([
                 'orderId'          => 'required|string|exists:orders,_id',
@@ -110,28 +106,25 @@ class JobOrderController extends Controller
                 'updatedAt' => now(),
             ]);
 
-            return response()->json($jobOrder, 201);
+            return $this->successResponse('Job order created successfully.', $jobOrder, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('JobOrderController@store: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to create job order.'], 500);
+            return $this->serverErrorResponse($e, 'Failed to create job order.');
         }
     }
 
-    /**
-     * PUT /api/admin/job-orders/{id}
-     * Updates a job order status
-     */
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $jobOrder = JobOrder::find($id);
 
             if (!$jobOrder) {
-                return response()->json(['error' => 'Job order not found.'], 404);
+                return $this->notFoundResponse('Job order');
             }
 
             $validated = $request->validate([
@@ -155,23 +148,20 @@ class JobOrderController extends Controller
                 ]);
             }
 
-            return response()->json($jobOrder);
+            return $this->successResponse('Job order updated successfully.', $jobOrder);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('JobOrderController@update: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to update job order.'], 500);
+            return $this->serverErrorResponse($e, 'Failed to update job order.');
         }
     }
 
-    /**
-     * GET /api/admin/job-orders/schedule
-     * Returns job orders scheduled for a specific date range
-     */
     public function schedule(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $query = JobOrder::where('joStatus', '!=', 'Completed');
 
@@ -185,10 +175,9 @@ class JobOrderController extends Controller
 
             $jobOrders = $query->orderBy('targetCompletion', 'asc')->get();
 
-            return response()->json($jobOrders);
+            return $this->successResponse('Job order schedule fetched successfully.', $jobOrders);
         } catch (\Exception $e) {
-            Log::error('JobOrderController@schedule: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch job order schedule.'], 500);
+            return $this->serverErrorResponse($e, 'Failed to fetch job order schedule.');
         }
     }
 }

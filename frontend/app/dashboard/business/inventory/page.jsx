@@ -1,5 +1,7 @@
 'use client';
 
+import ErrorBoundary from '../../../../components/ErrorBoundary';
+
 /**
  * INVENTORY MANAGEMENT PAGE
  *
@@ -25,6 +27,16 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { formatNumber, formatPrice } from '../../../../src/utils/format';
+import {
+  fetchInventory,
+  createInventory,
+  updateInventory,
+  adjustInventoryStock,
+  deleteInventory,
+  fetchSuppliers,
+  createSupplier
+} from '@/lib/inventoryApi';
+import { fetchProducts, updateProduct } from '@/lib/productApi';
 
 // ── Reusable Number Input Component ───────────────────────────────────────────
 // Prevents negative values, e, E, -, +, and disables scroll wheel
@@ -3812,63 +3824,54 @@ export default function InventoryPage() {
     setShowSupplierDeleteConfirm(false);
   };
 
-  // TODO: MongoDB - Replace with API call
-  // CURRENT: Load from LocalStorage on mount
-  // FUTURE: GET /api/inventory - Fetch from MongoDB
-  //
-  // Example:
-  // useEffect(() => {
-  //   fetch('/api/inventory')
-  //     .then(res => res.json())
-  //     .then(data => {
-  //       setInventory(data);
-  //       setIsLoaded(true);
-  //     })
-  //     .catch(err => console.error('Error loading inventory:', err));
-  // }, []);
+  // Load inventory and suppliers from API on mount
   useEffect(() => {
-    const stored = getInventoryList();
-    if (stored.length > 0) {
-      setInventory(stored);
-    } else {
-      setInventory(initialInventory);
-      saveInventoryList(initialInventory);
+    async function loadData() {
+      try {
+        // Load inventory
+        const inventoryData = await fetchInventory();
+        setInventory(Array.isArray(inventoryData) ? inventoryData : []);
+
+        // Load categories (derive from inventory or use default)
+        const inventoryCategories = inventoryData
+          ? [...new Set(inventoryData.map(item => item.category).filter(Boolean))]
+          : [];
+        setCategories(inventoryCategories.length > 0 ? inventoryCategories : DEFAULT_CATEGORIES);
+
+        // Load suppliers
+        const suppliersData = await fetchSuppliers();
+        setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
+      } catch (error) {
+        console.error('Failed to load inventory data:', error);
+        // Fallback to empty state on error
+        setInventory([]);
+        setCategories(DEFAULT_CATEGORIES);
+        setSuppliers([]);
+      } finally {
+        setIsLoaded(true);
+      }
     }
 
-    // Load categories
-    const storedCategories = getCategories();
-    setCategories(storedCategories);
-
-    // Load suppliers
-    const storedSuppliers = getSuppliers();
-    setSuppliers(storedSuppliers);
-
-    setIsLoaded(true);
+    loadData();
   }, []);
 
-  // TODO: MongoDB - Remove this useEffect
-  // CURRENT: Save to LocalStorage on every change
-  // FUTURE: Not needed - will use API calls (POST/PUT) for each action
-  useEffect(() => {
-    if (isLoaded) {
-      saveInventoryList(inventory);
-    }
-  }, [inventory, isLoaded]);
-
-  // TODO: MongoDB - Replace with API call
-  // CURRENT: Save to LocalStorage
-  // FUTURE: POST /api/categories
+  // Handle Add Category - adds to state only (categories derived from inventory)
   const handleAddCategory = (newCategory) => {
     const updatedCategories = [...categories, newCategory];
     setCategories(updatedCategories);
-    saveCategories(updatedCategories);
   };
 
-  // NEW: Handle Add Supplier
-  const handleAddSupplier = (supplierData) => {
-    const newSupplier = addSupplier(supplierData);
-    setSuppliers(prev => [...prev, newSupplier]);
-    return newSupplier;
+  // NEW: Handle Add Supplier - Uses API
+  const handleAddSupplier = async (supplierData) => {
+    try {
+      const created = await createSupplier(supplierData);
+      setSuppliers(prev => [...prev, created]);
+      return created;
+    } catch (error) {
+      console.error('Failed to add supplier:', error);
+      alert('Failed to add supplier: ' + (error.message || 'Unknown error'));
+      return null;
+    }
   };
 
   // NEW: Toggle expand/collapse row
@@ -3967,271 +3970,182 @@ export default function InventoryPage() {
     setShowArchiveModal(true);
   };
 
-  // NEW: Archive item (soft delete)
-  // TODO: MongoDB - Replace with PUT /api/inventory/:id
-  const handleArchive = () => {
+  // NEW: Archive item (soft delete) - Uses API
+  const handleArchive = async () => {
     if (!archiveItem) return;
 
-    // Update item to inactive
-    setInventory(prev =>
-      prev.map(item =>
-        item.id === archiveItem.id
-          ? { ...item, isActive: false, deletedAt: new Date() }
-          : item
-      )
-    );
+    try {
+      // Archive via API (sets isActive: false)
+      const id = archiveItem.id || archiveItem._id;
+      await deleteInventory(id);
 
-    // Auto-archive products linked to this inventory
-    const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
-    const updatedProducts = allProducts.map(p =>
-      p.inventoryId === archiveItem.id
-        ? { ...p, isPublished: false, isArchived: true, updatedAt: new Date().toISOString() }
-        : p
-    );
-    localStorage.setItem('pmp_products', JSON.stringify(updatedProducts));
+      // Auto-archive products linked to this inventory item
+      try {
+        const allProducts = await fetchProducts();
+        const linkedProducts = allProducts.filter(p => 
+          p.inventoryId === id || 
+          p.inventoryId === archiveItem?.id || 
+          p.inventoryId === archiveItem?._id
+        );
+        if (linkedProducts.length > 0) {
+          await Promise.all(
+            linkedProducts.map(p => 
+              updateProduct(p._id || p.id, { 
+                isPublished: false, 
+                isArchived: true,
+                updatedAt: new Date().toISOString()
+              })
+            )
+          );
+        }
+      } catch (productErr) {
+        // Don't block main archive if product update fails
+        console.warn('Could not auto-archive linked products:', productErr.message);
+      }
 
-    // Close modal and reset
-    setShowArchiveModal(false);
-    setArchiveItem(null);
-    setReferencingProducts([]);
+      // Update local state
+      setInventory(prev =>
+        prev.map(item =>
+          (item.id === id || item._id === id)
+            ? { ...item, isActive: false, deletedAt: new Date() }
+            : item
+        )
+      );
+
+      // Close modal and reset
+      setShowArchiveModal(false);
+      setArchiveItem(null);
+      setReferencingProducts([]);
+    } catch (error) {
+      console.error('Failed to archive item:', error);
+      alert('Failed to archive: ' + (error.message || 'Unknown error'));
+    }
   };
 
-  // Handle Permanent Delete (only if not referenced)
-  // TODO: MongoDB - Replace with DELETE /api/inventory/:id
-  const handlePermanentDelete = () => {
+  // Handle Permanent Delete (only if not referenced) - Uses API
+  const handlePermanentDelete = async () => {
     if (!archiveItem) return;
-    
-    // Delete permanently
-    setInventory(prev => prev.filter(item => item.id !== archiveItem.id));
-    
-    // Close modal and reset
-    setShowArchiveModal(false);
-    setArchiveItem(null);
-    setReferencingProducts([]);
+
+    try {
+      // Delete permanently via API
+      const id = archiveItem.id || archiveItem._id;
+      await deleteInventory(id);
+      
+      // Remove from local state
+      setInventory(prev => prev.filter(item => 
+        item.id !== id && item._id !== id
+      ));
+
+      // Close modal and reset
+      setShowArchiveModal(false);
+      setArchiveItem(null);
+      setReferencingProducts([]);
+    } catch (error) {
+      console.error('Failed to delete item:', error);
+      alert('Failed to delete: ' + (error.message || 'Unknown error'));
+    }
   };
 
-  // NEW: Restore archived item
-  // TODO: MongoDB - Replace with PUT /api/inventory/:id
-  const handleRestore = (item) => {
-    setInventory(prev =>
-      prev.map(i =>
-        i.id === item.id
-          ? { ...i, isActive: true, deletedAt: null }
+  // NEW: Restore archived item - Uses API
+  const handleRestore = async (item) => {
+    try {
+      const id = item.id || item._id;
+      
+      // Call API to restore item
+      const restored = await updateInventory(id, { 
+        isActive: true,
+        deletedAt: null,
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Update local state with restored item
+      setInventory(prev => prev.map(i => 
+        (i.id === id || i._id === id) 
+          ? { ...i, ...restored, isActive: true, deletedAt: null }
           : i
-      )
-    );
+      ));
+      
+    } catch (error) {
+      console.error('Failed to restore item:', error);
+      alert('Failed to restore item: ' + (error.message || 'Unknown error'));
+    }
   };
 
-  // NEW: Handle stock adjustment (Manual Stock Out) with batch tracking
-  // TODO: MongoDB - Replace with API calls
-  const handleStockAdjustment = (adjustmentData) => {
+  // NEW: Handle stock adjustment (Manual Stock Out) - Uses API
+  const handleStockAdjustment = async (adjustmentData) => {
     if (!adjustmentItem) return;
 
-    const { reason, quantity, sellingPrice, saleDate, remarks, customerName, batchId, batchData } = adjustmentData;
+    try {
+      const id = adjustmentItem.id || adjustmentItem._id;
+      const { reason, quantity, sellingPrice, saleDate, remarks, customerName, batchId, batchData } = adjustmentData;
 
-    const newStockQty = Math.max(0, adjustmentItem.stockQty - quantity);
-
-    // Use batch cost if available, otherwise use average cost
-    const unitCost = batchData?.unitCost || adjustmentItem.averageCost || adjustmentItem.lastUnitCost || 0;
-    const totalCost = unitCost * quantity;
-
-    // FIFO: Deduct from selected batch first
-    const fifoResult = deductStockFromBatch(adjustmentItem.id, batchId, quantity);
-
-    // ──────────────────────────────────────────────────────────────
-    // TODO: MongoDB - Wrap in Transaction
-    // These operations should be atomic (all-or-nothing):
-    // 1. Update inventory stock
-    // 2. Update product availability (if exceeds new stock)
-    // 3. Create audit log
-    // 4. Create sales record (if sales-outside)
-    // 5. Update FIFO stock history
-    // ──────────────────────────────────�������───────────────────────────
-
-    // Reduce stock
-    setInventory(prev =>
-      prev.map(item =>
-        item.id === adjustmentItem.id
-          ? { ...item, stockQty: newStockQty }
-          : item
-      )
-    );
-
-    // NEW: Update product availability if it exceeds new inventory stock
-    const existingProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
-    const productsToUpdate = existingProducts.filter(p => p.inventoryId === adjustmentItem.id && p.stock > newStockQty);
-    
-    if (productsToUpdate.length > 0) {
-      const updatedProducts = existingProducts.map(p => 
-        p.inventoryId === adjustmentItem.id && p.stock > newStockQty
-          ? { ...p, stock: newStockQty, updatedAt: new Date().toISOString() }
-          : p
-      );
-      localStorage.setItem('pmp_products', JSON.stringify(updatedProducts));
-    }
-
-    // Create audit log entry
-    const auditLog = {
-      id: Date.now(),
-      inventoryId: adjustmentItem.id,
-      itemName: adjustmentItem.name,
-      category: adjustmentItem.category,
-      type: 'stock-out',
-      reason,
-      quantity: -quantity, // Negative for stock out
-      stockBefore: adjustmentItem.stockQty,
-      stockAfter: adjustmentItem.stockQty - quantity,
-      sellingPrice: reason === 'sales-outside' ? sellingPrice : null,
-      saleDate: reason === 'sales-outside' ? saleDate : null,
-      customerName: reason === 'sales-outside' ? customerName : null,
-      remarks,
-      createdAt: new Date().toISOString()
-    };
-    
-    // Save to audit logs (LocalStorage for now)
-    // TODO: MongoDB - Save to audit_logs collection
-    const existingLogs = JSON.parse(localStorage.getItem('pmp_inventory_logs') || '[]');
-    localStorage.setItem('pmp_inventory_logs', JSON.stringify([...existingLogs, auditLog]));
-    
-    // If sales outside system, create sales record
-    if (reason === 'sales-outside') {
-      // Auto-generate customer name if empty
-      const generatedCustomerName = customerName && customerName.trim() !== ''
-        ? customerName
-        : `Outside-Customer ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '')}-${String(Date.now()).slice(-4)}`;
-
-      // Calculate cost from batch or inventory average cost
-      const avgCost = batchData?.unitCost || adjustmentItem.averageCost || adjustmentItem.lastUnitCost || 0;
-      const totalCost = avgCost * quantity;
-
-      const salesRecord = {
-        id: Date.now(),
-        inventoryId: adjustmentItem.id,
-        batchId: batchId,  // Track which batch was sold
-        productName: adjustmentItem.name,
-        category: adjustmentItem.category,
-        quantity,
-        unitPrice: 0, // Not applicable for manual sales (may discount/pasobra)
-        totalPrice: sellingPrice, // sellingPrice is the TOTAL amount received (may discount/pasobra)
-        orderDate: saleDate, // Use saleDate for date filtering
-        customerName: generatedCustomerName,
-        customerContact: 'N/A',
-        customerEmail: 'N/A',
-        source: 'manual', // 'manual' for outside system, 'online' for storefront
-        status: 'completed',
-        balance: 0, // Fully paid (outside system sales are paid immediately)
-        cost: totalCost, // Calculate cost from batch/average cost
-        notes: 'Manual sale - price may include discount or surcharge',
-        createdAt: new Date().toISOString()
+      // Prepare adjustment data for API
+      const adjustData = {
+        adjustmentType: 'subtract',
+        quantity: quantity,
+        reason: reason,
+        batchId: batchId,
+        sellingPrice: reason === 'sales-outside' ? sellingPrice : null,
+        saleDate: reason === 'sales-outside' ? saleDate : null,
+        customerName: reason === 'sales-outside' ? customerName : null,
+        remarks: remarks,
       };
 
-      // Save to sales (LocalStorage for now)
-      // TODO: MongoDB - Save to sales collection
-      const existingSales = JSON.parse(localStorage.getItem('pmp_sales') || '[]');
-      localStorage.setItem('pmp_sales', JSON.stringify([...existingSales, salesRecord]));
-    }
-    
-    // Close modal
-    setShowAdjustmentModal(false);
-    setAdjustmentItem(null);
+      // Call API to adjust stock
+      const updated = await adjustInventoryStock(id, adjustData);
 
-    // Show success message
-    setShowAdjustmentSuccess(true);
+      // Update local state with updated item
+      setInventory(prev => prev.map(item => 
+        (item.id === id || item._id === id) 
+          ? { ...item, ...updated }
+          : item
+      ));
+
+      // Close modal
+      setShowAdjustmentModal(false);
+      setAdjustmentItem(null);
+
+      // Show success message
+      setShowAdjustmentSuccess(true);
+    } catch (error) {
+      console.error('Failed to adjust stock:', error);
+      alert('Failed to adjust stock: ' + (error.message || 'Unknown error'));
+    }
   };
 
-  // NEW: Handle stock addition (Manual Stock In) with batch tracking
-  // TODO: MongoDB - Replace with API calls
-  const handleStockAddition = (additionData) => {
+  // NEW: Handle stock addition (Manual Stock In) - Uses API
+  const handleStockAddition = async (additionData) => {
     if (!additionItem) return;
 
-    const { reason, quantity, supplierId, supplierName, unitCost, totalCost, remarks, batchData } = additionData;
+    try {
+      const id = additionItem.id || additionItem._id;
+      
+      const updated = await adjustInventoryStock(id, {
+        adjustmentType: 'add',
+        quantity: Math.abs(additionData.quantity),
+        reason: additionData.reason || 'restock',
+        supplierId: additionData.supplierId || null,
+        supplierName: additionData.supplierName || null,
+        unitCost: additionData.unitCost ? parseFloat(additionData.unitCost) : null,
+      });
 
-    // Convert from Upon Order to In Stock if needed
-    const isConverting = additionItem.isOnDemand;
-
-    // Compute new average cost
-    const currentStock = additionItem.stockQty;
-    const currentAvgCost = additionItem.averageCost || 0;
-    const newStock = quantity;
-    const newCost = unitCost;
-
-    // New average cost = (currentStock * currentAvgCost + newStock * newCost) / (currentStock + newStock)
-    const newTotalStock = currentStock + newStock;
-    const newAverageCost = newTotalStock > 0
-      ? ((currentStock * currentAvgCost) + (newStock * newCost)) / newTotalStock
-      : newCost;
-
-    // Increase stock and update cost info AND add batch
-    setInventory(prev =>
-      prev.map(item =>
-        item.id === additionItem.id
-          ? {
-              ...item,
-              stockQty: item.stockQty + quantity,
-              isOnDemand: isConverting ? false : item.isOnDemand,  // Convert to In Stock
-              lastSupplierId: supplierId,
-              lastSupplierName: supplierName,
-              lastUnitCost: unitCost,
-              averageCost: newAverageCost,
-              batches: batchData ? [...(item.batches || []), batchData] : item.batches,  // ADD BATCH!
-              updatedAt: new Date().toISOString()
-            }
+      // Update local state with updated item
+      setInventory(prev => prev.map(item =>
+        (item.id === id || item._id === id)
+          ? { ...item, ...updated }
           : item
-      )
-    );
+      ));
 
-    // Create stock history entry WITH BATCH ID
-    const stockHistoryEntry = {
-      inventoryId: additionItem.id,
-      batchId: batchData?.batchId,  // ADD BATCH ID!
-      itemName: additionItem.name,
-      category: additionItem.category,
-      supplierId: supplierId || null,
-      supplierName: supplierName || '— Walk-in / Unspecified',
-      quantity: quantity,
-      unitCost: unitCost,
-      totalCost: totalCost,
-      reason: reason,
-      stockBefore: additionItem.stockQty,
-      stockAfter: newTotalStock,
-      averageCostAfter: newAverageCost,
-      type: 'received',  // ADD TYPE!
-      remainingQty: quantity,  // ADD REMAINING!
-      dateReceived: batchData?.dateReceived || new Date().toISOString()  // ADD DATE!
-    };
-    addStockHistory(stockHistoryEntry);
+      // Close modal
+      setShowAdditionModal(false);
+      setAdditionItem(null);
 
-    // Create audit log entry WITH BATCH ID
-    const auditLog = {
-      id: Date.now(),
-      batchId: batchData?.batchId,  // ADD BATCH ID!
-      inventoryId: additionItem.id,
-      itemName: additionItem.name,
-      category: additionItem.category,
-      type: 'stock-in',
-      reason,
-      quantity: quantity,
-      stockBefore: additionItem.stockQty,
-      stockAfter: newTotalStock,
-      supplierId: supplierId,
-      supplierName: supplierName,
-      unitCost: unitCost,
-      totalCost: totalCost,
-      convertedFromUponOrder: isConverting,
-      remarks,
-      createdAt: new Date().toISOString()
-    };
-
-    // Save to audit logs
-    const existingLogs = JSON.parse(localStorage.getItem('pmp_inventory_logs') || '[]');
-    localStorage.setItem('pmp_inventory_logs', JSON.stringify([...existingLogs, auditLog]));
-
-    // Close modal
-    setShowAdditionModal(false);
-    setAdditionItem(null);
-
-    // Show success message
-    setShowAdjustmentSuccess(true);
+      // Show success message
+      setShowAdjustmentSuccess(true);
+    } catch (error) {
+      console.error('Failed to add stock:', error);
+      alert('Failed to add stock: ' + (error.message || 'Unknown error'));
+    }
   };
 
   // Handle Save (Add or Update) - Shows confirmation modal first
@@ -4272,93 +4186,41 @@ export default function InventoryPage() {
     setIsConfirmModalOpen(true);
   };
 
-  // Confirm the Add/Edit action
-  // TODO: MongoDB - Replace with API call
-  // CURRENT: Updates LocalStorage state
-  // FUTURE: Call API and handle response
-  //
-  // Example:
-  // const handleConfirmSave = async () => {
-  //   if (!pendingItemData) return;
-  //   const method = editingItem ? 'PUT' : 'POST';
-  //   const url = editingItem ? `/api/inventory/${pendingItemData.id}` : '/api/inventory';
-  //   const res = await fetch(url, {
-  //     method,
-  //     headers: { 'Content-Type': 'application/json' },
-  //     body: JSON.stringify(pendingItemData),
-  //   });
-  //   const savedItem = await res.json();
-  //   // Then update state with savedItem
-  // };
-  const handleConfirmSave = () => {
+  // Confirm the Add/Edit action - Uses API
+  const handleConfirmSave = async () => {
     if (!pendingItemData) return;
 
-    if (editingItem) {
-      // Update existing item
-      setInventory(prev =>
-        prev.map(item =>
-          item.id === pendingItemData.id
-            ? { ...item, ...pendingItemData }
-            : item
-        )
-      );
-    } else {
-      // Add new item WITH BATCH if initialStock > 0
-      let batches = [];
-
-      // Create batch if has initial stock and invoice
-      if (pendingItemData.initialStock && parseInt(pendingItemData.initialStock) > 0 && pendingItemData.invoiceNumber) {
-        batches = [{
-          batchId: `BATCH-${Date.now()}`,
-          supplierId: pendingItemData.supplierId || null,
-          supplierName: pendingItemData.supplierName || 'Unspecified',
-          invoiceNumber: pendingItemData.invoiceNumber,
-          dateReceived: pendingItemData.deliveryDate,
-          originalQty: parseInt(pendingItemData.initialStock),
-          remainingQty: parseInt(pendingItemData.initialStock),
-          unitCost: parseFloat(pendingItemData.unitCost) || 0,
-          totalCost: parseInt(pendingItemData.initialStock) * (parseFloat(pendingItemData.unitCost) || 0),
-          status: 'active'
-        }];
-      }
-
-      const newItem = {
-        ...pendingItemData,
-        stockQty: parseInt(pendingItemData.initialStock) || 0,  // Map initialStock to stockQty
-        batches: batches,  // ADD BATCHES!
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      setInventory(prev => [...prev, newItem]);
-
-      // Create initial stock history entry if has stock and cost
-      if (!pendingItemData.isOnDemand && pendingItemData.stockQty > 0 && pendingItemData.lastUnitCost) {
-        const stockHistoryEntry = {
-          inventoryId: newItem.id,
-          batchId: batches.length > 0 ? batches[0].batchId : null,  // ADD BATCH ID!
-          itemName: newItem.name,
-          category: newItem.category,
-          supplierId: pendingItemData.lastSupplierId,
-          supplierName: pendingItemData.lastSupplierName || '— Walk-in / Unspecified',
-          quantity: pendingItemData.stockQty,
-          unitCost: pendingItemData.lastUnitCost,
-          totalCost: pendingItemData.stockQty * pendingItemData.lastUnitCost,
-          reason: 'initial',
-          stockBefore: 0,
-          stockAfter: pendingItemData.stockQty,
-          averageCostAfter: pendingItemData.averageCost || pendingItemData.lastUnitCost,
-          type: 'received',  // ADD TYPE
-          remainingQty: pendingItemData.stockQty  // ADD REMAINING
+    try {
+      if (editingItem) {
+        // Update existing item via API
+        const id = editingItem.id || editingItem._id;
+        const updated = await updateInventory(id, pendingItemData);
+        setInventory(prev =>
+          prev.map(item =>
+            (item.id === id || item._id === id) ? updated : item
+          )
+        );
+      } else {
+        // Create new item via API
+        const newItem = {
+          ...pendingItemData,
+          stockQty: parseInt(pendingItemData.initialStock) || 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         };
-        addStockHistory(stockHistoryEntry);
+        const created = await createInventory(newItem);
+        setInventory(prev => [...prev, created]);
       }
-    }
 
-    // Close all modals and reset
-    setIsConfirmModalOpen(false);
-    setIsModalOpen(false);
-    setEditingItem(null);
-    setPendingItemData(null);
+      // Close all modals and reset
+      setIsConfirmModalOpen(false);
+      setIsModalOpen(false);
+      setEditingItem(null);
+      setPendingItemData(null);
+    } catch (error) {
+      console.error('Failed to save inventory item:', error);
+      alert('Failed to save: ' + (error.message || 'Unknown error'));
+    }
   };
 
   // Handle Confirm Delete
@@ -4446,7 +4308,8 @@ export default function InventoryPage() {
   }
 
   return (
-    <div className="page-content-wrapper">
+    <ErrorBoundary>
+      <div className="page-content-wrapper">
       {/* ── Page Header ────────────────────────────────────────────────────────── */}
       <div className="page-header">
         <div className="page-header-content">
@@ -5156,5 +5019,6 @@ export default function InventoryPage() {
         />
       )}
     </div>
+    </ErrorBoundary>
   );
 }

@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useCart } from './layout';
+import ErrorBoundary from '@/components/ErrorBoundary';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -167,9 +169,9 @@ export default function ShopPage() {
     setError(null);
     try {
       const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-      const res = await fetch(`${API_URL}/api/products`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/products`, {
         headers: { Authorization: `Bearer ${token}` },
-      });
+      }, 10000);
       if (!res.ok) throw new Error('Server error');
       const data = await res.json();
       setProducts(Array.isArray(data) ? data : []);
@@ -200,9 +202,10 @@ export default function ShopPage() {
   });
 
   return (
-    <div>
-      {/* Hero Carousel */}
-      <div className="shop-carousel-container">
+    <ErrorBoundary>
+      <div>
+        {/* Hero Carousel */}
+        <div className="shop-carousel-container">
         <div className="shop-carousel-track" ref={carouselRef}>
           {carouselSlides.map((slide, index) => (
             <div
@@ -1246,5 +1249,6 @@ export default function ShopPage() {
         }
       `}</style>
     </div>
+    </ErrorBoundary>
   );
 }

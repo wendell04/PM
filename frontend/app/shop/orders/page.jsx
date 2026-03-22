@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import ErrorBoundary from '../../../components/ErrorBoundary';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -49,9 +51,9 @@ export default function OrdersPage() {
     setError(null);
     try {
       const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-      const res = await fetch(`${API_URL}/api/orders/my`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/orders/my`, {
         headers: { Authorization: `Bearer ${token}` },
-      });
+      }, 10000);
       if (!res.ok) throw new Error('Failed to load orders.');
       const data = await res.json();
       setOrders(Array.isArray(data) ? data : []);
@@ -63,7 +65,8 @@ export default function OrdersPage() {
   }
 
   return (
-    <div style={{ maxWidth: '720px', margin: '0 auto' }}>
+    <ErrorBoundary>
+      <div style={{ maxWidth: '720px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem' }}>
         <div>
           <h1 style={{ margin: '0 0 0.25rem', fontSize: '1.4rem', fontWeight: 700, color: '#f5f5f5' }}>
@@ -239,5 +242,6 @@ export default function OrdersPage() {
         }
       `}</style>
     </div>
+    </ErrorBoundary>
   );
 }

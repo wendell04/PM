@@ -10,6 +10,8 @@ use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\JobOrderController;
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\SaleController;
+use App\Http\Controllers\CartController;
+use App\Http\Controllers\SupplierController;
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::post('/register',        [AuthController::class, 'register'])->middleware('throttle:10,1');
@@ -44,6 +46,23 @@ Route::get('/products/{id}',        [ProductController::class, 'show']);
 Route::get('/orders/my',        [OrderController::class, 'myOrders']);
 Route::get('/orders/my/{id}',   [OrderController::class, 'myOrderShow']);
 Route::post('/orders',          [OrderController::class, 'store']);
+
+// ─── Cart (Protected — authenticated customers only) ─────────────────────────
+Route::middleware('auth.token')->group(function () {
+    Route::get('/cart', [CartController::class, 'index']);
+    Route::post('/cart/sync', [CartController::class, 'sync']);
+    Route::post('/cart/merge', [CartController::class, 'merge']);
+    Route::delete('/cart/clear', [CartController::class, 'clear']);
+
+    // Suppliers Admin (Protected by auth.token + isAdmin() check)
+    Route::get('/admin/suppliers',               [SupplierController::class, 'index']);
+    Route::post('/admin/suppliers',              [SupplierController::class, 'store']);
+    Route::put('/admin/suppliers/{id}',          [SupplierController::class, 'update']);
+    Route::delete('/admin/suppliers/{id}',       [SupplierController::class, 'destroy']);
+
+    // Order Stats (Protected by auth.token + getAuthUser() check)
+    Route::get('/admin/orders/stats',            [OrderController::class, 'stats']);
+});
 
 // ─── Admin Routes (Protected — owner/admin only) ─────────────────────────────
 // Middleware checks are done inside each controller method via isAdmin() helper.

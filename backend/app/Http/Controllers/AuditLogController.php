@@ -16,7 +16,9 @@ class AuditLogController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $query = AuditLog::orderBy('createdAt', 'desc');
 
@@ -38,41 +40,35 @@ class AuditLogController extends Controller
 
             $auditLogs = $query->limit(100)->get();
 
-            return response()->json($auditLogs);
+            return $this->successResponse('Audit logs fetched successfully.', $auditLogs);
         } catch (\Exception $e) {
-            Log::error('AuditLogController@index: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch audit logs.'], 500);
+            return $this->serverErrorResponse($e, 'Failed to fetch audit logs.');
         }
     }
 
-    /**
-     * GET /api/admin/audit-logs/inventory/{inventoryId}
-     * Returns audit logs for a specific inventory item
-     */
     public function byInventory(Request $request, $inventoryId)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $auditLogs = AuditLog::where('inventoryId', $inventoryId)
                                  ->orderBy('createdAt', 'desc')
                                  ->get();
 
-            return response()->json($auditLogs);
+            return $this->successResponse('Audit logs fetched successfully.', $auditLogs);
         } catch (\Exception $e) {
-            Log::error('AuditLogController@byInventory: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch audit logs.'], 500);
+            return $this->serverErrorResponse($e, 'Failed to fetch audit logs.');
         }
     }
 
-    /**
-     * POST /api/admin/audit-logs
-     * Creates a new audit log entry
-     */
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $validated = $request->validate([
                 'inventoryId'   => 'required|string',
@@ -111,23 +107,20 @@ class AuditLogController extends Controller
                 'createdAt'    => now(),
             ]);
 
-            return response()->json($auditLog, 201);
+            return $this->successResponse('Audit log created successfully.', $auditLog, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('AuditLogController@store: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to create audit log.'], 500);
+            return $this->serverErrorResponse($e, 'Failed to create audit log.');
         }
     }
 
-    /**
-     * GET /api/admin/audit-logs/summary
-     * Returns summary statistics for audit logs
-     */
     public function summary(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return response()->json(['message' => 'unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
 
             $query = AuditLog::query();
 
@@ -144,15 +137,14 @@ class AuditLogController extends Controller
             $totalSales = (clone $query)->where('reason', 'sale')->count();
             $totalRestocks = (clone $query)->where('reason', 'restock')->count();
 
-            return response()->json([
+            return $this->successResponse('Audit log summary fetched successfully.', [
                 'totalStockIn' => abs($totalStockIn),
                 'totalStockOut' => abs($totalStockOut),
                 'totalSales' => $totalSales,
                 'totalRestocks' => $totalRestocks,
             ]);
         } catch (\Exception $e) {
-            Log::error('AuditLogController@summary: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch audit log summary.'], 500);
+            return $this->serverErrorResponse($e, 'Failed to fetch audit log summary.');
         }
     }
 }
