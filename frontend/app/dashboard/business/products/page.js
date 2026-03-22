@@ -2057,7 +2057,7 @@ export default function ProductListPage() {
             <button className="btn-primary" onClick={() => {}} disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>
               <span className="btn-icon">+</span> Add Promotions
             </button>
-            <button className="btn-primary" onClick={() => router.push('/dashboard/business')}>
+            <button className="btn-primary" onClick={() => router.push('/dashboard/business/products/add')}>
               <span className="btn-icon">+</span> Add New Product
             </button>
           </div>
@@ -2221,7 +2221,7 @@ export default function ProductListPage() {
             <h3 className="empty-title">{searchQuery || statusFilter ? 'No products found' : 'No Products Yet'}</h3>
             <p className="empty-description">{searchQuery || statusFilter ? 'Try adjusting your search or filter.' : 'Get started by adding your first product.'}</p>
             {!searchQuery && !statusFilter && (
-              <button className="btn-primary" onClick={() => router.push('/dashboard/business')}>Add First Product</button>
+              <button className="btn-primary" onClick={() => router.push('/dashboard/business/products/add')}>Add First Product</button>
             )}
           </div>
         ) : (

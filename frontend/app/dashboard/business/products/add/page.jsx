@@ -2,8 +2,6 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import ErrorBoundary from '../../../../components/ErrorBoundary';
-
 /**
  * ADD PRODUCT PAGE
  *
@@ -42,7 +40,6 @@ import ErrorBoundary from '../../../../components/ErrorBoundary';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { createProduct, fetchProducts } from '@/lib/productApi';
 
 // ── Reusable Number Input Component ───────────────────────────────────────────
 // Prevents negative values, e, E, -, +, and disables scroll wheel
@@ -87,7 +84,7 @@ function NumberInput({ value, onChange, min = 0, max, placeholder, className, di
 
 // ── Inventory Helper (LocalStorage)
 // ⚠️ TODO: MongoDB - Replace with API call: GET /api/inventory
-import { getInventoryList } from './inventory/page';
+import { getInventoryList } from '../../inventory/page';
 
 // ── TODO (MongoDB): Replace with API imports
 // CURRENT: LocalStorage helpers (browser-only)
@@ -167,13 +164,19 @@ function Combobox({ value, onChange, options, placeholder, label, required }) {
 // ─── Inventory Combobox (for Material/Blank Item) ─────────────────────────────
 // NEW: Only shows active inventory items (isActive: true)
 // EXCLUDES items already linked to products (1:1 relationship)
-function InventoryCombobox({ value, onChange, inventoryList, placeholder, label, linkedProductIds }) {
+function InventoryCombobox({ value, onChange, inventoryList, placeholder, label }) {
   const [open, setOpen] = useState(false);
   const [inputVal, setInputVal] = useState('');
   const ref = useRef(null);
 
+  // Get products already linked to inventory items
+  const linkedProductIds = useMemo(() => {
+    const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
+    return new Set(allProducts.map(p => p.inventoryId).filter(id => id));
+  }, []);
+
   // Filter to only active items NOT already linked to products
-  const availableInventoryList = inventoryList.filter(item =>
+  const availableInventoryList = inventoryList.filter(item => 
     item.isActive !== false && !linkedProductIds.has(item.id)
   );
 
@@ -1150,37 +1153,16 @@ export default function AddProductsPage() {
   // ── NEW: Inventory List State ────────────────────────────────────────────────
   const [inventoryList, setInventoryList] = useState([]);
 
-  // ── NEW: Existing Products State (for linkedProductIds) ─────────────────────
-  const [existingProducts, setExistingProducts] = useState([]);
-
-  // ── Load data from API ────────────────────────────────────────────────────────
+  // ── TODO: MongoDB — palitan ng GET /api/categories at GET /api/subcategories ──
+  // CURRENT: LocalStorage (browser-only, hindi persistent sa server)
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        // Load categories and subcategories from localStorage (helper data)
-        setSavedCategories(JSON.parse(localStorage.getItem('customCategories') || '[]'));
-        setSavedSubCategories(JSON.parse(localStorage.getItem('subCategories') || '{}'));
+    setSavedCategories(JSON.parse(localStorage.getItem('customCategories') || '[]'));
+    setSavedSubCategories(JSON.parse(localStorage.getItem('subCategories') || '{}'));
 
-        // Load Inventory List from localStorage (for now - will be updated to API later)
-        const inventory = getInventoryList();
-        setInventoryList(inventory);
-
-        // Load existing products from API to compute linkedProductIds
-        const products = await fetchProducts();
-        setExistingProducts(Array.isArray(products) ? products : []);
-      } catch (error) {
-        console.error('Failed to load data:', error);
-        setExistingProducts([]);
-      }
-    };
-
-    loadData();
+    // Load Inventory List (Source of Truth for blank materials)
+    const inventory = getInventoryList();
+    setInventoryList(inventory);
   }, []);
-
-  // Compute linkedProductIds from existing products (inventory items already in use)
-  const linkedProductIds = useMemo(() => {
-    return new Set(existingProducts.map(p => p.inventoryId).filter(id => id));
-  }, [existingProducts]);
 
   const hasVariants = combinations.length > 0;
   const subCatOptions = savedSubCategories[formData.category] || [];
@@ -1733,74 +1715,73 @@ export default function AddProductsPage() {
   };
 
   // Confirm the save action (after user clicks "Confirm" in modal)
-  const handleConfirmSave = async () => {
+  const handleConfirmSave = () => {
     if (!pendingNewProduct) return;
 
-    try {
-      // Save categories and subcategories to localStorage (for now - these are helper data)
-      if (pendingNewProduct.category && !savedCategories.includes(pendingNewProduct.category)) {
-        const updated = [...savedCategories, pendingNewProduct.category];
-        setSavedCategories(updated);
-        localStorage.setItem('customCategories', JSON.stringify(updated));
-      }
-
-      if (pendingNewProduct.category && pendingNewProduct.subCategoryName) {
-        const existingSubs = savedSubCategories[pendingNewProduct.category] || [];
-        if (!existingSubs.includes(pendingNewProduct.subCategoryName)) {
-          const updatedSubs = {
-            ...savedSubCategories,
-            [pendingNewProduct.category]: [...existingSubs, pendingNewProduct.subCategoryName],
-          };
-          setSavedSubCategories(updatedSubs);
-          localStorage.setItem('subCategories', JSON.stringify(updatedSubs));
-        }
-      }
-
-      // ──────────────────────────────────────────────────────────────
-      // CREATE Product via API (MongoDB)
-      // ──────────────────────────────────────────────────────────────
-      
-      // Prepare product data for API (remove frontend-only fields)
-      const { id, ...productDataForApi } = pendingNewProduct;
-      
-      // Call API to create product
-      const createdProduct = await createProduct(productDataForApi);
-      
-      // Show success
-      setShowConfirmSaveModal(false);
-      setPendingNewProduct(null);
-      setShowSuccessModal(true);
-
-      // Reset form after success
-      setTimeout(() => {
-        setShowSuccessModal(false);
-        // Reset form fields
-        setFormData({
-          category: '',
-          subCategoryCode: '',
-          subCategoryName: '',
-          productName: '',
-          description: '',
-          priceType: 'fixed',
-          trackInventory: true,
-          stock: '',
-          inventoryId: '',
-        });
-        setFixedPrice('');
-        setFixedPriceVariants({});
-        setTiers([{ id: 1, minQty: 1, maxQty: 20, prices: { '__base__': '' } }]);
-        setVariantGroups([]);
-        setCombinations([]);
-        setThumbnail(null);
-        setImages([]);
-        // Redirect to Product List
-        router.push('/dashboard/business/products');
-      }, 1500);
-    } catch (error) {
-      console.error('Failed to create product:', error);
-      alert('Failed to create product: ' + (error.message || 'Unknown error'));
-      setShowConfirmSaveModal(false);
+    // Save categories and subcategories
+    if (pendingNewProduct.category && !savedCategories.includes(pendingNewProduct.category)) {
+      const updated = [...savedCategories, pendingNewProduct.category];
+      setSavedCategories(updated);
+      localStorage.setItem('customCategories', JSON.stringify(updated));
     }
+
+    if (pendingNewProduct.category && pendingNewProduct.subCategoryName) {
+      const existingSubs = savedSubCategories[pendingNewProduct.category] || [];
+      if (!existingSubs.includes(pendingNewProduct.subCategoryName)) {
+        const updatedSubs = {
+          ...savedSubCategories,
+          [pendingNewProduct.category]: [...existingSubs, pendingNewProduct.subCategoryName],
+        };
+        setSavedSubCategories(updatedSubs);
+        localStorage.setItem('subCategories', JSON.stringify(updatedSubs));
+      }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Save Product to LocalStorage (or MongoDB in future)
+    // ──────────────────────────────────────────────────────────────
+    const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
+
+    // CREATE new product
+    const newProduct = {
+      ...pendingNewProduct,
+      id: crypto.randomUUID(),
+      isPublished: false,  // Default to unpublished
+      createdAt: new Date().toISOString(),
+    };
+    allProducts.push(newProduct);
+    localStorage.setItem('pmp_products', JSON.stringify(allProducts));
+
+    // Close modal and show success
+    setShowConfirmSaveModal(false);
+    setPendingNewProduct(null);
+    setShowSuccessModal(true);
+
+    // Reset form after success
+    setTimeout(() => {
+      setShowSuccessModal(false);
+      // Reset form fields
+      setFormData({
+        category: '',
+        subCategoryCode: '',
+        subCategoryName: '',
+        productName: '',
+        description: '',
+        priceType: 'fixed',
+        trackInventory: true,
+        stock: '',
+        inventoryId: '',
+      });
+      setFixedPrice('');
+      setFixedPriceVariants({});
+      setTiers([{ id: 1, minQty: 1, maxQty: 20, prices: { '__base__': '' } }]);
+      setVariantGroups([]);
+      setCombinations([]);
+      setThumbnail(null);
+      setImages([]);
+      // Redirect to Product List
+      router.push('/dashboard/business/products');
+    }, 1500);
   };
 
   const allPrices = tiers
@@ -1832,8 +1813,7 @@ export default function AddProductsPage() {
   };
 
   return (
-    <ErrorBoundary>
-      <div>
+    <div>
       {showPreview && (
         <ProductPreviewModal
           product={previewProduct}
@@ -1914,7 +1894,6 @@ export default function AddProductsPage() {
               onChange={handleInventoryChange}
               inventoryList={inventoryList}
               placeholder="Select a Product from inventory..."
-              linkedProductIds={linkedProductIds}
             />
             <p className="form-hint">
               {inventoryList.filter(i => i.isActive !== false).length === 0
@@ -2379,6 +2358,5 @@ export default function AddProductsPage() {
 
       </form>
     </div>
-    </ErrorBoundary>
   );
 }
