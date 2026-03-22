@@ -58,6 +58,7 @@ const LandingPage = ({onEnterShop}) => {
     router.push('/shop');
   };
 
+  const [mounted, setMounted] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen]   = useState(false);
   const [scrolled, setScrolled]               = useState(false);
   const [modal, setModal]                     = useState(null);
@@ -114,6 +115,7 @@ const LandingPage = ({onEnterShop}) => {
   // ─── useEffects ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    setMounted(true);
     // Check if user was logged out (redirected from dashboard)
     const loggedOut = sessionStorage.getItem('justLoggedOut');
     if (loggedOut === 'true') {

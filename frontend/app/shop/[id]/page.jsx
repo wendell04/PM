@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useCart } from '../layout';
+import ErrorBoundary from '../../../components/ErrorBoundary';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -65,10 +67,10 @@ export default function ProductDetailPage() {
     async function fetchProduct() {
       setLoading(true);
       try {
-        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-        const res = await fetch(`${API_URL}/api/products/${id}`, {
+        const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+        const res = await fetchWithTimeout(`${API_URL}/api/products/${id}`, {
           headers: { Authorization: `Bearer ${token}` },
-        });
+        }, 10000);
         if (!res.ok) throw new Error('Not found');
         const data = await res.json();
         setProduct(data);
@@ -114,7 +116,8 @@ export default function ProductDetailPage() {
   const hasTiers    = product.priceTiers?.length > 0;
 
   return (
-    <div>
+    <ErrorBoundary>
+      <div>
       {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
         <Link href="/shop" style={{
@@ -400,5 +403,6 @@ export default function ProductDetailPage() {
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }

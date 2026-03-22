@@ -10,7 +10,6 @@ use App\Models\Inventory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
@@ -42,7 +41,7 @@ class OrderController extends Controller
         try {
             $user = $this->getAuthUser($request);
             if (!$user) {
-                return response()->json(['error' => 'Unauthenticated.'], 401);
+                return $this->unauthorizedResponse();
             }
 
             $validated = $request->validate([
@@ -54,77 +53,67 @@ class OrderController extends Controller
                 'notes'              => 'nullable|string|max:1000',
             ]);
 
-            // Use transaction for order creation
-            $order = DB::connection('mongodb')->transaction(function() use ($validated, $user) {
-                // Build order items with pricing
-                $orderItems   = [];
-                $totalAmount  = 0;
+            // Build order items with pricing (no transaction wrapper for MongoDB compatibility)
+            $orderItems   = [];
+            $totalAmount  = 0;
 
-                foreach ($validated['items'] as $item) {
-                    $product = Product::where('_id', $item['productId'])
-                                      ->where('isActive', true)
-                                      ->first();
+            foreach ($validated['items'] as $item) {
+                $product = Product::where('_id', $item['productId'])
+                                  ->where('isActive', true)
+                                  ->first();
 
-                    if (!$product) {
-                        throw new \Exception("Product '{$item['productId']}' not found or unavailable.");
-                    }
-
-                    // Resolve unit price from priceTiers or flatPrice
-                    $qty       = (int) $item['qty'];
-                    $variantId = $item['variantId'] ?? null;
-                    $unitPrice = $this->resolvePrice($product, $qty, $variantId);
-
-                    if ($unitPrice === null) {
-                        throw new \Exception("No price configured for product '{$product->name}'.");
-                    }
-
-                    $lineTotal     = $unitPrice * $qty;
-                    $totalAmount  += $lineTotal;
-
-                    $orderItems[] = [
-                        'productId'   => (string) $product->_id,
-                        'productName' => $product->name,
-                        'variantId'   => $item['variantId']   ?? null,
-                        'variantName' => $item['variantName'] ?? null,
-                        'qty'         => $qty,
-                        'unitPrice'   => $unitPrice,
-                        'lineTotal'   => $lineTotal,
-                    ];
+                if (!$product) {
+                    throw new \Exception("Product '{$item['productId']}' not found or unavailable.");
                 }
 
-                $order = Order::create([
-                    'userId'       => (string) $user->_id,
-                    'userSnapshot' => [
-                        'name'  => trim("{$user->firstName} {$user->lastName}"),
-                        'email' => $user->email,
-                        'phone' => $user->phoneNumber,
-                    ],
-                    'items'        => $orderItems,
-                    'totalAmount'  => $totalAmount,
-                    'status'       => 'pending',
-                    'paymentStatus'=> 'unpaid',
-                    'notes'        => $validated['notes'] ?? '',
-                    'createdAt'    => now(),
-                    'updatedAt'    => now(),
-                ]);
+                // Resolve unit price from priceTiers or flatPrice
+                $qty       = (int) $item['qty'];
+                $variantId = $item['variantId'] ?? null;
+                $unitPrice = $this->resolvePrice($product, $qty, $variantId);
 
-                return $order;
-            });
+                if ($unitPrice === null) {
+                    throw new \Exception("No price configured for product '{$product->name}'.");
+                }
+
+                $lineTotal     = $unitPrice * $qty;
+                $totalAmount  += $lineTotal;
+
+                $orderItems[] = [
+                    'productId'   => (string) $product->_id,
+                    'productName' => $product->name,
+                    'variantId'   => $item['variantId']   ?? null,
+                    'variantName' => $item['variantName'] ?? null,
+                    'qty'         => $qty,
+                    'unitPrice'   => $unitPrice,
+                    'lineTotal'   => $lineTotal,
+                ];
+            }
+
+            $order = Order::create([
+                'userId'       => (string) $user->_id,
+                'userSnapshot' => [
+                    'name'  => trim("{$user->firstName} {$user->lastName}"),
+                    'email' => $user->email,
+                    'phone' => $user->phoneNumber,
+                ],
+                'items'        => $orderItems,
+                'totalAmount'  => $totalAmount,
+                'status'       => 'pending',
+                'paymentStatus'=> 'unpaid',
+                'notes'        => $validated['notes'] ?? '',
+                'createdAt'    => now(),
+                'updatedAt'    => now(),
+            ]);
 
             // Notify owner asynchronously
             $this->notifyOwner($order);
 
-            return response()->json([
-                'message' => 'Order placed successfully!',
-                'order'   => $order
-            ], 201);
+            return $this->successResponse('Order placed successfully!', $order, 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('OrderController@store: Validation failed for user ' . ($user?->email ?? 'guest'), ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('OrderController@store: Failed to place order for user ' . ($user?->email ?? 'guest'), ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while placing your order.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while placing your order.');
         }
     }
 
@@ -137,17 +126,16 @@ class OrderController extends Controller
         try {
             $user = $this->getAuthUser($request);
             if (!$user) {
-                return response()->json(['error' => 'Unauthenticated.'], 401);
+                return $this->unauthorizedResponse();
             }
 
             $orders = Order::where('userId', (string) $user->_id)
                            ->orderBy('created_at', 'desc')
                            ->get();
 
-            return response()->json($orders);
+            return $this->successResponse('Orders fetched successfully.', $orders);
         } catch (\Exception $e) {
-            Log::error('OrderController@myOrders: Failed to fetch orders for user ' . $user->email, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while fetching your orders.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching your orders.');
         }
     }
 
@@ -160,7 +148,7 @@ class OrderController extends Controller
         try {
             $user = $this->getAuthUser($request);
             if (!$user) {
-                return response()->json(['error' => 'Unauthenticated.'], 401);
+                return $this->unauthorizedResponse();
             }
 
             $order = Order::where('_id', $id)
@@ -168,13 +156,12 @@ class OrderController extends Controller
                           ->first();
 
             if (!$order) {
-                return response()->json(['error' => 'Order not found.'], 404);
+                return $this->notFoundResponse('Order');
             }
 
-            return response()->json($order);
+            return $this->successResponse('Order fetched successfully.', $order);
         } catch (\Exception $e) {
-            Log::error('OrderController@myOrderShow: Failed to fetch order ' . $id . ' for user ' . $user->email, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while fetching your order.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching your order.');
         }
     }
 
@@ -187,6 +174,10 @@ class OrderController extends Controller
     public function adminIndex(Request $request)
     {
         try {
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
+
             $query = Order::orderBy('created_at', 'desc');
 
             if ($request->filled('status')) {
@@ -194,10 +185,9 @@ class OrderController extends Controller
             }
 
             $orders = $query->get();
-            return response()->json($orders);
+            return $this->successResponse('Orders fetched successfully.', $orders);
         } catch (\Exception $e) {
-            Log::error('OrderController@adminIndex: Failed to fetch orders', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while fetching orders.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching orders.');
         }
     }
 
@@ -208,10 +198,14 @@ class OrderController extends Controller
     public function adminUpdate(Request $request, $id)
     {
         try {
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
+
             $order = Order::find($id);
 
             if (!$order) {
-                return response()->json(['error' => 'Order not found.'], 404);
+                return $this->notFoundResponse('Order');
             }
 
             $validated = $request->validate([
@@ -228,12 +222,41 @@ class OrderController extends Controller
                 $this->completeOrder($order);
             }
 
-            return response()->json(['message' => 'Order updated.', 'order' => $order]);
+            return $this->successResponse('Order updated successfully.', $order);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('OrderController@adminUpdate: Failed to update order ' . $id, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred while updating the order.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while updating the order.');
+        }
+    }
+
+    /**
+     * GET /api/admin/orders/stats
+     * Returns order statistics for the admin dashboard.
+     */
+    public function stats(Request $request)
+    {
+        try {
+            $user = $this->getAuthUser($request);
+            if (!$user) {
+                return $this->unauthorizedResponse();
+            }
+
+            $totalOrders = Order::count();
+            $pendingOrders = Order::where('status', 'pending')->count();
+            $completedOrders = Order::where('status', 'completed')->count();
+            $cancelledOrders = Order::where('status', 'cancelled')->count();
+            $totalRevenue = Order::where('status', 'completed')->sum('totalAmount');
+
+            return $this->successResponse('Order statistics fetched successfully.', [
+                'totalOrders' => $totalOrders,
+                'pendingOrders' => $pendingOrders,
+                'completedOrders' => $completedOrders,
+                'cancelledOrders' => $cancelledOrders,
+                'totalRevenue' => $totalRevenue,
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching order statistics.');
         }
     }
 
@@ -251,12 +274,10 @@ class OrderController extends Controller
                 if (!$inventory) continue;
 
                 // 1. Create Sale Record
-                // Generate Sale ID (same logic as SaleController)
-                $newSaleId = DB::connection('mongodb')->transaction(function() {
-                    $lastSale = Sale::orderBy('saleId', 'desc')->first();
-                    $lastNumber = $lastSale ? intval(substr($lastSale->saleId, 5)) : 0;
-                    return 'SALE-' . str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
-                });
+                // Generate Sale ID (no transaction wrapper for MongoDB compatibility)
+                $lastSale = Sale::orderBy('saleId', 'desc')->first();
+                $lastNumber = $lastSale ? intval(substr($lastSale->saleId, 5)) : 0;
+                $newSaleId = 'SALE-' . str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
 
                 $cost = $inventory->averageCost * $item['qty'];
                 $profit = $item['lineTotal'] - $cost;

@@ -1,5 +1,7 @@
 'use client';
 
+import ErrorBoundary from '../../../../components/ErrorBoundary';
+
 /**
  * SALES MANAGEMENT PAGE (READ-ONLY)
  *
@@ -310,7 +312,8 @@ export default function SalesListPage() {
   }
 
   return (
-    <div className="page-content-wrapper">
+    <ErrorBoundary>
+      <div className="page-content-wrapper">
       
       {/* Page Header */}
       <div className="page-header">
@@ -700,5 +703,6 @@ export default function SalesListPage() {
         )}
       </div>
     </div>
+    </ErrorBoundary>
   );
 }

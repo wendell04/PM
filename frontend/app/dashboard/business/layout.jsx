@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../../../contexts/AuthContext';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import './admin-dashboard.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -86,7 +87,7 @@ export default function BusinessDashboardLayout({ children }) {
     
     try {
       const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-      const response = await fetch(`${API_URL}/api/profile`, {
+      const response = await fetchWithTimeout(`${API_URL}/api/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -99,7 +100,7 @@ export default function BusinessDashboardLayout({ children }) {
           phoneNumber: profileForm.phoneNumber.trim(),
           address: profileForm.address.trim(),
         }),
-      });
+      }, 15000);
       
       const data = await response.json();
       

@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useCart } from './layout';
+import ErrorBoundary from '@/components/ErrorBoundary';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getBanners, getActiveBanners } from '@/lib/bannerUtils';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -227,9 +229,9 @@ export default function ShopPage() {
     setError(null);
     try {
       const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-      const res = await fetch(`${API_URL}/api/products`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/products`, {
         headers: { Authorization: `Bearer ${token}` },
-      });
+      }, 10000);
       if (!res.ok) throw new Error('Server error');
       const data = await res.json();
       setProducts(Array.isArray(data) ? data : []);
@@ -260,60 +262,61 @@ export default function ShopPage() {
   });
 
   return (
-    <div>
-      {/* Hero Carousel - Dynamic from Banner Management */}
-      {banners.length > 0 && (
-        <div className="shop-carousel-container">
-          <div className="shop-carousel-track">
-            {banners.map((banner, index) => (
-              <div
-                key={banner.id}
-                className={`shop-carousel-slide ${index === currentSlide ? 'active' : ''}`}
-                style={{ opacity: index === currentSlide ? 1 : 0 }}
-              >
-                {banner.image ? (
-                  <img
-                    src={banner.image}
-                    alt={banner.headline}
-                    className="shop-carousel-bg-image"
-                    style={{ objectFit: 'cover', objectPosition: 'center center' }}
-                  />
-                ) : (
-                  <div className="shop-carousel-bg-image shop-carousel-placeholder">
-                    <span>No Image</span>
-                  </div>
-                )}
-                {/* Only show overlay if there's text to protect */}
-                {(banner.headline || banner.subtext) && (
-                  <div className="shop-carousel-overlay" />
-                )}
+    <ErrorBoundary>
+      <div>
+        {/* Hero Carousel - Dynamic from Banner Management */}
+        {banners.length > 0 && (
+          <div className="shop-carousel-container">
+            <div className="shop-carousel-track">
+              {banners.map((banner, index) => (
+                <div
+                  key={banner.id}
+                  className={`shop-carousel-slide ${index === currentSlide ? 'active' : ''}`}
+                  style={{ opacity: index === currentSlide ? 1 : 0 }}
+                >
+                  {banner.image ? (
+                    <img
+                      src={banner.image}
+                      alt={banner.headline}
+                      className="shop-carousel-bg-image"
+                      style={{ objectFit: 'cover', objectPosition: 'center center' }}
+                    />
+                  ) : (
+                    <div className="shop-carousel-bg-image shop-carousel-placeholder">
+                      <span>No Image</span>
+                    </div>
+                  )}
+                  {/* Only show overlay if there's text to protect */}
+                  {(banner.headline || banner.subtext) && (
+                    <div className="shop-carousel-overlay" />
+                  )}
 
-                <div className="shop-carousel-content">
-                  <div className="shop-carousel-text">
-                    {banner.headline && (
-                      <h2 className="shop-carousel-title">{banner.headline}</h2>
-                    )}
-                    {banner.subtext && (
-                      <p className="shop-carousel-description">{banner.subtext}</p>
-                    )}
-                    {banner.ctaLabel && (
-                      <Link href={banner.ctaLink || '/shop'} className="shop-carousel-cta">
-                        {banner.ctaLabel}
-                      </Link>
-                    )}
+                  <div className="shop-carousel-content">
+                    <div className="shop-carousel-text">
+                      {banner.headline && (
+                        <h2 className="shop-carousel-title">{banner.headline}</h2>
+                      )}
+                      {banner.subtext && (
+                        <p className="shop-carousel-description">{banner.subtext}</p>
+                      )}
+                      {banner.ctaLabel && (
+                        <Link href={banner.ctaLink || '/shop'} className="shop-carousel-cta">
+                          {banner.ctaLabel}
+                        </Link>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
 
-          {/* Carousel Navigation - Only show if multiple banners */}
-          {banners.length > 1 && (
-            <>
-              <button className="shop-carousel-nav shop-carousel-prev" onClick={prevSlide}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="15 18 9 12 15 6"/>
-                </svg>
+            {/* Carousel Navigation - Only show if multiple banners */}
+            {banners.length > 1 && (
+              <>
+                <button className="shop-carousel-nav shop-carousel-prev" onClick={prevSlide}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="15 18 9 12 15 6"/>
+                  </svg>
               </button>
               <button className="shop-carousel-nav shop-carousel-next" onClick={nextSlide}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1375,5 +1378,6 @@ export default function ShopPage() {
         }
       `}</style>
     </div>
+    </ErrorBoundary>
   );
 }

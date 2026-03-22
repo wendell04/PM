@@ -1,50 +1,15 @@
 /**
- * TODO: MongoDB Integration - Replace LocalStorage with Database
- * 
- * BACKEND TRANSITION CHECKLIST:
- * 
- * 1. DATABASE SCHEMA (MongoDB Collections):
- *    - orders collection
- *    - job_orders collection (or embed in orders)
- *    - customers collection (or embed in orders)
- *    - payments collection (for DP and payment tracking)
- * 
- * 2. API ENDPOINTS NEEDED:
- *    - GET    /api/orders              - Fetch all orders with filters
- *    - POST   /api/orders              - Create new order
- *    - PUT    /api/orders/:id          - Update order status/details
- *    - DELETE /api/orders/:id          - Cancel/delete order
- *    - POST   /api/orders/bulk-update  - Bulk status update
- *    - GET    /api/job-orders          - Fetch JO schedule
- *    - PUT    /api/job-orders/:id      - Update JO status
- *    - POST   /api/orders/:id/payment  - Record payment (DP/full)
- * 
- * 3. REPLACE LOCALSTORAGE:
- *    - Remove: localStorage.getItem(ORDERS_KEY)
- *    - Replace with: fetch('/api/orders')
- * 
- * 4. REAL-TIME UPDATES:
- *    - Consider: Socket.io or Server-Sent Events for live updates
- *    - Or: Polling every 30s for order changes
- * 
- * 5. TRANSACTIONS:
- *    - Wrap order + JO creation in MongoDB transaction
- *    - Ensure payment + order status updates are atomic
- * 
- * 6. INDEXES FOR PERFORMANCE:
- *    - orders: createdAt, orderStatus, customerName
- *    - job_orders: targetCompletion, joStatus, isRush
+ * Orders Admin Page
+ * Connects to backend API via ordersApi.js
  */
 
 'use client';
 
+import ErrorBoundary from '../../../../components/ErrorBoundary';
 import React, { useState, useEffect } from 'react';
+import { fetchAllOrders, updateOrder as updateOrderApi } from '@/lib/ordersApi';
 
-// TODO: MongoDB - Remove this constant, use database instead
-const ORDERS_KEY = 'pmp_orders';
-
-const mockOrders = [];
-// Sample orders for testing
+// Sample orders for fallback/testing
 const today = new Date();
 const thisMonth = today.getMonth();
 const thisYear = today.getFullYear();
@@ -139,23 +104,19 @@ export default function OrdersPage() {
   const [printDescription, setPrintDescription] = useState('');
   const [printDesignImages, setPrintDesignImages] = useState([]); // Multiple images
 
+  // Load orders from API on mount
   useEffect(() => {
-    // TODO: MongoDB - Replace with API call:
-    // async function loadOrders() {
-    //   try {
-    //     const response = await fetch('/api/orders?sort=-createdAt');
-    //     const data = await response.json();
-    //     setOrders(data);
-    //   } catch (error) {
-    //     console.error('Failed to load orders:', error);
-    //   }
-    // }
-    // loadOrders();
-    
-    // Clear old data and use sample pending orders for testing
-    localStorage.removeItem(ORDERS_KEY);
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(samplePendingOrders));
-    setOrders(samplePendingOrders);
+    async function loadOrders() {
+      try {
+        const data = await fetchAllOrders();
+        setOrders(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Failed to load orders:', error);
+        // Fallback to empty array on error
+        setOrders([]);
+      }
+    }
+    loadOrders();
   }, []);
 
   const filtered = orders.filter(o => {
@@ -221,7 +182,8 @@ export default function OrdersPage() {
   };
 
   return (
-    <div className="page-content-wrapper">
+    <ErrorBoundary>
+      <div className="page-content-wrapper">
       {/* Page Header */}
       <div className="page-header">
         <div className="page-header-content">
@@ -385,30 +347,7 @@ export default function OrdersPage() {
               // Check if mixed status (different statuses selected)
               const mixedStatus = (hasPending ? 1 : 0) + (hasInProduction ? 1 : 0) + (hasForDelivery ? 1 : 0) > 1;
 
-              const handleStatusUpdate = (newStatus) => {
-                // TODO: MongoDB - Replace with API call:
-                // POST /api/orders/bulk-update
-                // Body: { orderIds: [...selectedOrders], status: newStatus }
-                // 
-                // Backend should:
-                // 1. Validate status transitions
-                // 2. Check payment status before allowing In Production
-                // 3. Update orders in database
-                // 4. Update JO status if needed (For Delivery → Completed)
-                // 5. Return updated orders
-                // 
-                // Example:
-                // const response = await fetch('/api/orders/bulk-update', {
-                //   method: 'POST',
-                //   headers: { 'Content-Type': 'application/json' },
-                //   body: JSON.stringify({
-                //     orderIds: Array.from(selectedOrders),
-                //     status: newStatus
-                //   })
-                // });
-                // const updatedOrders = await response.json();
-                // setOrders(updatedOrders);
-                
+              const handleStatusUpdate = async (newStatus) => {
                 // Check for unpaid orders when updating to In Production
                 if (newStatus === 'In Production') {
                   const unpaidOrders = [];
@@ -426,17 +365,41 @@ export default function OrdersPage() {
                   }
                 }
 
-                // Update order status for selected orders
-                setOrders(prev => prev.map(ord => {
-                  if (selectedOrders.has(ord.id)) {
-                    const updated = { ...ord, orderStatus: newStatus };
+                // Update order status for selected orders via API
+                try {
+                  const updatePromises = Array.from(selectedOrders).map(async (orderId) => {
+                    const updatedOrder = { orderStatus: newStatus };
                     if (newStatus === 'For Delivery') {
-                      updated.joStatus = 'Completed';
+                      updatedOrder.joStatus = 'Completed';
                     }
-                    return updated;
-                  }
-                  return ord;
-                }));
+                    return await updateOrderApi(orderId, updatedOrder);
+                  });
+
+                  const updatedOrders = await Promise.all(updatePromises);
+                  
+                  // Update local state with API responses
+                  setOrders(prev => prev.map(ord => {
+                    if (selectedOrders.has(ord.id)) {
+                      const apiUpdated = updatedOrders.find(u => u.id === ord.id || u._id === ord.id);
+                      return apiUpdated ? { ...ord, ...apiUpdated } : { ...ord, orderStatus: newStatus };
+                    }
+                    return ord;
+                  }));
+                } catch (error) {
+                  console.error('Failed to update order status:', error);
+                  // Fallback: update local state optimistically
+                  setOrders(prev => prev.map(ord => {
+                    if (selectedOrders.has(ord.id)) {
+                      const updated = { ...ord, orderStatus: newStatus };
+                      if (newStatus === 'For Delivery') {
+                        updated.joStatus = 'Completed';
+                      }
+                      return updated;
+                    }
+                    return ord;
+                  }));
+                }
+                
                 setSelectedOrders(new Set());
               };
 
@@ -1318,15 +1281,38 @@ export default function OrdersPage() {
               <button
                 type="button"
                 className="btn-primary"
-                onClick={() => {
+                onClick={async () => {
                   // Proceed with status update despite unpaid warning
                   const { newStatus, selectedOrders: selectedSet } = pendingStatusUpdate;
-                  setOrders(prev => prev.map(ord => {
-                    if (selectedSet.has(ord.id)) {
-                      return { ...ord, orderStatus: newStatus };
-                    }
-                    return ord;
-                  }));
+                  try {
+                    const updatePromises = Array.from(selectedSet).map(async (orderId) => {
+                      const updatedOrder = { orderStatus: newStatus };
+                      if (newStatus === 'For Delivery') {
+                        updatedOrder.joStatus = 'Completed';
+                      }
+                      return await updateOrderApi(orderId, updatedOrder);
+                    });
+
+                    const updatedOrders = await Promise.all(updatePromises);
+                    
+                    // Update local state with API responses
+                    setOrders(prev => prev.map(ord => {
+                      if (selectedSet.has(ord.id)) {
+                        const apiUpdated = updatedOrders.find(u => u.id === ord.id || u._id === ord.id);
+                        return apiUpdated ? { ...ord, ...apiUpdated } : { ...ord, orderStatus: newStatus };
+                      }
+                      return ord;
+                    }));
+                  } catch (error) {
+                    console.error('Failed to update order status:', error);
+                    // Fallback: update local state optimistically
+                    setOrders(prev => prev.map(ord => {
+                      if (selectedSet.has(ord.id)) {
+                        return { ...ord, orderStatus: newStatus };
+                      }
+                      return ord;
+                    }));
+                  }
                   setSelectedOrders(new Set());
                   setShowUnpaidWarning(false);
                   setPendingStatusUpdate(null);
@@ -1339,6 +1325,7 @@ export default function OrdersPage() {
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }
 

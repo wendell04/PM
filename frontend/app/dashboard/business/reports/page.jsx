@@ -1,8 +1,11 @@
 'use client';
 
+import ErrorBoundary from '../../../../components/ErrorBoundary';
+
 export default function ReportsPage() {
   return (
-    <div>
+    <ErrorBoundary>
+      <div>
       <div className="page-header">
         <h1 className="page-title">Reports</h1>
         <p className="page-subtitle">
@@ -30,5 +33,6 @@ export default function ReportsPage() {
         </p>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }

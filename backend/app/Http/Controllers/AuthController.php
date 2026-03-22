@@ -38,24 +38,18 @@ class AuthController extends Controller
             // Check if email is from a disposable domain
             $domain = substr(strrchr($email, "@"), 1);
             if (in_array($domain, config('disposable_domains.domains'))) {
-                return response()->json([
-                    'message' => 'Please use a legitimate email address. Temporary/disposable email services are not allowed.'
-                ], 422);
+                return $this->errorResponse('Please use a legitimate email address. Temporary/disposable email services are not allowed.', 422);
             }
 
             // Validate email format more strictly
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                return response()->json([
-                    'message' => 'Please provide a valid email address.'
-                ], 422);
+                return $this->errorResponse('Please provide a valid email address.', 422);
             }
 
             // Check for common typos in email domains
             $commonDomains = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com'];
             if (!in_array($domain, $commonDomains) && !checkdnsrr($domain, 'MX')) {
-                return response()->json([
-                    'message' => 'The email domain does not appear to be valid. Please check your email address.'
-                ], 422);
+                return $this->errorResponse('The email domain does not appear to be valid. Please check your email address.', 422);
             }
 
             // Delete any unverified accounts with this email
@@ -88,22 +82,23 @@ class AuthController extends Controller
                 // User can request resend code later
             }
 
-            return response()->json([
-                'message' => 'Registration successful! Please check your email for the verification code.',
-                'token'   => $token,
-                'user'    => [
-                    'firstName' => $user->firstName,
-                    'lastName' => $user->lastName,
-                    'email' => $user->email,
+            return $this->successResponse(
+                'Registration successful! Please check your email for the verification code.',
+                [
+                    'token' => $token,
+                    'user' => [
+                        'firstName' => $user->firstName,
+                        'lastName' => $user->lastName,
+                        'email' => $user->email,
+                    ],
                 ],
-            ], 201);
+                201
+            );
 
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('AuthController@register: Validation failed', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('AuthController@register: Registration failed', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred during registration.');
         }
     }
 
@@ -118,11 +113,11 @@ class AuthController extends Controller
             $user = User::where('email', $request->email)->first();
 
             if (!$user || !Hash::check($request->password, $user->password)) {
-                return response()->json(['message' => 'Invalid credentials.'], 401);
+                return $this->errorResponse('Invalid credentials.', 401);
             }
 
             if (!$user->is_verified) {
-                return response()->json(['message' => 'Please verify your email before logging in.'], 403);
+                return $this->errorResponse('Please verify your email before logging in.', 403);
             }
 
             $token = Str::random(60);
@@ -130,23 +125,24 @@ class AuthController extends Controller
             $user->lastLogin = now()->toDateTimeString();
             $user->save();
 
-            return response()->json([
-                'message' => 'Login successful!',
-                'token'   => $token,
-                'user'    => [
-                    'firstName' => $user->firstName,
-                    'lastName' => $user->lastName,
-                    'email' => $user->email,
-                    'phoneNumber' => $user->phoneNumber,
-                    'address' => $user->address,
-                    'role' => $user->role,
-                    'lastLogin' => $user->lastLogin,
-                ],
-            ]);
+            return $this->successResponse(
+                'Login successful!',
+                [
+                    'token' => $token,
+                    'user' => [
+                        'firstName' => $user->firstName,
+                        'lastName' => $user->lastName,
+                        'email' => $user->email,
+                        'phoneNumber' => $user->phoneNumber,
+                        'address' => $user->address,
+                        'role' => $user->role,
+                        'lastLogin' => $user->lastLogin,
+                    ],
+                ]
+            );
 
         } catch (\Exception $e) {
-            Log::error('AuthController@login: Login failed for ' . $request->email, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred during login.');
         }
     }
 
@@ -161,19 +157,19 @@ class AuthController extends Controller
             $user = User::where('email', $request->email)->first();
 
             if (!$user) {
-                return response()->json(['message' => 'Invalid request.'], 400);
+                return $this->errorResponse('Invalid request.', 400);
             }
 
             if ($user->is_verified) {
-                return response()->json(['message' => 'Email already verified'], 400);
+                return $this->errorResponse('Email already verified.', 400);
             }
 
             if (now()->gt($user->verification_code_expires_at)) {
-                return response()->json(['message' => 'Verification code has expired. Please request a new code.'], 400);
+                return $this->errorResponse('Verification code has expired. Please request a new code.', 400);
             }
 
             if (hash('sha256', $request->code) !== $user->verification_code) {
-                return response()->json(['message' => 'Invalid verification code.'], 400);
+                return $this->errorResponse('Invalid verification code.', 400);
             }
 
             $user->is_verified = true;
@@ -181,14 +177,13 @@ class AuthController extends Controller
             $user->verification_code_expires_at = null;
             $user->save();
 
-            return response()->json(['message' => 'Email verified successfully! You can now log in.']);
+            return $this->successResponse('Email verified successfully! You can now log in.');
         } catch (\Exception $e) {
-            Log::error('AuthController@verify: Verification failed for ' . $request->email, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred during email verification.');
         }
     }
 
-    public function resend(Request $request) 
+    public function resend(Request $request)
     {
         try {
             $request->validate(['email' => 'required|email']);
@@ -196,11 +191,11 @@ class AuthController extends Controller
             $user = User::where('email', $request->email)->first();
 
             if (!$user) {
-                return response()->json(['message' => 'If an account with that email exists, a new verification code has been sent.']);
+                return $this->successResponse('If an account with that email exists, a new verification code has been sent.');
             }
 
             if ($user->is_verified) {
-                return response()->json(['message' => 'Email already verified'], 400);
+                return $this->errorResponse('Email already verified.', 400);
             }
 
             $plainCode = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
@@ -212,10 +207,9 @@ class AuthController extends Controller
 
             Mail::to($user->email)->send(new VerificationCodeMail($plainCode, $user->firstName));
             
-            return response()->json(['message' => 'Verification code sent successfully!']);
+            return $this->successResponse('Verification code sent successfully!');
         } catch (\Exception $e) {
-            Log::error('AuthController@resend: Failed to resend code for ' . $request->email, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred.');
         }
     }
 
@@ -229,7 +223,7 @@ class AuthController extends Controller
 
             // Always return same message for security (don't reveal if email exists or verification status)
             if (!$user) {
-                return response()->json(['message' => 'A reset link has been sent.']);
+                return $this->successResponse('A reset link has been sent.');
             }
 
             // Generate a link token (separate from the 6-digit verification code)
@@ -260,10 +254,9 @@ class AuthController extends Controller
             if (app()->environment('local')) {
                 $response['debug_reset_url'] = $resetUrl;
             }
-            return response()->json($response);
+            return $this->successResponse('A reset link has been sent.', $response);
         } catch (\Exception $e) {
-            Log::error('AuthController@forgotPassword: Failed for ' . $request->email, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred.');
         }
     }
 
@@ -277,24 +270,23 @@ class AuthController extends Controller
 
             $user = User::where('email', $request->email)->where('is_verified', true)->first();
             if (!$user || !$user->reset_token || !$user->reset_token_expires_at) {
-                return response()->json(['message' => 'Invalid or expired link.'], 400);
+                return $this->errorResponse('Invalid or expired link.', 400);
             }
 
             $expiresAt = \Carbon\Carbon::parse($user->reset_token_expires_at, 'UTC')->timezone('Asia/Manila');
             if (\Carbon\Carbon::now('Asia/Manila')->gt($expiresAt)) {
-                return response()->json(['message' => 'Invalid or expired link.'], 400);
+                return $this->errorResponse('Invalid or expired link.', 400);
             }
 
             if (hash('sha256', $request->token) !== $user->reset_token) {
-                return response()->json(['message' => 'Invalid or expired link.'], 400);
+                return $this->errorResponse('Invalid or expired link.', 400);
             }
 
-            return response()->json(['message' => 'Link verified.']);
+            return $this->successResponse('Link verified.');
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('AuthController@verifyResetToken: Failed for ' . $request->email, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred.');
         }
     }
 
@@ -309,30 +301,29 @@ class AuthController extends Controller
             $user = User::where('email', $request->email)->first();
 
             if (!$user) {
-                return response()->json(['message' => 'Invalid or expired code.'], 400);
+                return $this->errorResponse('Invalid or expired code.', 400);
             }
 
             if (!$user->reset_code || !$user->reset_code_expires_at) {
-                return response()->json(['message' => 'Invalid or expired code.'], 400);
+                return $this->errorResponse('Invalid or expired code.', 400);
             }
 
             // Convert expiration time to Asia/Manila timezone for comparison
             $expiresAt = \Carbon\Carbon::parse($user->reset_code_expires_at, 'UTC')->timezone('Asia/Manila');
 
             if (\Carbon\Carbon::now('Asia/Manila')->gt($expiresAt)) {
-                return response()->json(['message' => 'Code has expired. Please request a new one.'], 400);
+                return $this->errorResponse('Code has expired. Please request a new one.', 400);
             }
 
             if (hash('sha256', $request->code) !== $user->reset_code) {
-                return response()->json(['message' => 'Invalid or expired code.'], 400);
+                return $this->errorResponse('Invalid or expired code.', 400);
             }
 
-            return response()->json(['message' => 'Code verified successfully.']);
+            return $this->successResponse('Code verified successfully.');
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('AuthController@verifyResetCode: Failed for ' . $request->email, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred.');
         }
     }
 
@@ -347,20 +338,20 @@ class AuthController extends Controller
             $user = User::where('email', $request->email)->where('is_verified', true)->first();
 
             if (!$user) {
-                return response()->json(['message' => 'A reset code has been sent.']);
+                return $this->successResponse('A reset code has been sent.');
             }
 
             if (!$user->reset_token || !$user->reset_token_expires_at) {
-                return response()->json(['message' => 'Invalid or expired link.'], 400);
+                return $this->errorResponse('Invalid or expired link.', 400);
             }
 
             $expiresAt = \Carbon\Carbon::parse($user->reset_token_expires_at, 'UTC')->timezone('Asia/Manila');
             if (\Carbon\Carbon::now('Asia/Manila')->gt($expiresAt)) {
-                return response()->json(['message' => 'Invalid or expired link.'], 400);
+                return $this->errorResponse('Invalid or expired link.', 400);
             }
 
             if (hash('sha256', $request->token) !== $user->reset_token) {
-                return response()->json(['message' => 'Invalid or expired link.'], 400);
+                return $this->errorResponse('Invalid or expired link.', 400);
             }
 
             // Generate 6-digit code
@@ -384,10 +375,9 @@ class AuthController extends Controller
             if (app()->environment('local')) {
                 $response['debug_code'] = $plainCode;
             }
-            return response()->json($response);
+            return $this->successResponse('A reset code has been sent.', $response);
         } catch (\Exception $e) {
-            Log::error('AuthController@sendResetCode: Failed for ' . $request->email, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred.');
         }
     }
 
@@ -403,22 +393,22 @@ class AuthController extends Controller
             $user = User::where('email', $request->email)->first();
 
             if (!$user) {
-                return response()->json(['message' => 'User not found.'], 404);
+                return $this->notFoundResponse('User');
             }
 
             if (!$user->reset_code || !$user->reset_code_expires_at) {
-                return response()->json(['message' => 'No reset request found. Please request a new code'], 400);
+                return $this->errorResponse('No reset request found. Please request a new code.', 400);
             }
 
             // Convert expiration time to Asia/Manila timezone for comparison
             $expiresAt = \Carbon\Carbon::parse($user->reset_code_expires_at, 'UTC')->timezone('Asia/Manila');
-            
+
             if (\Carbon\Carbon::now('Asia/Manila')->gt($expiresAt)) {
-                return response()->json(['message' => 'Reset code has expired. Please request a new one'], 400);
+                return $this->errorResponse('Reset code has expired. Please request a new one.', 400);
             }
 
             if (hash('sha256', $request->code) !== $user->reset_code) {
-                return response()->json(['message' => 'Invalid reset code.'], 400);
+                return $this->errorResponse('Invalid reset code.', 400);
             }
 
             $user->password = Hash::make($request->password);
@@ -428,12 +418,11 @@ class AuthController extends Controller
             $user->reset_token_expires_at = null;
             $user->save();
 
-            return response()->json(['message' => 'Password reset successfully! You can now log in.']);
+            return $this->successResponse('Password reset successfully! You can now log in.');
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('AuthController@resetPassword: Failed for ' . $request->email, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'An unexpected error occurred.'], 500);
+            return $this->serverErrorResponse($e, 'An unexpected error occurred.');
         }
     }
 
@@ -452,12 +441,11 @@ class AuthController extends Controller
             // Send email to admin
             Mail::to($adminEmail)->send(new ContactFormMail($request->name, $request->email, $request->subject, $request->message));
 
-            return response()->json(['message' => 'Message sent successfully! We will get back to you soon.']);
+            return $this->successResponse('Message sent successfully! We will get back to you soon.');
         } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
-            Log::error('AuthController@contact: Failed for ' . $request->email, ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Failed to send message. Please try again.'], 500);
+            return $this->serverErrorResponse($e, 'Failed to send message. Please try again.');
         }
     }
 
@@ -467,6 +455,6 @@ class AuthController extends Controller
         if ($token) {
             User::where('api_token', hash('sha256', $token))->update(['api_token' => null]);
         }
-        return response()->json(['message' => 'Logged out successfully']);
+        return $this->successResponse('Logged out successfully.');
     }
 }
