@@ -1919,10 +1919,38 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
                     </label>
                   </div>
                   {form.isBulkPurchase && form.totalCost && form.initialStock && (
-                    <p className="form-hint" style={{ color: '#4ade80' }}>Unit: ₱{formatPrice(parseFloat(form.totalCost)/(parseInt(form.initialStock)||1))}</p>
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <p className="form-hint" style={{ color: 'var(--gold)' }}>
+                        Unit Cost: ₱{formatPrice(parseFloat(form.totalCost)/(parseInt(form.initialStock)||1))}
+                      </p>
+                      {form.damagedOnArrival && parseInt(form.damagedOnArrival) > 0 && (
+                        <>
+                          <p className="form-hint" style={{ color: 'var(--gold)', marginTop: '0.25rem' }}>
+                            Total Invoice: ₱{formatPrice(parseFloat(form.totalCost))} (includes {form.damagedOnArrival} damaged)
+                          </p>
+                          <p className="form-hint" style={{ color: 'var(--gold)', marginTop: '0.25rem' }}>
+                            Usable Stock Value: ₱{formatPrice(parseFloat(form.totalCost)/(parseInt(form.initialStock)||1) * ((parseInt(form.initialStock)||1) - parseInt(form.damagedOnArrival)))} ({(parseInt(form.initialStock)||1) - parseInt(form.damagedOnArrival)} pcs × ₱{formatPrice(parseFloat(form.totalCost)/(parseInt(form.initialStock)||1))})
+                          </p>
+                        </>
+                      )}
+                    </div>
                   )}
                   {!form.isBulkPurchase && form.unitCost && form.initialStock && (
-                    <p className="form-hint" style={{ color: '#4ade80' }}>Total: ₱{formatPrice(parseFloat(form.unitCost)*(parseInt(form.initialStock)||0))}</p>
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <p className="form-hint" style={{ color: 'var(--gold)' }}>
+                        Total Invoice: ₱{formatPrice(parseFloat(form.unitCost)*(parseInt(form.initialStock)||0))} ({form.initialStock} pcs × ₱{form.unitCost})
+                      </p>
+                      {form.damagedOnArrival && parseInt(form.damagedOnArrival) > 0 && (
+                        <>
+                          <p className="form-hint" style={{ color: '#f87171', marginTop: '0.25rem' }}>
+                            Less Damaged: {form.damagedOnArrival} pcs (₱{formatPrice(parseFloat(form.unitCost)*parseInt(form.damagedOnArrival))})
+                          </p>
+                          <p className="form-hint" style={{ color: '#f87171', marginTop: '0.25rem' }}>
+                            Usable Stock: {parseInt(form.initialStock) - parseInt(form.damagedOnArrival)} pcs = ₱{formatPrice(parseFloat(form.unitCost)*(parseInt(form.initialStock) - parseInt(form.damagedOnArrival)))}
+                          </p>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -2170,7 +2198,9 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, categ
             </div>
           </div>
           {qty && damaged && parseInt(damaged) < parseInt(qty) && (
-            <p style={{ fontSize: '0.875rem', color: '#4ade80', marginBottom: '1rem' }}>✓ Good stock to add: {parseInt(qty)-parseInt(damaged)} pcs</p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '1rem' }}>
+              Good stock to add: {parseInt(qty)-parseInt(damaged)} pcs
+            </p>
           )}
           <div style={{ background: 'rgba(217,119,6,0.08)', border: '2px solid rgba(217,119,6,0.3)', borderRadius: '8px', padding: '1.5rem' }}>
             <h4 style={{ margin: '0 0 1.25rem 0', color: '#d97706', fontSize: '0.875rem', fontWeight: 700, textTransform: 'uppercase' }}>Supplier Invoice Information</h4>
@@ -2193,8 +2223,40 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, categ
                     <span className="checkbox-text" style={{ fontSize: '0.75rem' }}>{isBulk ? 'Per Unit' : 'Total'}</span>
                   </label>
                 </div>
-                {isBulk && totalCost && qty && <p className="form-hint" style={{ color: '#4ade80' }}>Unit: ₱{formatPrice(parseFloat(totalCost)/(parseInt(qty)||1))}</p>}
-                {!isBulk && unitCost && qty && <p className="form-hint" style={{ color: '#4ade80' }}>Total: ₱{formatPrice(parseFloat(unitCost)*(parseInt(qty)||0))}</p>}
+                {isBulk && totalCost && qty && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <p className="form-hint" style={{ color: 'var(--gold)' }}>
+                      Unit Cost: ₱{formatPrice(parseFloat(totalCost)/(parseInt(qty)||1))}
+                    </p>
+                    {damaged && parseInt(damaged) > 0 && (
+                      <>
+                        <p className="form-hint" style={{ color: 'var(--gold)', marginTop: '0.25rem' }}>
+                          Total Invoice: ₱{formatPrice(totalCost)} (includes {damaged} damaged)
+                        </p>
+                        <p className="form-hint" style={{ color: 'var(--gold)', marginTop: '0.25rem' }}>
+                          Usable Stock Value: ₱{formatPrice(parseFloat(totalCost)/(parseInt(qty)||1) * ((parseInt(qty)||1) - parseInt(damaged)))} ({(parseInt(qty)||1) - parseInt(damaged)} pcs × ₱{formatPrice(parseFloat(totalCost)/(parseInt(qty)||1))})
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+                {!isBulk && unitCost && qty && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <p className="form-hint" style={{ color: 'var(--gold)' }}>
+                      Total Invoice: ₱{formatPrice(parseFloat(unitCost)*(parseInt(qty)||0))} ({qty} pcs × ₱{unitCost})
+                    </p>
+                    {damaged && parseInt(damaged) > 0 && (
+                      <>
+                        <p className="form-hint" style={{ color: '#f87171', marginTop: '0.25rem' }}>
+                          Less Damaged: {damaged} pcs (₱{formatPrice(parseFloat(unitCost)*parseInt(damaged))})
+                        </p>
+                        <p className="form-hint" style={{ color: 'var(--gold)', marginTop: '0.25rem' }}>
+                          Usable Stock: {parseInt(qty) - parseInt(damaged)} pcs = ₱{formatPrice(parseFloat(unitCost)*(parseInt(qty) - parseInt(damaged)))}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             {/* Row 2: [Invoice / OR Number] [Delivery Date] */}
