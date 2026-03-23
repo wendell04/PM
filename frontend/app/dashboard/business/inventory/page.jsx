@@ -54,6 +54,21 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { formatNumber, formatPrice } from '../../../../src/utils/format';
 
+// ── Gold Scrollbar Style ──────────────────────────────────────────────────────
+// Injected once via a side-effect — targets all scrollable elements in the page
+if (typeof document !== 'undefined' && !document.getElementById('pmp-gold-scrollbar')) {
+  const s = document.createElement('style');
+  s.id = 'pmp-gold-scrollbar';
+  s.textContent = `
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--gold, #d4a843); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #e8bc50; }
+    ::-webkit-scrollbar-corner { background: transparent; }
+  `;
+  document.head.appendChild(s);
+}
+
 // ── Integer Input (stock qty, min level, damaged qty) ─────────────────────────
 // Blocks: e, E, +, -, . (integers only, no decimals)
 // Blocks scroll wheel
@@ -434,6 +449,12 @@ function BatchDetailsModal({ batch, item, isOpen, onClose }) {
               <p style={{ fontSize: '0.875rem', color: 'var(--white)', lineHeight: 1.6, whiteSpace: 'pre-wrap', margin: 0 }}>{batch.notes}</p>
             </div>
           )}
+          {batch.receiptImage && (
+            <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '8px' }}>
+              <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '0.875rem', textTransform: 'uppercase', color: 'var(--gold)' }}>Receipt / Invoice Image</h3>
+              <img src={batch.receiptImage} alt="Receipt" style={{ maxWidth: '100%', maxHeight: '300px', objectFit: 'contain', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)', display: 'block' }} />
+            </div>
+          )}
         </div>
         <div className="modal-actions">
           <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
@@ -475,9 +496,7 @@ function InventoryExpandRow({ item, colSpan }) {
               <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
                 Stock Value: <strong style={{ color: 'var(--gold)' }}>{formatPrice(totalValue)}</strong>
               </span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-                Avg Cost: <strong style={{ color: 'var(--white)' }}>{formatPrice(item.averageCost || 0)}</strong>
-              </span>
+
             </div>
           )}
 
@@ -489,7 +508,7 @@ function InventoryExpandRow({ item, colSpan }) {
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
-                  <tr style={{ borderBottom: '2px solid var(--border)', background: 'rgba(0,0,0,0.25)', position: 'sticky', top: 0 }}>
+                  <tr>
                     {[
                       { label: 'Batch ID', align: 'left' },
                       { label: 'Date Received', align: 'center' },
@@ -503,7 +522,7 @@ function InventoryExpandRow({ item, colSpan }) {
                       { label: 'Batch Value', align: 'center' },
                       { label: '', align: 'center' },
                     ].map(h => (
-                      <th key={h.label} style={{ padding: '0.6rem 0.75rem', textAlign: h.align, color: 'var(--gray)', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                      <th key={h.label} style={{ padding: '0.6rem 0.75rem', textAlign: h.align, color: 'var(--gray)', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: 'rgba(18,18,18,0.97)', zIndex: 2, borderBottom: '2px solid var(--border)' }}>
                         {h.label}
                       </th>
                     ))}
@@ -570,7 +589,7 @@ function InventoryExpandRow({ item, colSpan }) {
 
                         {/* Remaining */}
                         <td style={{ padding: '0.7rem 0.75rem', textAlign: 'center', fontSize: '0.8rem', fontWeight: 700 }}>
-                          <span style={{ color: isDepleted ? '#f87171' : (batch.remainingQty <= 5 ? '#facc15' : 'var(--gold)') }}>
+                          <span style={{ color: isDepleted ? '#f87171' : 'rgb(250,204,21)' }}>
                             {batch.remainingQty || 0} pcs
                           </span>
                         </td>
@@ -647,7 +666,7 @@ function SupplierCombobox({ value, supplierName, onChange, suppliers, itemCatego
           <button type="button" className={`combobox-item${value==='unspecified'?' active':''}`}
             onClick={() => { onChange('unspecified', 'General Merchandise'); setOpen(false); }}>
             General Merchandise
-            <span style={{ fontSize: '0.7rem', color: 'var(--gray)', marginLeft: '0.5rem' }}>Local Market / Various Market</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--gray)', marginLeft: '0.5rem' }}>Local Market / Various Market Vendors</span>
           </button>
           {filtered.map(s => (
             <button key={s.id} type="button" className={`combobox-item${value===s.id?' active':''}`}
@@ -1267,10 +1286,6 @@ function AddSupplierQuickModal({ isOpen, onClose, onAdd, categories, existingSup
     if (isOpen) setForm({ name: '', contact: '', phone: '', address: '', categories: [] });
   }, [isOpen]);
 
-  const toggle = (cat) => setForm(p => ({
-    ...p, categories: p.categories.includes(cat) ? p.categories.filter(c => c !== cat) : [...p.categories, cat],
-  }));
-
   // Phone: digits and dashes only, max 15 chars
   const handlePhoneChange = (e) => {
     const val = e.target.value.replace(/[^0-9-]/g, '').slice(0, 15);
@@ -1377,6 +1392,472 @@ function AddSupplierQuickModal({ isOpen, onClose, onAdd, categories, existingSup
 }
 
 
+
+// ── Price History Accordion ────────────────────────────────────────────────────
+// Same card design as before but collapsible via chevron.
+// Collapsed by default — click header to expand full details.
+function PriceHistoryAccordion({ productPriceHistory }) {
+  const [phDateFilter, setPhDateFilter] = useState('all');
+  const [phCustomFrom, setPhCustomFrom] = useState('');
+  const [phCustomTo, setPhCustomTo] = useState('');
+  const [showPhDrop, setShowPhDrop] = useState(false);
+  const phDropRef = useRef(null);
+
+  useEffect(() => {
+    const h = (e) => { if (phDropRef.current && !phDropRef.current.contains(e.target)) setShowPhDrop(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  // Filter a history array by selected date range
+  const filterHistory = (arr) => {
+    if (phDateFilter === 'all') return arr;
+    const now = new Date();
+    const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    return arr.filter(h => {
+      const d = new Date(h.date);
+      if (phDateFilter === 'today') return d >= startOfDay(now);
+      if (phDateFilter === 'this-week') {
+        const ws = new Date(now); ws.setDate(now.getDate() - now.getDay()); return d >= startOfDay(ws);
+      }
+      if (phDateFilter === 'this-month') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      if (phDateFilter === 'custom' && phCustomFrom && phCustomTo) {
+        const from = new Date(phCustomFrom); const to = new Date(phCustomTo); to.setHours(23,59,59);
+        return d >= from && d <= to;
+      }
+      return true;
+    });
+  };
+
+  const dateLabels = { 'all': 'All Time', 'today': 'Today', 'this-week': 'This Week', 'this-month': 'This Month', 'custom': 'Custom Range' };
+
+  // Filter overall trend by date
+
+  // Filter each product's history
+  const filteredProductHistory = Object.fromEntries(
+    Object.entries(productPriceHistory).map(([k, arr]) => [k, filterHistory(arr)])
+  );
+
+  const entries = Object.entries(filteredProductHistory);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+
+      {/* Date filter bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div ref={phDropRef} style={{ position: 'relative' }}>
+          <div onClick={() => setShowPhDrop(o => !o)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.75rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--white)', userSelect: 'none', minWidth: '130px' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span style={{ flex: 1 }}>{dateLabels[phDateFilter]}</span>
+            <span style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{showPhDrop ? '▲' : '▼'}</span>
+          </div>
+          {showPhDrop && (
+            <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 100, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', minWidth: '150px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+              {Object.entries(dateLabels).map(([val, label]) => (
+                <button key={val} type="button" onClick={() => { setPhDateFilter(val); setShowPhDrop(false); }}
+                  style={{ display: 'block', width: '100%', padding: '0.6rem 1rem', textAlign: 'left', fontSize: '0.82rem', fontWeight: val === phDateFilter ? 700 : 400, color: val === phDateFilter ? 'var(--gold)' : 'var(--white)', background: val === phDateFilter ? 'rgba(212,168,67,0.1)' : 'transparent', border: 'none', cursor: 'pointer' }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {phDateFilter === 'custom' && (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <input type="date" value={phCustomFrom} onChange={e => setPhCustomFrom(e.target.value)}
+              style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem' }} />
+            <span style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>to</span>
+            <input type="date" value={phCustomTo} onChange={e => setPhCustomTo(e.target.value)}
+              style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem' }} />
+          </div>
+        )}
+      </div>
+
+      {/* Per product cards */}
+      {entries.map(([productKey, history]) => {
+        if (history.length === 0) return (
+          <div key={productKey} style={{ padding: '0.875rem 1rem', background: 'rgba(0,0,0,0.15)', border: '1px solid var(--border)', borderRadius: '8px' }}>
+            <div style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.875rem', marginBottom: '0.25rem' }}>{productKey}</div>
+            <p style={{ fontSize: '0.78rem', color: 'var(--gray)', fontStyle: 'italic', margin: 0 }}>No purchases in this period.</p>
+          </div>
+        );
+
+        const first = history[0].cost;
+        const latest = history[history.length - 1].cost;
+        const diff = latest - first;
+        const pct = first > 0 ? ((diff / first) * 100).toFixed(1) : 0;
+
+        return (
+          <div key={productKey} style={{ padding: '0.875rem 1rem', background: 'rgba(0,0,0,0.15)', border: '1px solid var(--border)', borderRadius: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.875rem', marginBottom: '0.15rem' }}>{productKey}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
+                  {history.length} purchase{history.length !== 1 ? 's' : ''} ·
+                  First: <strong style={{ color: 'var(--white)' }}>₱{formatPrice(first)}</strong> →
+                  Latest: <strong style={{ color: 'var(--white)' }}>₱{formatPrice(latest)}</strong>
+                  {diff !== 0 && (
+                    <span style={{ marginLeft: '0.5rem', color: diff > 0 ? '#f87171' : '#4ade80', fontWeight: 600 }}>
+                      ({diff > 0 ? '+' : ''}{pct}%)
+                    </span>
+                  )}
+                </div>
+              </div>
+
+            </div>
+            {history.length > 1 && (
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+                {history.map((h, i) => (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0.35rem 0.6rem', background: 'rgba(0,0,0,0.2)', borderRadius: '5px', fontSize: '0.7rem' }}>
+                    <span style={{ color: 'var(--gray)' }}>{new Date(h.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
+                    <span style={{ color: 'var(--gold)', fontWeight: 700, marginTop: '0.15rem' }}>₱{formatPrice(h.cost)}</span>
+                    {i > 0 && (() => {
+                      const prev = history[i-1].cost;
+                      const d = h.cost - prev;
+                      return d !== 0 ? <span style={{ color: d > 0 ? '#f87171' : '#4ade80', fontSize: '0.65rem' }}>{d > 0 ? '▲' : '▼'}₱{formatPrice(Math.abs(d))}</span> : null;
+                    })()}
+                  </div>
+                ))}
+              </div>
+            )}
+            {history.length === 1 && (
+              <p style={{ fontSize: '0.78rem', color: 'var(--gray)', fontStyle: 'italic', margin: '0.5rem 0 0' }}>Only 1 purchase in this period.</p>
+            )}
+          </div>
+        );
+      })}
+
+      {entries.every(([, h]) => h.length === 0) && phDateFilter !== 'all' && (
+        <p style={{ fontSize: '0.875rem', color: 'var(--gray)', fontStyle: 'italic', textAlign: 'center', padding: '2rem' }}>No purchases found in this period.</p>
+      )}
+    </div>
+  );
+}
+
+// ── Supplier Details Modal ─────────────────────────────────────────────────────
+// Shows full supplier profile: contact info, summary stats, price history per
+// product, and all purchase transactions (batches) from this supplier.
+// All data derived from inventory.batches — no separate storage needed.
+function SupplierDetailsModal({ isOpen, onClose, supplier, inventory }) {
+  const [activeTab, setActiveTab] = useState('transactions'); // 'transactions' | 'price-history'
+  const [dateFilter, setDateFilter] = useState('this-month'); // 'today' | 'this-week' | 'this-month' | 'custom'
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [showDateDrop, setShowDateDrop] = useState(false);
+  const [itemFilter, setItemFilter] = useState('all');
+  const [showItemDrop, setShowItemDrop] = useState(false);
+  const dateRef = useRef(null);
+  const itemRef = useRef(null);
+
+  useEffect(() => { if (isOpen) { setActiveTab('transactions'); setDateFilter('this-month'); setItemFilter('all'); setCustomFrom(''); setCustomTo(''); } }, [isOpen]);
+  useEffect(() => {
+    const h = (e) => {
+      if (dateRef.current && !dateRef.current.contains(e.target)) setShowDateDrop(false);
+      if (itemRef.current && !itemRef.current.contains(e.target)) setShowItemDrop(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  if (!isOpen || !supplier) return null;
+
+  // ── Derive all batches from this supplier ──────────────────────────────────
+  const allBatches = [];
+  inventory.forEach(item => {
+    (item.batches || []).forEach(batch => {
+      if (batch.supplierId === supplier.id || batch.supplierName === supplier.name) {
+        allBatches.push({ ...batch, itemName: item.name, itemCategory: item.category, itemId: item.id });
+      }
+    });
+  });
+  allBatches.sort((a, b) => new Date(b.dateReceived) - new Date(a.dateReceived));
+
+  // ── Date filter logic ──────────────────────────────────────────────────────
+  const filterByDate = (batches) => {
+    const now = new Date();
+    const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    return batches.filter(b => {
+      const d = new Date(b.dateReceived);
+      if (dateFilter === 'today') return d >= startOfDay(now);
+      if (dateFilter === 'this-week') {
+        const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay());
+        return d >= startOfDay(weekStart);
+      }
+      if (dateFilter === 'this-month') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      if (dateFilter === 'custom' && customFrom && customTo) {
+        const from = new Date(customFrom); const to = new Date(customTo); to.setHours(23,59,59);
+        return d >= from && d <= to;
+      }
+      return true;
+    });
+  };
+
+  // ── Unique items from this supplier ───────────────────────────────────────
+  const uniqueItems = [...new Set(allBatches.map(b => b.itemName))].sort();
+
+  // ── Filtered batches (for transactions table) ─────────────────────────────
+  const filteredBatches = filterByDate(allBatches).filter(b => itemFilter === 'all' || b.itemName === itemFilter);
+
+  // ── Summary stats ──────────────────────────────────────────────────────────
+  const totalSpent = allBatches.reduce((s, b) => s + (b.totalCost || b.unitCost * b.originalQty || 0), 0);
+  const totalBatches = allBatches.length;
+  const lastPurchase = allBatches.length > 0 ? allBatches[0].dateReceived : null;
+  const totalItems = allBatches.reduce((s, b) => s + (b.originalQty || 0), 0);
+
+  // Avg restock interval (days between purchases)
+  let avgInterval = null;
+  if (allBatches.length >= 2) {
+    const sorted = [...allBatches].sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
+    const gaps = [];
+    for (let i = 1; i < sorted.length; i++) {
+      const diff = (new Date(sorted[i].dateReceived) - new Date(sorted[i-1].dateReceived)) / (1000 * 60 * 60 * 24);
+      gaps.push(diff);
+    }
+    avgInterval = Math.round(gaps.reduce((s, g) => s + g, 0) / gaps.length);
+  }
+
+  // ── Price history per product ──────────────────────────────────────────────
+  // Group batches by product → array of { date, unitCost } sorted oldest first
+  const productPriceHistory = {};
+  allBatches.forEach(b => {
+    const key = `${b.itemCategory} — ${b.itemName}`;
+    if (!productPriceHistory[key]) productPriceHistory[key] = [];
+    productPriceHistory[key].push({ date: b.dateReceived, cost: b.unitCost, invoice: b.invoiceNumber });
+  });
+  // Sort each product's history oldest → newest
+  Object.values(productPriceHistory).forEach(arr => arr.sort((a, b) => new Date(a.date) - new Date(b.date)));
+
+  const tabStyle = (tab) => ({
+    padding: '0.5rem 1rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+    borderRadius: '6px', border: 'none',
+    background: activeTab === tab ? 'var(--gold)' : 'transparent',
+    color: activeTab === tab ? '#000' : 'var(--gray)',
+    transition: 'all 0.15s',
+  });
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" onClick={e => e.stopPropagation()}
+        style={{ maxWidth: '860px', width: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+
+        {/* Header */}
+        <div className="modal-header" style={{ flexShrink: 0 }}>
+          <div>
+            <h2 className="modal-title">{supplier.name}</h2>
+            <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.2rem' }}>
+              {supplier.categories?.length > 0 ? supplier.categories.join(', ') : 'General — all categories'}
+            </div>
+          </div>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
+
+          {/* Contact info strip */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '0.75rem', padding: '0.875rem 1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', marginBottom: '1.25rem' }}>
+            {[
+              ['Contact Person', supplier.contact || '—', <svg key="cp" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>],
+              ['Phone', supplier.phone || '—', <svg key="ph" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13.5a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2.69l3-.12a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.16 6.16l1.4-1.4a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7a2 2 0 0 1 1.72 2.02z"/></svg>],
+              ['Address', supplier.address || '—', <svg key="addr" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>],
+            ].map(([label, val, icon]) => (
+              <div key={label}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.68rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.3rem' }}>
+                  <span style={{ color: 'var(--gold)' }}>{icon}</span>{label}
+                </div>
+                <div style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.875rem' }}>{val}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Summary cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+            {[
+              ['Total Spent', `₱${formatPrice(totalSpent)}`, '#facc15'],
+              ['Purchases', `${totalBatches} batch${totalBatches !== 1 ? 'es' : ''}`, 'var(--gold)'],
+              ['Items Received', `${formatNumber(totalItems)} pcs`, 'var(--white)'],
+              ...(avgInterval !== null && avgInterval >= 1 ? [['Avg Restock', `every ${avgInterval}d`, '#4ade80']] : []),
+            ].map(([label, val, color]) => (
+              <div key={label} style={{ padding: '0.875rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>{label}</div>
+                <div style={{ fontSize: '1rem', fontWeight: 700, color }}>{val}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Last purchase info */}
+          {lastPurchase && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', fontSize: '0.8rem', color: 'var(--gray)' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              Last purchase: <strong style={{ color: 'var(--white)' }}>
+                {new Date(lastPurchase).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
+              </strong>
+              {allBatches[0]?.invoiceNumber && (
+                <span style={{ color: 'var(--gray)' }}>· Invoice: <strong style={{ color: 'var(--white)', fontFamily: 'monospace' }}>{allBatches[0].invoiceNumber}</strong></span>
+              )}
+            </div>
+          )}
+
+          {allBatches.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)', fontStyle: 'italic', fontSize: '0.875rem' }}>
+              No purchase history yet for this supplier.
+            </div>
+          ) : (
+            <>
+              {/* Tab switcher */}
+              <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '0.25rem', width: 'fit-content' }}>
+                <button style={tabStyle('transactions')} onClick={() => setActiveTab('transactions')}>
+                  Purchase Transactions
+                </button>
+                <button style={tabStyle('price-history')} onClick={() => setActiveTab('price-history')}>
+                  Price History
+                </button>
+              </div>
+
+              {/* ── Filters bar (transactions tab only) ──────────────────── */}
+              {activeTab === 'transactions' && (
+                <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.875rem', flexWrap: 'wrap', alignItems: 'center' }}>
+
+                  {/* Date filter */}
+                  <div ref={dateRef} style={{ position: 'relative' }}>
+                    <div onClick={() => setShowDateDrop(o => !o)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.75rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--white)', userSelect: 'none', minWidth: '130px' }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                      <span style={{ flex: 1 }}>{{ 'today': 'Today', 'this-week': 'This Week', 'this-month': 'This Month', 'custom': 'Custom Range' }[dateFilter]}</span>
+                      <span style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{showDateDrop ? '▲' : '▼'}</span>
+                    </div>
+                    {showDateDrop && (
+                      <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 100, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', minWidth: '150px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+                        {[['today','Today'],['this-week','This Week'],['this-month','This Month'],['custom','Custom Range']].map(([val, label]) => (
+                          <button key={val} type="button" onClick={() => { setDateFilter(val); setShowDateDrop(false); }}
+                            style={{ display: 'block', width: '100%', padding: '0.6rem 1rem', textAlign: 'left', fontSize: '0.82rem', fontWeight: val===dateFilter?700:400, color: val===dateFilter?'var(--gold)':'var(--white)', background: val===dateFilter?'rgba(212,168,67,0.1)':'transparent', border: 'none', cursor: 'pointer' }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Item filter */}
+                  {uniqueItems.length > 1 && (
+                    <div ref={itemRef} style={{ position: 'relative' }}>
+                      <div onClick={() => setShowItemDrop(o => !o)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.75rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--white)', userSelect: 'none', minWidth: '120px' }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                        <span style={{ flex: 1 }}>{itemFilter === 'all' ? 'All Items' : itemFilter}</span>
+                        <span style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{showItemDrop ? '▲' : '▼'}</span>
+                      </div>
+                      {showItemDrop && (
+                        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 100, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', minWidth: '160px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+                          {['all', ...uniqueItems].map(item => (
+                            <button key={item} type="button" onClick={() => { setItemFilter(item); setShowItemDrop(false); }}
+                              style={{ display: 'block', width: '100%', padding: '0.6rem 1rem', textAlign: 'left', fontSize: '0.82rem', fontWeight: item===itemFilter?700:400, color: item===itemFilter?'var(--gold)':'var(--white)', background: item===itemFilter?'rgba(212,168,67,0.1)':'transparent', border: 'none', cursor: 'pointer' }}>
+                              {item === 'all' ? 'All Items' : item}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Custom date range inputs */}
+                  {dateFilter === 'custom' && (
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+                        style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem' }} />
+                      <span style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>to</span>
+                      <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+                        style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem' }} />
+                    </div>
+                  )}
+
+                  {/* Result count */}
+                  <span style={{ fontSize: '0.75rem', color: 'var(--gray)', marginLeft: 'auto' }}>
+                    {filteredBatches.length === allBatches.length
+                      ? `${allBatches.length} transaction${allBatches.length !== 1 ? 's' : ''}`
+                      : <><strong style={{ color: 'var(--white)' }}>{filteredBatches.length}</strong> of {allBatches.length} transactions</>
+                    }
+                  </span>
+                </div>
+              )}
+
+              {/* ── TRANSACTIONS TAB ─────────────────────────────────────── */}
+              {activeTab === 'transactions' && (
+                <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--border)', background: 'rgba(0,0,0,0.25)' }}>
+                        {['Date', 'Item', 'Invoice / OR', 'Qty Received', 'Unit Cost', 'Total Paid', 'Good / Damaged'].map(h => (
+                          <th key={h} style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredBatches.map((b, i) => (
+                        <tr key={b.batchId || i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}>
+                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                            {new Date(b.dateReceived).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </td>
+                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.82rem' }}>{b.itemName}</div>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--gray)' }}>{b.itemCategory}</div>
+                          </td>
+                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center', fontFamily: 'monospace', color: 'var(--white)', fontSize: '0.78rem' }}>
+                            {b.invoiceNumber || <em style={{ color: 'var(--gray)' }}>N/A</em>}
+                          </td>
+                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center', color: 'var(--white)', fontSize: '0.82rem' }}>
+                            {b.originalQty} pcs
+                          </td>
+                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center', color: 'var(--gold)', fontWeight: 600, fontSize: '0.82rem' }}>
+                            ₱{formatPrice(b.unitCost)}
+                          </td>
+                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center', color: '#facc15', fontWeight: 600, fontSize: '0.82rem' }}>
+                            ₱{formatPrice(b.totalCost || b.unitCost * b.originalQty)}
+                          </td>
+                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center', fontSize: '0.78rem' }}>
+                            <span style={{ color: 'var(--gold)' }}>{b.goodQty ?? b.originalQty} good</span>
+                            {(b.damagedQty || 0) > 0 && (
+                              <span style={{ color: '#f87171', marginLeft: '0.5rem' }}>{b.damagedQty} dmg</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: '2px solid var(--border)', background: 'rgba(0,0,0,0.2)' }}>
+                        <td colSpan={3} style={{ padding: '0.6rem 0.75rem', color: 'var(--gray)', fontSize: '0.78rem', textAlign: 'right', fontWeight: 600 }}>
+                          {filteredBatches.length < allBatches.length ? `FILTERED (${filteredBatches.length} of ${allBatches.length})` : 'TOTALS'}
+                        </td>
+                        <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: 'var(--white)', fontWeight: 700, fontSize: '0.82rem' }}>{filteredBatches.reduce((s,b)=>s+(b.originalQty||0),0)} pcs</td>
+                        <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.78rem' }}>—</td>
+                        <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: '#facc15', fontWeight: 700, fontSize: '0.82rem' }}>₱{formatPrice(filteredBatches.reduce((s,b)=>s+(b.totalCost||b.unitCost*b.originalQty||0),0))}</td>
+                        <td style={{ padding: '0.6rem 0.75rem' }}></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+
+              {/* ── PRICE HISTORY TAB ────────────────────────────────────── */}
+              {activeTab === 'price-history' && (
+                <PriceHistoryAccordion
+                  productPriceHistory={productPriceHistory}
+                />
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="modal-actions" style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', flexShrink: 0 }}>
+          <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Manage Suppliers Modal ─────────────────────────────────────────────────────
 // FIX: Replaced window.__supplierInUse global with proper component state
 function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventory, onAdd, onUpdate, onDelete }) {
@@ -1386,9 +1867,10 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
   const [form, setForm] = useState({ name: '', contact: '', phone: '', address: '', categories: [] });
   const [infoModal, setInfoModal] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [viewingSupplier, setViewingSupplier] = useState(null);
 
   useEffect(() => {
-    if (isOpen) { setShowForm(false); setEditingId(null); setEditingInUse(false); setForm({ name: '', contact: '', phone: '', address: '', categories: [] }); }
+    if (isOpen) { setShowForm(false); setEditingId(null); setEditingInUse(false); setViewingSupplier(null); setForm({ name: '', contact: '', phone: '', address: '', categories: [] }); }
   }, [isOpen]);
 
   const handleEdit = (supplier) => {
@@ -1420,14 +1902,10 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
     setForm({ name: '', contact: '', phone: '', address: '', categories: [] });
   };
 
-  const toggle = (cat) => setForm(p => ({
-    ...p, categories: p.categories.includes(cat) ? p.categories.filter(c => c !== cat) : [...p.categories, cat],
-  }));
-
   if (!isOpen) return null;
   return (
     <div className="modal-overlay">
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '920px', width: '95%' }}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '1100px', width: '95%' }}>
         <div className="modal-header">
           <h2 className="modal-title">Supplier Management</h2>
           <button className="modal-close" onClick={onClose}>
@@ -1439,11 +1917,11 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
             <>
               <button type="button" className="btn-primary" onClick={() => setShowForm(true)} style={{ marginBottom: '1rem' }}>+ Add New Supplier</button>
               {suppliers.length > 0 ? (
-                <div style={{ maxHeight: '320px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                <div style={{ border: '1px solid var(--border)', borderRadius: '6px' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                     <thead>
                       <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                        {['Name','Contact Person','Item Supplied','Phone','Actions'].map(h => (
+                        {['Name','Contact Person','Item Supplied','Phone','Total Spent','Last Purchase','Actions'].map(h => (
                           <th key={h} style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>{h}</th>
                         ))}
                       </tr>
@@ -1457,9 +1935,27 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
                             {s.categories?.length > 0 ? s.categories.join(', ') : <em style={{ color: 'var(--gray)' }}>All / General</em>}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>{s.phone||'—'}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: '#facc15', fontWeight: 600, fontSize: '0.82rem' }}>
+                            {(() => {
+                              const total = inventory.flatMap(i => i.batches||[])
+                                .filter(b => b.supplierId===s.id || b.supplierName===s.name)
+                                .reduce((sum, b) => sum + (b.totalCost || b.unitCost*(b.originalQty||0) || 0), 0);
+                              return total > 0 ? `₱${formatPrice(total)}` : <em style={{ color: 'var(--gray)' }}>—</em>;
+                            })()}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                            {(() => {
+                              const batches = inventory.flatMap(i => i.batches||[])
+                                .filter(b => b.supplierId===s.id || b.supplierName===s.name);
+                              if (batches.length === 0) return <em>—</em>;
+                              const latest = batches.sort((a,b) => new Date(b.dateReceived)-new Date(a.dateReceived))[0];
+                              return new Date(latest.dateReceived).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+                            })()}
+                          </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            <button type="button" onClick={() => handleEdit(s)} style={{ background: 'var(--gold)', border: '1px solid var(--gold)', color: '#000', marginRight: '0.5rem', borderRadius: '6px', padding: '0.35rem 0.85rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Edit</button>
-                            <button type="button" className="btn-sm btn-danger" onClick={() => handleDeleteClick(s)}>Delete</button>
+                            <button type="button" onClick={() => setViewingSupplier(s)} style={{ background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.4)', color: 'var(--gold)', marginRight: '0.4rem', borderRadius: '6px', padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>View</button>
+                            <button type="button" onClick={() => handleEdit(s)} style={{ background: 'var(--gold)', border: '1px solid var(--gold)', color: '#000', marginRight: '0.4rem', borderRadius: '6px', padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>Edit</button>
+                            <button type="button" onClick={() => handleDeleteClick(s)} style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: '6px', padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>Delete</button>
                           </td>
                         </tr>
                       ))}
@@ -1550,6 +2046,11 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
         onConfirm={() => { onDelete(deleteConfirm.id); setDeleteConfirm(null); }}
         title="Delete Supplier" confirmLabel="Delete" confirmClass="btn-danger"
         message={`Permanently delete "${deleteConfirm?.name}"? This cannot be undone.`} />
+      <SupplierDetailsModal
+        isOpen={!!viewingSupplier}
+        onClose={() => setViewingSupplier(null)}
+        supplier={viewingSupplier}
+        inventory={inventory} />
     </div>
   );
 }
@@ -1918,12 +2419,31 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
                       <span className="checkbox-text" style={{ fontSize: '0.75rem' }}>{form.isBulkPurchase ? 'Per Unit' : 'Total'}</span>
                     </label>
                   </div>
-                  {form.isBulkPurchase && form.totalCost && form.initialStock && (
-                    <p className="form-hint" style={{ color: '#4ade80' }}>Unit: ₱{formatPrice(parseFloat(form.totalCost)/(parseInt(form.initialStock)||1))}</p>
-                  )}
-                  {!form.isBulkPurchase && form.unitCost && form.initialStock && (
-                    <p className="form-hint" style={{ color: '#4ade80' }}>Total: ₱{formatPrice(parseFloat(form.unitCost)*(parseInt(form.initialStock)||0))}</p>
-                  )}
+                  {form.isBulkPurchase && form.totalCost && form.initialStock && (() => {
+                    const unitCostCalc = parseFloat(form.totalCost)/(parseInt(form.initialStock)||1);
+                    const damaged = parseInt(form.damagedOnArrival)||0;
+                    const goodQty = (parseInt(form.initialStock)||0) - damaged;
+                    return (
+                      <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                        <p className="form-hint" style={{ color: 'var(--gold)' }}>Unit Cost: ₱{formatPrice(unitCostCalc)} · Total Invoice: ₱{formatPrice(parseFloat(form.totalCost))}</p>
+                        {damaged > 0 && <p className="form-hint" style={{ color: '#f87171' }}>Less damaged: {damaged} pcs (₱{formatPrice(unitCostCalc*damaged)})</p>}
+                        {damaged > 0 && <p className="form-hint" style={{ color: '#facc15' }}>Usable stock value: {goodQty} pcs × ₱{formatPrice(unitCostCalc)} = ₱{formatPrice(unitCostCalc*goodQty)}</p>}
+                      </div>
+                    );
+                  })()}
+                  {!form.isBulkPurchase && form.unitCost && form.initialStock && (() => {
+                    const unit = parseFloat(form.unitCost)||0;
+                    const qty = parseInt(form.initialStock)||0;
+                    const damaged = parseInt(form.damagedOnArrival)||0;
+                    const goodQty = qty - damaged;
+                    return (
+                      <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                        <p className="form-hint" style={{ color: 'var(--gold)' }}>Total Invoice: ₱{formatPrice(unit*qty)} ({qty} pcs × ₱{formatPrice(unit)})</p>
+                        {damaged > 0 && <p className="form-hint" style={{ color: '#f87171' }}>Less damaged: {damaged} pcs (₱{formatPrice(unit*damaged)})</p>}
+                        {damaged > 0 && <p className="form-hint" style={{ color: '#facc15' }}>Usable stock value: {goodQty} pcs × ₱{formatPrice(unit)} = ₱{formatPrice(unit*goodQty)}</p>}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
               {/* Row 2: [Invoice / OR Number] [Delivery Date] */}
@@ -1973,8 +2493,8 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
                     }} />
                 </label>
                 {form.receiptImage && (
-                  <div style={{ marginTop: '0.75rem', position: 'relative', display: 'inline-block' }}>
-                    <img src={form.receiptImage} alt="Receipt preview" style={{ maxHeight: '120px', maxWidth: '100%', borderRadius: '6px', border: '1px solid var(--border)' }} />
+                  <div style={{ marginTop: '0.75rem', position: 'relative', display: 'block' }}>
+                    <img src={form.receiptImage} alt="Receipt preview" style={{ maxHeight: '200px', maxWidth: '100%', width: '100%', objectFit: 'contain', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)' }} />
                     <button type="button" onClick={() => setForm(p => ({ ...p, receiptImage: null }))}
                       style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#ef4444', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', color: '#fff', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
                       ×
@@ -2140,7 +2660,7 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, categ
     if (!invoice.trim()) { setInfoModal({ title: 'Validation Error', message: 'Please enter the invoice/OR number.' }); return; }
     if (!deliveryDate) { setInfoModal({ title: 'Validation Error', message: 'Please enter the delivery date.' }); return; }
     const goodQty = q - d; const cost = parseFloat(unitCost); const batchId = genBatchId();
-    setPending({ quantity: goodQty, damagedOnArrival: d, supplierId: supplierId==='unspecified'?null:supplierId, supplierName, invoiceNumber: invoice, deliveryDate, unitCost: cost, totalCost: goodQty*cost, notes, batchData: { batchId, supplierId: supplierId==='unspecified'?null:supplierId, supplierName, invoiceNumber: invoice, dateReceived: deliveryDate, originalQty: q, goodQty, damagedQty: d, remainingQty: goodQty, unitCost: cost, totalCost: goodQty*cost, notes, status: 'active' } });
+    setPending({ quantity: goodQty, damagedOnArrival: d, supplierId: supplierId==='unspecified'?null:supplierId, supplierName, invoiceNumber: invoice, deliveryDate, unitCost: cost, totalCost: goodQty*cost, notes, receiptImage, batchData: { batchId, supplierId: supplierId==='unspecified'?null:supplierId, supplierName, invoiceNumber: invoice, dateReceived: deliveryDate, originalQty: q, goodQty, damagedQty: d, remainingQty: goodQty, unitCost: cost, totalCost: goodQty*cost, notes, receiptImage, movements: [{ type: 'received', quantity: goodQty, remainingAfter: goodQty, reason: 'Initial stock addition', createdAt: new Date().toISOString() }], status: 'active' } });
     setShowConfirm(true);
   };
 
@@ -2170,7 +2690,7 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, categ
             </div>
           </div>
           {qty && damaged && parseInt(damaged) < parseInt(qty) && (
-            <p style={{ fontSize: '0.875rem', color: '#4ade80', marginBottom: '1rem' }}>✓ Good stock to add: {parseInt(qty)-parseInt(damaged)} pcs</p>
+            <p style={{ fontSize: '0.875rem', color: 'var(--gold)', marginBottom: '1rem' }}>Good stock to add: {parseInt(qty)-parseInt(damaged)} pcs</p>
           )}
           <div style={{ background: 'rgba(217,119,6,0.08)', border: '2px solid rgba(217,119,6,0.3)', borderRadius: '8px', padding: '1.5rem' }}>
             <h4 style={{ margin: '0 0 1.25rem 0', color: '#d97706', fontSize: '0.875rem', fontWeight: 700, textTransform: 'uppercase' }}>Supplier Invoice Information</h4>
@@ -2193,8 +2713,31 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, categ
                     <span className="checkbox-text" style={{ fontSize: '0.75rem' }}>{isBulk ? 'Per Unit' : 'Total'}</span>
                   </label>
                 </div>
-                {isBulk && totalCost && qty && <p className="form-hint" style={{ color: '#4ade80' }}>Unit: ₱{formatPrice(parseFloat(totalCost)/(parseInt(qty)||1))}</p>}
-                {!isBulk && unitCost && qty && <p className="form-hint" style={{ color: '#4ade80' }}>Total: ₱{formatPrice(parseFloat(unitCost)*(parseInt(qty)||0))}</p>}
+                {isBulk && totalCost && qty && (() => {
+                  const unitCostCalc = parseFloat(totalCost)/(parseInt(qty)||1);
+                  const dmg = parseInt(damaged)||0;
+                  const goodQty = (parseInt(qty)||0) - dmg;
+                  return (
+                    <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                      <p className="form-hint" style={{ color: 'var(--gold)' }}>Unit Cost: ₱{formatPrice(unitCostCalc)} · Total Invoice: ₱{formatPrice(parseFloat(totalCost))}</p>
+                      {dmg > 0 && <p className="form-hint" style={{ color: '#f87171' }}>Less damaged: {dmg} pcs (₱{formatPrice(unitCostCalc*dmg)})</p>}
+                      {dmg > 0 && <p className="form-hint" style={{ color: '#facc15' }}>Usable stock value: {goodQty} pcs × ₱{formatPrice(unitCostCalc)} = ₱{formatPrice(unitCostCalc*goodQty)}</p>}
+                    </div>
+                  );
+                })()}
+                {!isBulk && unitCost && qty && (() => {
+                  const unit = parseFloat(unitCost)||0;
+                  const q = parseInt(qty)||0;
+                  const dmg = parseInt(damaged)||0;
+                  const goodQty = q - dmg;
+                  return (
+                    <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                      <p className="form-hint" style={{ color: 'var(--gold)' }}>Total Invoice: ₱{formatPrice(unit*q)} ({q} pcs × ₱{formatPrice(unit)})</p>
+                      {dmg > 0 && <p className="form-hint" style={{ color: '#f87171' }}>Less damaged: {dmg} pcs (₱{formatPrice(unit*dmg)})</p>}
+                      {dmg > 0 && <p className="form-hint" style={{ color: '#facc15' }}>Usable stock value: {goodQty} pcs × ₱{formatPrice(unit)} = ₱{formatPrice(unit*goodQty)}</p>}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
             {/* Row 2: [Invoice / OR Number] [Delivery Date] */}
@@ -2243,8 +2786,8 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, categ
                   }} />
               </label>
               {receiptImage && (
-                <div style={{ marginTop: '0.75rem', position: 'relative', display: 'inline-block' }}>
-                  <img src={receiptImage} alt="Receipt preview" style={{ maxHeight: '120px', maxWidth: '100%', borderRadius: '6px', border: '1px solid var(--border)' }} />
+                <div style={{ marginTop: '0.75rem', position: 'relative', display: 'block' }}>
+                  <img src={receiptImage} alt="Receipt preview" style={{ maxHeight: '200px', maxWidth: '100%', width: '100%', objectFit: 'contain', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)' }} />
                   <button type="button" onClick={() => setReceiptImage(null)}
                     style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#ef4444', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', color: '#fff', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
                     ×
@@ -2400,9 +2943,20 @@ function StockReductionModal({ isOpen, onClose, onConfirm, item, inventory }) {
                 const nextBatches = batches.filter(b => b.batchId !== batchId);
                 const totalAvailable = batches.reduce((s, b) => s + (b.remainingQty || 0), 0);
 
+                // Accurate FIFO: track running remainder across all spillover batches
+                const spilloverBreakdown = [];
+                let rem = spillover;
+                for (const nb of nextBatches) {
+                  if (rem <= 0) break;
+                  const take = Math.min(rem, nb.remainingQty || 0);
+                  if (take > 0) spilloverBreakdown.push({ ...nb, take });
+                  rem -= take;
+                }
+                const unfulfilledQty = rem; // > 0 means not enough stock
+
                 return (
                   <div style={{ marginTop: '0.75rem' }}>
-                    {/* Return value from selected batch */}
+                    {/* From selected batch */}
                     <div style={{ fontSize: '0.875rem', marginBottom: '0.25rem' }}>
                       <span style={{ color: 'var(--gray)' }}>Invoice: <strong style={{ color: 'var(--white)' }}>{selectedBatch.invoiceNumber || 'N/A'}</strong></span>
                       <span style={{ color: 'var(--gray)', marginLeft: '1rem' }}>
@@ -2411,27 +2965,24 @@ function StockReductionModal({ isOpen, onClose, onConfirm, item, inventory }) {
                       </span>
                     </div>
 
-                    {/* FIFO spillover warning */}
+                    {/* FIFO spillover */}
                     {spillover > 0 && (
                       <div style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '6px', padding: '0.6rem 0.75rem', marginTop: '0.5rem' }}>
-                        {nextBatches.length > 0 ? (
+                        {unfulfilledQty > 0 ? (
+                          <div style={{ fontSize: '0.8rem', color: '#f87171', fontWeight: 600 }}>
+                            Not enough stock. Available: {totalAvailable} pcs, requested: {q} pcs
+                          </div>
+                        ) : (
                           <>
                             <div style={{ fontSize: '0.8rem', color: '#f59e0b', fontWeight: 600, marginBottom: '0.25rem' }}>
-                              ⚡ FIFO Spillover: {fromSelected} pcs from this batch + {spillover} pcs from next batch
+                              FIFO Spillover: {fromSelected} pcs from this batch + {spillover} pcs from {spilloverBreakdown.length} other batch{spilloverBreakdown.length !== 1 ? 'es' : ''}
                             </div>
-                            {nextBatches.slice(0, 2).map(nb => {
-                              const fromNext = Math.min(spillover, nb.remainingQty);
-                              return (
-                                <div key={nb.batchId} style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.2rem' }}>
-                                  → {nb.batchId}: {fromNext} pcs @ ₱{formatPrice(nb.unitCost)} = ₱{formatPrice(nb.unitCost * fromNext)}
-                                </div>
-                              );
-                            })}
+                            {spilloverBreakdown.map(nb => (
+                              <div key={nb.batchId} style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.2rem' }}>
+                                {nb.batchId}: {nb.take} pcs @ ₱{formatPrice(nb.unitCost)} = ₱{formatPrice(nb.unitCost * nb.take)}
+                              </div>
+                            ))}
                           </>
-                        ) : (
-                          <div style={{ fontSize: '0.8rem', color: '#f87171', fontWeight: 600 }}>
-                            ⚠ Not enough stock across all batches. Available: {totalAvailable} pcs
-                          </div>
                         )}
                       </div>
                     )}
@@ -2661,30 +3212,53 @@ export default function InventoryPage() {
     // If qty exceeds selected batch's remainingQty, spill over to next batches
     // Example: buy 140pcs, Batch1=100pcs → deduct 100 from Batch1, 40 from Batch2
     // TODO: MongoDB — this logic moves to server-side transaction
-    let remaining = quantity;
+    // ── FIFO deduction ────────────────────────────────────────────────────────
+    // Deduct from selected batch first, then spill to next batches by date (oldest first)
     const currentBatches = [...(adjustmentItem.batches || [])];
+    const selectedBatchObj = currentBatches.find(b => b.batchId === batchId);
+    const selectedDate = selectedBatchObj ? new Date(selectedBatchObj.dateReceived) : new Date(0);
 
-    // Start deduction from selected batch, then continue FIFO order
-    const selectedIdx = currentBatches.findIndex(b => b.batchId === batchId);
-    const orderedBatches = selectedIdx >= 0
-      ? [currentBatches[selectedIdx], ...currentBatches.filter((_, i) => i !== selectedIdx && new Date(currentBatches[i].dateReceived) >= new Date(currentBatches[selectedIdx].dateReceived))]
-      : currentBatches;
+    // Queue: selected batch first, then any batches received AFTER it (sorted oldest first)
+    // This is true FIFO from the selected point forward
+    const deductQueue = [
+      ...currentBatches.filter(b => b.batchId === batchId),
+      ...currentBatches
+        .filter(b => b.batchId !== batchId && new Date(b.dateReceived) >= selectedDate && (b.remainingQty || 0) > 0)
+        .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived)),
+    ];
 
-    const updatedBatches = currentBatches.map(batch => {
-      if (remaining <= 0) return batch;
-      const isTarget = batch.batchId === batchId;
-      // Check if this batch is in our ordered deduction queue
-      const inQueue = orderedBatches.some(b => b.batchId === batch.batchId);
-      if (!inQueue && !isTarget) return batch;
-
-      const available = batch.remainingQty || 0;
+    // Track deductions per batchId
+    const deductions = {};
+    let remaining = quantity;
+    for (const b of deductQueue) {
+      if (remaining <= 0) break;
+      const available = b.remainingQty || 0;
       const deduct = Math.min(available, remaining);
       remaining -= deduct;
-      return { ...batch, remainingQty: available - deduct };
+      deductions[b.batchId] = deduct;
+    }
+
+    const now = new Date().toISOString();
+    const updatedBatches = currentBatches.map(batch => {
+      const deduct = deductions[batch.batchId];
+      if (!deduct) return batch;
+      const newRemaining = (batch.remainingQty || 0) - deduct;
+      const movement = {
+        type: reason === 'sales-outside' ? 'sold' : 'damaged',
+        quantity: -deduct,
+        remainingAfter: newRemaining,
+        reason: reason === 'sales-outside'
+          ? `Manual sale${customerName ? ` — ${customerName}` : ''}${sellingPrice ? ` @ ₱${formatPrice(sellingPrice)}` : ''}`
+          : (remarks || 'Damaged / Write-off'),
+        createdAt: now,
+      };
+      return { ...batch, remainingQty: newRemaining, movements: [...(batch.movements || []), movement] };
     });
 
     setInventory(prev => prev.map(i => i.id === adjustmentItem.id
-      ? { ...i, stockQty: newStock, batches: updatedBatches, updatedAt: new Date().toISOString() }
+      ? { ...i, stockQty: newStock, batches: updatedBatches,
+          damagedQty: reason === 'damaged' ? (i.damagedQty || 0) + quantity : i.damagedQty,
+          updatedAt: new Date().toISOString() }
       : i
     ));
 
@@ -2784,7 +3358,7 @@ export default function InventoryPage() {
         const d = new Date(pendingItemData.deliveryDate);
         const batchId = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${Math.floor(Math.random()*1000).toString().padStart(3,'0')}`;
         const goodQty = initStock - damaged;
-        batches = [{ batchId, supplierId: pendingItemData.lastSupplierId||null, supplierName: pendingItemData.lastSupplierName||'General Merchandise', invoiceNumber: pendingItemData.invoiceNumber, dateReceived: pendingItemData.deliveryDate, originalQty: initStock, goodQty, damagedQty: damaged, remainingQty: goodQty, unitCost: parseFloat(pendingItemData.unitCost)||0, totalCost: initStock*(parseFloat(pendingItemData.unitCost)||0), notes: pendingItemData.notes||'', status: 'active' }];
+        batches = [{ batchId, supplierId: pendingItemData.lastSupplierId||null, supplierName: pendingItemData.lastSupplierName||'General Merchandise', invoiceNumber: pendingItemData.invoiceNumber, dateReceived: pendingItemData.deliveryDate, originalQty: initStock, goodQty, damagedQty: damaged, remainingQty: goodQty, unitCost: parseFloat(pendingItemData.unitCost)||0, totalCost: initStock*(parseFloat(pendingItemData.unitCost)||0), notes: pendingItemData.notes||'', receiptImage: pendingItemData.receiptImage||null, movements: [{ type: 'received', quantity: goodQty, remainingAfter: goodQty, reason: 'Initial stock addition', createdAt: new Date().toISOString() }], status: 'active' }];
 
         // Create initial stock history entry
         // TODO: MongoDB — POST /api/stock-history
@@ -2965,8 +3539,8 @@ Item Masterlist
                       </td>
                       <td className="table-cell"><span className={`stock-status-badge ${status.cls}`}>{status.label}</span></td>
                       <td className="table-cell-actions">
-                        <button className="btn-sm btn-secondary" onClick={() => handleEdit(item)} style={{ background: 'var(--gold)', border: '1px solid var(--gold)', color: '#000', borderRadius: '6px' }}>Edit</button>
-                        <button className="btn-sm btn-danger" onClick={() => handleDelete(item)}>Remove</button>
+                        <button onClick={() => handleEdit(item)} style={{ background: 'var(--gold)', border: '1px solid var(--gold)', color: '#000', borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Edit</button>
+                        <button onClick={() => handleDelete(item)} style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Remove</button>
                       </td>
                     </tr>
                     {isExpanded && <InventoryExpandRow item={item} colSpan={7} />}
@@ -3004,8 +3578,8 @@ Item Masterlist
                       <td className="table-cell"><span style={{ color: 'var(--gray)' }}>{item.stockQty} pcs</span></td>
                       <td className="table-cell"><span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>{item.deletedAt ? new Date(item.deletedAt).toLocaleDateString() : '—'}</span></td>
                       <td className="table-cell-actions">
-                        <button className="btn-sm btn-secondary" onClick={() => setRestoreItem(item)}>Restore</button>
-                        {!hasProducts && !hasSales && <button className="btn-sm btn-danger" onClick={() => handleDelete(item)}>Delete</button>}
+                        <button onClick={() => setRestoreItem(item)} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', color: 'var(--white)', borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer' }}>Restore</button>
+                        {!hasProducts && !hasSales && <button onClick={() => handleDelete(item)} style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Delete</button>}
                       </td>
                     </tr>
                   );
@@ -3014,7 +3588,7 @@ Item Masterlist
             </table>
           </div>
           <p style={{ marginTop: '1rem', color: 'var(--gray)', fontSize: '0.875rem', fontStyle: 'italic' }}>
-            ⚠ Items with sales history or linked products cannot be permanently deleted to preserve data integrity.
+            Items with sales history or linked products cannot be permanently deleted to preserve data integrity.
           </p>
         </div>
       )}
@@ -3067,7 +3641,8 @@ Item Masterlist
         onDelete={(id) => { const updated = suppliers.filter(s => s.id!==id); setSuppliers(updated); saveSuppliers(updated); }} />
 
       <BatchDetailsModal batch={selectedBatch} item={selectedBatchItem}
-        isOpen={showBatchDetailsModal} onClose={() => { setShowBatchDetailsModal(false); setSelectedBatch(null); setSelectedBatchItem(null); }} />
+        isOpen={showBatchDetailsModal}
+        onClose={() => { setShowBatchDetailsModal(false); setSelectedBatch(null); setSelectedBatchItem(null); }} />
 
 
 
