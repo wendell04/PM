@@ -12,9 +12,11 @@ return [
     | the message. All additional mailers can be configured within the
     | "mailers" array. Examples of each type of mailer are provided.
     |
+    | ⚠️ PRODUCTION NOTE: Configure SMTP settings in .env.
+    | Set MAIL_MAILER=smtp in .env with SMTP credentials.
     */
 
-    'default' => env('MAIL_MAILER', 'log'),
+    'default' => env('MAIL_MAILER', 'smtp'),
 
     /*
     |--------------------------------------------------------------------------

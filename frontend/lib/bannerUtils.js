@@ -1,28 +1,49 @@
 /**
  * BANNER UTILITY FUNCTIONS
+ *
+ * ⚠️ BACKEND INTEGRATION REQUIRED — HIGH PRIORITY
  * 
- * Helper functions for managing storefront banners.
+ * Current implementation uses localStorage (browser-only, data not persisted to server).
+ * This means banners are NOT shared across devices/sessions and admin changes
+ * don't appear in the storefront.
  * 
- * 🔧 LOCAL STORAGE IMPLEMENTATION (Development/Prototype)
- * - Uses localStorage for data persistence
- * - No backend required for testing
- * 
- * 📡 FUTURE BACKEND INTEGRATION:
- * Replace localStorage calls with API endpoints:
- * - GET    /api/storefront/banners              - Fetch all banners
- * - GET    /api/storefront/banners/active       - Fetch active banners only
- * - POST   /api/storefront/banners/{id}/publish - Publish banner
+ * 🔧 TODO: Backend Team — Create these endpoints:
+ * - GET    /api/admin/banners              - Fetch all banners (admin auth required)
+ * - GET    /api/storefront/banners         - Fetch active banners only (public)
+ * - POST   /api/admin/banners              - Create new banner
+ * - PUT    /api/admin/banners/:id          - Update banner
+ * - DELETE /api/admin/banners/:id          - Delete banner
+ * - PUT    /api/admin/banners/:id/publish  - Publish/unpublish banner
+ *
+ * MongoDB Schema suggestion:
+ * {
+ *   _id: ObjectId,
+ *   headline: String,
+ *   subtext: String,
+ *   ctaLabel: String,
+ *   ctaLink: String,
+ *   image: String (Cloudinary URL),
+ *   isVisible: Boolean,
+ *   status: String ('draft' | 'live' | 'scheduled'),
+ *   scheduleStart: Date,
+ *   scheduleEnd: Date,
+ *   order: Number,
+ *   createdAt: Date,
+ *   updatedAt: Date
+ * }
  */
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const STORAGE_KEY = 'pmp_banners';
 
 /**
  * Get all banners from localStorage
+ * ⚠️ TODO: Replace with API call when backend endpoint exists
  * @returns {Array} Array of banner objects
  */
 export const getBanners = () => {
   if (typeof window === 'undefined') return [];
-  
+
   try {
     const data = localStorage.getItem(STORAGE_KEY);
     return data ? JSON.parse(data) : [];
@@ -34,11 +55,12 @@ export const getBanners = () => {
 
 /**
  * Save all banners to localStorage
+ * ⚠️ TODO: Replace with API call (PUT /api/admin/banners) when backend endpoint exists
  * @param {Array} banners - Array of banner objects
  */
 export const saveBanners = (banners) => {
   if (typeof window === 'undefined') return;
-  
+
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(banners));
   } catch (e) {
@@ -128,10 +150,24 @@ export const getActiveBannerSlides = () => {
 
 /**
  * Create a new banner
+ * ⚠️ TODO: Replace with API call (POST /api/admin/banners) when backend endpoint exists
  * @param {Object} bannerData - Banner data
  * @returns {Object} Created banner object
  */
 export const createBanner = (bannerData) => {
+  // TODO: API implementation:
+  // const token = localStorage.getItem('auth_token');
+  // const response = await fetch(`${API_URL}/api/admin/banners`, {
+  //   method: 'POST',
+  //   headers: {
+  //     'Content-Type': 'application/json',
+  //     'Authorization': `Bearer ${token}`
+  //   },
+  //   body: JSON.stringify(bannerData)
+  // });
+  // const data = await response.json();
+  // return data.banner;
+  
   const banners = getBanners();
   const newBanner = {
     id: `banner_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -139,7 +175,7 @@ export const createBanner = (bannerData) => {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-  
+
   banners.push(newBanner);
   saveBanners(banners);
   return newBanner;
@@ -147,43 +183,67 @@ export const createBanner = (bannerData) => {
 
 /**
  * Update an existing banner
+ * ⚠️ TODO: Replace with API call (PUT /api/admin/banners/:id) when backend endpoint exists
  * @param {string} id - Banner ID
  * @param {Object} updates - Fields to update
  * @returns {Object|null} Updated banner or null
  */
 export const updateBanner = (id, updates) => {
+  // TODO: API implementation:
+  // const token = localStorage.getItem('auth_token');
+  // const response = await fetch(`${API_URL}/api/admin/banners/${id}`, {
+  //   method: 'PUT',
+  //   headers: {
+  //     'Content-Type': 'application/json',
+  //     'Authorization': `Bearer ${token}`
+  //   },
+  //   body: JSON.stringify(updates)
+  // });
+  // const data = await response.json();
+  // return data.banner;
+  
   const banners = getBanners();
   const index = banners.findIndex(b => b.id === id);
-  
+
   if (index === -1) return null;
-  
+
   banners[index] = {
     ...banners[index],
     ...updates,
     updatedAt: new Date().toISOString(),
   };
-  
+
   saveBanners(banners);
   return banners[index];
 };
 
 /**
  * Delete a banner
+ * ⚠️ TODO: Replace with API call (DELETE /api/admin/banners/:id) when backend endpoint exists
  * @param {string} id - Banner ID
  * @returns {boolean} True if deleted
  */
 export const deleteBanner = (id) => {
+  // TODO: API implementation:
+  // const token = localStorage.getItem('auth_token');
+  // await fetch(`${API_URL}/api/admin/banners/${id}`, {
+  //   method: 'DELETE',
+  //   headers: { 'Authorization': `Bearer ${token}` }
+  // });
+  // return true;
+  
   const banners = getBanners();
   const filtered = banners.filter(b => b.id !== id);
-  
+
   if (filtered.length === banners.length) return false;
-  
+
   saveBanners(filtered);
   return true;
 };
 
 /**
  * Publish a banner (make it live)
+ * ⚠️ TODO: Replace with API call (PUT /api/admin/banners/:id/publish) when backend endpoint exists
  * @param {string} id - Banner ID
  * @returns {Object|null} Published banner or null
  */
@@ -196,6 +256,7 @@ export const publishBanner = (id) => {
 
 /**
  * Unpublish a banner (make it draft)
+ * ⚠️ TODO: Replace with API call (PUT /api/admin/banners/:id/unpublish) when backend endpoint exists
  * @param {string} id - Banner ID
  * @returns {Object|null} Unpublished banner or null
  */
@@ -206,84 +267,18 @@ export const unpublishBanner = (id) => {
   });
 };
 
-// 🔧 FUTURE: API-based implementation
-// Uncomment and modify these when backend is ready:
-
-/*
-export const getBanners = async () => {
-  try {
-    const token = localStorage.getItem('auth_token');
-    const response = await fetch(`${API_URL}/api/storefront/banners`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await response.json();
-    return data.banners || [];
-  } catch (error) {
-    console.error('Error fetching banners:', error);
-    return [];
-  }
-};
-
-export const getActiveBanners = async () => {
-  try {
-    const response = await fetch(`${API_URL}/api/storefront/banners/active`);
-    const data = await response.json();
-    return data.banners || [];
-  } catch (error) {
-    console.error('Error fetching active banners:', error);
-    return [];
-  }
-};
-
-export const createBanner = async (bannerData) => {
-  try {
-    const token = localStorage.getItem('auth_token');
-    const response = await fetch(`${API_URL}/api/storefront/banners`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(bannerData)
-    });
-    const data = await response.json();
-    return data.banner;
-  } catch (error) {
-    console.error('Error creating banner:', error);
-    return null;
-  }
-};
-
-export const updateBanner = async (id, updates) => {
-  try {
-    const token = localStorage.getItem('auth_token');
-    const response = await fetch(`${API_URL}/api/storefront/banners/${id}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(updates)
-    });
-    const data = await response.json();
-    return data.banner;
-  } catch (error) {
-    console.error('Error updating banner:', error);
-    return null;
-  }
-};
-
-export const deleteBanner = async (id) => {
-  try {
-    const token = localStorage.getItem('auth_token');
-    await fetch(`${API_URL}/api/storefront/banners/${id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    return true;
-  } catch (error) {
-    console.error('Error deleting banner:', error);
-    return false;
-  }
-};
-*/
+// ═══════════════════════════════════════════════════════════════════════════
+// BACKEND TASK SUMMARY — Banner API Endpoints Required
+// ═══════════════════════════════════════════════════════════════════════════
+// The following endpoints need to be created in the Laravel backend:
+//
+// 1. GET    /api/admin/banners              - List all banners (admin auth)
+// 2. GET    /api/storefront/banners         - List active banners (public)
+// 3. POST   /api/admin/banners              - Create banner
+// 4. PUT    /api/admin/banners/:id          - Update banner
+// 5. DELETE /api/admin/banners/:id          - Delete banner
+// 6. PUT    /api/admin/banners/:id/publish  - Publish banner
+// 7. PUT    /api/admin/banners/:id/unpublish - Unpublish banner
+//
+// Once endpoints exist, replace localStorage calls with fetch() calls above.
+// ═══════════════════════════════════════════════════════════════════════════

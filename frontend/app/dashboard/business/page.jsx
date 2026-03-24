@@ -7,8 +7,15 @@ import ErrorBoundary from '../../../../components/ErrorBoundary';
 /**
  * ADD PRODUCT PAGE
  *
- * Current Status: LocalStorage (Browser-only, for testing)
- * ⚠️ TODO: MongoDB Integration - Replace LocalStorage with Database
+ * ✅ CONNECTED TO BACKEND API
+ * 
+ * This page uses the backend API via @/lib/productApi:
+ * - createProduct() - POST /api/admin/products
+ * - fetchProducts() - GET /api/admin/products
+ * - updateProduct() - PUT /api/admin/products/:id
+ * - deleteProduct() - DELETE /api/admin/products/:id
+ * - togglePublishProduct() - POST /api/admin/products/:id/toggle-publish
+ * - uploadImage() - POST /api/admin/upload-image
  *
  * Features:
  * - Add/Edit products with category, sub-category
@@ -16,28 +23,12 @@ import ErrorBoundary from '../../../../components/ErrorBoundary';
  * - Fixed pricing or Tiered pricing
  * - Variant management (up to 2 variant groups)
  * - Smart pricing (merge variants with same price)
- * - Image upload (thumbnail + gallery)
+ * - Image upload to Cloudinary (via backend)
  * - Product preview modal
- *
- * MongoDB Integration Steps:
- * 1. Create MongoDB collection: 'products'
- * 2. Replace LocalStorage calls with API endpoints:
- *    - GET /api/products - Fetch all products
- *    - POST /api/products - Add new product
- *    - PUT /api/products/:id - Update product
- *    - DELETE /api/products/:id - Delete product
- *    - GET /api/categories - Fetch categories
- *    - POST /api/categories - Add new category
- *    - GET /api/subcategories - Fetch subcategories
- *    - POST /api/subcategories - Add new subcategory
- * 3. Add API routes in app/api/products/route.js
- * 4. Add Mongoose schema in models/Product.js
- * 5. Remove LocalStorage references
  *
  * Data Relationships:
  * - Products reference Inventory items via inventoryId
- * - Categories can be separate collection or derived from products
- * - Subcategories stored in product documents
+ * - Categories/Subcategories managed via masterlist (localStorage for now)
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';

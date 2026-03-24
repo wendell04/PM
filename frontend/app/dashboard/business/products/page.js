@@ -16,13 +16,15 @@ import ErrorBoundary from '../../../../components/ErrorBoundary';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  fetchProducts, 
-  updateProduct, 
-  deleteProduct, 
+import {
+  fetchProducts,
+  updateProduct,
+  deleteProduct,
   togglePublishProduct,
-  uploadImage 
+  uploadImage
 } from '@/lib/productApi';
+import { fetchAllOrders } from '@/lib/ordersApi';
+import { fetchInventory } from '@/lib/inventoryApi';
 
 // ── Reusable Number Input ──────────────────────────────────────────────────────
 function NumberInput({ value, onChange, min = 0, max, placeholder, className, disabled, step }) {
@@ -99,10 +101,9 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label,
   const ref = useRef(null);
 
   const linkedProductIds = useMemo(() => {
-    const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
-    // Exclude current product's inventoryId from the "already linked" check
-    return new Set(allProducts.filter(p => p.id !== currentProductId).map(p => p.inventoryId).filter(id => id));
-  }, [currentProductId]);
+    // Use products from state instead of localStorage
+    return new Set(products.filter(p => p.id !== currentProductId).map(p => p.inventoryId).filter(id => id));
+  }, [currentProductId, products]);
 
   // Only show active inventory items (exclude archived)
   const availableInventoryList = inventoryList.filter(item =>
@@ -1649,31 +1650,36 @@ export default function ProductListPage() {
       try {
         // Fetch products from MongoDB via API
         const productsData = await fetchProducts();
-        
+
         // Transform MongoDB documents to match frontend format
         // MongoDB uses _id, frontend uses id
         const transformedProducts = productsData.map(p => ({
           ...p,
           id: p._id, // Map MongoDB _id to frontend id
         }));
-        
+
         setProducts(transformedProducts);
-        
-        // Fetch inventory from localStorage (for now - will be updated separately)
-        const storedInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
-        setInventoryList(storedInventory);
+
+        // Fetch inventory from API for linkage display
+        try {
+          const inventoryData = await fetchInventory();
+          setInventoryList(inventoryData);
+        } catch (invError) {
+          console.error('Failed to load inventory (products will not show linkage):', invError);
+          setInventoryList([]);
+        }
+
         setIsLoaded(true);
       } catch (error) {
         console.error('Failed to load products:', error);
-        // Fallback to localStorage if API fails
-        const storedProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
-        const storedInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
-        setProducts(storedProducts);
-        setInventoryList(storedInventory);
+        // Show error state instead of silent fallback
+        setProducts([]);
+        setInventoryList([]);
+        setError('Failed to load products. Please refresh the page.');
         setIsLoaded(true);
       }
     };
-    
+
     loadData();
   }, []);
 
@@ -1753,7 +1759,6 @@ export default function ProductListPage() {
   // ── Save product to MongoDB ──────────────────────────────────────────────────
   const saveProducts = (updated) => {
     setProducts(updated);
-    localStorage.setItem('pmp_products', JSON.stringify(updated));
   };
 
   const togglePublish = async (productId) => {
@@ -1882,12 +1887,18 @@ export default function ProductListPage() {
   };
 
   // ── Delete ─
-  const confirmDelete = (product) => {
-    // TODO: Check MongoDB orders collection instead of localStorage
-    const allOrders = JSON.parse(localStorage.getItem('pmp_orders') || '[]');
-    const hasSales = allOrders.some(o => o.productId === product.id || o.items?.some(i => i.productId === product.id));
-    if (hasSales) { setArchiveModal(product); return; }
-    setDeleteModal(product);
+  const confirmDelete = async (product) => {
+    try {
+      // Fetch all orders to check for sales history
+      const allOrders = await fetchAllOrders();
+      const hasSales = allOrders.some(o => o.productId === product.id || o.items?.some(i => i.productId === product.id));
+      if (hasSales) { setArchiveModal(product); return; }
+      setDeleteModal(product);
+    } catch (error) {
+      console.error('Failed to fetch orders for delete check:', error);
+      // Fail safe: if we can't verify, show archive modal to prevent accidental delete
+      setArchiveModal(product);
+    }
   };
 
   const executeDelete = async () => {

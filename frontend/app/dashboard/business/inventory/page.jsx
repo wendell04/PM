@@ -62,9 +62,12 @@ import {
   adjustInventoryStock,
   deleteInventory,
   fetchSuppliers,
-  createSupplier
+  createSupplier,
+  updateSupplier,
+  deleteSupplier
 } from '@/lib/inventoryApi';
 import { fetchProducts, updateProduct } from '@/lib/productApi';
+import { fetchAllOrders } from '@/lib/ordersApi';
 
 // ── Integer Input (stock qty, min level, damaged qty) ─────────────────────────
 // Blocks: e, E, +, -, . (integers only, no decimals)
@@ -103,152 +106,10 @@ function DecimalInput({ value, onChange, placeholder, className, disabled, style
   );
 }
 
-// ── LocalStorage Keys ──────────────────────────────────────────────────────────
-// TODO: MongoDB — Remove all these keys when connecting to database
-const INVENTORY_STORAGE_KEY = 'pmp_inventory';
-const CATEGORIES_STORAGE_KEY = 'pmp_inventory_categories'; // DEPRECATED — categories now derived from masterlist
-const SUPPLIERS_STORAGE_KEY = 'pmp_suppliers';
-const STOCK_HISTORY_STORAGE_KEY = 'pmp_stock_history';
-// ── Item Masterlist Storage ────────────────────────────────────────────────────
-// TODO: MongoDB — Replace with 'masterlist' collection
-// Single source of truth for: Categories → Products → Variants
-// Replaces pmp_inventory_categories entirely
-const MASTERLIST_STORAGE_KEY = 'pmp_masterlist';
-
-// ── Inventory LocalStorage Helpers ────────────────────────────────────────────
-// TODO: MongoDB — Replace getBanners() with: GET /api/inventory
-// TODO: MongoDB — Replace saveBanners() with: PUT /api/inventory/:id
-export function getInventoryList() {
-  if (typeof window === 'undefined') return [];
-  try { const s = localStorage.getItem(INVENTORY_STORAGE_KEY); return s ? JSON.parse(s) : []; }
-  catch { return []; }
-}
-export function saveInventoryList(inventory) {
-  if (typeof window === 'undefined') return;
-  try { localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(inventory)); }
-  catch (e) { console.error('Error saving inventory:', e); }
-}
-
-// ── Category Helpers ───────────────────────────────────────────────────────────
-// TODO: MongoDB — Replace with GET /api/categories and POST /api/categories
-// No hardcoded default categories — admin adds their own
-// TODO: MongoDB — Replace with GET /api/categories
-export function getCategories() {
-  if (typeof window === 'undefined') return [];
-  try { const s = localStorage.getItem(CATEGORIES_STORAGE_KEY); return s ? JSON.parse(s) : []; }
-  catch { return []; }
-}
-export function saveCategories(cats) {
-  if (typeof window === 'undefined') return;
-  try { localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(cats)); }
-  catch (e) { console.error('Error saving categories:', e); }
-}
-
 // ── Item Masterlist Helpers ────────────────────────────────────────────────────
-// TODO: MongoDB — Replace with:
-//   GET    /api/masterlist              → all categories + products + variants
-//   POST   /api/masterlist/categories   → add category
-//   PUT    /api/masterlist/categories/:id → edit category name
-//   DELETE /api/masterlist/categories/:id → delete (block if has products)
-//   POST   /api/masterlist/products     → add product under category
-//   PUT    /api/masterlist/products/:id → edit product
-//   DELETE /api/masterlist/products/:id → delete (block if linked to inventory)
-//
-// MongoDB Schema — masterlist collection:
-// {
-//   _id:      ObjectId,
-//   name:     String (category name, unique, required),
-//   products: [{
-//     _id:      ObjectId,
-//     name:     String (product name, required),
-//     variants: [String] (optional, e.g. ['Small', 'Medium', 'Large'])
-//   }],
-//   createdAt: Date,
-//   updatedAt: Date,
-// }
-export function getMasterlist() {
-  if (typeof window === 'undefined') return [];
-  try { const s = localStorage.getItem(MASTERLIST_STORAGE_KEY); return s ? JSON.parse(s) : []; }
-  catch { return []; }
-}
-export function saveMasterlist(masterlist) {
-  if (typeof window === 'undefined') return;
-  try { localStorage.setItem(MASTERLIST_STORAGE_KEY, JSON.stringify(masterlist)); }
-  catch (e) { console.error('Error saving masterlist:', e); }
-}
-// Derive flat category list from masterlist (replaces getCategories() for inventory use)
-// TODO: MongoDB — Replace with: GET /api/masterlist/categories (returns name[] only)
-export function getCategoriesFromMasterlist() {
-  return getMasterlist().map(c => c.name);
-}
-
-// ── Supplier Helpers ───────────────────────────────────────────────────────────
-// TODO: MongoDB — Replace with GET /api/suppliers and POST /api/suppliers
-//
-// Supplier MongoDB Schema:
-// {
-//   _id: ObjectId,
-//   name: String (required, unique),
-//   contact: String, phone: String, address: String,
-//   categories: Array<String>,  ← which categories this supplier supplies
-//                                 empty = General (appears for all categories)
-//   isActive: Boolean,
-//   createdAt: Date,
-// }
-export function getSuppliers() {
-  if (typeof window === 'undefined') return [];
-  try { const s = localStorage.getItem(SUPPLIERS_STORAGE_KEY); return s ? JSON.parse(s) : []; }
-  catch { return []; }
-}
-export function saveSuppliers(suppliers) {
-  if (typeof window === 'undefined') return;
-  try { localStorage.setItem(SUPPLIERS_STORAGE_KEY, JSON.stringify(suppliers)); }
-  catch (e) { console.error('Error saving suppliers:', e); }
-}
-export function addSupplier(supplier) {
-  const suppliers = getSuppliers();
-  const newSupplier = { ...supplier, id: `supplier-${Date.now()}`, phone: supplier.phone || '', categories: supplier.categories || [], createdAt: new Date().toISOString() };
-  suppliers.push(newSupplier);
-  saveSuppliers(suppliers);
-  return newSupplier;
-}
-
-// ── Stock History Helpers ──────────────────────────────────────────────────────
-// TODO: MongoDB — Replace with GET /api/stock-history and POST /api/stock-history
-export function getStockHistory(inventoryId = null) {
-  if (typeof window === 'undefined') return [];
-  try {
-    const s = localStorage.getItem(STOCK_HISTORY_STORAGE_KEY);
-    const h = s ? JSON.parse(s) : [];
-    return inventoryId ? h.filter(e => e.inventoryId === inventoryId) : h;
-  } catch { return []; }
-}
-export function saveStockHistory(history) {
-  if (typeof window === 'undefined') return;
-  try { localStorage.setItem(STOCK_HISTORY_STORAGE_KEY, JSON.stringify(history)); }
-  catch (e) { console.error('Error saving stock history:', e); }
-}
-export function addStockHistory(entry) {
-  const history = getStockHistory();
-  const newEntry = { ...entry, id: `history-${Date.now()}`, remainingQty: entry.quantity, createdAt: new Date().toISOString() };
-  history.push(newEntry);
-  saveStockHistory(history);
-  return newEntry;
-}
-
-// FIFO: Deduct from specific batch
-// TODO: MongoDB — Replace with PUT /api/inventory/:id/deduct-batch
-export function deductStockFromBatch(inventoryId, batchId, qty) {
-  const history = getStockHistory(inventoryId);
-  const idx = history.findIndex(h => h.batchId === batchId);
-  if (idx === -1) return { success: false, error: 'Batch not found' };
-  const batch = history[idx];
-  const available = batch.remainingQty || batch.quantity;
-  if (available < qty) return { success: false, error: `Insufficient. Available: ${available}, Requested: ${qty}` };
-  const updated = [...history];
-  updated[idx] = { ...batch, remainingQty: available - qty };
-  saveStockHistory(updated);
-  return { success: true, deducted: qty };
+// Derive flat category list from masterlist
+export function getCategoriesFromMasterlist(masterlist) {
+  return masterlist.map(c => c.name);
 }
 
 // ── SKU Generator ──────────────────────────────────────────────────────────────
@@ -1644,14 +1505,14 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  // TODO: MongoDB — Replace with API: GET /api/products?inventoryId=... and GET /api/sales?inventoryId=...
+  // Check if item is linked to products or orders
   useEffect(() => {
     if (item) {
-      const products = JSON.parse(localStorage.getItem('pmp_products')||'[]');
-      const orders = JSON.parse(localStorage.getItem('pmp_orders')||'[]');
-      setIsLinked(products.some(p => p.inventoryId===item.id) || orders.some(o => o.items?.some(oi => oi.inventoryId===item.id)));
+      const isLinkedToProduct = products.some(p => p.inventoryId === item.id);
+      // TODO: Add orders check when orders API is integrated
+      setIsLinked(isLinkedToProduct);
     } else setIsLinked(false);
-  }, [item]);
+  }, [item, products]);
 
   const handleUnitCostChange = (val) => setForm(p => ({ ...p, unitCost: val, totalCost: !p.isBulkPurchase && p.initialStock ? String((parseFloat(val)||0)*(parseInt(p.initialStock)||0)) : p.totalCost }));
   const handleTotalCostChange = (val) => setForm(p => ({ ...p, totalCost: val, unitCost: p.isBulkPurchase && p.initialStock ? String((parseFloat(val)||0)/(parseInt(p.initialStock)||1)) : p.unitCost }));
@@ -2593,6 +2454,7 @@ export default function InventoryPage() {
   const [inventory, setInventory] = useState([]);
   const [categories, setCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [products, setProducts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -2620,18 +2482,7 @@ export default function InventoryPage() {
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [selectedBatchItem, setSelectedBatchItem] = useState(null);
 
-  // Handle supplier delete confirmation
-  const handleConfirmDeleteSupplier = () => {
-    if (!deleteSupplierId) return;
-
-    const updated = suppliers.filter(s => s.id !== deleteSupplierId);
-    setSuppliers(updated);
-    saveSuppliers(updated);
-    setDeleteSupplierId(null);
-    setShowSupplierDeleteConfirm(false);
-  };
-
-  // Load inventory and suppliers from API on mount
+  // Load inventory, suppliers, and products from API on mount
   useEffect(() => {
     async function loadData() {
       try {
@@ -2648,12 +2499,22 @@ export default function InventoryPage() {
         // Load suppliers
         const suppliersData = await fetchSuppliers();
         setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
+
+        // Load products for linkage checks
+        try {
+          const productsData = await fetchProducts();
+          setProducts(Array.isArray(productsData) ? productsData : []);
+        } catch (prodError) {
+          console.error('Failed to load products (linkage checks will be unavailable):', prodError);
+          setProducts([]);
+        }
       } catch (error) {
         console.error('Failed to load inventory data:', error);
         // Fallback to empty state on error
         setInventory([]);
         setCategories(DEFAULT_CATEGORIES);
         setSuppliers([]);
+        setProducts([]);
       } finally {
         setIsLoaded(true);
       }
@@ -2734,36 +2595,17 @@ export default function InventoryPage() {
     if (categories.some(c => c.toLowerCase() === cat.toLowerCase())) return;
     const updated = [...categories, cat];
     setCategories(updated);
-    saveCategories(updated);
+    // TODO: Call API to save category when backend endpoint exists
   };
 
   // TODO: MongoDB — Each action inside maps to its own API endpoint (see ItemMasterlistModal)
   const handleSaveMasterlist = (updatedList) => {
     setMasterlist(updatedList);
-    saveMasterlist(updatedList);
+    // TODO: Call API to save masterlist when backend endpoint exists
     // Sync categories from masterlist — masterlist is single source of truth
     const derivedCats = updatedList.map(c => c.name);
     setCategories(derivedCats);
-    saveCategories(derivedCats); // keep pmp_inventory_categories in sync for backward compat
   };
-
-  const handleAddSupplier = (data) => {
-    const s = addSupplier(data);
-    setSuppliers(prev => [...prev, s]);
-    return s;
-  };
-
-  const toggleExpand = (id) => setExpandedRows(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-
-  // Active items only, filtered by search + status
-  const filteredInventory = inventory.filter(item => {
-    if (item.isActive === false) return false;
-    const q = searchQuery.toLowerCase();
-    if (!item.name.toLowerCase().includes(q) && !item.category.toLowerCase().includes(q)) return false;
-    if (statusFilter === 'low-stock') return item.stockQty > 0 && item.stockQty <= item.minStockLevel;
-    if (statusFilter === 'out-of-stock') return item.stockQty === 0;
-    return true;
-  });
 
   const archivedInventory = inventory.filter(i => i.isActive === false);
 
@@ -2776,12 +2618,25 @@ export default function InventoryPage() {
   const handleAddNew = () => { setEditingItem(null); setPendingItemData(null); setIsConfirmModalOpen(false); setModalKey(p => p + 1); setIsModalOpen(true); };
   const handleEdit = (item) => { setEditingItem(item); setIsModalOpen(true); };
 
-  // TODO: MongoDB — Replace with: GET /api/products?inventoryId=... and GET /api/sales?inventoryId=...
-  const handleDelete = (item) => {
-    const products = JSON.parse(localStorage.getItem('pmp_products')||'[]');
-    const sales = JSON.parse(localStorage.getItem('pmp_sales')||'[]');
-    setReferencingProducts(products.filter(p => p.inventoryId === item.id));
-    setHasSalesHistory(sales.some(s => s.inventoryId === item.id || s.items?.some(i => i.inventoryId === item.id)));
+  // Check for linked products and sales history before delete
+  const handleDelete = async (item) => {
+    const linkedProducts = products.filter(p => p.inventoryId === item.id);
+    
+    // Fetch orders to check for sales history
+    let hasSales = false;
+    try {
+      const allOrders = await fetchAllOrders();
+      hasSales = allOrders.some(o => 
+        o.items?.some(i => i.inventoryId === item.id || i.inventoryId === item._id)
+      );
+    } catch (error) {
+      console.error('Failed to fetch orders for sales check:', error);
+      // Fail safe: if we can't verify, assume there might be sales
+      hasSales = true;
+    }
+    
+    setReferencingProducts(linkedProducts);
+    setHasSalesHistory(hasSales);
     setArchiveItem(item);
     setShowArchiveModal(true);
   };
@@ -3207,8 +3062,8 @@ Item Masterlist
               </thead>
               <tbody>
                 {archivedInventory.map(item => {
-                  const hasProducts = JSON.parse(localStorage.getItem('pmp_products')||'[]').some(p => p.inventoryId===item.id);
-                  const hasSales = JSON.parse(localStorage.getItem('pmp_sales')||'[]').some(s => s.inventoryId===item.id);
+                  const hasProducts = products.some(p => p.inventoryId === item.id);
+                  const hasSales = false; // TODO: Add sales check when orders API is integrated
                   return (
                     <tr key={item.id} className="inventory-table-row" style={{ opacity: 0.5 }}>
                       <td className="table-cell-name"><span className="product-name" style={{ color: 'var(--gray)' }}>{item.name}</span><div style={{ fontSize: '0.73rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{item.sku||'—'}</div></td>
@@ -3274,9 +3129,32 @@ Item Masterlist
 
       <ManageSuppliersModal isOpen={showManageSuppliersModal} onClose={() => setShowManageSuppliersModal(false)}
         suppliers={suppliers} categories={categories} inventory={inventory}
-        onAdd={(data) => { const s = handleAddSupplier(data); const updated = [...suppliers, s]; setSuppliers(updated); saveSuppliers(updated); }}
-        onUpdate={(id, data) => { const updated = suppliers.map(s => s.id===id?{...s,...data}:s); setSuppliers(updated); saveSuppliers(updated); }}
-        onDelete={(id) => { const updated = suppliers.filter(s => s.id!==id); setSuppliers(updated); saveSuppliers(updated); }} />
+        onAdd={async (data) => {
+          try {
+            const s = await handleAddSupplier(data);
+            if (s) {
+              setSuppliers(prev => [...prev, s]);
+            }
+          } catch (error) {
+            console.error('Failed to add supplier in modal:', error);
+          }
+        }}
+        onUpdate={async (id, data) => {
+          try {
+            await updateSupplier(id, data);
+            setSuppliers(prev => prev.map(s => s.id === id ? { ...s, ...data } : s));
+          } catch (error) {
+            console.error('Failed to update supplier in modal:', error);
+          }
+        }}
+        onDelete={async (id) => {
+          try {
+            await deleteSupplier(id);
+            setSuppliers(prev => prev.filter(s => s.id !== id));
+          } catch (error) {
+            console.error('Failed to delete supplier in modal:', error);
+          }
+        }} />
 
       <BatchDetailsModal batch={selectedBatch} item={selectedBatchItem}
         isOpen={showBatchDetailsModal} onClose={() => { setShowBatchDetailsModal(false); setSelectedBatch(null); setSelectedBatchItem(null); }} />

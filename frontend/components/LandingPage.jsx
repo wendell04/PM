@@ -71,6 +71,7 @@ const LandingPage = ({onEnterShop}) => {
   const [contactErrors, setContactErrors] = useState({});
   const [contactSent, setContactSent]   = useState(false);
   const [loginErrors, setLoginErrors]   = useState({});
+  const [sessionMessage, setSessionMessage] = useState('');
   const [errors, setErrors]             = useState({});
   const [verificationModal, setVerificationModal] = useState(false);
   const [registeredEmail, setRegisteredEmail]     = useState('');
@@ -120,6 +121,13 @@ const LandingPage = ({onEnterShop}) => {
     const loggedOut = sessionStorage.getItem('justLoggedOut');
     if (loggedOut === 'true') {
       sessionStorage.removeItem('justLoggedOut');
+      setTimeout(() => openModal('login'), 300);
+    }
+    // Check if session expired (token invalid)
+    const sessionExpired = sessionStorage.getItem('sessionExpired');
+    if (sessionExpired === 'true') {
+      sessionStorage.removeItem('sessionExpired');
+      setSessionMessage('Your session has expired. Please log in again.');
       setTimeout(() => openModal('login'), 300);
     }
   }, []);
@@ -176,7 +184,7 @@ const LandingPage = ({onEnterShop}) => {
     const params = new URLSearchParams(window.location.search);
     const resetToken = params.get('reset_token');
     const email = params.get('email');
-    
+
     if (resetToken && email) {
       // Verify the token automatically
       handleResetLinkClick(resetToken, email).then(result => {
@@ -194,7 +202,11 @@ const LandingPage = ({onEnterShop}) => {
           // Clean up URL
           window.history.replaceState({}, document.title, window.location.pathname);
         } else {
-          alert(result.error);
+          // Invalid/expired link - open forgot modal to Step 1 and show error
+          setForgotEmail(email);
+          setForgotModal(true);
+          setForgotStep(1);
+          setForgotError(result.error);
         }
       });
     }
@@ -227,6 +239,7 @@ const LandingPage = ({onEnterShop}) => {
     setModal(null);
     setErrors({});
     setLoginErrors({});
+    setSessionMessage('');
     setLoginForm({email: '', password: ''});
     setShowPassword(false);
     setShowConfirm(false);
@@ -1147,12 +1160,25 @@ const handleForgotResetPassword = async () => {
                   <button className="auth-close" onClick={closeModal}>✕</button>
                 </div>
                 <div className="auth-modal-body">
+                  {sessionMessage && (
+                    <div style={{
+                      background: 'var(--color-background-warning)',
+                      color: 'var(--color-text-warning)',
+                      border: '1px solid var(--color-border-warning)',
+                      borderRadius: '8px',
+                      padding: '0.75rem 1rem',
+                      fontSize: '0.9rem',
+                      marginBottom: '1rem'
+                    }}>
+                      {sessionMessage}
+                    </div>
+                  )}
                   <form onSubmit={handleLoginSubmit}>
                     <div className="auth-field">
                       <label>Email Address</label>
                       <input type="email" placeholder="you@example.com"
                         value={loginForm.email}
-                        onChange={e => setLoginForm(f => ({...f, email: e.target.value}))}
+                        onChange={e => { setLoginForm(f => ({...f, email: e.target.value})); setSessionMessage(''); }}
                         className={loginErrors.email ? 'error' : ''}/>
                       {loginErrors.email && <span className="error-message">{loginErrors.email}</span>}
                     </div>
@@ -1161,7 +1187,7 @@ const handleForgotResetPassword = async () => {
                       <div className="auth-input-wrap">
                         <input type={showPassword ? 'text' : 'password'} placeholder="Enter your password"
                           value={loginForm.password}
-                          onChange={e => setLoginForm(f => ({...f, password: e.target.value}))}
+                          onChange={e => { setLoginForm(f => ({...f, password: e.target.value})); setSessionMessage(''); }}
                           className={loginErrors.password ? 'error' : ''}/>
                         <button type="button" className="auth-eye" onClick={() => setShowPassword(v => !v)}>
                           {showPassword ? <EyeOpen/> : <EyeClosed/>}
@@ -1321,6 +1347,7 @@ const handleForgotResetPassword = async () => {
                     </div>
 
                     <button type="button" className="btn-auth-submit"
+                      disabled={isRegistering}
                       onClick={() => { if (!validateForm()) return; setTAndCModalOpen(true); }}>
                       Proceed to Terms &amp; Conditions
                     </button>

@@ -40,6 +40,8 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { createProduct, fetchProducts } from '@/lib/productApi';
+import { fetchInventory } from '@/lib/inventoryApi';
 
 // ── Reusable Number Input Component ───────────────────────────────────────────
 // Prevents negative values, e, E, -, +, and disables scroll wheel
@@ -169,11 +171,10 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label 
   const [inputVal, setInputVal] = useState('');
   const ref = useRef(null);
 
-  // Get products already linked to inventory items
+  // Get products already linked to inventory items (from API-loaded state)
   const linkedProductIds = useMemo(() => {
-    const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
-    return new Set(allProducts.map(p => p.inventoryId).filter(id => id));
-  }, []);
+    return new Set(products.map(p => p.inventoryId).filter(id => id));
+  }, [products]);
 
   // Filter to only active items NOT already linked to products
   const availableInventoryList = inventoryList.filter(item => 
@@ -1136,6 +1137,7 @@ export default function AddProductsPage() {
 
   const [savedCategories, setSavedCategories] = useState([]);
   const [savedSubCategories, setSavedSubCategories] = useState({});
+  const [products, setProducts] = useState([]);
   const [showPreview, setShowPreview] = useState(false);
 
   // ── NEW: Modal States ────────────────────────────────────────────────────────
@@ -1150,18 +1152,33 @@ export default function AddProductsPage() {
   const [pendingNewProduct, setPendingNewProduct] = useState(null);
   const [showInventoryErrorModal, setShowInventoryErrorModal] = useState(false);
 
-  // ── NEW: Inventory List State ────────────────────────────────────────────────
-  const [inventoryList, setInventoryList] = useState([]);
-
-  // ── TODO: MongoDB — palitan ng GET /api/categories at GET /api/subcategories ──
-  // CURRENT: LocalStorage (browser-only, hindi persistent sa server)
+  // ── Load data on mount ────────────────────────────────────────────────────────
   useEffect(() => {
-    setSavedCategories(JSON.parse(localStorage.getItem('customCategories') || '[]'));
-    setSavedSubCategories(JSON.parse(localStorage.getItem('subCategories') || '{}'));
+    const loadData = async () => {
+      // Load categories and subcategories from localStorage (helper data)
+      setSavedCategories(JSON.parse(localStorage.getItem('customCategories') || '[]'));
+      setSavedSubCategories(JSON.parse(localStorage.getItem('subCategories') || '{}'));
 
-    // Load Inventory List (Source of Truth for blank materials)
-    const inventory = getInventoryList();
-    setInventoryList(inventory);
+      // Load Inventory List from API
+      try {
+        const inventory = await fetchInventory();
+        setInventoryList(Array.isArray(inventory) ? inventory : []);
+      } catch (error) {
+        console.error('Failed to load inventory:', error);
+        setInventoryList([]);
+      }
+
+      // Load products for linked inventory check
+      try {
+        const productsData = await fetchProducts();
+        setProducts(Array.isArray(productsData) ? productsData : []);
+      } catch (error) {
+        console.error('Failed to load products:', error);
+        setProducts([]);
+      }
+    };
+
+    loadData();
   }, []);
 
   const hasVariants = combinations.length > 0;
@@ -1619,8 +1636,8 @@ export default function AddProductsPage() {
     //   subCategoryName: formData.subCategoryName
     // });
     // ���─────────────────────────────────────────────────────────────
-    const existingProducts = JSON.parse(localStorage.getItem('products') || '[]');
-    const isDuplicate = existingProducts.some(
+    // Check for duplicate product using API-loaded state
+    const isDuplicate = products.some(
       p => p.category === formData.category && p.subCategoryName === formData.subCategoryName
     );
 
@@ -1715,73 +1732,69 @@ export default function AddProductsPage() {
   };
 
   // Confirm the save action (after user clicks "Confirm" in modal)
-  const handleConfirmSave = () => {
+  const handleConfirmSave = async () => {
     if (!pendingNewProduct) return;
 
-    // Save categories and subcategories
-    if (pendingNewProduct.category && !savedCategories.includes(pendingNewProduct.category)) {
-      const updated = [...savedCategories, pendingNewProduct.category];
-      setSavedCategories(updated);
-      localStorage.setItem('customCategories', JSON.stringify(updated));
-    }
-
-    if (pendingNewProduct.category && pendingNewProduct.subCategoryName) {
-      const existingSubs = savedSubCategories[pendingNewProduct.category] || [];
-      if (!existingSubs.includes(pendingNewProduct.subCategoryName)) {
-        const updatedSubs = {
-          ...savedSubCategories,
-          [pendingNewProduct.category]: [...existingSubs, pendingNewProduct.subCategoryName],
-        };
-        setSavedSubCategories(updatedSubs);
-        localStorage.setItem('subCategories', JSON.stringify(updatedSubs));
+    try {
+      // Save categories and subcategories to localStorage (helper data - no API yet)
+      if (pendingNewProduct.category && !savedCategories.includes(pendingNewProduct.category)) {
+        const updated = [...savedCategories, pendingNewProduct.category];
+        setSavedCategories(updated);
+        localStorage.setItem('customCategories', JSON.stringify(updated));
       }
+
+      if (pendingNewProduct.category && pendingNewProduct.subCategoryName) {
+        const existingSubs = savedSubCategories[pendingNewProduct.category] || [];
+        if (!existingSubs.includes(pendingNewProduct.subCategoryName)) {
+          const updatedSubs = {
+            ...savedSubCategories,
+            [pendingNewProduct.category]: [...existingSubs, pendingNewProduct.subCategoryName],
+          };
+          setSavedSubCategories(updatedSubs);
+          localStorage.setItem('subCategories', JSON.stringify(updatedSubs));
+        }
+      }
+
+      // CREATE new product via API
+      // Strip temporary client-side id - MongoDB will auto-generate _id
+      const { id, ...productDataForApi } = pendingNewProduct;
+      await createProduct(productDataForApi);
+
+      // Close modal and show success
+      setShowConfirmSaveModal(false);
+      setPendingNewProduct(null);
+      setShowSuccessModal(true);
+
+      // Reset form after success
+      setTimeout(() => {
+        setShowSuccessModal(false);
+        // Reset form fields
+        setFormData({
+          category: '',
+          subCategoryCode: '',
+          subCategoryName: '',
+          productName: '',
+          description: '',
+          priceType: 'fixed',
+          trackInventory: true,
+          stock: '',
+          inventoryId: '',
+        });
+        setFixedPrice('');
+        setFixedPriceVariants({});
+        setTiers([{ id: 1, minQty: 1, maxQty: 20, prices: { '__base__': '' } }]);
+        setVariantGroups([]);
+        setCombinations([]);
+        setThumbnail(null);
+        setImages([]);
+        // Redirect to Product List
+        router.push('/dashboard/business/products');
+      }, 1500);
+    } catch (error) {
+      console.error('Failed to create product:', error);
+      alert('Failed to create product: ' + (error.message || 'Unknown error'));
+      setShowConfirmSaveModal(false);
     }
-
-    // ──────────────────────────────────────────────────────────────
-    // Save Product to LocalStorage (or MongoDB in future)
-    // ──────────────────────────────────────────────────────────────
-    const allProducts = JSON.parse(localStorage.getItem('pmp_products') || '[]');
-
-    // CREATE new product
-    const newProduct = {
-      ...pendingNewProduct,
-      id: crypto.randomUUID(),
-      isPublished: false,  // Default to unpublished
-      createdAt: new Date().toISOString(),
-    };
-    allProducts.push(newProduct);
-    localStorage.setItem('pmp_products', JSON.stringify(allProducts));
-
-    // Close modal and show success
-    setShowConfirmSaveModal(false);
-    setPendingNewProduct(null);
-    setShowSuccessModal(true);
-
-    // Reset form after success
-    setTimeout(() => {
-      setShowSuccessModal(false);
-      // Reset form fields
-      setFormData({
-        category: '',
-        subCategoryCode: '',
-        subCategoryName: '',
-        productName: '',
-        description: '',
-        priceType: 'fixed',
-        trackInventory: true,
-        stock: '',
-        inventoryId: '',
-      });
-      setFixedPrice('');
-      setFixedPriceVariants({});
-      setTiers([{ id: 1, minQty: 1, maxQty: 20, prices: { '__base__': '' } }]);
-      setVariantGroups([]);
-      setCombinations([]);
-      setThumbnail(null);
-      setImages([]);
-      // Redirect to Product List
-      router.push('/dashboard/business/products');
-    }, 1500);
   };
 
   const allPrices = tiers

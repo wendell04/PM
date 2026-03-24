@@ -55,12 +55,18 @@ Your backend `.env` is already configured correctly!
 
 ---
 
-### **Part 2: Frontend Setup** ✅ (Already Done!)
-
-Your frontend `.env.local` is already configured!
+### **Part 2: Frontend Setup**
 
 **File:** `frontend/.env.local`
 
+**⚠️ IMPORTANT:** If `.env.local` doesn't exist, create it by copying `.env.example`:
+
+```bash
+cd C:\PersonalizeMePrints\PersonalizeMe\frontend
+copy .env.example .env.local
+```
+
+**Required configuration:**
 ```env
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 NEXT_PUBLIC_APP_NAME=PersonalizeMe Prints

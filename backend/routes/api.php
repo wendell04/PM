@@ -62,50 +62,49 @@ Route::middleware('auth.token')->group(function () {
 
     // Order Stats (Protected by auth.token + getAuthUser() check)
     Route::get('/admin/orders/stats',            [OrderController::class, 'stats']);
+
+    // ─── Admin Routes (Protected — owner/admin only) ─────────────────────────
+    // All other admin routes moved here under auth.token middleware
+
+    // Products Admin
+    Route::get('/admin/products',              [ProductController::class, 'adminIndex']);
+    Route::get('/admin/products/available-inventory', [ProductController::class, 'availableInventory']);
+    Route::post('/admin/products',             [ProductController::class, 'store']);
+    Route::put('/admin/products/{id}',         [ProductController::class, 'update']);
+    Route::delete('/admin/products/{id}',      [ProductController::class, 'destroy']);
+    Route::post('/admin/products/{id}/toggle-publish', [ProductController::class, 'togglePublish']);
+    Route::post('/admin/upload-image',         [ProductController::class, 'uploadImage']);
+
+    // Inventory Admin
+    Route::get('/admin/inventory',              [InventoryController::class, 'index']);
+    Route::get('/admin/inventory/{id}',         [InventoryController::class, 'show']);
+    Route::get('/admin/inventory/{id}/history', [InventoryController::class, 'history']);
+    Route::post('/admin/inventory',             [InventoryController::class, 'store']);
+    Route::put('/admin/inventory/{id}',         [InventoryController::class, 'update']);
+    Route::post('/admin/inventory/{id}/adjust-stock', [InventoryController::class, 'adjustStock']);
+    Route::delete('/admin/inventory/{id}',      [InventoryController::class, 'destroy']);
+
+    // Orders Admin
+    Route::get('/admin/orders',          [OrderController::class, 'adminIndex']);
+    Route::put('/admin/orders/{id}',     [OrderController::class, 'adminUpdate']);
+
+    // Job Orders Admin (Production Schedule)
+    Route::get('/admin/job-orders',              [JobOrderController::class, 'index']);
+    Route::get('/admin/job-orders/schedule',     [JobOrderController::class, 'schedule']);
+    Route::get('/admin/job-orders/{id}',         [JobOrderController::class, 'show']);
+    Route::post('/admin/job-orders',             [JobOrderController::class, 'store']);
+    Route::put('/admin/job-orders/{id}',         [JobOrderController::class, 'update']);
+
+    // Audit Logs Admin
+    Route::get('/admin/audit-logs',              [AuditLogController::class, 'index']);
+    Route::get('/admin/audit-logs/summary',      [AuditLogController::class, 'summary']);
+    Route::get('/admin/audit-logs/inventory/{id}', [AuditLogController::class, 'byInventory']);
+    Route::post('/admin/audit-logs',             [AuditLogController::class, 'store']);
+
+    // Sales Admin
+    Route::get('/admin/sales',                   [SaleController::class, 'index']);
+    Route::get('/admin/sales/summary',           [SaleController::class, 'summary']);
+    Route::get('/admin/sales/{id}',              [SaleController::class, 'show']);
+    Route::post('/admin/sales',                  [SaleController::class, 'store']);
+    Route::put('/admin/sales/{id}',              [SaleController::class, 'update']);
 });
-
-// ─── Admin Routes (Protected — owner/admin only) ─────────────────────────────
-// Middleware checks are done inside each controller method via isAdmin() helper.
-// You can later move these behind a middleware group when needed.
-
-// Products Admin
-Route::get('/admin/products',              [ProductController::class, 'adminIndex']);
-Route::get('/admin/products/available-inventory', [ProductController::class, 'availableInventory']);
-Route::post('/admin/products',             [ProductController::class, 'store']);
-Route::put('/admin/products/{id}',         [ProductController::class, 'update']);
-Route::delete('/admin/products/{id}',      [ProductController::class, 'destroy']);
-Route::post('/admin/products/{id}/toggle-publish', [ProductController::class, 'togglePublish']);
-Route::post('/admin/upload-image',         [ProductController::class, 'uploadImage']);
-
-// Inventory Admin
-Route::get('/admin/inventory',              [InventoryController::class, 'index']);
-Route::get('/admin/inventory/{id}',         [InventoryController::class, 'show']);
-Route::get('/admin/inventory/{id}/history', [InventoryController::class, 'history']);
-Route::post('/admin/inventory',             [InventoryController::class, 'store']);
-Route::put('/admin/inventory/{id}',         [InventoryController::class, 'update']);
-Route::post('/admin/inventory/{id}/adjust-stock', [InventoryController::class, 'adjustStock']);
-Route::delete('/admin/inventory/{id}',      [InventoryController::class, 'destroy']);
-
-// Orders Admin
-Route::get('/admin/orders',          [OrderController::class, 'adminIndex']);
-Route::put('/admin/orders/{id}',     [OrderController::class, 'adminUpdate']);
-
-// Job Orders Admin (Production Schedule)
-Route::get('/admin/job-orders',              [JobOrderController::class, 'index']);
-Route::get('/admin/job-orders/schedule',     [JobOrderController::class, 'schedule']);
-Route::get('/admin/job-orders/{id}',         [JobOrderController::class, 'show']);
-Route::post('/admin/job-orders',             [JobOrderController::class, 'store']);
-Route::put('/admin/job-orders/{id}',         [JobOrderController::class, 'update']);
-
-// Audit Logs Admin
-Route::get('/admin/audit-logs',              [AuditLogController::class, 'index']);
-Route::get('/admin/audit-logs/summary',      [AuditLogController::class, 'summary']);
-Route::get('/admin/audit-logs/inventory/{id}', [AuditLogController::class, 'byInventory']);
-Route::post('/admin/audit-logs',             [AuditLogController::class, 'store']);
-
-// Sales Admin
-Route::get('/admin/sales',                   [SaleController::class, 'index']);
-Route::get('/admin/sales/summary',           [SaleController::class, 'summary']);
-Route::get('/admin/sales/{id}',              [SaleController::class, 'show']);
-Route::post('/admin/sales',                  [SaleController::class, 'store']);
-Route::put('/admin/sales/{id}',              [SaleController::class, 'update']);

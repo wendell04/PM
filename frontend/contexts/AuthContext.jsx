@@ -13,15 +13,49 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({children}) {
     const [currentUser, setCurrentUser] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const stored = localStorage.getItem('auth_user') || sessionStorage.getItem('auth_user');
-        if (stored) {
+        const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+
+        if (stored && token) {
             try {
-                setCurrentUser(JSON.parse(stored));
+                const user = JSON.parse(stored);
+                // Validate token with backend to check if expired/invalid
+                fetch(`${API_URL}/api/user`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                    },
+                })
+                .then(res => {
+                    if (!res.ok) throw new Error('Token invalid');
+                    return res.json();
+                })
+                .then(userData => {
+                    setCurrentUser(userData);
+                })
+                .catch(() => {
+                    // Token invalid/expired - set session expired flag, clear storage, and redirect
+                    sessionStorage.setItem('sessionExpired', 'true');
+                    localStorage.removeItem('auth_token');
+                    localStorage.removeItem('auth_user');
+                    sessionStorage.removeItem('auth_token');
+                    sessionStorage.removeItem('auth_user');
+                    setCurrentUser(null);
+                    window.location.href = '/';
+                })
+                .finally(() => {
+                    setIsLoading(false);
+                });
             } catch {
                 setCurrentUser(null);
+                setIsLoading(false);
             }
+        } else {
+            setIsLoading(false);
         }
     }, []);
 
@@ -58,8 +92,8 @@ export function AuthProvider({children}) {
     };
 
     return (
-        <AuthContext.Provider value={{currentUser, setCurrentUser, updateUser, logout}}>
-            {children}
+        <AuthContext.Provider value={{currentUser, setCurrentUser, updateUser, logout, isLoading}}>
+            {isLoading ? null : children}
         </AuthContext.Provider>
     );
 }

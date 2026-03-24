@@ -19,7 +19,15 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'],
+    /*
+    |--------------------------------------------------------------------------
+    | ⚠️ PRODUCTION SECURITY NOTE
+    |--------------------------------------------------------------------------
+    | Set to frontend URL from environment variable.
+    | Update FRONTEND_URL in .env for production deployment.
+    |
+    */
+    'allowed_origins' => [env('FRONTEND_URL', 'http://localhost:3000')],
 
     'allowed_origins_patterns' => [],
 

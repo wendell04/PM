@@ -3,20 +3,16 @@
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 
 /**
- * SALES MANAGEMENT PAGE (READ-ONLY)
+ * SALES MANAGEMENT PAGE
  *
- * Features:
- * - View all sales from the system (auto-generated)
- * - Filter by payment status (All, Paid, Pending 50%, Outside System, Cancelled)
- * - Search by customer name or order number
- * - Expandable order details
- * - Summary cards with analytics
- * - NO manual create - all sales auto-generated from orders
+ * Fetches sales data from backend API.
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatPrice } from '../../../../src/utils/format';
+import { fetchSales } from '@/lib/salesApi';
+import { fetchInventory } from '@/lib/inventoryApi';
 
 // ── Order Detail Expand Row ─────────────────────────────────────────────────
 function OrderExpandRow({ order, colSpan }) {
@@ -115,47 +111,66 @@ function OrderExpandRow({ order, colSpan }) {
 export default function SalesListPage() {
   const router = useRouter();
   const [sales, setSales] = useState([]);
+  const [inventory, setInventory] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [paymentFilter, setPaymentFilter] = useState(''); // '', 'paid', 'pending-50', 'outside-system', 'cancelled'
-  const [dateFilter, setDateFilter] = useState('all'); // 'all', 'today', 'this-week', 'this-month', 'custom'
+  const [paymentFilter, setPaymentFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('all');
   const [customDateRange, setCustomDateRange] = useState({ fromMonth: 0, toMonth: 0, year: 2025 });
   const [expandedRows, setExpandedRows] = useState(new Set());
-  const [inventory, setInventory] = useState([]);
 
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const YEARS = [2025, 2026, 2027, 2028];
 
-  // TODO: Replace localStorage with MongoDB API calls
+  // Load sales and inventory from backend API on mount
   useEffect(() => {
-    const storedSales = JSON.parse(localStorage.getItem('pmp_sales') || '[]');
-    const storedInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
-
-    // Update sales with cost from inventory for manual sales
-    const updatedSales = storedSales.map(sale => {
-      // Ensure orderDate is set for proper filtering
-      const saleWithDate = {
-        ...sale,
-        orderDate: sale.orderDate || sale.saleDate || sale.createdAt || new Date().toISOString()
-      };
-      
-      if (saleWithDate.source === 'manual' && (!saleWithDate.cost || saleWithDate.cost === 0) && saleWithDate.inventoryId) {
-        // Find the inventory item to get the average cost
-        const invItem = storedInventory.find(inv => inv.id === saleWithDate.inventoryId);
-        if (invItem) {
-          const avgCost = invItem.averageCost || invItem.lastUnitCost || 0;
-          return {
-            ...saleWithDate,
-            cost: avgCost * (saleWithDate.quantity || 1)
+    async function loadData() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        // Fetch sales from API
+        const salesData = await fetchSales();
+        
+        // Fetch inventory from API (for cost calculation)
+        const inventoryData = await fetchInventory();
+        
+        // Process sales with cost from inventory for manual sales
+        const processedSales = salesData.map(sale => {
+          const saleWithDate = {
+            ...sale,
+            orderDate: sale.orderDate || sale.saleDate || sale.createdAt || new Date().toISOString()
           };
-        }
-      }
-      return saleWithDate;
-    });
 
-    setSales(updatedSales);
-    setInventory(storedInventory);
-    setIsLoaded(true);
+          // Calculate cost from inventory if not present
+          if (saleWithDate.source === 'manual' && (!saleWithDate.cost || saleWithDate.cost === 0) && saleWithDate.inventoryId) {
+            const invItem = inventoryData.find(inv => inv._id === saleWithDate.inventoryId || inv.id === saleWithDate.inventoryId);
+            if (invItem) {
+              const avgCost = invItem.averageCost || invItem.lastUnitCost || 0;
+              return {
+                ...saleWithDate,
+                cost: avgCost * (saleWithDate.quantity || 1)
+              };
+            }
+          }
+          return saleWithDate;
+        });
+
+        setSales(processedSales);
+        setInventory(inventoryData);
+      } catch (err) {
+        console.error('Failed to load sales data:', err);
+        setError(err.message || 'Failed to load sales data');
+        setSales([]);
+        setInventory([]);
+      } finally {
+        setIsLoaded(true);
+        setIsLoading(false);
+      }
+    }
+
+    loadData();
   }, []);
 
   const toggleExpand = (orderId) => {
@@ -299,6 +314,33 @@ export default function SalesListPage() {
       topProductsCount: productsSold.size,
     };
   }, [sales, inventory]);
+
+  if (isLoading) {
+    return (
+      <div className="page-content-wrapper">
+        <div className="loading-state">
+          <div className="loading-spinner"></div>
+          <p>Loading sales...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page-content-wrapper">
+        <div className="error-state" style={{ padding: '2rem', textAlign: 'center' }}>
+          <p style={{ color: '#ef4444', marginBottom: '1rem' }}>{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="btn-primary"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!isLoaded) {
     return (
