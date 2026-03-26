@@ -52,7 +52,7 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { formatNumber, formatPrice } from '../../../../src/utils/format';
+import { formatNumber, formatPrice, formatSmart, formatPriceSmart } from '../../../../src/utils/format';
 
 // ── Gold Scrollbar Style ──────────────────────────────────────────────────────
 // Injected once via a side-effect — targets all scrollable elements in the page
@@ -102,6 +102,133 @@ function DecimalInput({ value, onChange, placeholder, className, disabled, style
   return (
     <input type="text" className={className} value={value} onChange={handleChange}
       onKeyDown={handleKeyDown} onWheel={handleWheel}
+      placeholder={placeholder} disabled={disabled} inputMode="decimal" style={style} />
+  );
+}
+
+// ── Formatted Integer Input (with comma separators) ────────────────────────────
+// Displays: 1,000 | On focus: 1000 | On blur: 1,000
+function FormattedIntegerInput({ value, onChange, min = 0, max, placeholder, className, disabled, autoFocus, onBlur, onKeyDown }) {
+  const [displayValue, setDisplayValue] = useState(value || '');
+  const [isFocused, setIsFocused] = useState(false);
+
+  const formatWithCommas = (numStr) => {
+    if (!numStr) return '';
+    return numStr.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  };
+
+  const removeCommas = (str) => str.replace(/,/g, '');
+
+  useEffect(() => {
+    if (!isFocused && value) {
+      setDisplayValue(formatWithCommas(value));
+    } else if (value !== undefined && value !== null) {
+      setDisplayValue(value.toString());
+    }
+  }, [value, isFocused]);
+
+  const handleFocus = () => {
+    setIsFocused(true);
+    setDisplayValue(removeCommas(value || ''));
+    if (autoFocus) autoFocus();
+  };
+
+  const handleBlur = (e) => {
+    setIsFocused(false);
+    if (value) {
+      setDisplayValue(formatWithCommas(value));
+    }
+    if (onBlur) onBlur(e);
+  };
+
+  const handleChange = (e) => {
+    const rawValue = e.target.value.replace(/,/g, '');
+    if (rawValue === '' || /^\d+$/.test(rawValue)) {
+      onChange({ ...e, target: { ...e.target, value: rawValue } });
+      setDisplayValue(rawValue);
+    }
+    if (onKeyDown) onKeyDown(e);
+  };
+
+  const handleKeyDown = (e) => {
+    if (['e', 'E', '+', '-', '.'].includes(e.key)) e.preventDefault();
+    if (onKeyDown) onKeyDown(e);
+  };
+
+  const handleWheel = (e) => { if (document.activeElement === e.target) e.target.blur(); };
+
+  return (
+    <input type="text" className={className} value={displayValue} onChange={handleChange}
+      onFocus={handleFocus} onBlur={handleBlur} onKeyDown={handleKeyDown} onWheel={handleWheel}
+      min={min} max={max} placeholder={placeholder} disabled={disabled}
+      inputMode="numeric" pattern="[0-9]*" />
+  );
+}
+
+// ── Formatted Decimal Input (with comma separators, smart decimals) ────────────
+// Displays: 2,500.50 | On focus: 2500.50 | On blur: 2,500.50
+// Smart: 2500.00 displays as 2,500 (no .00)
+function FormattedDecimalInput({ value, onChange, placeholder, className, disabled, style }) {
+  const [displayValue, setDisplayValue] = useState(value || '');
+  const [isFocused, setIsFocused] = useState(false);
+
+  const formatSmart = (numStr) => {
+    if (!numStr) return '';
+    const parsed = parseFloat(numStr);
+    if (isNaN(parsed)) return '';
+    
+    if (Number.isInteger(parsed)) {
+      return parsed.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+    
+    const fixed = parsed.toFixed(2);
+    const parts = fixed.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    
+    if (parts[1] === '00') return parts[0];
+    
+    const decimalPart = parts[1].replace(/0$/, '');
+    if (decimalPart === '') return parts[0];
+    
+    return parts.join('.');
+  };
+
+  const removeCommas = (str) => str.replace(/,/g, '');
+
+  useEffect(() => {
+    if (!isFocused && value) {
+      setDisplayValue(formatSmart(value));
+    } else if (value !== undefined && value !== null) {
+      setDisplayValue(value.toString());
+    }
+  }, [value, isFocused]);
+
+  const handleFocus = () => {
+    setIsFocused(true);
+    setDisplayValue(removeCommas(value || ''));
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    if (value) {
+      setDisplayValue(formatSmart(value));
+    }
+  };
+
+  const handleChange = (e) => {
+    const rawValue = e.target.value.replace(/,/g, '');
+    if (rawValue === '' || /^\d*\.?\d{0,2}$/.test(rawValue)) {
+      onChange({ ...e, target: { ...e.target, value: rawValue } });
+      setDisplayValue(rawValue);
+    }
+  };
+
+  const handleKeyDown = (e) => { if (['e', 'E', '+', '-', ' '].includes(e.key)) e.preventDefault(); };
+  const handleWheel = (e) => { if (document.activeElement === e.target) e.target.blur(); };
+
+  return (
+    <input type="text" className={className} value={displayValue} onChange={handleChange}
+      onFocus={handleFocus} onBlur={handleBlur} onKeyDown={handleKeyDown} onWheel={handleWheel}
       placeholder={placeholder} disabled={disabled} inputMode="decimal" style={style} />
   );
 }
@@ -665,10 +792,341 @@ function SupplierCombobox({ value, supplierName, onChange, suppliers, itemCatego
 // TODO: MongoDB — Each CRUD action below maps to its own API endpoint.
 // See getMasterlist() helper above for full API mapping.
 // ══════════════════════════════════════════════════════════════════════════════
+
+// ───────────────────────────────────────────────────────────────────────────────
+// ── Variant Grouping Checkboxes (for Masterlist Pricing) ───────────────────────
+function VariantGroupingCheckboxes({ variantGroups, groupChecks, onGroupChecksChange }) {
+  if (variantGroups.length < 2) return null;
+
+  const [g1, g2] = variantGroups;
+
+  const toggle = (primaryVal, secondaryVal) => {
+    const current = groupChecks[primaryVal] || new Set();
+    const next = new Set(current);
+    next.has(secondaryVal) ? next.delete(secondaryVal) : next.add(secondaryVal);
+    onGroupChecksChange({ ...groupChecks, [primaryVal]: next });
+  };
+
+  const toggleAll = (primaryVal) => {
+    const current = groupChecks[primaryVal] || new Set();
+    const allVals = g2.options.map(o => o.value);
+    const allChecked = allVals.every(v => current.has(v));
+    onGroupChecksChange({
+      ...groupChecks,
+      [primaryVal]: allChecked ? new Set() : new Set(allVals),
+    });
+  };
+
+  return (
+    <div className="vgc-wrapper">
+      <div className="vgc-hint">
+        Merge Variant with the same price example: Small-red, Small-yellow, Small-green into Small (Red,Yellow, Green)
+      </div>
+      <div className="vgc-rows">
+        {g1.options.map(p => {
+          const checked = groupChecks[p.value] || new Set();
+          const allChecked = g2.options.length > 0 && g2.options.every(o => checked.has(o.value));
+          const someChecked = g2.options.some(o => checked.has(o.value));
+          return (
+            <div key={p.id} className="vgc-row">
+              <span className="vgc-primary-badge">{p.value}</span>
+              <span className="vgc-arrow"></span>
+              <span className="vgc-g2-name">{g2.name || 'V2'}:</span>
+              <label className="vgc-check-label vgc-all-label">
+                <input
+                  type="checkbox"
+                  className="vgc-checkbox"
+                  checked={allChecked}
+                  ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }}
+                  onChange={() => toggleAll(p.value)}
+                />
+                <span className="vgc-check-text">(all)</span>
+              </label>
+              {g2.options.map(s => (
+                <label key={s.id} className="vgc-check-label">
+                  <input
+                    type="checkbox"
+                    className="vgc-checkbox"
+                    checked={checked.has(s.value)}
+                    onChange={() => toggle(p.value, s.value)}
+                  />
+                  <span className="vgc-check-text">{s.value}</span>
+                </label>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── buildColumnGroups ──────────────────────────────────────────────────────────
+function buildColumnGroups(variantGroups, combinations, groupChecks) {
+  if (variantGroups.length === 0) return [];
+
+  if (variantGroups.length === 1) {
+    const g = variantGroups[0];
+    return g.options.map(opt => {
+      const combo = combinations.find(c => c.combo[g.id] === opt.value);
+      return {
+        key: opt.value,
+        primaryVal: null,
+        secondaryVals: [opt.value],
+        label: opt.value,
+        comboIds: combo ? [combo.id] : [],
+        isMerged: false,
+      };
+    });
+  }
+
+  const [g1, g2] = variantGroups;
+  const cols = [];
+
+  g1.options.forEach(p => {
+    const checked = groupChecks[p.value] || new Set();
+    const checkedArr = g2.options.filter(s => checked.has(s.value));
+    const uncheckedArr = g2.options.filter(s => !checked.has(s.value));
+
+    if (checkedArr.length >= 2) {
+      const comboIds = checkedArr
+        .map(s => combinations.find(c => c.combo[g1.id] === p.value && c.combo[g2.id] === s.value))
+        .filter(Boolean)
+        .map(c => c.id);
+      cols.push({
+        key: `${p.value}::${checkedArr.map(s => s.value).join('|')}`,
+        primaryVal: p.value,
+        secondaryVals: checkedArr.map(s => s.value),
+        label: checkedArr.map(s => s.value).join(' · '),
+        comboIds,
+        isMerged: true,
+      });
+    }
+
+    if (checkedArr.length === 1) {
+      const s = checkedArr[0];
+      const combo = combinations.find(c => c.combo[g1.id] === p.value && c.combo[g2.id] === s.value);
+      cols.push({
+        key: `${p.value}::${s.value}`,
+        primaryVal: p.value,
+        secondaryVals: [s.value],
+        label: s.value,
+        comboIds: combo ? [combo.id] : [],
+        isMerged: false,
+      });
+    }
+
+    uncheckedArr.forEach(s => {
+      const combo = combinations.find(c => c.combo[g1.id] === p.value && c.combo[g2.id] === s.value);
+      cols.push({
+        key: `${p.value}::${s.value}`,
+        primaryVal: p.value,
+        secondaryVals: [s.value],
+        label: s.value,
+        comboIds: combo ? [combo.id] : [],
+        isMerged: false,
+      });
+    });
+  });
+
+  return cols;
+}
+
+// ─── getColumnPrice helper ─────────────────────────────────────────────────────
+function getColumnPrice(comboIds, prices) {
+  if (!comboIds.length) return '';
+  const vals = comboIds.map(id => prices[id] || '');
+  const nonEmpty = vals.find(v => v !== '');
+  return nonEmpty !== undefined ? nonEmpty : '';
+}
+
+// ─── syncMergedPrices helper ───────────────────────────────────────────────────
+function syncMergedPrices(comboIds, currentPrices, newValue) {
+  const updated = { ...currentPrices };
+  comboIds.forEach(cid => {
+    updated[cid] = newValue;
+  });
+  return updated;
+}
+
+// ─── SmartPricingTable ─────────────────────────────────────────────────────────
+function SmartPricingTable({
+  tiers,
+  variantGroups,
+  combinations,
+  groupChecks,
+  onPriceChange,
+  updateTierRange,
+  removeTier,
+  mode,
+}) {
+  const hasVariants = variantGroups.length > 0 && combinations.length > 0;
+  const columnGroups = buildColumnGroups(variantGroups, combinations, groupChecks);
+
+  if (!hasVariants) {
+    return (
+      <div className="tier-table-wrap">
+        <table className="tier-table">
+          <thead>
+            <tr>
+              {mode === 'tiered' && <><th>Tier</th><th>Min Qty</th><th>Max Qty</th></>}
+              <th>Price (₱)</th>
+              {mode === 'tiered' && <th></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {tiers.map((tier, idx) => (
+              <tr key={tier.id}>
+                {mode === 'tiered' && (
+                  <>
+                    <td><span className="tier-badge">Tier {idx + 1}</span></td>
+                    <td>
+                      <IntegerInput
+                        className="tier-input"
+                        value={tier.minQty ?? ''}
+                        placeholder=""
+                        min={0}
+                        onChange={e => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'minQty', v); }}
+                      />
+                    </td>
+                    <td>
+                      <IntegerInput
+                        className="tier-input"
+                        value={tier.maxQty ?? ''}
+                        placeholder="∞"
+                        min={0}
+                        onChange={e => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'maxQty', v); }}
+                      />
+                    </td>
+                  </>
+                )}
+                <td>
+                  <div className="tier-price-cell">
+                    <span className="peso">₱</span>
+                    <IntegerInput
+                      className="tier-input"
+                      value={tier.prices['__base__'] || ''}
+                      onChange={e => onPriceChange(tier.id, '__base__', sanitizeNumber(e.target.value))}
+                      placeholder="0"
+                      min={0}
+                      step="0.01"
+                    />
+                  </div>
+                </td>
+                {mode === 'tiered' && (
+                  <td>{tiers.length > 1 && <button type="button" className="btn-remove-tier" onClick={() => removeTier(tier.id)}>Remove</button>}</td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  return (
+    <div className="tier-table-wrap">
+      <table className="tier-table smart-tier-table">
+        <thead>
+          <tr>
+            {mode === 'tiered' && (
+              <>
+                <th>Tier</th>
+                <th>Min Qty</th>
+                <th>Max Qty</th>
+              </>
+            )}
+
+            {columnGroups.map(cg => {
+              const fullLabel = cg.primaryVal ? `${cg.primaryVal} / ${cg.label}` : cg.label;
+              return (
+                <th
+                  key={cg.key}
+                  className={`tier-variant-header${cg.isMerged ? ' tier-header-merged' : ''}`}
+                  title={cg.isMerged ? `Merged: ${cg.primaryVal} / ${cg.secondaryVals.join(', ')} — same price` : ''}
+                >
+                  {cg.isMerged
+                    ? <span className="tier-merged-label">{fullLabel} <span className="tier-merged-badge">same ₱</span></span>
+                    : fullLabel
+                  }
+                </th>
+              );
+            })}
+
+            {mode === 'tiered' && <th></th>}
+          </tr>
+        </thead>
+        <tbody>
+          {tiers.map((tier, idx) => (
+            <tr key={tier.id}>
+              {mode === 'tiered' && (
+                <>
+                  <td><span className="tier-badge">Tier {idx + 1}</span></td>
+                  <td>
+                    <IntegerInput
+                      className="tier-input"
+                      value={tier.minQty ?? ''}
+                      placeholder="1"
+                      min={0}
+                      onChange={e => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'minQty', v); }}
+                    />
+                  </td>
+                  <td>
+                    <IntegerInput
+                      className="tier-input"
+                      value={tier.maxQty ?? ''}
+                      placeholder="∞"
+                      min={0}
+                      onChange={e => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'maxQty', v); }}
+                    />
+                  </td>
+                </>
+              )}
+
+              {columnGroups.map(cg => {
+                const colPrice = getColumnPrice(cg.comboIds, tier.prices);
+                const isMerged = cg.isMerged;
+                return (
+                  <td key={cg.key} className={isMerged ? 'smart-cell-merged' : ''}>
+                    <div className="tier-price-cell">
+                      <span className="peso">₱</span>
+                      <IntegerInput
+                        className="tier-input"
+                        value={colPrice}
+                        onChange={e => {
+                          const newVal = sanitizeNumber(e.target.value);
+                          cg.comboIds.forEach(cid => {
+                            onPriceChange(tier.id, cid, newVal);
+                          });
+                        }}
+                        placeholder="0"
+                        min={0}
+                        step="0.01"
+                        title={isMerged ? `Editing all: ${cg.secondaryVals.join(', ')}` : cg.label}
+                      />
+                    </div>
+                  </td>
+                );
+              })}
+
+              {mode === 'tiered' && (
+                <td>{tiers.length > 1 && <button type="button" className="btn-remove-tier" onClick={() => removeTier(tier.id)}>Remove</button>}</td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
 function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory }) {
   const [localList, setLocalList] = useState([]);
   const [search, setSearch] = useState('');
   const [expandedCats, setExpandedCats] = useState(new Set());
+  const [expandedProds, setExpandedProds] = useState(new Set()); // NEW: For SKU combinations view
   const [infoModal, setInfoModal] = useState(null);
   const [confirmModal, setConfirmModal] = useState(null);
 
@@ -678,9 +1136,25 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
   const [formCatId, setFormCatId] = useState(null);   // which category context
   const [formProdId, setFormProdId] = useState(null); // which product (for edit)
   const [formName, setFormName] = useState('');
-  const [formVariants, setFormVariants] = useState([]); // string[]
-  const [variantInput, setVariantInput] = useState('');
+  const [formVariantTypes, setFormVariantTypes] = useState([]); // NEW: Multi-dimensional variant types
+  const [variantTypeInput, setVariantTypeInput] = useState(''); // Current variant type name
+  const [variantOptionInputs, setVariantOptionInputs] = useState({}); // Per-type option inputs (fixes bug)
   const [editingLinked, setEditingLinked] = useState(false); // true when editing a product linked to inventory
+  
+  // Pricing state (Fixed/Tiered/Inquiry)
+  const [priceType, setPriceType] = useState('fixed'); // 'fixed' | 'tiered' | 'inquiry'
+  const [fixedPrice, setFixedPrice] = useState('');
+  const [priceTiers, setPriceTiers] = useState([]);
+  const [tierInput, setTierInput] = useState({ min: '', max: '', price: '' });
+  const [groupChecks, setGroupChecks] = useState({}); // For variant grouping in pricing
+  
+  // Helper to create new variant type with isTracked default
+  const createVariantType = (name, options = [], isTracked = true) => ({
+    id: `vt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+    name,
+    options,
+    isTracked
+  });
 
   useEffect(() => {
     if (isOpen) {
@@ -693,6 +1167,44 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const genId = () => `${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+
+  // Generate all SKU combinations from variant types
+  const generateSkuCombinations = (variantTypes, categoryName, productName) => {
+    if (!variantTypes || variantTypes.length === 0) return [];
+
+    // Filter only tracked variant types for SKU generation
+    const trackedTypes = variantTypes.filter(vt => vt.isTracked);
+    
+    // If no tracked types, return empty (no SKU needed for non-tracked items)
+    if (trackedTypes.length === 0) return [];
+
+    const combinations = [[]];
+    for (const variantType of trackedTypes) {
+      const newCombinations = [];
+      for (const combo of combinations) {
+        for (const option of variantType.options) {
+          newCombinations.push([...combo, option]);
+        }
+      }
+      combinations.length = 0;
+      combinations.push(...newCombinations);
+    }
+
+    // Format as SKU objects
+    return combinations.map(combo => {
+      const skuSuffix = combo.map(opt => opt.substring(0, 3).toUpperCase()).join('-');
+      const variantName = combo.join(' - ');
+      const catPrefix = categoryName.substring(0, 3).toUpperCase();
+      const prodPrefix = productName.substring(0, 3).toUpperCase();
+      return {
+        sku: `${catPrefix}-${prodPrefix}-${skuSuffix}`,  // MUG-CER-WHT-11O
+        name: `${productName} ${variantName}`,
+        category: categoryName,
+        variants: combo,
+        isTracked: true  // This is a stockable SKU
+      };
+    });
+  };
 
   const getLinkedInventoryCount = (catName, prodName) =>
     inventory.filter(i => i.isActive !== false && i.category === catName && i.name === prodName).length;
@@ -758,17 +1270,42 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
   // ── Product actions ────────────────────────────────────────────────────────
   const startAddProd = (catId) => {
     setFormMode('add-prod'); setFormCatId(catId);
-    setFormProdId(null); setFormName(''); setFormVariants([]); setVariantInput('');
+    setFormProdId(null); setFormName(''); 
+    setFormVariantTypes([]); 
+    setVariantTypeInput(''); 
+    setVariantOptionInputs({});
   };
 
   const startEditProd = (catId, prod) => {
     // TODO: MongoDB — GET /api/inventory/count?category=:catName&name=:prodName
-    // If linked: allow edit but lock name (variants still editable)
+    // If linked: allow edit but lock name (variant types still editable)
     const cat = localList.find(c => c.id === catId);
     const linkedCount = cat ? getLinkedInventoryCount(cat.name, prod.name) : 0;
     setEditingLinked(linkedCount > 0);
     setFormMode('edit-prod'); setFormCatId(catId); setFormProdId(prod.id);
-    setFormName(prod.name); setFormVariants([...(prod.variants||[])]); setVariantInput('');
+    setFormName(prod.name); 
+    // Load existing variant types or convert old variants format
+    if (prod.variantTypes && Array.isArray(prod.variantTypes)) {
+      setFormVariantTypes([...prod.variantTypes]);
+    } else if (prod.variants && Array.isArray(prod.variants)) {
+      // Convert old single variants array to variantTypes format
+      setFormVariantTypes([{
+        id: genId(),
+        name: 'Options',
+        options: [...prod.variants]
+      }]);
+    } else {
+      setFormVariantTypes([]);
+    }
+    
+    // Load pricing
+    setPriceType(prod.priceType || 'fixed');
+    setFixedPrice(prod.flatPrice || '');
+    setPriceTiers(prod.priceTiers || []);
+    
+    setVariantTypeInput('');
+    setVariantOptionInputs({});
+    setTierInput({ min: '', max: '', price: '' });
   };
 
   const handleDeleteProd = (cat, prod) => {
@@ -791,17 +1328,53 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
     });
   };
 
-  // ── Variant actions (inside form only) ────────────────────────────────────
-  const addVariant = () => {
-    const v = variantInput.trim();
-    if (!v) return;
-    if (formVariants.some(x => x.toLowerCase() === v.toLowerCase())) {
-      setInfoModal({ title: 'Duplicate Variant', message: `"${v}" already exists.` }); return;
+  // ── Variant Type actions (multi-dimensional variants) ─────────────────────
+  // Add new variant type (e.g., "Capacity", "Color")
+  const addVariantType = () => {
+    const name = variantTypeInput.trim();
+    if (!name) return;
+    if (formVariantTypes.some(vt => vt.name.toLowerCase() === name.toLowerCase())) {
+      setInfoModal({ title: 'Duplicate Variant Type', message: `"${name}" already exists.` });
+      return;
     }
-    setFormVariants(prev => [...prev, v]);
-    setVariantInput('');
+    const newVariantType = createVariantType(name, [], true);  // Default to tracked
+    setFormVariantTypes(prev => [...prev, newVariantType]);
+    setVariantTypeInput('');
   };
-  const removeVariant = (v) => setFormVariants(prev => prev.filter(x => x !== v));
+
+  const removeVariantType = (index) => {
+    setFormVariantTypes(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Add option to variant type (e.g., "11oz" to "Capacity")
+  const addVariantOption = (typeIndex) => {
+    const option = (variantOptionInputs[typeIndex] || '').trim();
+    if (!option) return;
+    const updated = [...formVariantTypes];
+    if (updated[typeIndex].options.some(o => o.toLowerCase() === option.toLowerCase())) {
+      setInfoModal({ title: 'Duplicate Option', message: `"${option}" already exists in ${updated[typeIndex].name}.` }); 
+      return;
+    }
+    updated[typeIndex].options.push(option);
+    setFormVariantTypes(updated);
+    // Clear only this type's input
+    setVariantOptionInputs(prev => ({ ...prev, [typeIndex]: '' }));
+  };
+
+  const removeVariantOption = (typeIndex, optionIndex) => {
+    const updated = [...formVariantTypes];
+    updated[typeIndex].options.splice(optionIndex, 1);
+    setFormVariantTypes(updated);
+  };
+
+  // Calculate total combinations
+  const getTotalCombinations = () => {
+    if (formVariantTypes.length === 0) return 0;
+    return formVariantTypes.reduce((total, vt) => {
+      if (vt.options.length === 0) return total;
+      return total * vt.options.length;
+    }, 1);
+  };
 
   // ── Form submit ────────────────────────────────────────────────────────────
   const handleFormSubmit = () => {
@@ -824,31 +1397,76 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
       updated = localList.map(c => c.id !== formCatId ? c : { ...c, name: formName.trim(), updatedAt: new Date().toISOString() });
 
     } else if (formMode === 'add-prod') {
-      // TODO: MongoDB — POST /api/masterlist/products { categoryId, name, variants[] }
+      // TODO: MongoDB — POST /api/masterlist/products { categoryId, name, variantTypes[], priceType, flatPrice, priceTiers }
       const cat = localList.find(c => c.id === formCatId);
       if (!cat) return;
       const isDup = (cat.products||[]).some(p => p.name.toLowerCase() === formName.trim().toLowerCase());
       if (isDup) { setInfoModal({ title: 'Duplicate', message: `"${formName.trim()}" already exists under ${cat.name}.` }); return; }
-      const newProd = { id: genId(), name: formName.trim(), variants: formVariants, createdAt: new Date().toISOString() };
+      const newProd = { 
+        id: genId(), 
+        name: formName.trim(), 
+        variantTypes: formVariantTypes,  // NEW: Multi-dimensional variant types
+        priceType: priceType,  // NEW: Pricing
+        flatPrice: priceType === 'fixed' ? parseFloat(fixedPrice) || 0 : null,
+        priceTiers: priceType === 'tiered' ? priceTiers.map(t => ({
+          min: parseInt(t.min),
+          max: parseInt(t.max),
+          price: parseFloat(t.price)
+        })) : [],
+        createdAt: new Date().toISOString() 
+      };
       updated = localList.map(c => c.id !== formCatId ? c : { ...c, products: [...(c.products||[]), newProd] });
 
     } else if (formMode === 'edit-prod') {
-      // TODO: MongoDB — PUT /api/masterlist/products/:id { name, variants[] }
+      // TODO: MongoDB — PUT /api/masterlist/products/:id { name, variantTypes[], priceType, flatPrice, priceTiers }
       const cat = localList.find(c => c.id === formCatId);
       if (!cat) return;
       const isDup = (cat.products||[]).some(p => p.name.toLowerCase() === formName.trim().toLowerCase() && p.id !== formProdId);
       if (isDup) { setInfoModal({ title: 'Duplicate', message: `"${formName.trim()}" already exists under ${cat.name}.` }); return; }
       updated = localList.map(c => c.id !== formCatId ? c : {
-        ...c, products: c.products.map(p => p.id !== formProdId ? p : { ...p, name: formName.trim(), variants: formVariants, updatedAt: new Date().toISOString() })
+        ...c, products: c.products.map(p => p.id !== formProdId ? p : { 
+          ...p, 
+          name: formName.trim(), 
+          variantTypes: formVariantTypes,  // NEW: Multi-dimensional variant types
+          priceType: priceType,  // NEW: Pricing
+          flatPrice: priceType === 'fixed' ? parseFloat(fixedPrice) || 0 : null,
+          priceTiers: priceType === 'tiered' ? priceTiers.map(t => ({
+            min: parseInt(t.min),
+            max: parseInt(t.max),
+            price: parseFloat(t.price)
+          })) : [],
+          updatedAt: new Date().toISOString() 
+        })
       });
     }
 
     setLocalList(updated);
     onSave(updated);
-    setFormMode(null); setFormName(''); setFormVariants([]); setVariantInput(''); setEditingLinked(false);
+    setFormMode(null); 
+    setFormName(''); 
+    setFormVariantTypes([]); 
+    setVariantTypeInput(''); 
+    setVariantOptionInputs({}); 
+    setPriceType('fixed');
+    setFixedPrice('');
+    setPriceTiers([]);
+    setTierInput({ min: '', max: '', price: '' });
+    setEditingLinked(false);
   };
 
-  const cancelForm = () => { setFormMode(null); setFormName(''); setFormVariants([]); setVariantInput(''); setEditingLinked(false); };
+  const cancelForm = () => {
+    setFormMode(null);
+    setFormName('');
+    setFormVariantTypes([]);
+    setVariantTypeInput('');
+    setVariantOptionInputs({});
+    setPriceType('fixed');
+    setFixedPrice('');
+    setPriceTiers([]);
+    setTierInput({ min: '', max: '', price: '' });
+    setGroupChecks({});
+    setEditingLinked(false);
+  };
 
   // ── Filtered list ──────────────────────────────────────────────────────────
   const filtered = localList.filter(cat =>
@@ -897,7 +1515,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
             {/* Name field */}
             <div className="form-group">
               <label className="form-label">
-                {formMode.includes('cat') ? 'Category Name' : 'Product Name'}
+                {formMode.includes('cat') ? 'Product Category Name' : 'Product Variant Name'}
                 <span className="required"> *</span>
                 {editingLinked
                   ? <span style={{ fontSize: '0.72rem', fontWeight: 400, color: '#f59e0b', marginLeft: '0.5rem' }}>
@@ -913,61 +1531,518 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                 placeholder={formMode.includes('cat') ? 'e.g., Canvas Totebag, Mugs, Stickers & Labels' : 'e.g., Plain Totebag, Ceramic White, Vinyl Waterproof'}
                 maxLength={80} autoFocus={!editingLinked}
                 style={editingLinked ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (formMode.includes('cat')) handleFormSubmit(); else document.getElementById('variant-input-field')?.focus(); } }} />
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (formMode.includes('cat')) handleFormSubmit(); else document.getElementById('variant-type-input-field')?.focus(); } }} />
               {editingLinked && (
                 <p className="form-hint" style={{ color: '#f59e0b' }}>
-                  Name is locked — linked to active inventory items. You can still edit variants below.
+                  Name is locked — linked to active inventory items. You can still edit variant types below.
                 </p>
               )}
             </div>
 
-            {/* Variants — only for products */}
+            {/* Variants — only for products (Multi-Dimensional Variant Types) */}
             {formMode.includes('prod') && (
-              <div className="form-group">
+              <div className="form-group" style={{ marginTop: '1.5rem' }}>
                 <label className="form-label">
-                  Variants
-                  <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)', marginLeft: '0.5rem' }}>(Optional — e.g., Small, Medium, Large or Glossy, Matte)</span>
+                  Variant Types
+                  <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)', marginLeft: '0.5rem' }}>(Optional — e.g., Capacity, Color, Size)</span>
                 </label>
+                <p className="form-hint" style={{ marginBottom: '1rem' }}>
+                <strong>Track Stock?</strong> - Checked = Included in SKU & stock tracking (e.g., Color, Size). Unchecked = Add-on only, no stock deduction (e.g., Gift Box, Ribbon).
+                </p>
 
-                {/* Variant chips */}
-                {formVariants.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem' }}>
-                    {formVariants.map((v, i) => (
-                      <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.25rem 0.6rem', background: 'rgba(212,168,67,0.12)', border: '1px solid rgba(212,168,67,0.35)', borderRadius: '20px', fontSize: '0.8rem', color: 'var(--gold)', fontWeight: 500 }}>
-                        {v}
-                        <button type="button" onClick={() => removeVariant(v)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gold)', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center' }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        </button>
-                      </span>
+                {/* Variant Types List */}
+                {formVariantTypes.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1rem' }}>
+                    {formVariantTypes.map((vt, typeIdx) => (
+                      <div key={vt.id} style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1rem' }}>
+                        {/* Variant Type Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--gray)', background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', padding: '0.1rem 0.4rem', borderRadius: '10px' }}>
+                              Type {typeIdx + 1}
+                            </span>
+                            <span style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.9rem' }}>{vt.name}</span>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginLeft: '0.5rem', fontSize: '0.75rem', color: vt.isTracked ? 'var(--gold)' : 'var(--gray)', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={vt.isTracked}
+                                onChange={e => {
+                                  const newTypes = [...formVariantTypes];
+                                  newTypes[typeIdx] = { ...vt, isTracked: e.target.checked };
+                                  setFormVariantTypes(newTypes);
+                                }}
+                                onClick={e => e.stopPropagation()}
+                                style={{ accentColor: 'var(--gold)', cursor: 'pointer' }}
+                              />
+                              <span style={{ fontWeight: 500 }}>Track Stock?</span>
+                            </label>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeVariantType(typeIdx)}
+                            style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: '6px', padding: '0.25rem 0.6rem', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer' }}
+                          >
+                            Remove Type
+                          </button>
+                        </div>
+
+                        {/* Variant Options Chips */}
+                        {vt.options.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem' }}>
+                            {vt.options.map((opt, optIdx) => (
+                              <span key={optIdx} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.25rem 0.6rem', background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '20px', fontSize: '0.8rem', color: '#6366f1', fontWeight: 500 }}>
+                                {opt}
+                                <button type="button" onClick={() => removeVariantOption(typeIdx, optIdx)}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center' }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Add Option Input */}
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <input 
+                            id={`variant-option-input-${typeIdx}`}
+                            type="text" 
+                            className="form-input" 
+                            value={variantOptionInputs[typeIdx] || ''}
+                            onChange={e => setVariantOptionInputs(prev => ({ ...prev, [typeIdx]: e.target.value.slice(0, 40) }))}
+                            placeholder={`Add option to ${vt.name}...`}
+                            maxLength={40}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addVariantOption(typeIdx); } }} 
+                          />
+                          <button type="button" className="btn-primary" onClick={() => addVariantOption(typeIdx)}
+                            style={{ padding: '0 1rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                            + Add
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
 
-                {/* Add variant input */}
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <input id="variant-input-field" type="text" className="form-input" value={variantInput}
-                    onChange={e => setVariantInput(e.target.value.slice(0, 40))}
-                    placeholder="e.g., Small, Glossy, Round..."
+                {/* Add Variant Type Input */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <input 
+                    id="variant-type-input-field"
+                    type="text" 
+                    className="form-input" 
+                    value={variantTypeInput}
+                    onChange={e => setVariantTypeInput(e.target.value.slice(0, 40))}
+                    placeholder="Variant Type name (e.g., Capacity, Color, Size)..."
                     maxLength={40}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addVariant(); } if (e.key === 'Escape') cancelForm(); }} />
-                  <button type="button" className="btn-primary" onClick={addVariant}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addVariantType(); } }} 
+                  />
+                  <button type="button" className="btn-primary" onClick={addVariantType}
                     style={{ padding: '0 1rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                    + Add
+                    + Add Variant Type
                   </button>
                 </div>
-                <p className="form-hint">
-                  {formVariants.length === 0
-                    ? 'No variants — item will be stocked as a single product (e.g., Ceramic White Mug, Mousepad).'
-                    : `${formVariants.length} variant(s) defined. These auto-populate the Variants field in Add Product.`}
-                </p>
 
-                {/* Variants info box */}
-                {formVariants.length > 0 && (
-                  <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-                    <strong style={{ color: 'var(--white)' }}>Note:</strong> Variants are for storefront display only.
-                    In Inventory, this product is tracked as a single item (whole stock, not per variant).
-                    Variants auto-fill in <strong style={{ color: 'var(--white)' }}>Add Product</strong> when you select this item.
+                {/* Combination Preview */}
+                {formVariantTypes.length > 0 && getTotalCombinations() > 0 && (
+                  <div style={{ background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.8rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong style={{ color: 'var(--gold)' }}>Total Combinations:</strong>
+                        <span style={{ color: 'var(--white)', marginLeft: '0.5rem', fontWeight: 600 }}>
+                          {getTotalCombinations()} unique SKU{getTotalCombinations() !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>
+                        {formVariantTypes.map(vt => `${vt.options.length} ${vt.name}`).join(' × ')}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <p className="form-hint">
+                  {formVariantTypes.length === 0
+                    ? 'No variant types — item will be stocked as a single product.'
+                    : `${formVariantTypes.length} variant type(s) defined. Each combination will be a unique SKU in inventory.`}
+                </p>
+              </div>
+            )}
+
+            {/* Pricing Section (Fixed/Tiered/Inquiry) - Same as Add Product module */}
+            {formMode.includes('prod') && (
+              <div className="form-section" style={{ marginTop: '1.5rem' }}>
+                <h2 className="form-section-title">Pricing</h2>
+
+                <div className="price-type-row">
+                  {[
+                    { val: 'fixed',   label: 'Fixed Price' },
+                    { val: 'tiered',  label: 'Tier Price' },
+                    { val: 'inquiry', label: 'For Inquiry' },
+                  ].map(({ val, label }) => (
+                    <button
+                      key={val}
+                      type="button"
+                      className={`price-type-btn${priceType === val ? ' selected' : ''}`}
+                      onClick={() => setPriceType(val)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {priceType === 'fixed' && (
+                  <>
+                    {/* Show SmartPricingTable if has variant types */}
+                    {formVariantTypes.length > 0 && formVariantTypes.some(vt => vt.options.length > 0) ? (
+                      <>
+                        {/* Generate combinations for pricing table */}
+                        {(() => {
+                          // Generate variantGroups format for SmartPricingTable
+                          const variantGroups = formVariantTypes.map(vt => ({
+                            id: vt.id,
+                            name: vt.name,
+                            options: vt.options.map((opt, idx) => ({ id: `${vt.id}-opt-${idx}`, value: opt }))
+                          }));
+
+                          // Generate all combinations
+                          const generateCombinations = (types) => {
+                            if (types.length === 0) return [{}];
+                            const [first, ...rest] = types;
+                            const restCombos = generateCombinations(rest);
+                            return first.options.flatMap(opt =>
+                              restCombos.map(restCombo => ({
+                                [first.id]: opt.value,
+                                ...restCombo
+                              }))
+                            );
+                          };
+
+                          const combinations = generateCombinations(variantGroups).map((combo, idx) => ({
+                            id: `combo-${idx}`,
+                            combo,
+                            label: Object.values(combo).join(' / ')
+                          }));
+
+                          // Convert priceTiers to SmartPricingTable format
+                          const tiers = priceTiers.length > 0 ? priceTiers.map((tier, idx) => ({
+                            id: tier.id || `tier-${idx}`,
+                            minQty: tier.min,
+                            maxQty: tier.max,
+                            prices: Object.fromEntries(combinations.map(c => [c.id, tier.price || '']))
+                          })) : [{
+                            id: 'tier-1',
+                            minQty: 1,
+                            maxQty: 20,
+                            prices: Object.fromEntries(combinations.map(c => [c.id, '']))
+                          }];
+
+                          return (
+                            <>
+                              <SmartPricingTable
+                                tiers={tiers}
+                                variantGroups={variantGroups}
+                                combinations={combinations}
+                                groupChecks={groupChecks}
+                                onPriceChange={(tierId, comboId, val) => {
+                                  const updatedTiers = tiers.map(t => {
+                                    if (t.id === tierId) {
+                                      return {
+                                        ...t,
+                                        prices: syncMergedPrices(
+                                          buildColumnGroups(variantGroups, combinations, groupChecks)
+                                            .find(cg => cg.comboIds.includes(comboId))?.comboIds || [comboId],
+                                          t.prices,
+                                          val
+                                        )
+                                      };
+                                    }
+                                    return t;
+                                  });
+                                  setPriceTiers(updatedTiers.map(t => ({
+                                    min: t.minQty,
+                                    max: t.maxQty,
+                                    price: t.prices[Object.keys(t.prices)[0]] // Get first price for storage
+                                  })));
+                                }}
+                                updateTierRange={(tierId, field, val) => {
+                                  const updatedTiers = tiers.map(t => {
+                                    if (t.id === tierId) {
+                                      return { ...t, [field]: val === '' ? null : parseInt(val) || 0 };
+                                    }
+                                    return t;
+                                  });
+                                  setPriceTiers(updatedTiers.map(t => ({
+                                    min: t.minQty,
+                                    max: t.maxQty,
+                                    price: t.prices[Object.keys(t.prices)[0]]
+                                  })));
+                                }}
+                                removeTier={(tierId) => {
+                                  const updatedTiers = tiers.filter(t => t.id !== tierId);
+                                  setPriceTiers(updatedTiers.map(t => ({
+                                    min: t.minQty,
+                                    max: t.maxQty,
+                                    price: t.prices[Object.keys(t.prices)[0]]
+                                  })));
+                                }}
+                                mode="fixed"
+                              />
+                            </>
+                          );
+                        })()}
+                      </>
+                    ) : (
+                      /* Simple fixed price input when no variants */
+                      <div className="form-group">
+                        <div className="tier-price-cell">
+                          <span className="peso">₱</span>
+                          <FormattedDecimalInput
+                            className="tier-input"
+                            value={fixedPrice}
+                            onChange={e => setFixedPrice(e.target.value)}
+                            placeholder="0"
+                            min={0}
+                            step="0.01"
+                          />
+                        </div>
+                        <p className="form-hint">This price will auto-fill in Add Product. Can be overridden there.</p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {priceType === 'tiered' && (
+                  <>
+                    {/* Show SmartPricingTable if has variant types */}
+                    {formVariantTypes.length > 0 && formVariantTypes.some(vt => vt.options.length > 0) ? (
+                      <>
+                        {(() => {
+                          // Generate variantGroups format for SmartPricingTable
+                          const variantGroups = formVariantTypes.map(vt => ({
+                            id: vt.id,
+                            name: vt.name,
+                            options: vt.options.map((opt, idx) => ({ id: `${vt.id}-opt-${idx}`, value: opt }))
+                          }));
+
+                          // Generate all combinations
+                          const generateCombinations = (types) => {
+                            if (types.length === 0) return [{}];
+                            const [first, ...rest] = types;
+                            const restCombos = generateCombinations(rest);
+                            return first.options.flatMap(opt =>
+                              restCombos.map(restCombo => ({
+                                [first.id]: opt.value,
+                                ...restCombo
+                              }))
+                            );
+                          };
+
+                          const combinations = generateCombinations(variantGroups).map((combo, idx) => ({
+                            id: `combo-${idx}`,
+                            combo,
+                            label: Object.values(combo).join(' / ')
+                          }));
+
+                          // Convert priceTiers to SmartPricingTable format
+                          const tiers = priceTiers.length > 0 ? priceTiers.map((tier, idx) => ({
+                            id: tier.id || `tier-${idx}`,
+                            minQty: tier.min,
+                            maxQty: tier.max,
+                            prices: Object.fromEntries(combinations.map(c => [c.id, tier.price || '']))
+                          })) : [{
+                            id: 'tier-1',
+                            minQty: 1,
+                            maxQty: 20,
+                            prices: Object.fromEntries(combinations.map(c => [c.id, '']))
+                          }];
+
+                          // Check if we should show variant grouping checkboxes (only for tiered with 2+ types that have 2+ options each)
+                          const shouldShowGrouping = variantGroups.length >= 2 && 
+                            variantGroups.every(vg => vg.options.length >= 2);
+
+                          return (
+                            <>
+                              {shouldShowGrouping && (
+                                <VariantGroupingCheckboxes
+                                  variantGroups={variantGroups}
+                                  groupChecks={groupChecks}
+                                  onGroupChecksChange={setGroupChecks}
+                                />
+                              )}
+                              <SmartPricingTable
+                                tiers={tiers}
+                                variantGroups={variantGroups}
+                                combinations={combinations}
+                                groupChecks={groupChecks}
+                                onPriceChange={(tierId, comboId, val) => {
+                                  const updatedTiers = tiers.map(t => {
+                                    if (t.id === tierId) {
+                                      return {
+                                        ...t,
+                                        prices: syncMergedPrices(
+                                          buildColumnGroups(variantGroups, combinations, groupChecks)
+                                            .find(cg => cg.comboIds.includes(comboId))?.comboIds || [comboId],
+                                          t.prices,
+                                          val
+                                        )
+                                      };
+                                    }
+                                    return t;
+                                  });
+                                  setPriceTiers(updatedTiers.map(t => ({
+                                    min: t.minQty,
+                                    max: t.maxQty,
+                                    price: t.prices[Object.keys(t.prices)[0]]
+                                  })));
+                                }}
+                                updateTierRange={(tierId, field, val) => {
+                                  const updatedTiers = tiers.map(t => {
+                                    if (t.id === tierId) {
+                                      return { ...t, [field]: val === '' ? null : parseInt(val) || 0 };
+                                    }
+                                    return t;
+                                  });
+                                  setPriceTiers(updatedTiers.map(t => ({
+                                    min: t.minQty,
+                                    max: t.maxQty,
+                                    price: t.prices[Object.keys(t.prices)[0]]
+                                  })));
+                                }}
+                                removeTier={(tierId) => {
+                                  const updatedTiers = tiers.filter(t => t.id !== tierId);
+                                  setPriceTiers(updatedTiers.map(t => ({
+                                    min: t.minQty,
+                                    max: t.maxQty,
+                                    price: t.prices[Object.keys(t.prices)[0]]
+                                  })));
+                                }}
+                                mode="tiered"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newTier = {
+                                    id: `tier-${Date.now()}`,
+                                    minQty: tiers.length > 0 ? (tiers[tiers.length - 1].maxQty || 20) + 1 : 21,
+                                    maxQty: null,
+                                    prices: Object.fromEntries(combinations.map(c => [c.id, '']))
+                                  };
+                                  const updatedTiers = [...tiers, newTier];
+                                  setPriceTiers(updatedTiers.map(t => ({
+                                    min: t.minQty,
+                                    max: t.maxQty,
+                                    price: t.prices[Object.keys(t.prices)[0]]
+                                  })));
+                                }}
+                                className="add-tier-btn"
+                              >
+                                Add Price Tier
+                              </button>
+                            </>
+                          );
+                        })()}
+                      </>
+                    ) : (
+                      /* Simple tier list when no variants */
+                      <div>
+                        <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
+                          {priceTiers.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--gray)', fontSize: '0.875rem' }}>
+                              No price tiers yet. Click "Add Tier" to add wholesale pricing.
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
+                              {priceTiers.map((tier, idx) => (
+                                <div key={tier.id || idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'end' }}>
+                                  <div>
+                                    <label style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.25rem', display: 'block' }}>Min Qty</label>
+                                    <FormattedIntegerInput
+                                      className="form-input"
+                                      value={tier.min}
+                                      onChange={e => {
+                                        const newTiers = [...priceTiers];
+                                        newTiers[idx] = { ...tier, min: e.target.value };
+                                        setPriceTiers(newTiers);
+                                      }}
+                                      min={1}
+                                      placeholder="1"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.25rem', display: 'block' }}>Max Qty</label>
+                                    <FormattedIntegerInput
+                                      className="form-input"
+                                      value={tier.max}
+                                      onChange={e => {
+                                        const newTiers = [...priceTiers];
+                                        newTiers[idx] = { ...tier, max: e.target.value };
+                                        setPriceTiers(newTiers);
+                                      }}
+                                      min={tier.min || 1}
+                                      placeholder="∞"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.25rem', display: 'block' }}>Price</label>
+                                    <div className="tier-price-cell">
+                                      <span className="peso">₱</span>
+                                      <FormattedDecimalInput
+                                        className="tier-input"
+                                        value={tier.price}
+                                        onChange={e => {
+                                          const newTiers = [...priceTiers];
+                                          newTiers[idx] = { ...tier, price: e.target.value };
+                                          setPriceTiers(newTiers);
+                                        }}
+                                        placeholder="0"
+                                        step="0.01"
+                                      />
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newTiers = priceTiers.filter((_, i) => i !== idx);
+                                      setPriceTiers(newTiers);
+                                    }}
+                                    style={{ padding: '0.5rem 0.75rem', background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {priceTiers.length < 10 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newTier = {
+                                  id: `tier-${Date.now()}`,
+                                  min: priceTiers.length > 0 ? (parseInt(priceTiers[priceTiers.length - 1].max) || 1) + 1 : 1,
+                                  max: '',
+                                  price: ''
+                                };
+                                setPriceTiers([...priceTiers, newTier]);
+                              }}
+                              style={{ padding: '0.5rem 1rem', background: 'var(--gold)', border: '1px solid var(--gold)', color: '#000', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+                            >
+                              + Add Tier
+                            </button>
+                          )}
+                          {priceTiers.length >= 10 && (
+                            <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.5rem' }}>Maximum 10 tiers reached.</p>
+                          )}
+                        </div>
+                        <p className="form-hint">Optional. Set wholesale pricing for bulk orders (e.g., 21-30 pcs = ₱90, 31-50 pcs = ₱85).</p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {priceType === 'inquiry' && (
+                  <div style={{ padding: '1rem', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px' }}>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--gray)', margin: 0 }}>
+                      Price will be "For Inquiry" — customers must contact you for pricing. No price will be shown publicly.
+                    </p>
                   </div>
                 )}
               </div>
@@ -995,7 +2070,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                 {search && <button className="search-clear" onClick={() => setSearch('')}>×</button>}
               </div>
               <button type="button" className="btn-primary" onClick={startAddCat} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
-                + Add Category
+                + Add Product Category
               </button>
             </div>
 
@@ -1009,7 +2084,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                     <>
                       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--gray)', marginBottom: '1rem' }}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
                       <p style={{ fontWeight: 600, color: 'var(--white)', marginBottom: '0.5rem' }}>No categories yet</p>
-                      <p style={{ fontSize: '0.875rem' }}>Click <strong style={{ color: 'var(--gold)' }}>+ Add Category</strong> to start building your masterlist.</p>
+                      <p style={{ fontSize: '0.875rem' }}>Click <strong style={{ color: 'var(--gold)' }}>+ Add Product Category</strong> to start building your masterlist.</p>
                     </>
                   )}
                 </div>
@@ -1059,41 +2134,107 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.5rem' }}>
                                 {(cat.products||[]).map(prod => {
                                   const linked = getLinkedInventoryCount(cat.name, prod.name);
+                                  const isExpanded = expandedProds.has(prod.id);
+                                  const hasVariantTypes = prod.variantTypes && prod.variantTypes.length > 0;
+                                  const skuCombinations = hasVariantTypes ? generateSkuCombinations(prod.variantTypes, cat.name, prod.name) : [];
+                                  
                                   return (
-                                    <div key={prod.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                      {/* Product info */}
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                          <span style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.875rem' }}>{prod.name}</span>
-                                          {linked > 0 && (
-                                            <span style={{ fontSize: '0.65rem', color: '#4ade80', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>
-                                              {linked} in inventory
-                                            </span>
+                                    <div key={prod.id} style={{ border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px', overflow: 'hidden' }}>
+                                      {/* Product Row */}
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.03)' }}>
+                                        {/* Expand Chevron */}
+                                        <button 
+                                          onClick={() => {
+                                            if (hasVariantTypes) {
+                                              setExpandedProds(prev => {
+                                                const next = new Set(prev);
+                                                if (next.has(prod.id)) next.delete(prod.id);
+                                                else next.add(prod.id);
+                                                return next;
+                                              });
+                                            }
+                                          }}
+                                          style={{ 
+                                            background: 'none', 
+                                            border: 'none', 
+                                            color: hasVariantTypes ? 'var(--gray)' : 'rgba(100,100,100,0.3)',
+                                            cursor: hasVariantTypes ? 'pointer' : 'default',
+                                            padding: '0', 
+                                            display: 'flex', 
+                                            alignItems: 'center',
+                                            width: '20px',
+                                            flexShrink: 0
+                                          }}
+                                          title={hasVariantTypes ? (isExpanded ? 'Collapse SKUs' : 'Expand SKUs') : 'No variant types'}
+                                        >
+                                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                                            style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
+                                            <path d="M9 18l6-6-6-6"/>
+                                          </svg>
+                                        </button>
+                                        
+                                        {/* Product info */}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                            <span style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.875rem' }}>{prod.name}</span>
+                                            {linked > 0 && (
+                                              <span style={{ fontSize: '0.65rem', color: '#4ade80', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>
+                                                {linked} in inventory
+                                              </span>
+                                            )}
+                                            {hasVariantTypes && (
+                                              <span style={{ fontSize: '0.6rem', color: 'var(--gold)', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: 600 }}>
+                                                {skuCombinations.length} SKUs
+                                              </span>
+                                            )}
+                                          </div>
+                                          
+                                          {/* Show variant types summary */}
+                                          {hasVariantTypes ? (
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.3rem' }}>
+                                              {prod.variantTypes.map((vt, idx) => (
+                                                <span key={idx} style={{ fontSize: '0.68rem', color: 'var(--gray)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.1rem 0.4rem', borderRadius: '3px' }}>
+                                                  {vt.name}: {vt.options.join(', ')}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <span style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.2rem', display: 'block', fontStyle: 'italic' }}>No variant types</span>
                                           )}
                                         </div>
-                                        {(prod.variants||[]).length > 0 ? (
-                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.3rem' }}>
-                                            {(prod.variants||[]).map((v, i) => (
-                                              <span key={i} style={{ fontSize: '0.7rem', color: 'var(--gold)', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.25)', padding: '0.1rem 0.4rem', borderRadius: '3px' }}>
-                                                {v}
-                                              </span>
+                                        
+                                        {/* Product actions */}
+                                        <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                                          <button type="button" onClick={() => startEditProd(cat.id, prod)}
+                                            style={{ background: 'var(--gold)', border: '1px solid var(--gold)', color: '#000', minWidth: '52px', flexShrink: 0, borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Edit</button>
+                                          {linked === 0 && (
+                                            <button type="button" onClick={() => handleDeleteProd(cat, prod)}
+                                              style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', minWidth: '64px', flexShrink: 0, borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Delete</button>
+                                          )}
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Expandable SKU Combinations */}
+                                      {isExpanded && hasVariantTypes && skuCombinations.length > 0 && (
+                                        <div style={{ padding: '0.75rem 1rem 1rem', background: 'rgba(0,0,0,0.15)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                          <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 600 }}>
+                                            Generated SKU Combinations ({skuCombinations.length})
+                                          </div>
+                                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem' }}>
+                                            {skuCombinations.map((combo, idx) => (
+                                              <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '4px', padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>
+                                                <div style={{ color: 'var(--gold)', fontWeight: 600, fontFamily: 'monospace', marginBottom: '0.25rem' }}>{combo.sku}</div>
+                                                <div style={{ color: 'var(--white)', fontSize: '0.7rem', marginBottom: '0.25rem' }}>{combo.name}</div>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem' }}>
+                                                  {combo.variants.map((v, i) => (
+                                                    <span key={i} style={{ fontSize: '0.65rem', color: 'var(--gray)', background: 'rgba(255,255,255,0.05)', padding: '0.1rem 0.3rem', borderRadius: '2px' }}>{v}</span>
+                                                  ))}
+                                                </div>
+                                              </div>
                                             ))}
                                           </div>
-                                        ) : (
-                                          <span style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.2rem', display: 'block', fontStyle: 'italic' }}>No variants</span>
-                                        )}
-                                      </div>
-                                      {/* Product actions */}
-                                      <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
-                                        {/* Edit always shown — name locked if linked, variants still editable */}
-                                        <button type="button" onClick={() => startEditProd(cat.id, prod)}
-                                          style={{ background: 'var(--gold)', border: '1px solid var(--gold)', color: '#000', minWidth: '52px', flexShrink: 0, borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Edit</button>
-                                        {/* Delete only shown when not linked */}
-                                        {linked === 0 && (
-                                          <button type="button" onClick={() => handleDeleteProd(cat, prod)}
-                                            style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', minWidth: '64px', flexShrink: 0, borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Delete</button>
-                                        )}
-                                      </div>
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })}
@@ -1104,7 +2245,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                               style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: '6px', padding: '0.4rem 0.75rem', color: 'var(--gray)', fontSize: '0.8rem', cursor: 'pointer', width: '100%', transition: 'all 0.15s' }}
                               onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--gold)'; e.currentTarget.style.color = 'var(--gold)'; }}
                               onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--gray)'; }}>
-                              + Add Product under {cat.name}
+                              + Add Product Variant under {cat.name}
                             </button>
                           </div>
                         )}
@@ -2141,7 +3282,22 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
 // FIX: minStockLevel is now editable when editing (was previously locked)
 // FIX: SKU generated once and stored in state — never regenerates on re-render
 function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, categories, onAddCategory, inventory, editingItem, suppliers, onAddSupplier, masterlist }) {
-  const [form, setForm] = useState({ name: '', category: categories[0]||'', initialStock: '', minStockLevel: 10, supplierId: 'unspecified', supplierName: 'General Merchandise', unitCost: '', isBulkPurchase: false, totalCost: '', invoiceNumber: '', deliveryDate: new Date().toISOString().split('T')[0], damagedOnArrival: '', notes: '', receiptImage: null });
+  const [form, setForm] = useState({
+    name: '',
+    category: categories[0]||'',
+    initialStock: '',
+    minStockLevel: 10,
+    supplierId: 'unspecified',
+    supplierName: 'General Merchandise',
+    unitCost: '',
+    isBulkPurchase: false,
+    totalCost: '',
+    invoiceNumber: '',
+    deliveryDate: new Date().toISOString().split('T')[0],
+    damagedOnArrival: '',
+    notes: '',
+    receiptImage: null
+  });
   // SKU stored in state — generated once when name is first filled, never regenerated
   const [skuPreview, setSkuPreview] = useState('');
   const [skuLocked, setSkuLocked] = useState(false);
@@ -2150,20 +3306,54 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
   const [infoModal, setInfoModal] = useState(null);
   const [duplicateItem, setDuplicateItem] = useState(null);
   const [archivedItem, setArchivedItem] = useState(null);
+  
+  // Variant selection state for checkbox selection
+  const [selectedVariantChecks, setSelectedVariantChecks] = useState({}); // { Color: { Red: true, White: true }, Capacity: { 11oz: true } }
+  const [variantStockEntries, setVariantStockEntries] = useState([]); // [{ combo: { Color: 'Red', Capacity: '11oz' }, qty: '', damaged: '' }]
   // Masterlist selection state
   const [masterlistInput, setMasterlistInput] = useState('');
   const [showMasterlistDrop, setShowMasterlistDrop] = useState(false);
-  const [selectedMasterlistItem, setSelectedMasterlistItem] = useState(null); // { catName, prodName, variants[] }
+  const [selectedMasterlistItem, setSelectedMasterlistItem] = useState(null); // { catId, catName, prodId, prodName, variantTypes[] }
   const masterlistRef = useRef(null);
 
   useEffect(() => {
     if (item) {
-      setForm({ name: item.name||'', category: item.category||categories[0]||'', initialStock: item.stockQty||0, minStockLevel: item.minStockLevel||10, supplierId: item.lastSupplierId||'unspecified', supplierName: item.lastSupplierName||'General Merchandise', unitCost: item.lastUnitCost?String(item.lastUnitCost):'', isBulkPurchase: false, totalCost: '', invoiceNumber: '', deliveryDate: new Date().toISOString().split('T')[0], damagedOnArrival: '', notes: '', receiptImage: null });
+      setForm({
+        name: item.name||'',
+        category: item.category||categories[0]||'',
+        initialStock: item.stockQty||0,
+        minStockLevel: item.minStockLevel||10,
+        supplierId: item.lastSupplierId||'unspecified',
+        supplierName: item.lastSupplierName||'General Merchandise',
+        unitCost: item.lastUnitCost?String(item.lastUnitCost):'',
+        isBulkPurchase: false,
+        totalCost: '',
+        invoiceNumber: '',
+        deliveryDate: new Date().toISOString().split('T')[0],
+        damagedOnArrival: '',
+        notes: '',
+        receiptImage: null
+      });
       // Editing: SKU already exists, show it locked
       setSkuPreview(item.sku||'');
       setSkuLocked(true);
     } else {
-      setForm({ name: '', category: categories[0]||'', initialStock: '', minStockLevel: 10, supplierId: 'unspecified', supplierName: 'General Merchandise', unitCost: '', isBulkPurchase: false, totalCost: '', invoiceNumber: '', deliveryDate: new Date().toISOString().split('T')[0], damagedOnArrival: '', notes: '', receiptImage: null });
+      setForm({
+        name: '',
+        category: categories[0]||'',
+        initialStock: '',
+        minStockLevel: 10,
+        supplierId: 'unspecified',
+        supplierName: 'General Merchandise',
+        unitCost: '',
+        isBulkPurchase: false,
+        totalCost: '',
+        invoiceNumber: '',
+        deliveryDate: new Date().toISOString().split('T')[0],
+        damagedOnArrival: '',
+        notes: '',
+        receiptImage: null
+      });
       setSkuPreview('');
       setSkuLocked(false);
       setMasterlistInput('');
@@ -2205,6 +3395,46 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
+  // Generate variant stock entries when selections change
+  useEffect(() => {
+    if (!selectedMasterlistItem || !selectedMasterlistItem.variantTypes || selectedMasterlistItem.variantTypes.length === 0) {
+      setVariantStockEntries([]);
+      return;
+    }
+
+    // Get all selected options per variant type
+    const selectedOptions = {};
+    selectedMasterlistItem.variantTypes.forEach(vt => {
+      const checked = selectedVariantChecks[vt.name] || {};
+      selectedOptions[vt.name] = vt.options.filter(opt => checked[opt]);
+    });
+
+    // Generate all combinations
+    const generateCombinations = (types, options) => {
+      if (types.length === 0) return [{}];
+      const [firstType, ...restTypes] = types;
+      const restCombinations = generateCombinations(restTypes, options);
+      const firstOptions = options[firstType.name] || [];
+      
+      const combinations = [];
+      firstOptions.forEach(opt => {
+        restCombinations.forEach(rest => {
+          combinations.push({ [firstType.name]: opt, ...rest });
+        });
+      });
+      return combinations;
+    };
+
+    const combinations = generateCombinations(selectedMasterlistItem.variantTypes, selectedOptions);
+    
+    // Create stock entries for each combination
+    setVariantStockEntries(combinations.map(combo => ({
+      combo,
+      qty: '',
+      damaged: ''
+    })));
+  }, [selectedMasterlistItem, selectedVariantChecks]);
+
   // TODO: MongoDB — Replace with API: GET /api/products?inventoryId=... and GET /api/sales?inventoryId=...
   useEffect(() => {
     if (item) {
@@ -2224,6 +3454,7 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.name.trim()) { setInfoModal({ title: 'Validation Error', message: 'Please enter a product name.' }); return; }
+    
     const stock = parseInt(form.initialStock)||0;
     const damaged = parseInt(form.damagedOnArrival)||0;
     if (!item && damaged >= stock && stock > 0) { setInfoModal({ title: 'Validation Error', message: 'Damaged on arrival must be less than total quantity received.' }); return; }
@@ -2236,10 +3467,22 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
     // TODO: MongoDB — Replace with API: GET /api/inventory/check-duplicate?name=...&category=...
     const dup = inventory.find(i => i.name.toLowerCase()===normalizedName.toLowerCase() && i.category.toLowerCase()===form.category.toLowerCase() && i.id!==editingItem?.id);
     if (dup) { if (dup.isActive===false) { setArchivedItem(dup); return; } setDuplicateItem(dup); return; }
-    onSave({ ...form, name: normalizedName, sku: skuPreview, minStockLevel: parseInt(form.minStockLevel)||10, stockQty: item ? item.stockQty : (stock-damaged), damagedQty: item ? item.damagedQty : damaged, lastSupplierId: form.supplierId==='unspecified'?null:form.supplierId, lastSupplierName: form.supplierName, lastUnitCost: parseFloat(form.unitCost)||0, averageCost: parseFloat(form.unitCost)||0 });
+    onSave({ 
+      ...form, 
+      name: normalizedName, 
+      sku: skuPreview, 
+      minStockLevel: parseInt(form.minStockLevel)||10, 
+      stockQty: item ? item.stockQty : (stock-damaged), 
+      damagedQty: item ? item.damagedQty : damaged, 
+      lastSupplierId: form.supplierId==='unspecified'?null:form.supplierId, 
+      lastSupplierName: form.supplierName, 
+      lastUnitCost: parseFloat(form.unitCost)||0, 
+      averageCost: parseFloat(form.unitCost)||0
+    });
   };
 
   const hasStock = !item && form.initialStock!=='' && parseInt(form.initialStock)>0;
+  const showSupplierInvoice = !item && (hasStock || selectedMasterlistItem);  // Show when masterlist selected OR has stock
   if (!isOpen) return null;
 
   return (
@@ -2286,18 +3529,24 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
                   const existingItems = inventory
                     .filter(i => i.isActive !== false)
                     .map(i => ({ name: i.name, category: i.category }));
-                  
+
                   (masterlist||[]).forEach(cat => {
                     (cat.products||[]).forEach(prod => {
                       // Check if this product+category combo already exists in inventory
                       const isDuplicate = existingItems.some(
-                        item => item.name.toLowerCase() === prod.name.toLowerCase() && 
+                        item => item.name.toLowerCase() === prod.name.toLowerCase() &&
                                 item.category.toLowerCase() === cat.name.toLowerCase()
                       );
-                      
+
                       // Only show if NOT a duplicate (or if editing, allow same item)
                       if (!isDuplicate && (!q || cat.name.toLowerCase().includes(q) || prod.name.toLowerCase().includes(q))) {
-                        entries.push({ catId: cat.id, catName: cat.name, prodId: prod.id, prodName: prod.name, variants: prod.variants||[] });
+                        entries.push({ 
+                          catId: cat.id, 
+                          catName: cat.name, 
+                          prodId: prod.id, 
+                          prodName: prod.name, 
+                          variantTypes: prod.variantTypes || [] // NEW: Multi-dimensional variant types
+                        });
                       }
                     });
                   });
@@ -2319,16 +3568,19 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
                             setShowMasterlistDrop(false);
                             setSkuLocked(false);
                             prevSKUKeyRef.current = '';
+                            setSelectedVariantOptions({}); // Reset variant options
                             setForm(p => ({ ...p, name: e.prodName, category: e.catName }));
                           }}>
                           <div>
                             <span style={{ fontWeight: 600, color: 'var(--white)' }}>{e.prodName}</span>
                             <span style={{ color: 'var(--gray)', marginLeft: '0.5rem', fontSize: '0.8rem' }}>{e.catName}</span>
                           </div>
-                          {e.variants.length > 0 && (
+                          {e.variantTypes.length > 0 && (
                             <div style={{ marginTop: '0.2rem' }}>
-                              {e.variants.map((v, i) => (
-                                <span key={i} style={{ fontSize: '0.68rem', color: 'var(--gold)', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.25)', padding: '0.1rem 0.35rem', borderRadius: '3px', marginRight: '0.25rem' }}>{v}</span>
+                              {e.variantTypes.map((vt, i) => (
+                                <span key={i} style={{ fontSize: '0.65rem', color: 'var(--gold)', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.25)', padding: '0.1rem 0.35rem', borderRadius: '3px', marginRight: '0.25rem' }}>
+                                  {vt.name}: {vt.options.join(', ')}
+                                </span>
                               ))}
                             </div>
                           )}
@@ -2338,15 +3590,101 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
                   );
                 })()}
               </div>
-              {selectedMasterlistItem && (
-                <div style={{ marginTop: '0.5rem', padding: '0.6rem 0.75rem', background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '6px', fontSize: '0.8rem' }}>
-                  <span style={{ color: '#4ade80', fontWeight: 600 }}>Selected:</span>
-                  <span style={{ color: 'var(--white)', marginLeft: '0.5rem' }}>{selectedMasterlistItem.catName} - {selectedMasterlistItem.prodName}</span>
-                  {selectedMasterlistItem.variants.length > 0 && (
-                    <span style={{ color: 'var(--gray)', marginLeft: '0.5rem' }}>
-                      · Variants: {selectedMasterlistItem.variants.join(', ')} (tracked in Add Product, not in inventory)
-                    </span>
-                  )}
+              {selectedMasterlistItem && selectedMasterlistItem.variantTypes.length > 0 && (
+                <div style={{ marginTop: '1rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {selectedMasterlistItem.variantTypes.map((vt, typeIdx) => (
+                          <div key={typeIdx}>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.5rem', display: 'block', textTransform: 'uppercase' }}>{vt.name}</label>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+                              {vt.options.map((opt, optIdx) => {
+                                const isChecked = (selectedVariantChecks[vt.name] || {})[opt] || false;
+                                return (
+                                  <label
+                                    key={optIdx}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem',
+                                      padding: '0.5rem 0.75rem',
+                                      background: isChecked ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.03)',
+                                      border: isChecked ? '1px solid rgba(212,168,67,0.4)' : '1px solid rgba(255,255,255,0.1)',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.85rem',
+                                      color: isChecked ? 'var(--gold)' : 'var(--white)',
+                                      fontWeight: isChecked ? 600 : 400
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={(e) => {
+                                        const newChecks = { ...selectedVariantChecks };
+                                        if (!newChecks[vt.name]) newChecks[vt.name] = {};
+                                        newChecks[vt.name][opt] = e.target.checked;
+                                        setSelectedVariantChecks(newChecks);
+                                      }}
+                                      style={{ accentColor: 'var(--gold)' }}
+                                    />
+                                    {opt}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {variantStockEntries.length > 0 && (
+                        <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--gold)', marginBottom: '0.75rem', fontWeight: 600 }}>
+                            Selected Combinations ({variantStockEntries.length})
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            {variantStockEntries.map((entry, idx) => (
+                              <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '0.75rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                                  {Object.entries(entry.combo).map(([typeName, opt], optIdx) => (
+                                    <span key={optIdx} style={{ fontSize: '0.7rem', color: 'var(--gray)', background: 'rgba(255,255,255,0.05)', padding: '0.1rem 0.4rem', borderRadius: '3px' }}>
+                                      {typeName}: {opt}
+                                    </span>
+                                  ))}
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                  <div>
+                                    <label style={{ fontSize: '0.65rem', color: 'var(--gray)', marginBottom: '0.25rem', display: 'block' }}>Qty Received</label>
+                                    <IntegerInput
+                                      className="form-input"
+                                      value={entry.qty}
+                                      onChange={e => {
+                                        const newEntries = [...variantStockEntries];
+                                        newEntries[idx] = { ...entry, qty: e.target.value };
+                                        setVariantStockEntries(newEntries);
+                                      }}
+                                      min={0}
+                                      placeholder="0"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: '0.65rem', color: 'var(--gray)', marginBottom: '0.25rem', display: 'block' }}>Damaged</label>
+                                    <IntegerInput
+                                      className="form-input"
+                                      value={entry.damaged}
+                                      onChange={e => {
+                                        const newEntries = [...variantStockEntries];
+                                        newEntries[idx] = { ...entry, damaged: e.target.value };
+                                        setVariantStockEntries(newEntries);
+                                      }}
+                                      min={0}
+                                      placeholder="0"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                 </div>
               )}
               {!selectedMasterlistItem && (
@@ -2361,22 +3699,26 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
             <div className="form-group">
               <label className="form-label">Product Name <span className="required">*</span></label>
-              <input type="text" className="form-input" 
+              <input type="text" className="form-input"
                 value={selectedMasterlistItem ? form.name : 'Select from Masterlist above first...'}
                 readOnly
                 style={{ opacity: 0.6, cursor: 'not-allowed', background: 'rgba(0,0,0,0.2)' }} />
               <p className="form-hint">
-                Select a product from the Masterlist above to auto-fill the field.
+                {selectedMasterlistItem 
+                  ? 'Auto-filled from masterlist selection.'
+                  : 'Select a product from the Masterlist above to auto-fill the field.'}
               </p>
             </div>
             <div className="form-group">
               <label className="form-label">Category <span className="required">*</span></label>
-              <input type="text" className="form-input" 
+              <input type="text" className="form-input"
                 value={selectedMasterlistItem ? form.category : 'Select from Masterlist above first...'}
                 readOnly
                 style={{ opacity: 0.6, cursor: 'not-allowed', background: 'rgba(0,0,0,0.2)' }} />
               <p className="form-hint">
-                Select a product from the Masterlist above to auto-fill the field.
+                {selectedMasterlistItem 
+                  ? 'Auto-filled from masterlist selection.'
+                  : 'Select a product from the Masterlist above to auto-fill the field.'}
               </p>
             </div>
           </div>
@@ -2430,7 +3772,7 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
           )}
 
           {/* Supplier invoice section */}
-          {hasStock && (
+          {showSupplierInvoice && (
             <div style={{ background: 'rgba(217,119,6,0.08)', border: '2px solid rgba(217,119,6,0.3)', borderRadius: '8px', padding: '1.5rem', margin: '1rem 0' }}>
               <h4 style={{ margin: '0 0 1.25rem 0', color: '#d97706', fontSize: '0.875rem', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -3612,6 +4954,9 @@ Item Masterlist
                 <th style={{ width: '28px' }}></th>
                 <th className="table-col-name">Product Name</th>
                 <th className="table-col-category">Category</th>
+                <th className="table-col-cost">Cost</th>
+                <th className="table-col-price">Selling Price</th>
+                <th className="table-col-tiers">Tiers</th>
                 <th className="table-col-stock">Current Stock</th>
                 <th className="table-col-min">Min. Level</th>
                 <th className="table-col-status">Status</th>
@@ -3636,6 +4981,29 @@ Item Masterlist
                         <div style={{ fontSize: '0.73rem', color: 'var(--gray)', marginTop: '0.15rem', fontFamily: 'monospace' }}>SKU: {item.sku||'—'}</div>
                       </td>
                       <td className="table-cell"><span className="category-badge">{item.category}</span></td>
+                      <td className="table-cell" style={{ textAlign: 'center' }}>
+                        {item.baseCost ? (
+                          <span style={{ color: 'var(--gray)', fontWeight: 500 }}>{formatPrice(item.baseCost)}</span>
+                        ) : (
+                          <span style={{ color: 'var(--gray)', fontSize: '0.8rem' }}>—</span>
+                        )}
+                      </td>
+                      <td className="table-cell" style={{ textAlign: 'center' }}>
+                        {item.sellingPrice ? (
+                          <span style={{ color: 'var(--gold)', fontWeight: 600 }}>{formatPrice(item.sellingPrice)}</span>
+                        ) : (
+                          <span style={{ color: 'var(--gray)', fontSize: '0.8rem' }}>—</span>
+                        )}
+                      </td>
+                      <td className="table-cell" style={{ textAlign: 'center' }}>
+                        {item.priceTiers && item.priceTiers.length > 0 ? (
+                          <span style={{ color: 'var(--gold)', background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', padding: '0.2rem 0.5rem', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 600 }}>
+                            🏷️ {item.priceTiers.length} tiers
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--gray)', fontSize: '0.8rem' }}>—</span>
+                        )}
+                      </td>
                       <td className="table-cell-stock" style={{ textAlign: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                           <button className="btn-sm btn-secondary"
@@ -3670,7 +5038,7 @@ Item Masterlist
                         <button onClick={() => handleDelete(item)} style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Remove</button>
                       </td>
                     </tr>
-                    {isExpanded && <InventoryExpandRow item={item} colSpan={7} />}
+                    {isExpanded && <InventoryExpandRow item={item} colSpan={10} />}
                   </React.Fragment>
                 );
               })}
