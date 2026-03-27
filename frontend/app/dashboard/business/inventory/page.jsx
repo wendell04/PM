@@ -53,7 +53,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { formatNumber, formatPrice, formatSmart, formatPriceSmart } from '../../../../src/utils/format';
-import AddInventoryItemModal from './AddIItemModal';
+import AddInventoryItemModal from './AddInventoryItemModal';
 
 // ── Gold Scrollbar Style ──────────────────────────────────────────────────────
 // Injected once via a side-effect — targets all scrollable elements in the page
