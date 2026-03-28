@@ -54,6 +54,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { formatNumber, formatPrice, formatSmart, formatPriceSmart } from '../../../../src/utils/format';
 import AddInventoryItemModal from './AddInventoryItemModal';
+import StockAdditionModal from './StockAdditionModal';
+import { NestedInventoryTable } from './NestedInventoryTable';
 
 // ── Gold Scrollbar Style ──────────────────────────────────────────────────────
 // Injected once via a side-effect — targets all scrollable elements in the page
@@ -1149,12 +1151,11 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
   const [tierInput, setTierInput] = useState({ min: '', max: '', price: '' });
   const [groupChecks, setGroupChecks] = useState({}); // For variant grouping in pricing
   
-  // Helper to create new variant type with isTracked default
-  const createVariantType = (name, options = [], isTracked = true) => ({
+  // Helper to create new variant type
+  const createVariantType = (name, options = []) => ({
     id: `vt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
     name,
     options,
-    isTracked
   });
 
   useEffect(() => {
@@ -1174,7 +1175,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
     if (!variantTypes || variantTypes.length === 0) return [];
 
     // Filter only tracked variant types for SKU generation
-    const trackedTypes = variantTypes.filter(vt => vt.isTracked);
+    const trackedTypes = variantTypes;  // All types are tracked now
     
     // If no tracked types, return empty (no SKU needed for non-tracked items)
     if (trackedTypes.length === 0) return [];
@@ -1208,7 +1209,13 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
   };
 
   const getLinkedInventoryCount = (catName, prodName) =>
-    inventory.filter(i => i.isActive !== false && i.category === catName && i.name === prodName).length;
+    inventory.filter(i => {
+      if (i.isActive === false) return false;
+      if (i.category !== catName) return false;
+      // Check if inventory name contains the product name (flexible match)
+      // e.g., "Inner Color Mugs Purple - 11oz" contains "Inner Color Mugs"
+      return i.name.includes(prodName) || prodName.includes(i.name);
+    }).length;
 
   const getCatProductCount = (catId) =>
     (localList.find(c => c.id === catId)?.products || []).length;
@@ -1338,7 +1345,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
       setInfoModal({ title: 'Duplicate Variant Type', message: `"${name}" already exists.` });
       return;
     }
-    const newVariantType = createVariantType(name, [], true);  // Default to tracked
+    const newVariantType = createVariantType(name, []);  // All types are tracked by default
     setFormVariantTypes(prev => [...prev, newVariantType]);
     setVariantTypeInput('');
   };
@@ -1548,7 +1555,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                   <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)', marginLeft: '0.5rem' }}>(Optional — e.g., Capacity, Color, Size)</span>
                 </label>
                 <p className="form-hint" style={{ marginBottom: '1rem' }}>
-                <strong>Track Stock?</strong> - Checked = Included in SKU & stock tracking (e.g., Color, Size). Unchecked = Add-on only, no stock deduction (e.g., Gift Box, Ribbon).
+                  Define product variations. All variant types will be included in SKU generation and stock tracking.
                 </p>
 
                 {/* Variant Types List */}
@@ -1563,20 +1570,6 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                               Type {typeIdx + 1}
                             </span>
                             <span style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.9rem' }}>{vt.name}</span>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginLeft: '0.5rem', fontSize: '0.75rem', color: vt.isTracked ? 'var(--gold)' : 'var(--gray)', cursor: 'pointer' }}>
-                              <input
-                                type="checkbox"
-                                checked={vt.isTracked}
-                                onChange={e => {
-                                  const newTypes = [...formVariantTypes];
-                                  newTypes[typeIdx] = { ...vt, isTracked: e.target.checked };
-                                  setFormVariantTypes(newTypes);
-                                }}
-                                onClick={e => e.stopPropagation()}
-                                style={{ accentColor: 'var(--gold)', cursor: 'pointer' }}
-                              />
-                              <span style={{ fontWeight: 500 }}>Track Stock?</span>
-                            </label>
                           </div>
                           <button
                             type="button"
@@ -3286,27 +3279,195 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
 // ── Confirm Save Modal ─────────────────────────────────────────────────────────
 function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
   if (!isOpen || !itemData) return null;
+  
+  const allItems = itemData._allItems || [itemData];
+  const totalStock = allItems.reduce((sum, item) => sum + (item.stockQty || 0), 0);
+  const totalDamaged = allItems.reduce((sum, item) => sum + (item.damagedQty || 0), 0);
+  
+  // Check if product has multiple variant types (combo)
+  const hasMultipleVariantTypes = allItems.some(item => 
+    item.variantCombo && Object.keys(item.variantCombo).length > 1
+  );
+  
+  // Group batches by invoice number (same invoice = one batch)
+  const groupedBatches = allItems.reduce((acc, item) => {
+    if (item.batches && item.batches.length > 0) {
+      item.batches.forEach(batch => {
+        const batchKey = batch.invoiceNumber 
+          ? `${batch.invoiceNumber}-${batch.supplierId || 'general'}-${batch.dateReceived}`
+          : `${batch.batchId}-${batch.supplierId || 'general'}-${batch.dateReceived}`;
+        
+        if (!acc.has(batchKey)) {
+          acc.set(batchKey, {
+            batchId: batch.batchId,
+            supplierName: batch.supplierName,
+            invoiceNumber: batch.invoiceNumber,
+            dateReceived: batch.dateReceived,
+            items: [],
+            totalQty: 0,
+            totalCost: 0
+          });
+        }
+        
+        const existingBatch = acc.get(batchKey);
+        const existingItem = existingBatch.items.find(i => i.sku === item.sku);
+        
+        if (existingItem) {
+          existingItem.remainingQty += batch.remainingQty || 0;
+          existingItem.goodQty += batch.goodQty || 0;
+          existingItem.damagedQty += batch.damagedQty || 0;
+        } else {
+          existingBatch.items.push({
+            sku: item.sku,
+            variantName: item.variantCombo ? Object.values(item.variantCombo).join(' / ') : item.name,
+            remainingQty: batch.remainingQty || 0,
+            goodQty: batch.goodQty || 0,
+            damagedQty: batch.damagedQty || 0,
+            unitCost: batch.unitCost || 0,
+            totalCost: (batch.remainingQty || 0) * (batch.unitCost || 0)
+          });
+        }
+        
+        existingBatch.totalQty += batch.remainingQty || 0;
+        existingBatch.totalCost += batch.totalCost || 0;
+      });
+    }
+    return acc;
+  }, new Map());
+  
+  const batches = Array.from(groupedBatches.values());
+  
   return (
-    <div className="modal-overlay"><div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
-      <div className="modal-header">
-        <h2 className="modal-title modal-title-success">{isEdit ? 'Update Item' : 'Add New Item'}</h2>
-        <button className="modal-close" onClick={onClose}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-      </div>
-      <div className="modal-body">
-        <div className="confirm-summary">
-          <div className="confirm-row"><span className="confirm-label">Name:</span><span className="confirm-value">{itemData.name}</span></div>
-          <div className="confirm-row"><span className="confirm-label">Category:</span><span className="confirm-value">{itemData.category}</span></div>
-          <div className="confirm-row"><span className="confirm-label">SKU:</span><span className="confirm-value" style={{ fontFamily: 'monospace' }}>{itemData.sku}</span></div>
-          <div className="confirm-row"><span className="confirm-label">Stock:</span><span className="confirm-value">{itemData.stockQty} pcs</span></div>
-          <div className="confirm-row"><span className="confirm-label">Min Level:</span><span className="confirm-value">{itemData.minStockLevel} pcs</span></div>
+    <div className="modal-overlay">
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '550px' }}>
+        <div className="modal-header">
+          <h2 className="modal-title" style={{ color: '#D4A843' }}>{isEdit ? 'Update Item' : 'Add New Item'}</h2>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
         </div>
-        <p className="confirm-hint">{isEdit ? 'This will update the inventory item.' : 'This will add a new item to your physical inventory.'}</p>
+        <div className="modal-body">
+          {/* Product Info Card */}
+          <div style={{ padding: '1rem', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '10px', marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '1rem', marginBottom: '0.5rem' }}>{itemData.name}</div>
+            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: 'var(--gray)', flexWrap: 'wrap' }}>
+              <span>Category: <strong style={{ color: '#D4A843' }}>{itemData.category}</strong></span>
+              <span style={{ fontFamily: 'monospace', color: 'var(--gray)' }}>SKU: {itemData.sku}</span>
+            </div>
+            <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#D4A843', fontWeight: 600 }}>
+              {allItems.length} {hasMultipleVariantTypes ? 'combo' : ''} variant{allItems.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+
+          {/* Summary Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+            <div style={{ padding: '0.875rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}>
+              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Total Stock</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#D4A843' }}>{totalStock} <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>pcs</span></div>
+            </div>
+            <div style={{ padding: '0.875rem', background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: '8px' }}>
+              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Damaged</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#F87171' }}>{totalDamaged} <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>pcs</span></div>
+            </div>
+            <div style={{ padding: '0.875rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}>
+              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Min Level</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#E5E2E1' }}>{itemData.minStockLevel || 10} <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>pcs</span></div>
+            </div>
+          </div>
+
+          {/* Variants List (if multi-variant) */}
+          {allItems.length > 1 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Variants</div>
+              <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}>
+                {allItems.map((item, idx) => (
+                  <div key={item.id || idx} style={{ padding: '0.625rem 0.75rem', borderBottom: idx < allItems.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#E5E2E1' }}>{item.variantCombo ? Object.values(item.variantCombo).join(' / ') : item.name}</div>
+                      <div style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: 'var(--gray)' }}>{item.sku}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#D4A843' }}>{item.stockQty || 0}</div>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>pcs</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Batches Info */}
+          {batches.length > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem', fontWeight: 600, letterSpacing: '0.08em' }}>
+                Batch / Invoice History
+              </div>
+              <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
+                {batches.map((batch, idx) => (
+                  <div key={batch.batchId} style={{
+                    padding: '0.75rem 1rem',
+                    background: idx % 2 === 0 ? 'rgba(0,0,0,0.2)' : 'transparent',
+                    borderBottom: idx < batches.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none'
+                  }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 1fr 100px 80px 1fr 80px', gap: '0.75rem', alignItems: 'start' }}>
+                      {/* Batch ID */}
+                      <div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Batch ID</div>
+                        <div style={{ fontFamily: 'monospace', color: '#D4A843', fontWeight: 600, fontSize: '0.8rem' }}>{batch.batchId}</div>
+                      </div>
+                      {/* Supplier */}
+                      <div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Supplier</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--white)' }}>{batch.supplierName || 'General'}</div>
+                      </div>
+                      {/* Invoice */}
+                      <div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Invoice</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--white)', fontFamily: 'monospace' }}>{batch.invoiceNumber || '—'}</div>
+                      </div>
+                      {/* Delivery Date */}
+                      <div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Delivery Date</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--white)' }}>{new Date(batch.dateReceived).toLocaleDateString()}</div>
+                      </div>
+                      {/* Total Qty */}
+                      <div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Total Qty</div>
+                        <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.9rem' }}>{batch.totalQty} <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>pcs</span></div>
+                      </div>
+                      {/* Combo/Variant */}
+                      <div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Combo</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--white)' }}>
+                          {batch.items.length} {hasMultipleVariantTypes ? 'combo' : ''} variant{batch.items.length !== 1 ? 's' : ''}
+                        </div>
+                      </div>
+                      {/* Batch Total */}
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Batch Total</div>
+                        <div style={{ color: '#D4A843', fontWeight: 600, fontSize: '0.8rem' }}>{formatPrice(batch.totalCost)}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <p style={{ fontSize: '0.8rem', color: 'var(--gray)', textAlign: 'center', fontStyle: 'italic' }}>
+            {isEdit ? 'This will update the inventory item.' : 'This will add a new item to your physical inventory.'}
+          </p>
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn-primary" onClick={onConfirm} style={{ background: 'linear-gradient(135deg, #FFDF9F 0%, #D4A843 100%)', color: '#000', fontWeight: 700 }}>
+            {isEdit ? 'Update Item' : 'Add Item'}
+          </button>
+        </div>
       </div>
-      <div className="modal-actions">
-        <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-        <button type="button" className="btn-primary" onClick={onConfirm}>{isEdit ? 'Update' : 'Add Item'}</button>
-      </div>
-    </div></div>
+    </div>
   );
 }
 
@@ -3346,228 +3507,6 @@ function ArchiveConfirmModal({ isOpen, onClose, onArchive, onDelete, itemName, i
         }
       </div>
     </div></div>
-  );
-}
-
-// ── Stock Addition Modal (+) ───────────────────────────────────────────────────
-// NOTE: isOnDemand conversion REMOVED — inventory is always stocked items
-function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, categories, onAddSupplier }) {
-  const [qty, setQty] = useState('');
-  const [damaged, setDamaged] = useState('');
-  const [supplierId, setSupplierId] = useState('unspecified');
-  const [supplierName, setSupplierName] = useState('General Merchandise');
-  const [invoice, setInvoice] = useState('');
-  const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString().split('T')[0]);
-  const [unitCost, setUnitCost] = useState('');
-  const [isBulk, setIsBulk] = useState(false);
-  const [totalCost, setTotalCost] = useState('');
-  const [notes, setNotes] = useState('');
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [pending, setPending] = useState(null);
-  const [showAddSupplier, setShowAddSupplier] = useState(false);
-  const [receiptImage, setReceiptImage] = useState(null);
-  const [infoModal, setInfoModal] = useState(null);
-
-  const genBatchId = () => { const d=new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${Math.floor(Math.random()*1000).toString().padStart(3,'0')}`; };
-
-  useEffect(() => {
-    if (isOpen && item) {
-      setQty(''); setDamaged(''); setNotes(''); setInvoice(''); setIsBulk(false); setTotalCost(''); setReceiptImage(null);
-      setDeliveryDate(new Date().toISOString().split('T')[0]);
-      setSupplierId(item.lastSupplierId||'unspecified');
-      setSupplierName(item.lastSupplierName||'General Merchandise');
-      setUnitCost(item.lastUnitCost ? String(item.lastUnitCost) : '');
-      setShowConfirm(false); setPending(null);
-    }
-  }, [isOpen, item]);
-
-  const handleUnitChange = (v) => { setUnitCost(v); if (!isBulk && qty) setTotalCost(String((parseFloat(v)||0)*(parseInt(qty)||0))); };
-  const handleTotalChange = (v) => { setTotalCost(v); if (isBulk && qty) setUnitCost(String((parseFloat(v)||0)/(parseInt(qty)||1))); };
-  const handleQtyChange = (v) => { setQty(v); const q=parseInt(v)||0; if (isBulk && totalCost) setUnitCost(String((parseFloat(totalCost)||0)/(q||1))); else if (!isBulk && unitCost) setTotalCost(String((parseFloat(unitCost)||0)*q)); };
-
-  const handleSubmit = () => {
-    const q = parseInt(qty)||0; const d = parseInt(damaged)||0;
-    if (q <= 0) { setInfoModal({ title: 'Validation Error', message: 'Please enter a valid quantity (minimum 1).' }); return; }
-    if (d >= q) { setInfoModal({ title: 'Validation Error', message: 'Damaged on arrival must be less than quantity received.' }); return; }
-    if (!unitCost || parseFloat(unitCost) <= 0) { setInfoModal({ title: 'Validation Error', message: 'Please enter the unit cost.' }); return; }
-    if (!invoice.trim()) { setInfoModal({ title: 'Validation Error', message: 'Please enter the invoice/OR number.' }); return; }
-    if (!deliveryDate) { setInfoModal({ title: 'Validation Error', message: 'Please enter the delivery date.' }); return; }
-    const goodQty = q - d; const cost = parseFloat(unitCost); const batchId = genBatchId();
-    setPending({ quantity: goodQty, damagedOnArrival: d, supplierId: supplierId==='unspecified'?null:supplierId, supplierName, invoiceNumber: invoice, deliveryDate, unitCost: cost, totalCost: goodQty*cost, notes, receiptImage, batchData: { batchId, supplierId: supplierId==='unspecified'?null:supplierId, supplierName, invoiceNumber: invoice, dateReceived: deliveryDate, originalQty: q, goodQty, damagedQty: d, remainingQty: goodQty, unitCost: cost, totalCost: goodQty*cost, notes, receiptImage, movements: [{ type: 'received', quantity: goodQty, remainingAfter: goodQty, reason: 'Initial stock addition', createdAt: new Date().toISOString() }], status: 'active' } });
-    setShowConfirm(true);
-  };
-
-  if (!isOpen || !item) return null;
-  return (
-    <div className="modal-overlay">
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '700px', width: '90%' }}>
-        <div className="modal-header">
-          <h2 className="modal-title">Add Stock — {item.name}</h2>
-          <button className="modal-close" onClick={onClose}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-        </div>
-        <div className="modal-body">
-          <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid var(--primary)', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem' }}>
-            <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Adding stock to:</div>
-            <div style={{ fontWeight: 600, color: 'var(--white)', fontSize: '1rem' }}>{item.name}</div>
-            <div style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>{item.category} · Current stock: <strong style={{ color: 'var(--white)' }}>{item.stockQty} pcs</strong></div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div className="form-group">
-              <label className="form-label">Total Received <span className="required">*</span></label>
-              <IntegerInput className="form-input" value={qty} onChange={e => handleQtyChange(e.target.value)} min={1} placeholder="0" />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Damaged on Arrival <span style={{ color: 'var(--gray)', fontWeight: 400 }}>(Optional)</span></label>
-              <IntegerInput className="form-input" value={damaged} onChange={e => setDamaged(e.target.value)} min={0} placeholder="0" />
-              <p className="form-hint">Excluded from usable stock.</p>
-            </div>
-          </div>
-          {qty && damaged && parseInt(damaged) < parseInt(qty) && (
-            <p style={{ fontSize: '0.875rem', color: 'var(--gold)', marginBottom: '1rem' }}>Good stock to add: {parseInt(qty)-parseInt(damaged)} pcs</p>
-          )}
-          <div style={{ background: 'rgba(217,119,6,0.08)', border: '2px solid rgba(217,119,6,0.3)', borderRadius: '8px', padding: '1.5rem' }}>
-            <h4 style={{ margin: '0 0 1.25rem 0', color: '#d97706', fontSize: '0.875rem', fontWeight: 700, textTransform: 'uppercase' }}>Supplier Invoice Information</h4>
-            {/* Row 1: [Supplier] [Unit Cost Each] */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div className="form-group">
-                <label className="form-label">Supplier</label>
-                <SupplierCombobox value={supplierId} supplierName={supplierName} onChange={(id, name) => { setSupplierId(id); setSupplierName(name); }} suppliers={suppliers} itemCategory={item.category} onAddNew={() => setShowAddSupplier(true)} />
-                <p className="form-hint">Filtered for "{item.category}" + General suppliers.</p>
-              </div>
-              <div className="form-group">
-                <label className="form-label">{isBulk ? 'Total Amount Paid' : 'Unit Cost Each'} <span className="required">*</span></label>
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
-                  <div className="tier-price-cell" style={{ flex: 1 }}>
-                    <span className="peso">₱</span>
-                    <DecimalInput className="tier-input" value={isBulk ? totalCost : unitCost} onChange={e => isBulk ? handleTotalChange(e.target.value) : handleUnitChange(e.target.value)} placeholder="0.00" style={{ width: '100%' }} />
-                  </div>
-                  <label className="form-checkbox-label" style={{ marginBottom: '0.875rem', whiteSpace: 'nowrap' }}>
-                    <input type="checkbox" className="form-checkbox" checked={isBulk} onChange={() => setIsBulk(p => !p)} />
-                    <span className="checkbox-text" style={{ fontSize: '0.75rem' }}>{isBulk ? 'Per Unit' : 'Total'}</span>
-                  </label>
-                </div>
-                {isBulk && totalCost && qty && (() => {
-                  const unitCostCalc = parseFloat(totalCost)/(parseInt(qty)||1);
-                  const dmg = parseInt(damaged)||0;
-                  const goodQty = (parseInt(qty)||0) - dmg;
-                  return (
-                    <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                      <p className="form-hint" style={{ color: 'var(--gold)' }}>Unit Cost: {formatPrice(unitCostCalc)} · Total Invoice: {formatPrice(parseFloat(totalCost))}</p>
-                      {dmg > 0 && <p className="form-hint" style={{ color: '#f87171' }}>Less damaged: {dmg} pcs ({formatPrice(unitCostCalc*dmg)})</p>}
-                      {dmg > 0 && <p className="form-hint" style={{ color: '#facc15' }}>Usable stock value: {goodQty} pcs × {formatPrice(unitCostCalc)} = {formatPrice(unitCostCalc*goodQty)}</p>}
-                    </div>
-                  );
-                })()}
-                {!isBulk && unitCost && qty && (() => {
-                  const unit = parseFloat(unitCost)||0;
-                  const q = parseInt(qty)||0;
-                  const dmg = parseInt(damaged)||0;
-                  const goodQty = q - dmg;
-                  return (
-                    <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                      <p className="form-hint" style={{ color: 'var(--gold)' }}>Total Invoice: {formatPrice(unit*q)} ({q} pcs × {formatPrice(unit)})</p>
-                      {dmg > 0 && <p className="form-hint" style={{ color: '#f87171' }}>Less damaged: {dmg} pcs ({formatPrice(unit*dmg)})</p>}
-                      {dmg > 0 && <p className="form-hint" style={{ color: '#facc15' }}>Usable stock value: {goodQty} pcs × {formatPrice(unit)} = {formatPrice(unit*goodQty)}</p>}
-                    </div>
-                  );
-                })()}
-              </div>
-            </div>
-            {/* Row 2: [Invoice / OR Number] [Delivery Date] */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div className="form-group">
-                <label className="form-label">Invoice / OR Number <span className="required">*</span></label>
-                <input type="text" className="form-input" value={invoice} onChange={e => setInvoice(e.target.value.slice(0, 50))} placeholder="e.g., INV-2026-001" maxLength={50} />
-                <p className="form-hint">Invoice/SI/OR/Serial No. from supplier's receipt.</p>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Delivery Date <span className="required">*</span></label>
-                <input type="date" className="form-input" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
-                <p className="form-hint">Date items were received.</p>
-              </div>
-            </div>
-            {/* Row 3: Notes — full width */}
-            <div className="form-group">
-              <label className="form-label">Notes <span style={{ color: 'var(--gray)', fontWeight: 400 }}>(Optional)</span></label>
-              <textarea className="form-textarea" value={notes} onChange={e => setNotes(e.target.value.slice(0, 300))} placeholder="e.g., 5 items arrived damaged. Supplier to replace next delivery." maxLength={300} rows={2} />
-            </div>
-            {/* Upload Receipt — optional, for audit trail */}
-            {/* TODO: Cloudinary — replace with cloud upload */}
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">
-                Upload Receipt
-                <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)', marginLeft: '0.5rem' }}>(Optional — PNG, JPG, PDF, max 5MB)</span>
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '1.25rem', border: '2px dashed var(--border)', borderRadius: '8px', background: 'rgba(0,0,0,0.15)', cursor: 'pointer', transition: 'border-color 0.2s' }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--gold)'}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--gray)' }}>
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-                <span style={{ fontSize: '0.875rem', color: 'var(--gray-light)' }}>Click to upload receipt / invoice image</span>
-                <input type="file" accept="image/*,.pdf" style={{ display: 'none' }}
-                  onChange={e => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    if (file.size > 5 * 1024 * 1024) { setInfoModal({ title: 'File Too Large', message: 'Receipt image must be under 5MB.' }); return; }
-                    // TODO: Cloudinary — upload file and store URL instead of base64
-                    const reader = new FileReader();
-                    reader.onload = ev => setReceiptImage(ev.target.result);
-                    reader.readAsDataURL(file);
-                  }} />
-              </label>
-              {receiptImage && (
-                <div style={{ marginTop: '0.75rem', position: 'relative', display: 'block' }}>
-                  <img src={receiptImage} alt="Receipt preview" style={{ maxHeight: '200px', maxWidth: '100%', width: '100%', objectFit: 'contain', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)' }} />
-                  <button type="button" onClick={() => setReceiptImage(null)}
-                    style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#ef4444', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', color: '#fff', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
-                    ×
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="modal-actions">
-          <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn-primary" onClick={handleSubmit}>Add Stock</button>
-        </div>
-      </div>
-
-      {/* Confirm */}
-      {showConfirm && pending && (
-        <div className="modal-overlay" onClick={e => e.stopPropagation()}>
-          <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><h2 className="modal-title modal-title-success">Confirm Stock Addition</h2>
-              <button className="modal-close" onClick={() => setShowConfirm(false)}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-            </div>
-            <div className="modal-body">
-              <div className="confirm-summary">
-                <div className="confirm-row"><span className="confirm-label">Item:</span><span className="confirm-value">{item.name}</span></div>
-                <div className="confirm-row"><span className="confirm-label">Good Qty:</span><span className="confirm-value" style={{ color: '#4ade80', fontWeight: 700 }}>+{pending.quantity} pcs</span></div>
-                {pending.damagedOnArrival > 0 && <div className="confirm-row"><span className="confirm-label">Damaged:</span><span className="confirm-value" style={{ color: '#f87171' }}>−{pending.damagedOnArrival} pcs</span></div>}
-                <div className="confirm-row"><span className="confirm-label">New Total:</span><span className="confirm-value" style={{ color: '#4ade80', fontWeight: 700 }}>{item.stockQty + pending.quantity} pcs</span></div>
-                <div className="confirm-row"><span className="confirm-label">Supplier:</span><span className="confirm-value">{pending.supplierName}</span></div>
-                <div className="confirm-row"><span className="confirm-label">Unit Cost:</span><span className="confirm-value">₱{formatPrice(pending.unitCost)}</span></div>
-                <div className="confirm-row"><span className="confirm-label">Total Value:</span><span className="confirm-value" style={{ color: '#facc15', fontWeight: 700 }}>₱{formatPrice(pending.totalCost)}</span></div>
-                <div className="confirm-row"><span className="confirm-label">Invoice:</span><span className="confirm-value">{pending.invoiceNumber}</span></div>
-              </div>
-              <p className="confirm-hint" style={{ marginTop: '1rem', color: '#facc15' }}>This will update inventory stock and create a batch record.</p>
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => setShowConfirm(false)}>Cancel</button>
-              <button type="button" className="btn-primary" onClick={() => { onConfirm(pending); setShowConfirm(false); setPending(null); onClose(); }}>Confirm Addition</button>
-            </div>
-          </div>
-        </div>
-      )}
-      <AddSupplierQuickModal isOpen={showAddSupplier} onClose={() => setShowAddSupplier(false)}
-        onAdd={(data) => { const s = onAddSupplier(data); setSupplierId(s.id); setSupplierName(s.name); }}
-        categories={categories} existingSuppliers={suppliers} />
-      <InfoModal isOpen={!!infoModal} onClose={() => setInfoModal(null)} title={infoModal?.title||''} message={infoModal?.message||''} />
-    </div>
   );
 }
 
@@ -3902,6 +3841,39 @@ export default function InventoryPage() {
   const [pendingItemData, setPendingItemData] = useState(null);
   const [modalKey, setModalKey] = useState(0);
   const [expandedRows, setExpandedRows] = useState(new Set());
+  const [expandedProducts, setExpandedProducts] = useState(new Set());
+  const [expandedBatches, setExpandedBatches] = useState(new Set());
+  const [expandedBatchSections, setExpandedBatchSections] = useState(new Set());
+  
+  const handleExpandProduct = (productName) => {
+    const newExpanded = new Set(expandedProducts);
+    if (newExpanded.has(productName)) {
+      newExpanded.delete(productName);
+    } else {
+      newExpanded.add(productName);
+    }
+    setExpandedProducts(newExpanded);
+  };
+  
+  const handleExpandBatch = (batchKey) => {
+    const newExpanded = new Set(expandedBatches);
+    if (newExpanded.has(batchKey)) {
+      newExpanded.delete(batchKey);
+    } else {
+      newExpanded.add(batchKey);
+    }
+    setExpandedBatches(newExpanded);
+  };
+  
+  const handleExpandBatchSection = (productName) => {
+    const newExpanded = new Set(expandedBatchSections);
+    if (newExpanded.has(productName)) {
+      newExpanded.delete(productName);
+    } else {
+      newExpanded.add(productName);
+    }
+    setExpandedBatchSections(newExpanded);
+  };
   const [archiveItem, setArchiveItem] = useState(null);
   const [referencingProducts, setReferencingProducts] = useState([]);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
@@ -3975,7 +3947,9 @@ export default function InventoryPage() {
   const filteredInventory = inventory.filter(item => {
     if (item.isActive === false) return false;
     const q = searchQuery.toLowerCase();
-    if (!item.name.toLowerCase().includes(q) && !item.category.toLowerCase().includes(q)) return false;
+    const name = (item.name || '').toLowerCase();
+    const category = (item.category || '').toLowerCase();
+    if (!name.includes(q) && !category.includes(q)) return false;
     if (statusFilter === 'low-stock') return item.stockQty > 0 && item.stockQty <= item.minStockLevel;
     if (statusFilter === 'out-of-stock') return item.stockQty === 0;
     return true;
@@ -4134,63 +4108,137 @@ export default function InventoryPage() {
   };
 
   // TODO: MongoDB — Wrap in transaction: update inventory + create batch + add stock history + audit log
-  const handleStockAddition = (data) => {
-    if (!additionItem) return;
-    const { quantity, supplierId, supplierName, unitCost, totalCost, batchData } = data;
-    const currentStock = additionItem.stockQty;
-    const currentAvg = additionItem.averageCost || 0;
-    const newTotal = currentStock + quantity;
-    const newAvg = newTotal > 0 ? ((currentStock * currentAvg) + (quantity * unitCost)) / newTotal : unitCost;
-
-    setInventory(prev => prev.map(i => i.id === additionItem.id ? { ...i, stockQty: i.stockQty + quantity, lastSupplierId: supplierId, lastSupplierName: supplierName, lastUnitCost: unitCost, averageCost: newAvg, batches: batchData ? [...(i.batches||[]), batchData] : i.batches, updatedAt: new Date().toISOString() } : i));
-
-    // Stock history entry
-    // TODO: MongoDB — POST /api/stock-history
-    addStockHistory({ inventoryId: additionItem.id, batchId: batchData?.batchId, itemName: additionItem.name, category: additionItem.category, supplierId: supplierId||null, supplierName, quantity: batchData?.originalQty||quantity, goodQty: batchData?.goodQty||quantity, damagedQty: batchData?.damagedQty||0, unitCost, totalCost, reason: 'restock', stockBefore: currentStock, stockAfter: newTotal, averageCostAfter: newAvg, type: 'received', remainingQty: batchData?.goodQty||quantity, dateReceived: batchData?.dateReceived||new Date().toISOString() });
-
-    // Audit log
-    // TODO: MongoDB — POST /api/audit-logs
-    const logs = JSON.parse(localStorage.getItem('pmp_inventory_logs')||'[]');
-    logs.push({ id: Date.now(), batchId: batchData?.batchId, inventoryId: additionItem.id, itemName: additionItem.name, category: additionItem.category, type: 'stock-in', reason: 'restock', quantity, stockBefore: currentStock, stockAfter: newTotal, supplierId, supplierName, unitCost, totalCost, createdAt: new Date().toISOString() });
-    localStorage.setItem('pmp_inventory_logs', JSON.stringify(logs));
-
+  const handleStockAddition = (items) => {
+    // items is an array from StockAdditionModal (one per variant)
+    if (!Array.isArray(items) || items.length === 0) return;
+    
+    // Process each item (variant)
+    items.forEach(itemData => {
+      const { stockQty, damagedQty, batches, lastSupplierId, lastSupplierName, lastUnitCost, averageCost, name, category, sku, variantCombo } = itemData;
+      
+      // Find existing inventory item by SKU
+      const existingItem = inventory.find(i => i.sku === sku);
+      
+      if (existingItem) {
+        // Update existing variant
+        const currentStock = existingItem.stockQty;
+        const currentAvg = existingItem.averageCost || 0;
+        const newTotal = currentStock + stockQty;
+        const newAvg = newTotal > 0 ? ((currentStock * currentAvg) + (stockQty * lastUnitCost)) / newTotal : lastUnitCost;
+        
+        setInventory(prev => prev.map(i => i.sku === sku ? { 
+          ...i, 
+          stockQty: newTotal, 
+          lastSupplierId, 
+          lastSupplierName, 
+          lastUnitCost, 
+          averageCost: newAvg, 
+          batches: batches ? [...(i.batches||[]), ...batches] : i.batches, 
+          updatedAt: new Date().toISOString() 
+        } : i));
+        
+        // Stock history entry
+        addStockHistory({ 
+          inventoryId: existingItem.id, 
+          batchId: batches?.[0]?.batchId, 
+          itemName: name, 
+          category, 
+          supplierId: lastSupplierId, 
+          supplierName: lastSupplierName, 
+          quantity: batches?.[0]?.originalQty || stockQty, 
+          goodQty: stockQty, 
+          damagedQty, 
+          unitCost: lastUnitCost, 
+          totalCost: stockQty * lastUnitCost, 
+          reason: 'restock', 
+          stockBefore: currentStock, 
+          stockAfter: newTotal, 
+          averageCostAfter: newAvg, 
+          type: 'received', 
+          remainingQty: batches?.[0]?.remainingQty || stockQty, 
+          dateReceived: batches?.[0]?.dateReceived || new Date().toISOString() 
+        });
+        
+        // Audit log
+        const logs = JSON.parse(localStorage.getItem('pmp_inventory_logs')||'[]');
+        logs.push({ 
+          id: Date.now(), 
+          batchId: batches?.[0]?.batchId, 
+          inventoryId: existingItem.id, 
+          itemName: name, 
+          category, 
+          type: 'stock-in', 
+          reason: 'restock', 
+          quantity: stockQty, 
+          stockBefore: currentStock, 
+          stockAfter: newTotal, 
+          supplierId: lastSupplierId, 
+          supplierName: lastSupplierName, 
+          unitCost: lastUnitCost, 
+          totalCost: stockQty * lastUnitCost, 
+          createdAt: new Date().toISOString() 
+        });
+        localStorage.setItem('pmp_inventory_logs', JSON.stringify(logs));
+      } else {
+        // Add new variant to inventory
+        setInventory(prev => [...prev, { 
+          ...itemData, 
+          batches: batches || [], 
+          createdAt: new Date().toISOString(), 
+          updatedAt: new Date().toISOString() 
+        }]);
+      }
+    });
+    
     setShowAdditionModal(false); setAdditionItem(null);
   };
 
   // Handle save from modal (shows confirm first)
   // TODO: MongoDB — POST /api/inventory or PUT /api/inventory/:id
-  const handleSave = (itemData) => {
-    // SKU: for new items, use the preview generated in modal. For edits, keep existing.
-    const finalSKU = editingItem ? editingItem.sku : (itemData.sku || generateSKU(itemData.category, itemData.name));
-    setPendingItemData({ ...itemData, id: editingItem ? editingItem.id : crypto.randomUUID(), sku: finalSKU, isActive: true });
+  const handleSave = (items) => {
+    // items is an array from AddInventoryItemModal (one per variant)
+    if (!Array.isArray(items) || items.length === 0) return;
+    
+    // For confirmation, show the first item (or aggregate info)
+    const firstItem = items[0];
+    const totalStock = items.reduce((sum, item) => sum + (item.stockQty || 0), 0);
+    const allBatches = items.flatMap(item => item.batches || []);
+    
+    // Create consolidated item for confirmation
+    const consolidatedItem = {
+      ...firstItem,
+      stockQty: totalStock,
+      batches: allBatches,
+      id: editingItem ? editingItem.id : crypto.randomUUID(),
+      sku: editingItem ? editingItem.sku : (firstItem.sku || generateSKU(firstItem.category, firstItem.name)),
+      isActive: true,
+      _allItems: items // Store all items for actual save
+    };
+    
+    setPendingItemData(consolidatedItem);
     setIsConfirmModalOpen(true);
   };
 
   const handleConfirmSave = () => {
     if (!pendingItemData) return;
+
+    // Get all items (for multi-variant saves)
+    const itemsToSave = pendingItemData._allItems || [pendingItemData];
+
     if (editingItem) {
-      setInventory(prev => prev.map(i => i.id === pendingItemData.id ? { ...i, ...pendingItemData, updatedAt: new Date().toISOString() } : i));
+      // Update existing item (first item only for now)
+      setInventory(prev => prev.map(i => i.id === pendingItemData.id ? { ...pendingItemData, updatedAt: new Date().toISOString() } : i));
     } else {
-      // Build initial batch if has stock + invoice
-      let batches = [];
-      const initStock = parseInt(pendingItemData.initialStock)||0;
-      const damaged = parseInt(pendingItemData.damagedOnArrival)||0;
-      if (initStock > 0 && pendingItemData.invoiceNumber) {
-        const d = new Date(pendingItemData.deliveryDate);
-        const batchId = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${Math.floor(Math.random()*1000).toString().padStart(3,'0')}`;
-        const goodQty = initStock - damaged;
-        batches = [{ batchId, supplierId: pendingItemData.lastSupplierId||null, supplierName: pendingItemData.lastSupplierName||'General Merchandise', invoiceNumber: pendingItemData.invoiceNumber, dateReceived: pendingItemData.deliveryDate, originalQty: initStock, goodQty, damagedQty: damaged, remainingQty: goodQty, unitCost: parseFloat(pendingItemData.unitCost)||0, totalCost: initStock*(parseFloat(pendingItemData.unitCost)||0), notes: pendingItemData.notes||'', receiptImage: pendingItemData.receiptImage||null, movements: [{ type: 'received', quantity: goodQty, remainingAfter: goodQty, reason: 'Initial stock addition', createdAt: new Date().toISOString() }], status: 'active' }];
-
-        // Create initial stock history entry
-        // TODO: MongoDB — POST /api/stock-history
-        addStockHistory({ inventoryId: pendingItemData.id, batchId, itemName: pendingItemData.name, category: pendingItemData.category, supplierId: pendingItemData.lastSupplierId||null, supplierName: pendingItemData.lastSupplierName||'General Merchandise', quantity: initStock, goodQty, damagedQty: damaged, unitCost: parseFloat(pendingItemData.unitCost)||0, totalCost: initStock*(parseFloat(pendingItemData.unitCost)||0), reason: 'initial', stockBefore: 0, stockAfter: goodQty, averageCostAfter: parseFloat(pendingItemData.unitCost)||0, type: 'received', remainingQty: goodQty, dateReceived: pendingItemData.deliveryDate, invoiceNumber: pendingItemData.invoiceNumber });
-      }
-
-      setInventory(prev => [...prev, { ...pendingItemData, batches, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]);
+      // Add new items (all variants)
+      itemsToSave.forEach(itemData => {
+        // Build initial batch if has stock + invoice
+        let batches = itemData.batches || [];
+        setInventory(prev => [...prev, { ...itemData, batches, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]);
+      });
     }
 
     setIsConfirmModalOpen(false);
-    setIsModalOpen(false);
+    setIsModalOpen(false);  // Close the wizard modal
     setEditingItem(null);
     setPendingItemData(null);
   };
@@ -4300,102 +4348,19 @@ Item Masterlist
             {!searchQuery && !statusFilter && <button className="btn-primary" onClick={handleAddNew}>Add First Item</button>}
           </div>
         ) : (
-          <table className="inventory-table">
-            <thead>
-              <tr>
-                <th style={{ width: '28px' }}></th>
-                <th className="table-col-name">Product Name</th>
-                <th className="table-col-category">Category</th>
-                <th className="table-col-cost">Cost</th>
-                <th className="table-col-price">Selling Price</th>
-                <th className="table-col-tiers">Tiers</th>
-                <th className="table-col-stock">Current Stock</th>
-                <th className="table-col-min">Min. Level</th>
-                <th className="table-col-status">Status</th>
-                <th className="table-col-actions">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredInventory.map(item => {
-                const status = getStockStatus(item);
-                const isExpanded = expandedRows.has(item.id);
-                return (
-                  <React.Fragment key={item.id}>
-                    <tr className="inventory-table-row">
-                      <td style={{ width: '28px', cursor: 'pointer' }} onClick={() => toggleExpand(item.id)}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                          style={{ color: 'var(--gray)', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none', display: 'block' }}>
-                          <path d="M9 18l6-6-6-6"/>
-                        </svg>
-                      </td>
-                      <td className="table-cell-name">
-                        <span className="product-name">{item.name}</span>
-                        <div style={{ fontSize: '0.73rem', color: 'var(--gray)', marginTop: '0.15rem', fontFamily: 'monospace' }}>SKU: {item.sku||'—'}</div>
-                      </td>
-                      <td className="table-cell"><span className="category-badge">{item.category}</span></td>
-                      <td className="table-cell" style={{ textAlign: 'center' }}>
-                        {item.baseCost ? (
-                          <span style={{ color: 'var(--gray)', fontWeight: 500 }}>{formatPrice(item.baseCost)}</span>
-                        ) : (
-                          <span style={{ color: 'var(--gray)', fontSize: '0.8rem' }}>—</span>
-                        )}
-                      </td>
-                      <td className="table-cell" style={{ textAlign: 'center' }}>
-                        {item.sellingPrice ? (
-                          <span style={{ color: 'var(--gold)', fontWeight: 600 }}>{formatPrice(item.sellingPrice)}</span>
-                        ) : (
-                          <span style={{ color: 'var(--gray)', fontSize: '0.8rem' }}>—</span>
-                        )}
-                      </td>
-                      <td className="table-cell" style={{ textAlign: 'center' }}>
-                        {item.priceTiers && item.priceTiers.length > 0 ? (
-                          <span style={{ color: 'var(--gold)', background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', padding: '0.2rem 0.5rem', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 600 }}>
-                            🏷️ {item.priceTiers.length} tiers
-                          </span>
-                        ) : (
-                          <span style={{ color: 'var(--gray)', fontSize: '0.8rem' }}>—</span>
-                        )}
-                      </td>
-                      <td className="table-cell-stock" style={{ textAlign: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                          <button className="btn-sm btn-secondary"
-                            onClick={() => { setAdjustmentItem(item); setShowAdjustmentModal(true); }}
-                            disabled={item.stockQty === 0}
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '1rem', lineHeight: '1' }}
-                            title="Reduce stock (sale or damaged)">−</button>
-                          <span className={`stock-value-inline${item.stockQty===0?' stock-value-zero':''}`}
-                            style={{ minWidth: '40px', display: 'inline-block', textAlign: 'center' }}>
-                            {item.stockQty}
-                          </span>
-                          <button className="btn-sm btn-secondary"
-                            onClick={() => { setAdditionItem(item); setShowAdditionModal(true); }}
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '1rem', lineHeight: '1' }}
-                            title="Add stock (restock)">+</button>
-                        </div>
-                      </td>
-                      <td className="table-cell">
-                        {editingInline?.id === item.id ? (
-                          <IntegerInput className="form-input-inline" value={editingInline.value}
-                            onChange={e => setEditingInline(p => ({ ...p, value: e.target.value }))}
-                            onBlur={handleInlineEditSave}
-                            onKeyDown={e => { if (e.key==='Enter') handleInlineEditSave(); if (e.key==='Escape') setEditingInline(null); }}
-                            min={0} autoFocus />
-                        ) : (
-                          <span className="min-stock-value-inline" onClick={() => handleInlineEditStart(item)} title="Click to edit">{item.minStockLevel}</span>
-                        )}
-                      </td>
-                      <td className="table-cell"><span className={`stock-status-badge ${status.cls}`}>{status.label}</span></td>
-                      <td className="table-cell-actions">
-                        <button onClick={() => handleEdit(item)} style={{ background: 'var(--gold)', border: '1px solid var(--gold)', color: '#000', borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Edit</button>
-                        <button onClick={() => handleDelete(item)} style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Remove</button>
-                      </td>
-                    </tr>
-                    {isExpanded && <InventoryExpandRow item={item} colSpan={10} />}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+          <NestedInventoryTable
+            inventory={filteredInventory}
+            expandedProducts={expandedProducts}
+            expandedBatches={expandedBatches}
+            expandedBatchSections={expandedBatchSections}
+            onExpandProduct={handleExpandProduct}
+            onExpandBatch={handleExpandBatch}
+            onExpandBatchSection={handleExpandBatchSection}
+            onEditItem={handleEdit}
+            onRemoveItem={handleDelete}
+            onAddStock={(item) => { setAdditionItem(item); setShowAdditionModal(true); }}
+            onReduceStock={(item) => { setAdjustmentItem(item); setShowAdjustmentModal(true); }}
+          />
         )}
       </div>
 
@@ -4474,7 +4439,8 @@ Item Masterlist
       <StockAdditionModal isOpen={showAdditionModal}
         onClose={() => { setShowAdditionModal(false); setAdditionItem(null); }}
         onConfirm={handleStockAddition} item={additionItem}
-        suppliers={suppliers} categories={categories} onAddSupplier={handleAddSupplier} />
+        suppliers={suppliers} categories={categories} onAddSupplier={handleAddSupplier}
+        masterlist={masterlist} />
 
       {/* Item Masterlist Modal */}
       {/* TODO: MongoDB — onSave triggers POST/PUT/DELETE /api/masterlist/* */}

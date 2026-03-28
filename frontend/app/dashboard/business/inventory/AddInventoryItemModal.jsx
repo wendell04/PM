@@ -73,7 +73,7 @@ function CommaNumberInput({ value, onChange, placeholder, className, style, max 
     <input type="text" className={className} value={value} onChange={handleChange}
       onKeyDown={handleKeyDown} onWheel={handleWheel}
       placeholder={placeholder} inputMode="decimal"
-      style={{ ...style, background: 'transparent', border: 'none', outline: 'none' }} />
+      style={{ ...style, background: 'transparent', border: 'none', outline: 'none', minWidth: 0 }} />
   );
 }
 
@@ -129,7 +129,7 @@ function SupplierCombobox({ value, supplierName, onChange, suppliers, itemCatego
 function InfoModal({ isOpen, onClose, title, message, titleClass = 'modal-title-warning' }) {
   if (!isOpen) return null;
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className={`modal-title ${titleClass}`}>{title}</h2>
@@ -260,7 +260,8 @@ export default function AddInventoryItemModal({
   // Step 2 - Stock Entry
   const [stockRows, setStockRows] = useState([]);
   const [applyAllCost, setApplyAllCost] = useState('');
-  
+  const [applyAllMinStock, setApplyAllMinStock] = useState('10');
+
   // Step 3 - Invoice
   const [invoice, setInvoice] = useState({
     supplierId: 'unspecified', supplierName: 'General Merchandise',
@@ -289,7 +290,7 @@ export default function AddInventoryItemModal({
 
   // ── Masterlist entries ───────────────────────────────────────────────────────
   const mlEntries = useMemo(() => {
-    const existing = inventory.filter(i => i.isActive !== false).map(i => `${i.name.toLowerCase()}||${i.category.toLowerCase()}`);
+    const existing = inventory.filter(i => i.isActive !== false).map(i => `${(i.name || '').toLowerCase()}||${(i.category || '').toLowerCase()}`);
     const entries = [];
     (masterlist || []).forEach(cat => {
       (cat.products || []).forEach(prod => {
@@ -338,11 +339,12 @@ export default function AddInventoryItemModal({
   const generateRows = (ml) => {
     if (!ml) return [];
     if (!ml.variantTypes || ml.variantTypes.length === 0) {
-      return [{ comboKey: '__base__', comboLabel: ml.prodName, comboMap: {}, qty: '', damaged: '', unitCost: '' }];
+      return [{ comboKey: '__base__', comboLabel: ml.prodName, comboMap: {}, qty: '', damaged: '', unitCost: '', minStockLevel: '10' }];
     }
-    const tracked = ml.variantTypes.filter(vt => vt.isTracked !== false);
+    // All variant types are tracked now (no isTracked filter)
+    const tracked = ml.variantTypes;
     if (tracked.length === 0) {
-      return [{ comboKey: '__base__', comboLabel: ml.prodName, comboMap: {}, qty: '', damaged: '', unitCost: '' }];
+      return [{ comboKey: '__base__', comboLabel: ml.prodName, comboMap: {}, qty: '', damaged: '', unitCost: '', minStockLevel: '10' }];
     }
     const selectedPerType = {};
     tracked.forEach(vt => {
@@ -364,7 +366,7 @@ export default function AddInventoryItemModal({
       const label = Object.values(combo).join(' / ');
       const key = Object.entries(combo).map(([k, v]) => `${k}:${v}`).join('|');
       const sku = genComboSKU(ml.catName, ml.prodName, combo, allOptionsPerType);
-      return { comboKey: key, comboLabel: label, comboMap: combo, sku, qty: '', damaged: '', unitCost: '' };
+      return { comboKey: key, comboLabel: label, comboMap: combo, sku, qty: '', damaged: '', unitCost: '', minStockLevel: '10' };
     });
   };
 
@@ -381,18 +383,64 @@ export default function AddInventoryItemModal({
   const computedUnitCost = useMemo(() => {
     if (invoice.costMode === 'unit') return null;
     const totalAmt = parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0;
-    return totalGood > 0 ? totalAmt / totalGood : 0;
-  }, [invoice.costMode, invoice.totalInvoiceAmount, totalGood]);
+    // Divide by total qty (including damaged) since receipt total includes all items
+    return totalReceived > 0 ? totalAmt / totalReceived : 0;
+  }, [invoice.costMode, invoice.totalInvoiceAmount, totalReceived]);
 
+  const finalUnitCost = invoice.costMode === 'total' ? computedUnitCost : null;
+  
   const totalInvoiceValue = useMemo(() => {
     if (invoice.costMode === 'total') {
       return parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0;
     }
+    // Sum of (total_qty × unit_cost) for all variants - this is what's on the receipt
+    return stockRows.reduce((s, r) => {
+      const qty = parseInt(r.qty) || 0;
+      return s + qty * (parseFloat(r.unitCost) || 0);
+    }, 0);
+  }, [invoice.costMode, invoice.totalInvoiceAmount, stockRows]);
+  
+  // Compute effective and damaged values for footer breakdown
+  // Effective = good qty × unit cost (what goes into inventory)
+  const effectiveValue = useMemo(() => {
+    if (invoice.costMode === 'total') {
+      const unitCost = computedUnitCost || 0;
+      return totalGood * unitCost;
+    }
+    // For unit cost mode, sum up effective value per variant
     return stockRows.reduce((s, r) => {
       const good = Math.max(0, (parseInt(r.qty) || 0) - (parseInt(r.damaged) || 0));
       return s + good * (parseFloat(r.unitCost) || 0);
     }, 0);
-  }, [invoice.costMode, invoice.totalInvoiceAmount, stockRows]);
+  }, [invoice.costMode, computedUnitCost, totalGood, stockRows]);
+  
+  // Damaged = damaged qty × unit cost (loss)
+  const damagedValue = useMemo(() => {
+    if (invoice.costMode === 'total') {
+      const unitCost = computedUnitCost || 0;
+      return totalDamaged * unitCost;
+    }
+    // For unit cost mode, sum up damaged value per variant
+    return stockRows.reduce((s, r) => {
+      const damaged = parseInt(r.damaged) || 0;
+      return s + damaged * (parseFloat(r.unitCost) || 0);
+    }, 0);
+  }, [invoice.costMode, computedUnitCost, totalDamaged, stockRows]);
+  
+  // Build damaged breakdown string (e.g., "2×35.00=70.00  2×40.00=80.00")
+  const damagedBreakdown = useMemo(() => {
+    if (totalDamaged <= 0) return '';
+    // In total mode, use computed unit cost; in unit mode, use per-variant costs
+    const cost = invoice.costMode === 'total' ? (computedUnitCost || 0) : null;
+    const parts = stockRows
+      .filter(r => (parseInt(r.damaged) || 0) > 0)
+      .map(r => {
+        const d = parseInt(r.damaged) || 0;
+        const c = cost !== null ? cost : (parseFloat(r.unitCost) || 0);
+        return `${d}×${formatPrice(c)}=${formatPrice(d * c)}`;
+      });
+    return parts.join('  ');
+  }, [stockRows, totalDamaged, invoice.costMode, computedUnitCost]);
 
   // ── Validation for step indicator (visual only) ──────────────────────────────
   const step1Valid = !!selectedML;
@@ -457,7 +505,7 @@ export default function AddInventoryItemModal({
         name: itemName.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' '),
         category: selectedML.catName,
         variantCombo: row.comboMap,
-        stockQty: good, damagedQty: dmg, minStockLevel: 10,
+        stockQty: good, damagedQty: dmg, minStockLevel: parseInt(row.minStockLevel) || 10,
         averageCost: unitCost, lastUnitCost: unitCost,
         lastSupplierId: batch.supplierId, lastSupplierName: invoice.supplierName,
         batches: [batch], isActive: true,
@@ -466,7 +514,8 @@ export default function AddInventoryItemModal({
     });
 
     onSave(items);
-    onClose();
+    // Don't close here - page.jsx will handle closing after confirmation
+    // onClose();
   };
 
   if (!isOpen) return null;
@@ -526,7 +575,7 @@ export default function AddInventoryItemModal({
   // ── ADD MODE ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       {/* Mobile responsive styles */}
       <style>{`
         @media (max-width: 768px) {
@@ -686,6 +735,9 @@ export default function AddInventoryItemModal({
                   <thead>
                     <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                       <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Variant Name</th>
+                      <th style={{ padding: '0.875rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '120px' }}>
+                        <span>Min Stock Level</span>
+                      </th>
                       <th style={{ padding: '0.875rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '140px' }}>Qty Received</th>
                       <th style={{ padding: '0.875rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '120px' }}>Damaged</th>
                     </tr>
@@ -699,14 +751,29 @@ export default function AddInventoryItemModal({
                         <tr key={row.comboKey} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                           <td style={{ padding: '1rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                              <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'rgba(255,255,255,0.06)', flexShrink: 0, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' }}>
-                                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D4A843', fontSize: '0.7rem', background: 'rgba(212,168,67,0.1)' }}>N/A</div>
-                              </div>
                               <div>
                                 <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{row.comboLabel || selectedML?.prodName}</div>
                                 <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.1rem' }}>SKU: {row.sku || '—'}</div>
                               </div>
                             </div>
+                          </td>
+                          <td style={{ padding: '1rem 0.75rem', textAlign: 'center' }}>
+                            <IntegerInput
+                              value={row.minStockLevel}
+                              onChange={e => setStockRows(prev => prev.map((r, i) => i === idx ? { ...r, minStockLevel: e.target.value } : r))}
+                              min={1} max={9999} placeholder="10"
+                              className="form-input"
+                              style={{
+                                textAlign: 'center',
+                                width: '80px',
+                                background: 'rgba(255,255,255,0.06)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                borderRadius: '8px',
+                                color: '#E5E2E1',
+                                fontWeight: 600,
+                                padding: '0.5rem'
+                              }}
+                            />
                           </td>
                           <td style={{ padding: '1rem 0.75rem', textAlign: 'center' }}>
                             <IntegerInput className="form-input" value={row.qty}
@@ -945,20 +1012,29 @@ export default function AddInventoryItemModal({
                             <span>Variant</span><span style={{ textAlign: 'center' }}>Unit Cost</span><span style={{ textAlign: 'center' }}>Subtotal</span>
                           </div>
                           {invoiceRows.map((row, idx) => {
-                            const good = Math.max(0, (parseInt(row.qty) || 0) - (parseInt(row.damaged) || 0));
-                            const cost = parseFloat(row.unitCost) || 0;
+                            const qty = parseInt(row.qty) || 0;
+                            const good = Math.max(0, qty - (parseInt(row.damaged) || 0));
+                            // In total mode, use computed unit cost; in unit mode, use per-variant costs
+                            const cost = invoice.costMode === 'total' ? (computedUnitCost || 0) : (parseFloat(row.unitCost) || 0);
+                            const subtotal = qty * cost;  // Total qty (including damaged)
                             return (
                               <div key={row.comboKey} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px', padding: '0.625rem 0.75rem', borderTop: '1px solid rgba(255,255,255,0.04)', alignItems: 'center' }}>
                                 <span style={{ fontSize: '0.8rem', color: 'var(--white)', fontWeight: 500 }}>{row.comboLabel || selectedML?.prodName}</span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(255,255,255,0.06)', padding: '0.35rem 0.5rem', borderRadius: '6px', justifyContent: 'center' }}>
-                                  <span style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 700 }}>₱</span>
-                                  <DecimalInput value={row.unitCost} onChange={e => setStockRows(prev => prev.map((r, i) => {
-                                    const targetRow = invoiceRows[i];
-                                    return targetRow?.comboKey === row.comboKey ? { ...r, unitCost: e.target.value } : r;
-                                  }))} placeholder="0.00" max={999999.99} style={{ width: '50px', background: 'none', border: 'none', color: 'var(--white)', fontSize: '0.8rem', textAlign: 'center', outline: 'none' }} />
-                                </div>
-                                <span style={{ textAlign: 'center', fontSize: '0.8rem', color: good * cost > 0 ? '#FACC15' : 'var(--gray)', fontWeight: 600 }}>
-                                  {good * cost > 0 ? formatPrice(good * cost) : '—'}
+                                {invoice.costMode === 'unit' ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(255,255,255,0.06)', padding: '0.35rem 0.5rem', borderRadius: '6px', justifyContent: 'center' }}>
+                                    <span style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 700 }}>₱</span>
+                                    <DecimalInput value={row.unitCost} onChange={e => setStockRows(prev => prev.map((r, i) => {
+                                      const targetRow = invoiceRows[i];
+                                      return targetRow?.comboKey === row.comboKey ? { ...r, unitCost: e.target.value } : r;
+                                    }))} placeholder="0.00" max={999999.99} style={{ width: '50px', background: 'none', border: 'none', color: 'var(--white)', fontSize: '0.8rem', textAlign: 'center', outline: 'none' }} />
+                                  </div>
+                                ) : (
+                                  <div style={{ textAlign: 'center', fontSize: '0.8rem', color: '#D4A843', fontWeight: 600 }}>
+                                    {formatPrice(cost)}
+                                  </div>
+                                )}
+                                <span style={{ textAlign: 'center', fontSize: '0.8rem', color: subtotal > 0 ? '#FACC15' : 'var(--gray)', fontWeight: 600 }}>
+                                  {subtotal > 0 ? formatPrice(subtotal) : '—'}
                                 </span>
                               </div>
                             );
@@ -1030,9 +1106,13 @@ export default function AddInventoryItemModal({
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             {step === 3 && totalInvoiceValue > 0 && (
-              <span style={{ fontSize: '0.82rem', color: 'var(--gray)' }}>
-                Total: <strong style={{ color: '#FACC15' }}>{formatPrice(totalInvoiceValue)}</strong>
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.75rem' }}>
+                <span style={{ color: 'var(--gray)' }}>Effective: <strong style={{ color: '#FACC15' }}>{formatPrice(effectiveValue)}</strong></span>
+                {totalDamaged > 0 && damagedBreakdown && (
+                  <span style={{ color: 'var(--gray)' }}>Damaged: <strong style={{ color: '#FACC15' }}>{damagedBreakdown}</strong></span>
+                )}
+                <span style={{ color: 'var(--gray)' }}>Receipt Total: <strong style={{ color: '#FACC15' }}>{formatPrice(totalInvoiceValue)}</strong></span>
+              </div>
             )}
             {step < 3 ? (
               <button type="button"
@@ -1078,7 +1158,6 @@ export default function AddInventoryItemModal({
                 }}
                 onMouseEnter={e => { if (step3Valid()) { e.currentTarget.style.transform = 'scale(1.02)'; } }}>
                 Save Item
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
               </button>
             )}
           </div>
