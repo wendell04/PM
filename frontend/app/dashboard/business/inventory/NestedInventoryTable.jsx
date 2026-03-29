@@ -27,19 +27,62 @@ function extractVariantName(fullName, baseProductName) {
   return variantName.replace(/^[\s\/-]+/, '').trim();
 }
 
-export function NestedInventoryTable({ 
-  inventory, 
-  onExpandProduct, 
+export function NestedInventoryTable({
+  inventory,
+  onExpandProduct,
   onExpandBatch,
-  onEditItem, 
+  onEditItem,
   onRemoveItem,
   onAddStock,
   onReduceStock,
   expandedProducts = new Set(),
   expandedBatches = new Set(),
   expandedBatchSections = new Set(),
-  onExpandBatchSection
+  onExpandBatchSection,
+  onUpdateMinStock
 }) {
+  const [editVariantModal, setEditVariantModal] = useState({ isOpen: false, variant: null, minStockLevel: 0 });
+
+  // Get variant status for border styling
+  const getVariantStatus = (variant) => {
+    const stock = variant.totalStock || variant.stock || 0;
+    const minStock = variant.minStockLevel || 10;
+    
+    if (stock === 0) return 'out-of-stock';
+    if (stock < minStock) return 'low-stock';
+    return 'in-stock';
+  };
+
+  // Get border color based on status
+  const getVariantBorderColor = (variant) => {
+    const status = getVariantStatus(variant);
+    if (status === 'out-of-stock') return '#ef4444';
+    if (status === 'low-stock') return '#D4A843';
+    return 'transparent';
+  };
+
+  // Handle variant card click - open edit modal
+  const handleVariantClick = (variant) => {
+    // Find the actual inventory item for this variant to get its minStockLevel
+    const inventoryItem = inventory.find(item => item.sku === variant.sku || item.id === variant.id);
+    
+    setEditVariantModal({
+      isOpen: true,
+      variant,
+      minStockLevel: inventoryItem?.minStockLevel || variant.minStockLevel || 10
+    });
+  };
+
+  // Handle save min stock level
+  const handleSaveMinStock = () => {
+    if (editVariantModal.variant && onUpdateMinStock) {
+      // Call parent callback to update inventory
+      onUpdateMinStock(editVariantModal.variant.id, editVariantModal.minStockLevel);
+      
+      // Close modal
+      setEditVariantModal({ isOpen: false, variant: null, minStockLevel: 0 });
+    }
+  };
   const productsMap = inventory.reduce((acc, item) => {
     const baseProductName = extractBaseProductName(item.name);
     
@@ -49,9 +92,13 @@ export function NestedInventoryTable({
         category: item.category,
         variants: new Map(),
         batches: new Map(),
-        hasMultipleVariantTypes: false
+        hasMultipleVariantTypes: false,
+        // Store raw inventory items so onReduceStock/onAddStock can pass them to modals
+        rawItems: []
       };
     }
+    // Always push raw item reference
+    acc[baseProductName].rawItems.push(item);
     
     if (item.variantCombo && Object.keys(item.variantCombo).length > 1) {
       acc[baseProductName].hasMultipleVariantTypes = true;
@@ -137,18 +184,18 @@ export function NestedInventoryTable({
     );
   }
 
-  // The parent table always has 6 columns
-  const PARENT_COL_COUNT = 6;
+  // The parent table has 5 columns (removed Status column)
+  const PARENT_COL_COUNT = 5;
 
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-      <thead>
+    <>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+        <thead>
         <tr style={{ background: 'rgba(0,0,0,0.3)' }}>
           <th style={{ width: '40px', padding: '0.875rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}></th>
           <th style={{ padding: '0.875rem', textAlign: 'left', color: 'var(--gray)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Product Name</th>
           <th style={{ padding: '0.875rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', width: '120px' }}>Category</th>
           <th style={{ padding: '0.875rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', width: '160px' }}>Total Stock</th>
-          <th style={{ padding: '0.875rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', width: '120px' }}>Status</th>
           <th style={{ padding: '0.875rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', width: '180px' }}>Actions</th>
         </tr>
 
@@ -192,7 +239,7 @@ export function NestedInventoryTable({
                 <td style={{ padding: '0.875rem', textAlign: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                     <button 
-                      onClick={() => onReduceStock(product)}
+                      onClick={() => onReduceStock({ ...product, rawItems: product.rawItems })}
                       style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171', borderRadius: '6px', padding: '0.25rem 0.65rem', fontSize: '1rem', fontWeight: 700, cursor: 'pointer', lineHeight: '1' }}
                       title="Reduce Stock"
                     >−</button>
@@ -201,23 +248,14 @@ export function NestedInventoryTable({
                       <span style={{ fontSize: '0.7rem', color: 'var(--gray)', marginLeft: '0.25rem' }}>pcs</span>
                     </span>
                     <button 
-                      onClick={() => onAddStock(product)}
+                      onClick={() => onAddStock({ ...product, rawItems: product.rawItems })}
                       style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ade80', borderRadius: '6px', padding: '0.25rem 0.65rem', fontSize: '1rem', fontWeight: 700, cursor: 'pointer', lineHeight: '1' }}
                       title="Add Stock"
                     >+</button>
                   </div>
                 </td>
                 <td style={{ padding: '0.875rem', textAlign: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: productStatus === 'ok' ? '#4ade80' : productStatus === 'low' ? '#fbbf24' : '#ef4444' }}>
-                    {productStatus === 'ok' ? 'In Stock' : productStatus === 'low' ? 'Low Stock' : 'Out of Stock'}
-                  </span>
-                </td>
-                <td style={{ padding: '0.875rem', textAlign: 'center' }}>
-                  <button 
-                    onClick={() => onEditItem(product)}
-                    style={{ background: '#D4A843', border: 'none', color: '#000', borderRadius: '6px', padding: '0.35rem 0.85rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', marginRight: '0.25rem' }}
-                  >Edit</button>
-                  <button 
+                  <button
                     onClick={() => onRemoveItem(product)}
                     style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: '6px', padding: '0.35rem 0.85rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
                   >Remove</button>
@@ -236,17 +274,42 @@ export function NestedInventoryTable({
                         Variant Summary
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                        {Array.from(product.variants.values()).map(v => (
-                          <div key={v.sku} style={{ background: 'rgba(0,0,0,0.2)', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.08)' }}>
-                            <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>{v.name}</div>
-                            <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{v.sku}</div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
-                              Stock: <strong style={{ color: '#D4A843' }}>{v.totalStock} pcs</strong>
-                              <span style={{ margin: '0 0.35rem', color: 'var(--gray)' }}>|</span>
-                              Min: <strong style={{ color: v.totalStock <= v.minStockLevel ? '#fbbf24' : 'var(--gray)' }}>{v.minStockLevel}</strong>
+                        {Array.from(product.variants.values()).map(v => {
+                          const borderColor = getVariantBorderColor(v);
+                          const status = getVariantStatus(v);
+                          
+                          return (
+                            <div 
+                              key={v.sku} 
+                              onClick={() => handleVariantClick(v)}
+                              style={{ 
+                                background: 'rgba(0,0,0,0.2)', 
+                                padding: '0.5rem 0.75rem', 
+                                borderRadius: '6px', 
+                                border: `2px solid ${borderColor}`,
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                opacity: status === 'out-of-stock' ? 0.7 : 1
+                              }}
+                              onMouseEnter={e => {
+                                e.currentTarget.style.transform = 'translateY(-2px)';
+                                e.currentTarget.style.boxShadow = `0 4px 8px ${borderColor}40`;
+                              }}
+                              onMouseLeave={e => {
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.boxShadow = 'none';
+                              }}
+                            >
+                              <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>{v.name}</div>
+                              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{v.sku}</div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
+                                Stock: <strong style={{ color: '#D4A843' }}>{v.totalStock} pcs</strong>
+                                <span style={{ margin: '0 0.35rem', color: 'var(--gray)' }}>|</span>
+                                Min: <strong style={{ color: v.totalStock <= v.minStockLevel ? '#fbbf24' : 'var(--gray)' }}>{v.minStockLevel}</strong>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </td>
                   </tr>
@@ -274,7 +337,7 @@ export function NestedInventoryTable({
 
                   {/* ── BATCH ROWS — only visible when batch section is open ── */}
                   {expandedBatchSections.has(product.name) && (() => {
-                    const batchList = Array.from(product.batches.values());
+                    const batchList = Array.from(product.batches.values()).sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
                     const thCell = (label, align = 'left') => (
                       <th style={{ padding: '0.5rem 0.75rem', textAlign: align, color: '#6b7280', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
                         {label}
@@ -414,5 +477,60 @@ export function NestedInventoryTable({
         })}
       </tbody>
     </table>
+
+    {/* Edit Variant Modal */}
+    {editVariantModal.isOpen && editVariantModal.variant && (
+      <div className="modal-overlay" onClick={() => setEditVariantModal({ isOpen: false, variant: null, minStockLevel: 0 })}>
+        <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+          <div className="modal-header">
+            <h2 className="modal-title">Edit Variant — {editVariantModal.variant.name}</h2>
+            <button className="modal-close" onClick={() => setEditVariantModal({ isOpen: false, variant: null, minStockLevel: 0 })}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div className="modal-body">
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>SKU</div>
+              <div style={{ fontFamily: 'monospace', color: 'var(--gray)', fontSize: '0.85rem' }}>{editVariantModal.variant.sku}</div>
+            </div>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Current Stock</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#D4A843' }}>{editVariantModal.variant.totalStock} pcs</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Stock is read-only. Use + or - buttons to adjust.</div>
+            </div>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <label className="form-label">Min Stock Level <span className="required">*</span></label>
+              <input
+                type="number"
+                className="form-input"
+                value={editVariantModal.minStockLevel === 0 ? '' : editVariantModal.minStockLevel}
+                onChange={e => {
+                  const val = e.target.value;
+                  // Allow empty string or valid number
+                  if (val === '' || /^\d+$/.test(val)) {
+                    // Limit to 4 digits max (9999)
+                    if (val === '' || parseInt(val) <= 9999) {
+                      setEditVariantModal({ ...editVariantModal, minStockLevel: val === '' ? 0 : parseInt(val) });
+                    }
+                  }
+                }}
+                min={0}
+                max={9999}
+                placeholder="10"
+                autoFocus
+              />
+              <p className="form-hint">Alert triggers when stock falls below this level.</p>
+            </div>
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="btn-secondary" onClick={() => setEditVariantModal({ isOpen: false, variant: null, minStockLevel: 0 })}>Cancel</button>
+            <button type="button" className="btn-primary" onClick={handleSaveMinStock}>Save Changes</button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   );
 }

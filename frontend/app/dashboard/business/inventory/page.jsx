@@ -55,6 +55,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { formatNumber, formatPrice, formatSmart, formatPriceSmart } from '../../../../src/utils/format';
 import AddInventoryItemModal from './AddInventoryItemModal';
 import StockAdditionModal from './StockAdditionModal';
+import StockReductionModal from './StockReductionModal';
 import { NestedInventoryTable } from './NestedInventoryTable';
 
 // ── Gold Scrollbar Style ──────────────────────────────────────────────────────
@@ -3510,321 +3511,6 @@ function ArchiveConfirmModal({ isOpen, onClose, onArchive, onDelete, itemName, i
   );
 }
 
-// ── Stock Reduction Modal (-) ──────────────────────────────────────────────────
-// Reasons: Manual Sale (outside system), Damaged/Write-off
-// Stock Correction REMOVED — all stock movements must have a valid source document
-function StockReductionModal({ isOpen, onClose, onConfirm, item, inventory }) {
-  const [reason, setReason] = useState('sales-outside');
-  const [qty, setQty] = useState('');
-  const [sellingPrice, setSellingPrice] = useState('');
-  const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
-  const [customer, setCustomer] = useState('');
-  const [remarks, setRemarks] = useState('');
-  const [batchId, setBatchId] = useState('');
-  const [selectedBatch, setSelectedBatch] = useState(null);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [pending, setPending] = useState(null);
-  const [showReasonDrop, setShowReasonDrop] = useState(false);
-  const [showBatchDrop, setShowBatchDrop] = useState(false);
-  const [batchSearch, setBatchSearch] = useState('');
-  const [infoModal, setInfoModal] = useState(null);
-  const reasonRef = useRef(null);
-  const batchRef = useRef(null);
-
-  const batches = useMemo(() => {
-    if (!inventory || !item) return [];
-    const inv = inventory.find(i => i.id === item.id);
-    return (inv?.batches||[]).filter(b => b.remainingQty > 0).sort((a, b) => new Date(a.dateReceived)-new Date(b.dateReceived));
-  }, [inventory, item]);
-
-  useEffect(() => { if (batches.length > 0) { setBatchId(batches[0].batchId); setSelectedBatch(batches[0]); } }, [batches]);
-  useEffect(() => { const b = batches.find(b => b.batchId===batchId); setSelectedBatch(b||null); }, [batchId, batches]);
-  useEffect(() => { if (isOpen && item) { setReason('sales-outside'); setQty(''); setSellingPrice(''); setSaleDate(new Date().toISOString().split('T')[0]); setRemarks(''); setCustomer(''); setBatchSearch(''); setShowConfirm(false); setPending(null); } }, [isOpen, item]);
-  useEffect(() => { const h = (e) => { if (reasonRef.current && !reasonRef.current.contains(e.target)) setShowReasonDrop(false); if (batchRef.current && !batchRef.current.contains(e.target)) setShowBatchDrop(false); }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h); }, []);
-
-  const handleSubmit = () => {
-    const q = parseInt(qty)||0;
-    if (q <= 0) { setInfoModal({ title: 'Validation Error', message: 'Please enter a valid quantity (minimum 1).' }); return; }
-    if (q > item.stockQty) { setInfoModal({ title: 'Validation Error', message: `Quantity (${q}) exceeds current stock (${item.stockQty} pcs).` }); return; }
-    if (!batchId || !selectedBatch) { setInfoModal({ title: 'Validation Error', message: 'Please select a batch.' }); return; }
-    if (reason === 'sales-outside' && (!sellingPrice || parseFloat(sellingPrice) <= 0)) { setInfoModal({ title: 'Validation Error', message: 'Please enter the total amount received.' }); return; }
-    setPending({ reason, quantity: q, sellingPrice: reason==='sales-outside' ? parseFloat(sellingPrice) : 0, saleDate: reason==='sales-outside' ? saleDate : null, remarks: remarks||null, customerName: customer||null, batchId, batchData: selectedBatch ? { batchId: selectedBatch.batchId, supplierId: selectedBatch.supplierId, supplierName: selectedBatch.supplierName, unitCost: selectedBatch.unitCost, remainingQty: selectedBatch.remainingQty } : null });
-    setShowConfirm(true);
-  };
-
-  const labels = { 'sales-outside': 'Manual Sale (Outside System)', 'damaged': 'Damaged / Write-off' };
-  if (!isOpen || !item) return null;
-
-  // Calculate total value based on batch costs
-  const calculateTotalCost = () => {
-    const q = parseInt(qty) || 0;
-    if (q <= 0 || !selectedBatch) return 0;
-    
-    const fromSelected = Math.min(q, selectedBatch.remainingQty);
-    const spillover = q - fromSelected;
-    let total = fromSelected * selectedBatch.unitCost;
-    
-    if (spillover > 0) {
-      const nextBatches = batches.filter(b => b.batchId !== batchId);
-      let rem = spillover;
-      for (const nb of nextBatches) {
-        if (rem <= 0) break;
-        const take = Math.min(rem, nb.remainingQty || 0);
-        if (take > 0) total += take * nb.unitCost;
-        rem -= take;
-      }
-    }
-    return total;
-  };
-
-  const totalCost = calculateTotalCost();
-
-  return (
-    <div className="modal-overlay">
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '750px', width: '90%' }}>
-        <div className="modal-header">
-          <h2 className="modal-title">Reduce Stock — {item.name}</h2>
-          <button className="modal-close" onClick={onClose}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-        </div>
-        <div className="modal-body" style={{ padding: '1.5rem' }}>
-          {/* Info Box */}
-          <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem' }}>
-            <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Reducing stock for:</div>
-            <div style={{ fontWeight: 600, color: 'var(--white)', fontSize: '1rem' }}>{item.name}</div>
-            <div style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>{item.category} · Current stock: <strong style={{ color: 'var(--white)' }}>{item.stockQty} pcs</strong></div>
-          </div>
-
-          {/* Reason */}
-          <div className="form-group">
-            <label className="form-label">Reason <span className="required">*</span></label>
-            <div className="combobox-root" ref={reasonRef}>
-              <div className="combobox-field">
-                <input type="text" className="form-input" value={labels[reason]} readOnly onClick={() => setShowReasonDrop(o => !o)} style={{ cursor: 'pointer' }} />
-                <button type="button" className="combobox-toggle" onClick={() => setShowReasonDrop(o => !o)}>{showReasonDrop ? '▲' : '▼'}</button>
-              </div>
-              {showReasonDrop && (
-                <div className="combobox-menu">
-                  {Object.entries(labels).map(([v, l]) => (
-                    <button key={v} type="button" className={`combobox-item${reason===v?' active':''}`} onClick={() => { setReason(v); setShowReasonDrop(false); }}>{l}</button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {reason === 'sales-outside' && <p className="form-hint" style={{ color: '#facc15' }}>Creates a sales record and reduces inventory.</p>}
-          </div>
-
-          {/* Qty */}
-          <div className="form-group">
-            <label className="form-label">Quantity {reason==='sales-outside'?'Sold':'to Remove'} <span className="required">*</span></label>
-            <IntegerInput className="form-input" value={qty} onChange={e => setQty(e.target.value)} min={1} max={item.stockQty} placeholder="0" />
-            {qty && parseInt(qty) > item.stockQty && <p className="form-hint" style={{ color: '#f87171' }}>Exceeds current stock ({item.stockQty} pcs)</p>}
-          </div>
-
-          {/* Batch (FIFO) */}
-          {batches.length > 0 && (
-            <div style={{ background: 'rgba(217,119,6,0.08)', border: '2px solid rgba(217,119,6,0.3)', borderRadius: '8px', padding: '1rem', marginBottom: '1.25rem' }}>
-              <label className="form-label" style={{ color: '#d97706', display: 'block', marginBottom: '0.5rem' }}>
-                Batch (FIFO — Oldest First)
-              </label>
-              <p className="form-hint" style={{ marginBottom: '0.75rem' }}>
-                Auto-selects oldest batch. If quantity exceeds one batch, the remainder is automatically deducted from the next batch.
-              </p>
-              
-              {/* Combobox for batch selection */}
-              <div className="combobox-root" ref={batchRef}>
-                <div className="combobox-field">
-                  <input type="text" className="form-input" 
-                    value={selectedBatch ? `${selectedBatch.batchId} | ${new Date(selectedBatch.dateReceived).toLocaleDateString()} | ${selectedBatch.remainingQty} pcs` : 'Select a batch...'}
-                    readOnly
-                    onClick={() => setShowBatchDrop(o => !o)}
-                    placeholder="Select a batch..."
-                    style={{ cursor: 'pointer', fontFamily: 'monospace' }} />
-                  <button type="button" className="combobox-toggle" onClick={() => setShowBatchDrop(o => !o)}>
-                    {showBatchDrop ? '▲' : '▼'}
-                  </button>
-                </div>
-                {showBatchDrop && (
-                  <div className="combobox-menu" style={{ maxHeight: '220px', overflowY: 'auto' }}>
-                    {batches.length === 0 ? (
-                      <div style={{ padding: '1rem', color: 'var(--gray)', fontSize: '0.875rem', textAlign: 'center' }}>
-                        No batches with available stock.
-                      </div>
-                    ) : (
-                      batches.map(b => (
-                        <button 
-                          key={b.batchId} 
-                          type="button" 
-                          className={`combobox-item${batchId===b.batchId?' active':''}`}
-                          onClick={() => { setBatchId(b.batchId); setSelectedBatch(b); setShowBatchDrop(false); }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                            <span style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.85rem' }}>{b.batchId}</span>
-                            <span style={{ color: 'var(--gold)', fontWeight: 600, fontSize: '0.8rem' }}>{b.remainingQty} pcs</span>
-                          </div>
-                          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.25rem' }}>
-                            <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>
-                              {new Date(b.dateReceived).toLocaleDateString()}
-                            </span>
-                            <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>
-                              @ ₱{formatPrice(b.unitCost)}
-                            </span>
-                            {b.invoiceNumber && (
-                              <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>
-                                | INV: {b.invoiceNumber}
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* FIFO spillover info */}
-              {selectedBatch && qty && parseInt(qty) > 0 && (() => {
-                const q = parseInt(qty);
-                const fromSelected = Math.min(q, selectedBatch.remainingQty);
-                const spillover = q - fromSelected;
-                const nextBatches = batches.filter(b => b.batchId !== batchId);
-                const totalAvailable = batches.reduce((s, b) => s + (b.remainingQty || 0), 0);
-
-                // Accurate FIFO: track running remainder across all spillover batches
-                const spilloverBreakdown = [];
-                let rem = spillover;
-                for (const nb of nextBatches) {
-                  if (rem <= 0) break;
-                  const take = Math.min(rem, nb.remainingQty || 0);
-                  if (take > 0) spilloverBreakdown.push({ ...nb, take });
-                  rem -= take;
-                }
-                const unfulfilledQty = rem; // > 0 means not enough stock
-
-                return (
-                  <div style={{ marginTop: '0.75rem' }}>
-                    {/* From selected batch */}
-                    <div style={{ fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-                      <span style={{ color: 'var(--gray)' }}>Invoice: <strong style={{ color: 'var(--white)' }}>{selectedBatch.invoiceNumber || 'N/A'}</strong></span>
-                      <span style={{ color: 'var(--gray)', marginLeft: '1rem' }}>
-                        From this batch: <strong style={{ color: '#d97706' }}>₱{formatPrice(selectedBatch.unitCost * fromSelected)}</strong>
-                        <span style={{ color: 'var(--gray)', fontSize: '0.8rem' }}> ({fromSelected} pcs × ₱{formatPrice(selectedBatch.unitCost)})</span>
-                      </span>
-                    </div>
-
-                    {/* FIFO spillover */}
-                    {spillover > 0 && (
-                      <div style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '6px', padding: '0.6rem 0.75rem', marginTop: '0.5rem' }}>
-                        {unfulfilledQty > 0 ? (
-                          <div style={{ fontSize: '0.8rem', color: '#f87171', fontWeight: 600 }}>
-                            Not enough stock. Available: {totalAvailable} pcs, requested: {q} pcs
-                          </div>
-                        ) : (
-                          <>
-                            <div style={{ fontSize: '0.8rem', color: '#f59e0b', fontWeight: 600, marginBottom: '0.25rem' }}>
-                              FIFO Spillover: {fromSelected} pcs from this batch + {spillover} pcs from {spilloverBreakdown.length} other batch{spilloverBreakdown.length !== 1 ? 'es' : ''}
-                            </div>
-                            {spilloverBreakdown.map(nb => (
-                              <div key={nb.batchId} style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.2rem' }}>
-                                {nb.batchId}: {nb.take} pcs @ {formatPrice(nb.unitCost)} = {formatPrice(nb.unitCost * nb.take)}
-                              </div>
-                            ))}
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-
-          {/* Total Value Summary */}
-          {qty && parseInt(qty) > 0 && totalCost > 0 && (
-            <div style={{ background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '8px', padding: '1rem', marginBottom: '1.25rem' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Total Inventory Value to Reduce:</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--gold)' }}>₱{formatPrice(totalCost)}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Based on FIFO batch costs</div>
-            </div>
-          )}
-
-          {/* Sale fields */}
-          {reason === 'sales-outside' && (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Total Amount Received <span className="required">*</span></label>
-                  <div className="tier-price-cell"><span className="peso">₱</span>
-                    <DecimalInput className="tier-input" value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} placeholder="0.00" style={{ width: '100%' }} />
-                  </div>
-                  <p className="form-hint">Actual selling price (may differ from inventory cost)</p>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Date of Sale <span className="required">*</span></label>
-                  <input type="date" className="form-input" value={saleDate} onChange={e => setSaleDate(e.target.value)} />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Customer Name <span style={{ color: 'var(--gray)', fontWeight: 400 }}>(Optional)</span></label>
-                <input type="text" className="form-input" value={customer} onChange={e => setCustomer(e.target.value.slice(0, 60))} placeholder="e.g., Juan Dela Cruz" maxLength={60} />
-              </div>
-            </>
-          )}
-
-          {/* Damaged fields */}
-          {reason === 'damaged' && (
-            <div className="form-group">
-              <label className="form-label">Cause / Description <span style={{ color: 'var(--gray)', fontWeight: 400 }}>(Optional)</span></label>
-              <textarea className="form-textarea" value={remarks} onChange={e => setRemarks(e.target.value.slice(0, 300))} placeholder="e.g., Dropped during packing, product defect..." maxLength={300} rows={2} />
-            </div>
-          )}
-        </div>
-
-        <div className="modal-actions" style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
-          <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn-primary" onClick={handleSubmit} disabled={!!(qty && parseInt(qty) > item.stockQty)}>
-            {reason==='sales-outside' ? 'Record Sale' : 'Mark as Damaged'}
-          </button>
-        </div>
-      </div>
-
-      {/* Confirm */}
-      {showConfirm && pending && (
-        <div className="modal-overlay" onClick={e => e.stopPropagation()}>
-          <div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="modal-title modal-title-success">{pending.reason==='sales-outside' ? 'Confirm Sale Record' : 'Confirm Stock Reduction'}</h2>
-              <button className="modal-close" onClick={() => setShowConfirm(false)}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-            </div>
-            <div className="modal-body">
-              <div className="confirm-summary">
-                <div className="confirm-row"><span className="confirm-label">Item:</span><span className="confirm-value">{item.name}</span></div>
-                <div className="confirm-row"><span className="confirm-label">Quantity:</span><span className="confirm-value" style={{ color: '#f87171', fontWeight: 700 }}>−{pending.quantity} pcs</span></div>
-                {pending.reason === 'sales-outside' && (
-                  <>
-                    <div className="confirm-row"><span className="confirm-label">Amount:</span><span className="confirm-value" style={{ color: '#4ade80', fontWeight: 700 }}>₱{formatPrice(pending.sellingPrice)}</span></div>
-                    {pending.customerName && <div className="confirm-row"><span className="confirm-label">Customer:</span><span className="confirm-value">{pending.customerName}</span></div>}
-                    <div className="confirm-row"><span className="confirm-label">Date:</span><span className="confirm-value">{pending.saleDate}</span></div>
-                  </>
-                )}
-                {pending.remarks && <div className="confirm-row"><span className="confirm-label">Remarks:</span><span className="confirm-value">{pending.remarks}</span></div>}
-              </div>
-              <p className="confirm-hint" style={{ marginTop: '1rem', color: '#facc15' }}>
-                {pending.reason==='sales-outside' ? 'Creates a sales record and reduces inventory.' : 'Reduces inventory and creates an audit log entry.'}
-              </p>
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => setShowConfirm(false)}>Cancel</button>
-              <button type="button" className="btn-primary" onClick={() => { onConfirm(pending); setShowConfirm(false); setPending(null); onClose(); }}>
-                {pending.reason==='sales-outside' ? 'Confirm Sale' : 'Confirm Reduction'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      <InfoModal isOpen={!!infoModal} onClose={() => setInfoModal(null)} title={infoModal?.title||''} message={infoModal?.message||''} />
-    </div>
-  );
-}
 // ── Main Inventory Page ────────────────────────────────────────────────────────
 export default function InventoryPage() {
   const [inventory, setInventory] = useState([]);
@@ -3999,6 +3685,112 @@ export default function InventoryPage() {
 
   // TODO: MongoDB — Wrap in transaction: update inventory + deduct batch + audit log + sales record
   const handleStockReduction = (data) => {
+    // Check if new multi-variant structure or old single-item structure
+    if (data.variants && Array.isArray(data.variants)) {
+      // NEW STRUCTURE - Multi-variant reduction
+      const { reason, saleDate, customer, remarks, variants, totals } = data;
+      const now = new Date().toISOString();
+      
+      // Process each variant
+      variants.forEach(variant => {
+        const variantId = variant.variantId;
+        const qtyFulfilled = variant.qtyFulfilled;
+        
+        if (qtyFulfilled <= 0) return;
+        
+        // Find variant in inventory
+        const variantInInventory = inventory.find(i => i.id === variantId);
+        if (!variantInInventory) return;
+        
+        const newStock = Math.max(0, variantInInventory.stockQty - qtyFulfilled);
+        
+        // Process FIFO batch deductions
+        const currentBatches = [...(variantInInventory.batches || [])];
+        const deductions = {};
+        
+        variant.batches.forEach(batch => {
+          deductions[batch.batchId] = batch.take;
+        });
+        
+        // Update batches with deductions
+        const updatedBatches = currentBatches.map(batch => {
+          const deduct = deductions[batch.batchId];
+          if (!deduct) return batch;
+          
+          const newRemaining = (batch.remainingQty || 0) - deduct;
+          const movement = {
+            type: reason === 'sales-outside' ? 'sold' : 'damaged',
+            quantity: -deduct,
+            remainingAfter: newRemaining,
+            reason: reason === 'sales-outside'
+              ? `Manual sale${customer ? ` — ${customer}` : ''}${variant.sellingPrice ? ` @ ₱${formatPrice(variant.sellingPrice)}` : ''}`
+              : (remarks || variant.damageType || 'Damaged / Write-off'),
+            createdAt: now,
+          };
+          
+          return { ...batch, remainingQty: newRemaining, movements: [...(batch.movements || []), movement] };
+        });
+        
+        // Update inventory
+        setInventory(prev => prev.map(i => i.id === variantId
+          ? { 
+              ...i, 
+              stockQty: newStock, 
+              batches: updatedBatches,
+              damagedQty: reason === 'damaged' ? (i.damagedQty || 0) + qtyFulfilled : i.damagedQty,
+              updatedAt: now 
+            }
+          : i
+        ));
+        
+        // Audit log entry
+        const logs = JSON.parse(localStorage.getItem('pmp_inventory_logs')||'[]');
+        logs.push({
+          id: Date.now(), 
+          inventoryId: variantId, 
+          itemName: variant.variantName,
+          category: variantInInventory.category, 
+          type: 'stock-out', 
+          reason,
+          quantity: -qtyFulfilled, 
+          stockBefore: variantInInventory.stockQty, 
+          stockAfter: newStock,
+          batchId: variant.batches[0]?.batchId,
+          sellingPrice: reason==='sales-outside' ? variant.sellingPrice : null,
+          saleDate: reason==='sales-outside' ? saleDate : null,
+          customerName: reason==='sales-outside' ? customer : null,
+          remarks: reason==='damaged' ? remarks : null,
+          createdAt: now,
+        });
+        localStorage.setItem('pmp_inventory_logs', JSON.stringify(logs));
+        
+        // Sales record (only for manual sales)
+        if (reason === 'sales-outside') {
+          const salesData = JSON.parse(localStorage.getItem('pmp_sales')||'[]');
+          salesData.push({
+            id: Date.now(), 
+            inventoryId: variantId, 
+            batchId: variant.batches[0]?.batchId,
+            productName: variant.variantName, 
+            category: variantInInventory.category,
+            quantity: qtyFulfilled, 
+            unitPrice: variant.sellingPrice, 
+            totalPrice: qtyFulfilled * variant.sellingPrice, 
+            orderDate: saleDate,
+            customerName: customer || `Walk-in-${Date.now()}`,
+            paymentMethod: 'cash',
+            status: 'completed',
+            notes: 'Manual sale (outside system)',
+            createdAt: now,
+          });
+          localStorage.setItem('pmp_sales', JSON.stringify(salesData));
+        }
+      });
+      
+      return;
+    }
+    
+    // OLD STRUCTURE - Single item reduction (backward compatibility)
     if (!adjustmentItem) return;
     const { reason, quantity, sellingPrice, saleDate, remarks, customerName, batchId, batchData } = data;
     const newStock = Math.max(0, adjustmentItem.stockQty - quantity);
@@ -4360,6 +4152,13 @@ Item Masterlist
             onRemoveItem={handleDelete}
             onAddStock={(item) => { setAdditionItem(item); setShowAdditionModal(true); }}
             onReduceStock={(item) => { setAdjustmentItem(item); setShowAdjustmentModal(true); }}
+            onUpdateMinStock={(id, minStock) => {
+              setInventory(prev => prev.map(i => i.id === id ? { ...i, minStockLevel: minStock, updatedAt: new Date().toISOString() } : i));
+              // Save full inventory to localStorage (not just filtered)
+              const fullInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
+              const updated = fullInventory.map(i => i.id === id ? { ...i, minStockLevel: minStock, updatedAt: new Date().toISOString() } : i);
+              localStorage.setItem('pmp_inventory', JSON.stringify(updated));
+            }}
           />
         )}
       </div>
@@ -4434,7 +4233,8 @@ Item Masterlist
 
       <StockReductionModal isOpen={showAdjustmentModal}
         onClose={() => { setShowAdjustmentModal(false); setAdjustmentItem(null); }}
-        onConfirm={handleStockReduction} item={adjustmentItem} inventory={inventory} />
+        onConfirm={handleStockReduction} item={adjustmentItem} inventory={inventory}
+        masterlist={masterlist} />
 
       <StockAdditionModal isOpen={showAdditionModal}
         onClose={() => { setShowAdditionModal(false); setAdditionItem(null); }}
