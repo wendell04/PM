@@ -57,6 +57,8 @@ import AddInventoryItemModal from './AddInventoryItemModal';
 import StockAdditionModal from './StockAdditionModal';
 import StockReductionModal from './StockReductionModal';
 import { NestedInventoryTable } from './NestedInventoryTable';
+import { StockOutTable } from './StockOutTable';
+import { SupplierDetailsModal, ManageSuppliersModal } from './SupplierDetails';
 
 // ── Gold Scrollbar Style ──────────────────────────────────────────────────────
 // Injected once via a side-effect — targets all scrollable elements in the page
@@ -72,6 +74,13 @@ if (typeof document !== 'undefined' && !document.getElementById('pmp-gold-scroll
   `;
   document.head.appendChild(s);
 }
+
+// ── Helper: Sanitize number input (from products/add) ─────────────────────────
+const sanitizeNumber = (val) => {
+  if (val === '') return '';
+  const num = parseFloat(val);
+  return isNaN(num) || num < 0 ? '0' : val;
+};
 
 // ── Integer Input (stock qty, min level, damaged qty) ─────────────────────────
 // Blocks: e, E, +, -, . (integers only, no decimals)
@@ -482,15 +491,16 @@ function BatchDetailsModal({ batch, item, isOpen, onClose }) {
             ))}
           </div>
           {/* Stock summary */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
             {[['Original', `${batch.originalQty} pcs`, 'var(--white)'],
-              ['Good Stock', `${batch.goodQty||batch.originalQty} pcs`, '#4ade80'],
+              ['Initial Good', `${batch.goodQty||batch.originalQty} pcs`, '#4ade80'],
               ['Damaged', `${batch.damagedQty||0} pcs`, '#f87171'],
-              ['Unit Cost', `${formatPrice(batch.unitCost)}`, 'var(--gold)'],
+              ['Stock Out', `${totalSold} pcs`, '#6366f1'],
+              ['Remaining', `${batch.remainingQty||0} pcs`, '#facc15'],
             ].map(([l,v,c]) => (
               <div key={l} style={{ padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>{l}</div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: c }}>{v}</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: c }}>{v}</div>
               </div>
             ))}
           </div>
@@ -581,7 +591,7 @@ function InventoryExpandRow({ item, colSpan }) {
 
           {/* Summary strip */}
           {batches.length > 0 && (
-            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.75rem', padding: '0.6rem 1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.75rem', padding: '0.6rem 1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
                 <strong style={{ color: 'var(--white)' }}>{batches.length}</strong> batch{batches.length !== 1 ? 'es' : ''}
               </span>
@@ -591,7 +601,12 @@ function InventoryExpandRow({ item, colSpan }) {
               <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
                 Stock Value: <strong style={{ color: 'var(--gold)' }}>{formatPrice(totalValue)}</strong>
               </span>
-
+              <span style={{ fontSize: '0.7rem', color: 'var(--gray)', marginLeft: 'auto', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <span style={{ color: '#E5E2E1' }}>●</span> Initial Good
+                <span style={{ color: '#E5E2E1' }}>●</span> Damaged
+                <span style={{ color: '#E5E2E1' }}>●</span> Stock Out (Sold/Used)
+                <span style={{ color: '#E5E2E1' }}>●</span> Remaining
+              </span>
             </div>
           )}
 
@@ -610,8 +625,9 @@ function InventoryExpandRow({ item, colSpan }) {
                       { label: 'Supplier', align: 'center' },
                       { label: 'Invoice / OR', align: 'center' },
                       { label: 'Original', align: 'center' },
-                      { label: 'Good', align: 'center' },
+                      { label: 'Initial Good', align: 'center' },
                       { label: 'Damaged', align: 'center' },
+                      { label: 'Stock Out', align: 'center' },
                       { label: 'Remaining', align: 'center' },
                       { label: 'Unit Cost', align: 'center' },
                       { label: 'Batch Value', align: 'center' },
@@ -629,6 +645,7 @@ function InventoryExpandRow({ item, colSpan }) {
                     const batchValue = (batch.remainingQty || 0) * (batch.unitCost || 0);
                     const damagedQty = batch.damagedQty || 0;
                     const goodQty = batch.goodQty ?? (batch.originalQty - damagedQty);
+                    const stockOutQty = Math.max(0, goodQty - (batch.remainingQty || 0) - damagedQty);
 
                     return (
                       <tr key={batch.batchId} style={{
@@ -669,24 +686,30 @@ function InventoryExpandRow({ item, colSpan }) {
                           {batch.originalQty} pcs
                         </td>
 
-                        {/* Good */}
-                        <td style={{ padding: '0.7rem 0.75rem', textAlign: 'center', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)' }}>
+                        {/* Good / Initial Good */}
+                        <td style={{ padding: '0.7rem 0.75rem', textAlign: 'center', fontSize: '0.8rem', fontWeight: 600, color: '#E5E2E1' }}>
                           {goodQty} pcs
                         </td>
 
                         {/* Damaged */}
-                        <td style={{ padding: '0.7rem 0.75rem', textAlign: 'center', fontSize: '0.8rem', fontWeight: 600 }}>
-                          {damagedQty > 0
-                            ? <span style={{ color: '#f87171' }}>{damagedQty} pcs</span>
-                            : <span style={{ color: 'var(--gray)' }}>—</span>
-                          }
+                        <td style={{ padding: '0.7rem 0.75rem', textAlign: 'center', fontSize: '0.8rem', fontWeight: 600, color: '#E5E2E1' }}>
+                          {damagedQty > 0 ? `${damagedQty} pcs` : '0'}
                         </td>
 
-                        {/* Remaining */}
-                        <td style={{ padding: '0.7rem 0.75rem', textAlign: 'center', fontSize: '0.8rem', fontWeight: 700 }}>
-                          <span style={{ color: isDepleted ? '#f87171' : 'rgb(250,204,21)' }}>
+                        {/* Stock Out — Sold/Used */}
+                        <td style={{ padding: '0.7rem 0.75rem', textAlign: 'center', fontSize: '0.8rem', fontWeight: 600, color: '#E5E2E1' }}>
+                          {stockOutQty > 0 ? `${stockOutQty} pcs` : '0'}
+                        </td>
+
+                        {/* Remaining — Clickable for movement details */}
+                        <td style={{ padding: '0.7rem 0.75rem', textAlign: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#E5E2E1' }}>
+                          <button
+                            onClick={() => window.dispatchEvent(new CustomEvent('openBatchDetails', { detail: { batch, item } }))}
+                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#E5E2E1', fontWeight: 700, fontSize: '0.8rem', textDecoration: (batch.movements?.length || 0) > 0 ? 'underline' : 'none', textDecorationColor: '#E5E2E1' }}
+                            title={(batch.movements?.length || 0) > 0 ? 'Click to view movement history' : 'No movement history'}
+                          >
                             {batch.remainingQty || 0} pcs
-                          </span>
+                          </button>
                         </td>
 
                         {/* Unit Cost — FIX: no extra ₱ prefix, formatPrice handles display */}
@@ -1144,13 +1167,17 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
   const [variantTypeInput, setVariantTypeInput] = useState(''); // Current variant type name
   const [variantOptionInputs, setVariantOptionInputs] = useState({}); // Per-type option inputs (fixes bug)
   const [editingLinked, setEditingLinked] = useState(false); // true when editing a product linked to inventory
-  
+  const [hasChanges, setHasChanges] = useState(false); // Track if form has changes for Update button
+
   // Pricing state (Fixed/Tiered/Inquiry)
   const [priceType, setPriceType] = useState('fixed'); // 'fixed' | 'tiered' | 'inquiry'
   const [fixedPrice, setFixedPrice] = useState('');
   const [priceTiers, setPriceTiers] = useState([]);
   const [tierInput, setTierInput] = useState({ min: '', max: '', price: '' });
   const [groupChecks, setGroupChecks] = useState({}); // For variant grouping in pricing
+  
+  // Store original values for change detection (Update button)
+  const [originalProd, setOriginalProd] = useState(null);
   
   // Helper to create new variant type
   const createVariantType = (name, options = []) => ({
@@ -1170,6 +1197,41 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const genId = () => `${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+  
+  // Check if form is valid (for Add button)
+  const isFormValid = () => {
+    if (!formName.trim()) return false;
+
+    // Categories don't need variant types or pricing
+    if (formMode.includes('cat')) {
+      return true;
+    }
+
+    // If has variant types, each must have at least 1 option
+    if (formVariantTypes.length > 0) {
+      const hasEmptyType = formVariantTypes.some(vt => !vt.options || vt.options.length === 0);
+      if (hasEmptyType) return false;
+    }
+
+    // Pricing validation (products only)
+    if (priceType === 'fixed' && !fixedPrice) return false;
+    if (priceType === 'tiered' && priceTiers.length === 0) return false;
+
+    return true;
+  };
+  
+  // Check if form has changes (for Update button)
+  const hasFormChanges = () => {
+    if (!originalProd) return true; // No original to compare, allow save
+    
+    const nameChanged = formName !== originalProd.name;
+    const variantTypesChanged = JSON.stringify(formVariantTypes) !== JSON.stringify(originalProd.variantTypes);
+    const priceTypeChanged = priceType !== originalProd.priceType;
+    const fixedPriceChanged = priceType === 'fixed' && fixedPrice !== originalProd.flatPrice;
+    const tierPriceChanged = priceType === 'tiered' && JSON.stringify(priceTiers) !== JSON.stringify(originalProd.priceTiers);
+    
+    return nameChanged || variantTypesChanged || priceTypeChanged || fixedPriceChanged || tierPriceChanged;
+  };
 
   // Generate all SKU combinations from variant types
   const generateSkuCombinations = (variantTypes, categoryName, productName) => {
@@ -1226,10 +1288,26 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
   const getCatLinkedCount = (cat) =>
     (cat.products || []).reduce((sum, prod) => sum + getLinkedInventoryCount(cat.name, prod.name), 0);
 
+  // Check if a specific variant option is in use by any inventory items
+  const isOptionInUse = (catName, prodName, variantTypeName, optionValue) => {
+    return inventory.some(item => {
+      if (item.isActive === false) return false;
+      if (item.category !== catName) return false;
+      if (!item.name.includes(prodName)) return false;
+      
+      // Check if item's variantCombo uses this specific option
+      if (item.variantCombo) {
+        const comboValue = item.variantCombo[variantTypeName];
+        if (comboValue === optionValue) return true;
+      }
+      return false;
+    });
+  };
+
   // ── Category actions ───────────────────────────────────────────────────────
   const startAddCat = () => {
     setFormMode('add-cat'); setFormCatId(null);
-    setFormName(''); setFormVariants([]); setVariantInput('');
+    setFormName(''); setFormVariantTypes([]);
   };
 
   const startEditCat = (cat) => {
@@ -1244,7 +1322,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
       return;
     }
     setFormMode('edit-cat'); setFormCatId(cat.id);
-    setFormName(cat.name); setFormVariants([]); setVariantInput('');
+    setFormName(cat.name); setFormVariantTypes([]);
   };
 
   const handleDeleteCat = (cat) => {
@@ -1292,7 +1370,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
     const linkedCount = cat ? getLinkedInventoryCount(cat.name, prod.name) : 0;
     setEditingLinked(linkedCount > 0);
     setFormMode('edit-prod'); setFormCatId(catId); setFormProdId(prod.id);
-    setFormName(prod.name); 
+    setFormName(prod.name);
     // Load existing variant types or convert old variants format
     if (prod.variantTypes && Array.isArray(prod.variantTypes)) {
       setFormVariantTypes([...prod.variantTypes]);
@@ -1306,12 +1384,22 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
     } else {
       setFormVariantTypes([]);
     }
-    
+
     // Load pricing
     setPriceType(prod.priceType || 'fixed');
     setFixedPrice(prod.flatPrice || '');
     setPriceTiers(prod.priceTiers || []);
     
+    // Store original values for change detection
+    setOriginalProd({
+      name: prod.name,
+      variantTypes: prod.variantTypes || [],
+      priceType: prod.priceType || 'fixed',
+      flatPrice: prod.flatPrice || '',
+      priceTiers: prod.priceTiers || []
+    });
+    setHasChanges(false); // No changes yet
+
     setVariantTypeInput('');
     setVariantOptionInputs({});
     setTierInput({ min: '', max: '', price: '' });
@@ -1352,6 +1440,14 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
   };
 
   const removeVariantType = (index) => {
+    // Check if product is linked to inventory
+    if (editingLinked) {
+      setInfoModal({
+        title: 'Cannot Remove Variant Type',
+        message: `This product is linked to active inventory items. Removing variant types will break existing stock tracking. Please archive all linked inventory items first before removing variant types.`
+      });
+      return;
+    }
     setFormVariantTypes(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -1361,7 +1457,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
     if (!option) return;
     const updated = [...formVariantTypes];
     if (updated[typeIndex].options.some(o => o.toLowerCase() === option.toLowerCase())) {
-      setInfoModal({ title: 'Duplicate Option', message: `"${option}" already exists in ${updated[typeIndex].name}.` }); 
+      setInfoModal({ title: 'Duplicate Option', message: `"${option}" already exists in ${updated[typeIndex].name}.` });
       return;
     }
     updated[typeIndex].options.push(option);
@@ -1371,6 +1467,26 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
   };
 
   const removeVariantOption = (typeIndex, optionIndex) => {
+    const vt = formVariantTypes[typeIndex];
+    const option = vt.options[optionIndex];
+    
+    // Check if THIS SPECIFIC option is in use
+    const inUse = isOptionInUse(
+      localList.find(c => c.id === formCatId)?.name,
+      formName,
+      vt.name,
+      option
+    );
+    
+    if (inUse) {
+      setInfoModal({
+        title: 'Cannot Remove Option',
+        message: `"${option}" is used by active inventory items. Remove or archive those inventory items first before removing this option.`
+      });
+      return;
+    }
+    
+    // Option not in use - can remove
     const updated = [...formVariantTypes];
     updated[typeIndex].options.splice(optionIndex, 1);
     setFormVariantTypes(updated);
@@ -1387,9 +1503,13 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
 
   // ── Form submit ────────────────────────────────────────────────────────────
   const handleFormSubmit = () => {
-    if (!formName.trim()) {
-      setInfoModal({ title: 'Validation Error', message: 'Please enter a name.' }); return;
+    // This should not be called if button is disabled, but just in case
+    if (!formName.trim()) return;
+    if (formMode.includes('prod') && formVariantTypes.length > 0) {
+      const hasEmptyType = formVariantTypes.some(vt => !vt.options || vt.options.length === 0);
+      if (hasEmptyType) return;
     }
+    
     let updated = [...localList];
 
     if (formMode === 'add-cat') {
@@ -1549,7 +1669,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
             </div>
 
             {/* Variants — only for products (Multi-Dimensional Variant Types) */}
-            {formMode.includes('prod') && (
+            {formMode.includes('prod') && formName.trim() && (
               <div className="form-group" style={{ marginTop: '1.5rem' }}>
                 <label className="form-label">
                   Variant Types
@@ -1574,8 +1694,36 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                           </div>
                           <button
                             type="button"
-                            onClick={() => removeVariantType(typeIdx)}
-                            style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: '6px', padding: '0.25rem 0.6rem', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer' }}
+                            onClick={() => {
+                              // Check if ANY option in this type is in use
+                              const hasInUseOption = formVariantTypes[typeIdx].options.some(opt => 
+                                isOptionInUse(
+                                  localList.find(c => c.id === formCatId)?.name,
+                                  formName,
+                                  formVariantTypes[typeIdx].name,
+                                  opt
+                                )
+                              );
+                              
+                              if (hasInUseOption) {
+                                setInfoModal({
+                                  title: 'Cannot Remove Variant Type',
+                                  message: `This variant type has options that are used by active inventory items. Remove all options first or archive the linked inventory items.`
+                                });
+                                return;
+                              }
+                              removeVariantType(typeIdx);
+                            }}
+                            style={{ 
+                              background: '#7f1d1d', 
+                              border: '1px solid #ef4444', 
+                              color: '#fca5a5', 
+                              borderRadius: '6px', 
+                              padding: '0.25rem 0.6rem', 
+                              fontSize: '0.7rem', 
+                              fontWeight: 600, 
+                              cursor: 'pointer' 
+                            }}
                           >
                             Remove Type
                           </button>
@@ -1584,15 +1732,33 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                         {/* Variant Options Chips */}
                         {vt.options.length > 0 && (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem' }}>
-                            {vt.options.map((opt, optIdx) => (
-                              <span key={optIdx} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.25rem 0.6rem', background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '20px', fontSize: '0.8rem', color: '#6366f1', fontWeight: 500 }}>
-                                {opt}
-                                <button type="button" onClick={() => removeVariantOption(typeIdx, optIdx)}
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center' }}>
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                                </button>
-                              </span>
-                            ))}
+                            {vt.options.map((opt, optIdx) => {
+                              // Check if THIS specific option is in use
+                              const optionInUse = isOptionInUse(
+                                localList.find(c => c.id === formCatId)?.name,
+                                formName,
+                                vt.name,
+                                opt
+                              );
+                              
+                              return (
+                                <span key={optIdx} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.25rem 0.6rem', background: optionInUse ? 'rgba(99,102,241,0.12)' : 'rgba(100,100,100,0.12)', border: optionInUse ? '1px solid rgba(99,102,241,0.35)' : '1px solid rgba(100,100,100,0.35)', borderRadius: '20px', fontSize: '0.8rem', color: optionInUse ? '#6366f1' : '#9ca3af', fontWeight: 500 }}>
+                                  {opt}
+                                  {!optionInUse && (
+                                    <button type="button" onClick={() => removeVariantOption(typeIdx, optIdx)}
+                                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center' }}>
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                    </button>
+                                  )}
+                                  {optionInUse && (
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: '#f59e0b' }}>
+                                      <rect x="3" y="11" width="18" height="11" rx="2"/>
+                                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                                    </svg>
+                                  )}
+                                </span>
+                              );
+                            })}
                           </div>
                         )}
 
@@ -1789,13 +1955,22 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                       <div className="form-group">
                         <div className="tier-price-cell">
                           <span className="peso">₱</span>
-                          <FormattedDecimalInput
+                          <input
+                            type="text"
+                            inputMode="decimal"
                             className="tier-input"
                             value={fixedPrice}
-                            onChange={e => setFixedPrice(e.target.value)}
+                            onChange={e => {
+                              const val = e.target.value;
+                              if (val === '' || /^\d*\.?\d{0,2}$/.test(val)) {
+                                const numVal = parseFloat(val) || 0;
+                                if (numVal <= 999999.99) {
+                                  setFixedPrice(val);
+                                }
+                              }
+                            }}
                             placeholder="0"
-                            min={0}
-                            step="0.01"
+                            style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#E5E2E1', fontSize: '0.95rem', fontWeight: 600 }}
                           />
                         </div>
                         <p className="form-hint">This price will auto-fill in Add Product. Can be overridden there.</p>
@@ -1937,97 +2112,133 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                       </>
                     ) : (
                       /* Simple tier list when no variants */
-                      <div>
-                        <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
-                          {priceTiers.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--gray)', fontSize: '0.875rem' }}>
-                              No price tiers yet. Click "Add Tier" to add wholesale pricing.
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
-                              {priceTiers.map((tier, idx) => (
-                                <div key={tier.id || idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'end' }}>
-                                  <div>
-                                    <label style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.25rem', display: 'block' }}>Min Qty</label>
+                      <div className="tier-table-wrap" style={{ marginTop: '1rem' }}>
+                        <table className="tier-table">
+                          <thead>
+                            <tr>
+                              <th>Tier</th>
+                              <th>Min Qty</th>
+                              <th>Max Qty</th>
+                              <th>Price (₱)</th>
+                              <th></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(() => {
+                              const tiersToShow = priceTiers.length > 0 ? priceTiers : [{ id: 'tier-1', min: 1, max: '', price: '' }];
+                              return tiersToShow.map((tier, idx) => (
+                                <tr key={tier.id || idx}>
+                                  <td><span className="tier-badge">Tier {idx + 1}</span></td>
+                                  <td>
                                     <FormattedIntegerInput
-                                      className="form-input"
+                                      className="tier-input"
                                       value={tier.min}
                                       onChange={e => {
-                                        const newTiers = [...priceTiers];
-                                        newTiers[idx] = { ...tier, min: e.target.value };
-                                        setPriceTiers(newTiers);
+                                        const val = e.target.value.replace(/[^0-9]/g, '');
+                                        if (val === '' || (parseInt(val) >= 1 && parseInt(val) <= 999999)) {
+                                          if (priceTiers.length === 0) {
+                                            setPriceTiers([{ id: 'tier-1', min: val, max: '', price: '' }]);
+                                          } else {
+                                            const newTiers = [...priceTiers];
+                                            newTiers[idx] = { ...tier, min: val };
+                                            setPriceTiers(newTiers);
+                                          }
+                                        }
                                       }}
                                       min={1}
+                                      max={999999}
                                       placeholder="1"
                                     />
-                                  </div>
-                                  <div>
-                                    <label style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.25rem', display: 'block' }}>Max Qty</label>
+                                  </td>
+                                  <td>
                                     <FormattedIntegerInput
-                                      className="form-input"
+                                      className="tier-input"
                                       value={tier.max}
                                       onChange={e => {
-                                        const newTiers = [...priceTiers];
-                                        newTiers[idx] = { ...tier, max: e.target.value };
-                                        setPriceTiers(newTiers);
+                                        const val = e.target.value.replace(/[^0-9]/g, '');
+                                        if (val === '' || (parseInt(val) >= (tier.min || 1) && parseInt(val) <= 999999)) {
+                                          if (priceTiers.length === 0) {
+                                            setPriceTiers([{ id: 'tier-1', min: 1, max: val, price: '' }]);
+                                          } else {
+                                            const newTiers = [...priceTiers];
+                                            newTiers[idx] = { ...tier, max: val };
+                                            setPriceTiers(newTiers);
+                                          }
+                                        }
                                       }}
                                       min={tier.min || 1}
+                                      max={999999}
                                       placeholder="∞"
                                     />
-                                  </div>
-                                  <div>
-                                    <label style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.25rem', display: 'block' }}>Price</label>
+                                  </td>
+                                  <td>
                                     <div className="tier-price-cell">
                                       <span className="peso">₱</span>
                                       <FormattedDecimalInput
                                         className="tier-input"
                                         value={tier.price}
                                         onChange={e => {
-                                          const newTiers = [...priceTiers];
-                                          newTiers[idx] = { ...tier, price: e.target.value };
-                                          setPriceTiers(newTiers);
+                                          const val = e.target.value.replace(/[^0-9.]/g, '');
+                                          const parts = val.split('.');
+                                          if (parts.length <= 2 && parts[1]?.length <= 2) {
+                                            const numVal = parseFloat(val) || 0;
+                                            if (numVal <= 999999.99) {
+                                              if (priceTiers.length === 0) {
+                                                setPriceTiers([{ id: 'tier-1', min: 1, max: '', price: val }]);
+                                              } else {
+                                                const newTiers = [...priceTiers];
+                                                newTiers[idx] = { ...tier, price: val };
+                                                setPriceTiers(newTiers);
+                                              }
+                                            }
+                                          }
                                         }}
                                         placeholder="0"
-                                        step="0.01"
+                                        max={999999.99}
                                       />
                                     </div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const newTiers = priceTiers.filter((_, i) => i !== idx);
-                                      setPriceTiers(newTiers);
-                                    }}
-                                    style={{ padding: '0.5rem 0.75rem', background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {priceTiers.length < 10 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newTier = {
-                                  id: `tier-${Date.now()}`,
-                                  min: priceTiers.length > 0 ? (parseInt(priceTiers[priceTiers.length - 1].max) || 1) + 1 : 1,
-                                  max: '',
-                                  price: ''
-                                };
-                                setPriceTiers([...priceTiers, newTier]);
-                              }}
-                              style={{ padding: '0.5rem 1rem', background: 'var(--gold)', border: '1px solid var(--gold)', color: '#000', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
-                            >
-                              + Add Tier
-                            </button>
-                          )}
-                          {priceTiers.length >= 10 && (
-                            <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.5rem' }}>Maximum 10 tiers reached.</p>
-                          )}
-                        </div>
-                        <p className="form-hint">Optional. Set wholesale pricing for bulk orders (e.g., 21-30 pcs = ₱90, 31-50 pcs = ₱85).</p>
+                                  </td>
+                                  <td>
+                                    {priceTiers.length > 0 && (
+                                      <button
+                                        type="button"
+                                        className="btn-remove-tier"
+                                        onClick={() => {
+                                          const newTiers = priceTiers.filter((_, i) => i !== idx);
+                                          setPriceTiers(newTiers);
+                                        }}
+                                      >
+                                        Remove
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              ));
+                            })()}
+                          </tbody>
+                        </table>
+                        {priceTiers.length < 10 && (
+                          <button
+                            type="button"
+                            className="add-tier-btn"
+                            onClick={() => {
+                              const newTier = {
+                                id: `tier-${Date.now()}`,
+                                min: priceTiers.length > 0 ? (parseInt(priceTiers[priceTiers.length - 1].max) || 1) + 1 : 1,
+                                max: '',
+                                price: ''
+                              };
+                              setPriceTiers([...priceTiers, newTier]);
+                            }}
+                            style={{ marginTop: '0.75rem' }}
+                          >
+                            Add Price Tier
+                          </button>
+                        )}
+                        {priceTiers.length >= 10 && (
+                          <p className="form-hint" style={{ marginTop: '0.5rem' }}>Maximum 10 tiers reached.</p>
+                        )}
+                        <p className="form-hint" style={{ marginTop: '0.75rem', marginBottom: 0 }}>Optional. Set wholesale pricing for bulk orders (e.g., 21-30 pcs = ₱90, 31-50 pcs = ₱85).</p>
                       </div>
                     )}
                   </>
@@ -2045,7 +2256,9 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
 
             <div className="modal-actions">
               <button type="button" className="btn-secondary" onClick={cancelForm}>Cancel</button>
-              <button type="button" className="btn-primary" onClick={handleFormSubmit}>
+              <button type="button" className="btn-primary" onClick={handleFormSubmit}
+                disabled={formMode.startsWith('add') ? !isFormValid() : (editingLinked ? !hasFormChanges() : !isFormValid())}
+                style={{ opacity: (formMode.startsWith('add') ? !isFormValid() : (editingLinked ? !hasFormChanges() : !isFormValid())) ? 0.5 : 1, cursor: (formMode.startsWith('add') ? !isFormValid() : (editingLinked ? !hasFormChanges() : !isFormValid())) ? 'not-allowed' : 'pointer' }}>
                 {formMode.startsWith('add') ? 'Add' : 'Update'}
               </button>
             </div>
@@ -2055,7 +2268,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
           /* ── LIST VIEW ──────────────────────────────────────────────── */
           <>
             {/* Toolbar */}
-            <div style={{ padding: '0 1.5rem 1rem', flexShrink: 0, display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <div style={{ padding: '1rem 1.5rem', flexShrink: 0, display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
               <div className="search-wrapper" style={{ flex: 1 }}>
                 <span className="search-icon">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -2629,648 +2842,6 @@ function PriceHistoryAccordion({ productPriceHistory }) {
 }
 
 // ── Supplier Details Modal ─────────────────────────────────────────────────────
-// Shows full supplier profile: contact info, summary stats, price history per
-// product, and all purchase transactions (batches) from this supplier.
-// All data derived from inventory.batches — no separate storage needed.
-function SupplierDetailsModal({ isOpen, onClose, supplier, inventory }) {
-  const [activeTab, setActiveTab] = useState('transactions'); // 'transactions' | 'price-history'
-  const [dateFilter, setDateFilter] = useState('this-month'); // 'today' | 'this-week' | 'this-month' | 'custom'
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
-  const [showDateDrop, setShowDateDrop] = useState(false);
-  const [itemFilter, setItemFilter] = useState('all');
-  const [showItemDrop, setShowItemDrop] = useState(false);
-  const dateRef = useRef(null);
-  const itemRef = useRef(null);
-
-  useEffect(() => { if (isOpen) { setActiveTab('transactions'); setDateFilter('this-month'); setItemFilter('all'); setCustomFrom(''); setCustomTo(''); } }, [isOpen]);
-  useEffect(() => {
-    const h = (e) => {
-      if (dateRef.current && !dateRef.current.contains(e.target)) setShowDateDrop(false);
-      if (itemRef.current && !itemRef.current.contains(e.target)) setShowItemDrop(false);
-    };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
-
-  if (!isOpen || !supplier) return null;
-
-  // ── Derive all batches from this supplier ──────────────────────────────────
-  const allBatches = [];
-  inventory.forEach(item => {
-    (item.batches || []).forEach(batch => {
-      if (batch.supplierId === supplier.id || batch.supplierName === supplier.name) {
-        allBatches.push({ ...batch, itemName: item.name, itemCategory: item.category, itemId: item.id });
-      }
-    });
-  });
-  allBatches.sort((a, b) => new Date(b.dateReceived) - new Date(a.dateReceived));
-
-  // ── Date filter logic ──────────────────────────────────────────────────────
-  const filterByDate = (batches) => {
-    const now = new Date();
-    const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    return batches.filter(b => {
-      const d = new Date(b.dateReceived);
-      if (dateFilter === 'today') return d >= startOfDay(now);
-      if (dateFilter === 'this-week') {
-        const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay());
-        return d >= startOfDay(weekStart);
-      }
-      if (dateFilter === 'this-month') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-      if (dateFilter === 'custom' && customFrom && customTo) {
-        const from = new Date(customFrom); const to = new Date(customTo); to.setHours(23,59,59);
-        return d >= from && d <= to;
-      }
-      return true;
-    });
-  };
-
-  // ── Unique items from this supplier ───────────────────────────────────────
-  const uniqueItems = [...new Set(allBatches.map(b => b.itemName))].sort();
-
-  // ── Filtered batches (for transactions table) ─────────────────────────────
-  const filteredBatches = filterByDate(allBatches).filter(b => itemFilter === 'all' || b.itemName === itemFilter);
-
-  // ── Summary stats ──────────────────────────────────────────────────────────
-  const totalSpent = allBatches.reduce((s, b) => s + (b.totalCost || b.unitCost * b.originalQty || 0), 0);
-  const totalBatches = allBatches.length;
-  const lastPurchase = allBatches.length > 0 ? allBatches[0].dateReceived : null;
-  const totalItems = allBatches.reduce((s, b) => s + (b.originalQty || 0), 0);
-
-  // ── Price history per product ──────────────────────────────────────────────
-  // Group batches by product → array of { date, unitCost } sorted oldest first
-  const productPriceHistory = {};
-  allBatches.forEach(b => {
-    const key = `${b.itemCategory} — ${b.itemName}`;
-    if (!productPriceHistory[key]) productPriceHistory[key] = [];
-    productPriceHistory[key].push({ date: b.dateReceived, cost: b.unitCost, invoice: b.invoiceNumber });
-  });
-  // Sort each product's history oldest → newest
-  Object.values(productPriceHistory).forEach(arr => arr.sort((a, b) => new Date(a.date) - new Date(b.date)));
-
-  const tabStyle = (tab) => ({
-    padding: '0.5rem 1rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
-    borderRadius: '6px', border: 'none',
-    background: activeTab === tab ? 'var(--gold)' : 'transparent',
-    color: activeTab === tab ? '#000' : 'var(--gray)',
-    transition: 'all 0.15s',
-  });
-
-  return (
-    <div className="modal-overlay">
-      <div className="modal-content" onClick={e => e.stopPropagation()}
-        style={{ maxWidth: '860px', width: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-
-        {/* Header */}
-        <div className="modal-header" style={{ flexShrink: 0 }}>
-          <div>
-            <h2 className="modal-title">{supplier.name}</h2>
-            <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.2rem' }}>
-              {supplier.categories?.length > 0 ? supplier.categories.join(', ') : 'General — all categories'}
-            </div>
-          </div>
-          <button className="modal-close" onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
-
-        <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
-
-          {/* Contact info strip */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '0.75rem', padding: '0.875rem 1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', marginBottom: '1.25rem' }}>
-            {[
-              ['Contact Person', supplier.contact || '—', <svg key="cp" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>],
-              ['Phone', supplier.phone || '—', <svg key="ph" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13.5a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2.69l3-.12a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.16 6.16l1.4-1.4a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7a2 2 0 0 1 1.72 2.02z"/></svg>],
-              ['Address', supplier.address || '—', <svg key="addr" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>],
-            ].map(([label, val, icon]) => (
-              <div key={label}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.68rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.3rem' }}>
-                  <span style={{ color: 'var(--gold)' }}>{icon}</span>{label}
-                </div>
-                <div style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.875rem' }}>{val}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Summary cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
-            {[
-              ['Total Spent', `₱${formatPrice(totalSpent)}`, '#facc15'],
-              ['Purchases', `${totalBatches} batch${totalBatches !== 1 ? 'es' : ''}`, 'var(--gold)'],
-              ['Items Received', `${formatNumber(totalItems)} pcs`, 'var(--white)'],
-            ].map(([label, val, color]) => (
-              <div key={label} style={{ padding: '0.875rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.68rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>{label}</div>
-                <div style={{ fontSize: '1rem', fontWeight: 700, color }}>{val}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Last purchase info */}
-          {lastPurchase && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', fontSize: '0.8rem', color: 'var(--gray)' }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              Last purchase: <strong style={{ color: 'var(--white)' }}>
-                {new Date(lastPurchase).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
-              </strong>
-              {allBatches[0]?.invoiceNumber && (
-                <span style={{ color: 'var(--gray)' }}>· Invoice: <strong style={{ color: 'var(--white)', fontFamily: 'monospace' }}>{allBatches[0].invoiceNumber}</strong></span>
-              )}
-            </div>
-          )}
-
-          {allBatches.length === 0 ? (
-            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)', fontStyle: 'italic', fontSize: '0.875rem' }}>
-              No purchase history yet for this supplier.
-            </div>
-          ) : (
-            <>
-              {/* Tab switcher */}
-              <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '0.25rem', width: 'fit-content' }}>
-                <button style={tabStyle('transactions')} onClick={() => setActiveTab('transactions')}>
-                  Purchase Transactions
-                </button>
-                <button style={tabStyle('price-history')} onClick={() => setActiveTab('price-history')}>
-                  Price History
-                </button>
-              </div>
-
-              {/* ── Filters bar (transactions tab only) ──────────────────── */}
-              {activeTab === 'transactions' && (
-                <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.875rem', flexWrap: 'wrap', alignItems: 'center' }}>
-
-                  {/* Date filter */}
-                  <div ref={dateRef} style={{ position: 'relative' }}>
-                    <div onClick={() => setShowDateDrop(o => !o)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.75rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--white)', userSelect: 'none', minWidth: '130px' }}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                      <span style={{ flex: 1 }}>{{ 'today': 'Today', 'this-week': 'This Week', 'this-month': 'This Month', 'custom': 'Custom Range' }[dateFilter]}</span>
-                      <span style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{showDateDrop ? '▲' : '▼'}</span>
-                    </div>
-                    {showDateDrop && (
-                      <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 100, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', minWidth: '150px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-                        {[['today','Today'],['this-week','This Week'],['this-month','This Month'],['custom','Custom Range']].map(([val, label]) => (
-                          <button key={val} type="button" onClick={() => { setDateFilter(val); setShowDateDrop(false); }}
-                            style={{ display: 'block', width: '100%', padding: '0.6rem 1rem', textAlign: 'left', fontSize: '0.82rem', fontWeight: val===dateFilter?700:400, color: val===dateFilter?'var(--gold)':'var(--white)', background: val===dateFilter?'rgba(212,168,67,0.1)':'transparent', border: 'none', cursor: 'pointer' }}>
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Item filter */}
-                  {uniqueItems.length > 1 && (
-                    <div ref={itemRef} style={{ position: 'relative' }}>
-                      <div onClick={() => setShowItemDrop(o => !o)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.75rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--white)', userSelect: 'none', minWidth: '120px' }}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-                        <span style={{ flex: 1 }}>{itemFilter === 'all' ? 'All Items' : itemFilter}</span>
-                        <span style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{showItemDrop ? '▲' : '▼'}</span>
-                      </div>
-                      {showItemDrop && (
-                        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 100, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', minWidth: '160px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-                          {['all', ...uniqueItems].map(item => (
-                            <button key={item} type="button" onClick={() => { setItemFilter(item); setShowItemDrop(false); }}
-                              style={{ display: 'block', width: '100%', padding: '0.6rem 1rem', textAlign: 'left', fontSize: '0.82rem', fontWeight: item===itemFilter?700:400, color: item===itemFilter?'var(--gold)':'var(--white)', background: item===itemFilter?'rgba(212,168,67,0.1)':'transparent', border: 'none', cursor: 'pointer' }}>
-                              {item === 'all' ? 'All Items' : item}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Custom date range inputs */}
-                  {dateFilter === 'custom' && (
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
-                        style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem' }} />
-                      <span style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>to</span>
-                      <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
-                        style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem' }} />
-                    </div>
-                  )}
-
-                  {/* Result count */}
-                  <span style={{ fontSize: '0.75rem', color: 'var(--gray)', marginLeft: 'auto' }}>
-                    {filteredBatches.length === allBatches.length
-                      ? `${allBatches.length} transaction${allBatches.length !== 1 ? 's' : ''}`
-                      : <><strong style={{ color: 'var(--white)' }}>{filteredBatches.length}</strong> of {allBatches.length} transactions</>
-                    }
-                  </span>
-                </div>
-              )}
-
-              {/* ── TRANSACTIONS TAB ─────────────────────────────────────── */}
-              {activeTab === 'transactions' && (
-                <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '2px solid var(--border)', background: 'rgba(0,0,0,0.25)' }}>
-                        {['Date', 'Item', 'Invoice / OR', 'Qty Received', 'Unit Cost', 'Total Paid', 'Good / Damaged'].map(h => (
-                          <th key={h} style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredBatches.map((b, i) => (
-                        <tr key={b.batchId || i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}>
-                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
-                            {new Date(b.dateReceived).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
-                          </td>
-                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.82rem' }}>{b.itemName}</div>
-                            <div style={{ fontSize: '0.68rem', color: 'var(--gray)' }}>{b.itemCategory}</div>
-                          </td>
-                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center', fontFamily: 'monospace', color: 'var(--white)', fontSize: '0.78rem' }}>
-                            {b.invoiceNumber || <em style={{ color: 'var(--gray)' }}>N/A</em>}
-                          </td>
-                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center', color: 'var(--white)', fontSize: '0.82rem' }}>
-                            {b.originalQty} pcs
-                          </td>
-                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center', color: 'var(--gold)', fontWeight: 600, fontSize: '0.82rem' }}>
-                            ₱{formatPrice(b.unitCost)}
-                          </td>
-                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center', color: '#facc15', fontWeight: 600, fontSize: '0.82rem' }}>
-                            ₱{formatPrice(b.totalCost || b.unitCost * b.originalQty)}
-                          </td>
-                          <td style={{ padding: '0.65rem 0.75rem', textAlign: 'center', fontSize: '0.78rem' }}>
-                            <span style={{ color: 'var(--gold)' }}>{b.goodQty ?? b.originalQty} good</span>
-                            {(b.damagedQty || 0) > 0 && (
-                              <span style={{ color: '#f87171', marginLeft: '0.5rem' }}>{b.damagedQty} dmg</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr style={{ borderTop: '2px solid var(--border)', background: 'rgba(0,0,0,0.2)' }}>
-                        <td colSpan={3} style={{ padding: '0.6rem 0.75rem', color: 'var(--gray)', fontSize: '0.78rem', textAlign: 'right', fontWeight: 600 }}>
-                          {filteredBatches.length < allBatches.length ? `FILTERED (${filteredBatches.length} of ${allBatches.length})` : 'TOTALS'}
-                        </td>
-                        <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: 'var(--white)', fontWeight: 700, fontSize: '0.82rem' }}>{filteredBatches.reduce((s,b)=>s+(b.originalQty||0),0)} pcs</td>
-                        <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.78rem' }}>—</td>
-                        <td style={{ padding: '0.6rem 0.75rem', textAlign: 'center', color: '#facc15', fontWeight: 700, fontSize: '0.82rem' }}>₱{formatPrice(filteredBatches.reduce((s,b)=>s+(b.totalCost||b.unitCost*b.originalQty||0),0))}</td>
-                        <td style={{ padding: '0.6rem 0.75rem' }}></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              )}
-
-              {/* ── PRICE HISTORY TAB ────────────────────────────────────── */}
-              {activeTab === 'price-history' && (
-                <PriceHistoryAccordion
-                  productPriceHistory={productPriceHistory}
-                />
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="modal-actions" style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', flexShrink: 0 }}>
-          <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Manage Suppliers Modal ─────────────────────────────────────────────────────
-// FIX: Replaced window.__supplierInUse global with proper component state
-function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventory, onAdd, onUpdate, onDelete }) {
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [editingInUse, setEditingInUse] = useState(false); // FIX: was window.__supplierInUse
-  const [form, setForm] = useState({ name: '', contact: '', phone: '', address: '', categories: [] });
-  const [infoModal, setInfoModal] = useState(null);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [viewingSupplier, setViewingSupplier] = useState(null);
-  const [expandedSuppliers, setExpandedSuppliers] = useState(new Set()); // Track expanded supplier rows
-
-  useEffect(() => {
-    if (isOpen) { setShowForm(false); setEditingId(null); setEditingInUse(false); setViewingSupplier(null); setForm({ name: '', contact: '', phone: '', address: '', categories: [] }); }
-  }, [isOpen]);
-
-  // Toggle supplier row expansion
-  const toggleExpand = (supplierId) => {
-    setExpandedSuppliers(prev => {
-      const next = new Set(prev);
-      if (next.has(supplierId)) next.delete(supplierId);
-      else next.add(supplierId);
-      return next;
-    });
-  };
-
-  // Get all items & their price history (up to 5 latest) for a supplier from batches
-  const getSupplierItemsWithHistory = (supplier) => {
-    const batches = inventory.flatMap(i => (i.batches || []).map(b => ({
-      ...b,
-      itemName: i.name,
-      itemCategory: i.category,
-      itemId: i.id
-    }))).filter(b => b.supplierId === supplier.id || b.supplierName === supplier.name);
-
-    // Group by item
-    const itemMap = new Map();
-    batches.forEach(batch => {
-      const key = batch.itemName;
-      if (!itemMap.has(key)) {
-        itemMap.set(key, {
-          itemName: batch.itemName,
-          itemCategory: batch.itemCategory,
-          priceHistory: []
-        });
-      }
-      itemMap.get(key).priceHistory.push({
-        unitCost: batch.unitCost,
-        dateReceived: batch.dateReceived,
-        invoiceNumber: batch.invoiceNumber
-      });
-    });
-
-    // Sort each item's price history by date (oldest first) and limit to 5
-    const result = Array.from(itemMap.values()).map(item => ({
-      ...item,
-      priceHistory: item.priceHistory
-        .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived))  // Oldest first
-        .slice(-5)  // Get last 5 (most recent 5)
-    })).sort((a, b) => a.itemName.localeCompare(b.itemName));
-
-    return result;
-  };
-
-  const handleEdit = (supplier) => {
-    // FIX: Check in-use via component state, not window global
-    const inUse = inventory.some(i => i.lastSupplierId === supplier.id && i.isActive !== false);
-    setEditingId(supplier.id);
-    setEditingInUse(inUse);
-    setForm({ name: supplier.name, contact: supplier.contact||'', phone: supplier.phone||'', address: supplier.address||'', categories: supplier.categories||[] });
-    setShowForm(true);
-  };
-
-  const handleDeleteClick = (supplier) => {
-    const inUse = inventory.some(i => i.lastSupplierId === supplier.id && i.isActive !== false);
-    if (inUse) {
-      setInfoModal({ title: 'Cannot Delete Supplier', message: `"${supplier.name}" is linked to active inventory items. Update those items to a different supplier first.` });
-      return;
-    }
-    setDeleteConfirm(supplier);
-  };
-
-  const handleSubmit = () => {
-    if (!form.name.trim()) { setInfoModal({ title: 'Validation Error', message: 'Please enter a supplier name.' }); return; }
-    if (!form.contact.trim()) { setInfoModal({ title: 'Validation Error', message: 'Please enter a contact person.' }); return; }
-    const isDup = suppliers.some(s => s.name.toLowerCase() === form.name.trim().toLowerCase() && s.id !== editingId);
-    if (isDup) { setInfoModal({ title: 'Duplicate Supplier', message: `"${form.name.trim()}" already exists.` }); return; }
-    if (editingId) onUpdate(editingId, { ...form, name: form.name.trim() });
-    else onAdd({ ...form, name: form.name.trim() });
-    setShowForm(false); setEditingId(null); setEditingInUse(false);
-    setForm({ name: '', contact: '', phone: '', address: '', categories: [] });
-  };
-
-  if (!isOpen) return null;
-  return (
-    <div className="modal-overlay">
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '1100px', width: '95%' }}>
-        <div className="modal-header">
-          <h2 className="modal-title">Supplier Management</h2>
-          <button className="modal-close" onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
-        <div className="modal-body" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
-          {!showForm ? (
-            <>
-              <button type="button" className="btn-primary" onClick={() => setShowForm(true)} style={{ marginBottom: '1rem' }}>+ Add New Supplier</button>
-              {suppliers.length > 0 ? (
-                <div style={{ border: '1px solid var(--border)', borderRadius: '6px' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                        <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 600, width: '40px' }}></th>
-                        <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 600 }}>Name</th>
-                        <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Contact</th>
-                        <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Phone</th>
-                        <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Total Spent</th>
-                        <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Last Purchase</th>
-                        <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {suppliers.map(s => {
-                        const isExpanded = expandedSuppliers.has(s.id);
-                        const supplierItems = getSupplierItemsWithHistory(s);
-                        const totalSpent = inventory.flatMap(i => i.batches||[])
-                          .filter(b => b.supplierId===s.id || b.supplierName===s.name)
-                          .reduce((sum, b) => sum + (b.totalCost || b.unitCost*(b.originalQty||0) || 0), 0);
-                        const allBatches = inventory.flatMap(i => i.batches||[])
-                          .filter(b => b.supplierId===s.id || b.supplierName===s.name);
-                        const lastPurchase = allBatches.length > 0 
-                          ? allBatches.sort((a,b) => new Date(b.dateReceived)-new Date(a.dateReceived))[0].dateReceived 
-                          : null;
-
-                        return (
-                          <React.Fragment key={s.id}>
-                            {/* Main Supplier Row */}
-                            <tr style={{ borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.05)' }}>
-                              <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                <button 
-                                  onClick={() => toggleExpand(s.id)}
-                                  style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                  title={isExpanded ? 'Collapse' : 'Expand'}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                                    style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
-                                    <path d="M9 18l6-6-6-6"/>
-                                  </svg>
-                                </button>
-                              </td>
-                              <td style={{ padding: '0.75rem', color: 'var(--white)', fontWeight: 600 }}>{s.name}</td>
-                              <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--white)', fontSize: '0.875rem', fontWeight: 500 }}>{s.contact||'—'}</td>
-                              <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)' }}>{s.phone||'—'}</td>
-                              <td style={{ padding: '0.75rem', textAlign: 'center', color: '#facc15', fontWeight: 600, fontSize: '0.82rem' }}>
-                                {totalSpent > 0 ? `₱${formatPrice(totalSpent)}` : <em style={{ color: 'var(--gray)' }}>—</em>}
-                              </td>
-                              <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
-                                {lastPurchase ? new Date(lastPurchase).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : <em>—</em>}
-                              </td>
-                              <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                <button type="button" onClick={() => setViewingSupplier(s)} style={{ background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.4)', color: 'var(--gold)', marginRight: '0.4rem', borderRadius: '6px', padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>View</button>
-                                <button type="button" onClick={() => handleEdit(s)} style={{ background: 'var(--gold)', border: '1px solid var(--gold)', color: '#000', marginRight: '0.4rem', borderRadius: '6px', padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>Edit</button>
-                                <button type="button" onClick={() => handleDeleteClick(s)} style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: '6px', padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>Delete</button>
-                              </td>
-                            </tr>
-                            {/* Expanded Row - Items & Prices */}
-                            {isExpanded && (
-                              <tr>
-                                <td colSpan={7} style={{ padding: '0', background: 'rgba(0,0,0,0.2)' }}>
-                                  <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                                    <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.75rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 600 }}>
-                                      Items Supplied and Price History 
-                                      {supplierItems.length > 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--white)', fontWeight: 400 }}>({supplierItems.length} item{supplierItems.length !== 1 ? 's' : ''})</span>}
-                                    </h4>
-                                    {supplierItems.length > 0 ? (
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                        {supplierItems.map((item, itemIdx) => {
-                                          return (
-                                            <div key={itemIdx}>
-                                              {/* Item header */}
-                                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                                <span style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>{item.itemCategory}</span>
-                                                <span style={{ color: 'var(--gray)' }}>—</span>
-                                                <span style={{ color: 'var(--white)', fontWeight: 600, fontSize: '0.85rem' }}>{item.itemName}</span>
-                                                <span style={{ color: 'var(--gray)', fontSize: '0.7rem', marginLeft: '0.25rem' }}>
-                                                  ({item.priceHistory.length} purchase{item.priceHistory.length !== 1 ? 's' : ''})
-                                                </span>
-                                              </div>
-                                              {/* Price chips */}
-                                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                                                {item.priceHistory.map((price, priceIdx) => {
-                                                  const isLatest = priceIdx === item.priceHistory.length - 1;
-                                                  return (
-                                                    <div 
-                                                      key={priceIdx}
-                                                      style={{ 
-                                                        display: 'flex',
-                                                        flexDirection: 'column',
-                                                        alignItems: 'center',
-                                                        padding: '0.35rem 0.6rem', 
-                                                        background: 'rgba(255,255,255,0.05)',
-                                                        border: isLatest ? '1px solid var(--gold)' : '1px solid rgba(255,255,255,0.1)',
-                                                        borderRadius: '6px',
-                                                        minWidth: '60px'
-                                                      }}
-                                                    >
-                                                      <span style={{ 
-                                                        color: isLatest ? 'var(--gold)' : 'var(--gray)', 
-                                                        fontWeight: isLatest ? 700 : 500,
-                                                        fontSize: '0.8rem'
-                                                      }}>
-                                                        ₱{formatPrice(price.unitCost)}
-                                                      </span>
-                                                      <span style={{ 
-                                                        color: 'var(--gray)', 
-                                                        fontSize: '0.65rem',
-                                                        marginTop: '0.1rem'
-                                                      }}>
-                                                        {new Date(price.dateReceived).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
-                                                      </span>
-                                                    </div>
-                                                  );
-                                                })}
-                                              </div>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    ) : (
-                                      <p style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic', margin: 0 }}>No items supplied yet.</p>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)', fontStyle: 'italic' }}>No suppliers yet.</div>
-              )}
-            </>
-          ) : (
-            <div>
-              <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--white)', marginBottom: '1.25rem' }}>{editingId ? 'Edit Supplier' : 'Add New Supplier'}</h3>
-              {editingInUse && (
-                <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.875rem', color: '#f59e0b' }}>
-                  This supplier is linked to active items. Name cannot be changed.
-                </div>
-              )}
-              <div className="form-group">
-                <label className="form-label">Supplier Name <span className="required">*</span></label>
-                <input type="text" className="form-input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                  placeholder="e.g., SanRoque Trading" maxLength={80} autoFocus disabled={editingInUse}
-                  style={editingInUse ? { opacity: 0.6, cursor: 'not-allowed' } : {}} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">
-                  Item Supplied
-                  <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--gray)', marginLeft: '0.5rem' }}>(leave empty = General — appears for all categories)</span>
-                </label>
-                {/* Combobox-style: same as Add Inventory Item modal category field */}
-                {/* Selected categories shown as chips, click + to add more, × to remove */}
-                <SupplierCategorySelector
-                  selected={form.categories}
-                  categories={categories}
-                  onChange={(cats) => setForm(p => ({ ...p, categories: cats }))}
-                />
-                <p className="form-hint">
-                  {categories.length === 0
-                    ? 'Add inventory categories first — they appear here automatically.'
-                    : form.categories.length === 0
-                      ? 'No category selected — this supplier appears for all categories (General).'
-                      : `Supplier appears when adding stock for: ${form.categories.join(', ')}`}
-                </p>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div className="form-group">
-                  <label className="form-label">
-                    Contact Person <span className="required">*</span>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)', marginLeft: '0.5rem' }}>max 60 chars</span>
-                  </label>
-                  <input type="text" className="form-input" value={form.contact}
-                    onChange={e => setForm(p => ({ ...p, contact: e.target.value.slice(0, 60) }))}
-                    placeholder="e.g., Juan Dela Cruz" maxLength={60} required />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">
-                    Phone
-                    <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)', marginLeft: '0.5rem' }}>(Optional)</span>
-                  </label>
-                  <input type="text" className="form-input" value={form.phone}
-                    onChange={e => setForm(p => ({ ...p, phone: e.target.value.replace(/[^0-9-]/g, '').slice(0, 15) }))}
-                    placeholder="09xx-xxx-xxxx" maxLength={15} inputMode="tel" />
-                  <p className="form-hint">Digits and dashes only.</p>
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">
-                  Address
-                  <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)', marginLeft: '0.5rem' }}>(Optional — max 100 chars)</span>
-                </label>
-                <input type="text" className="form-input" value={form.address}
-                  onChange={e => setForm(p => ({ ...p, address: e.target.value.slice(0, 100) }))}
-                  placeholder="e.g., Marikina City" maxLength={100} />
-              </div>
-              <div className="modal-actions" style={{ marginTop: '1.5rem' }}>
-                <button type="button" className="btn-secondary" onClick={() => { setShowForm(false); setEditingId(null); setEditingInUse(false); }}>Cancel</button>
-                <button type="button" className="btn-primary" onClick={handleSubmit}>{editingId ? 'Update Supplier' : 'Add Supplier'}</button>
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="modal-actions" style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
-          <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
-        </div>
-      </div>
-      <InfoModal isOpen={!!infoModal} onClose={() => setInfoModal(null)} title={infoModal?.title||''} message={infoModal?.message||''} />
-      <ConfirmModal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)}
-        onConfirm={() => { onDelete(deleteConfirm.id); setDeleteConfirm(null); }}
-        title="Delete Supplier" confirmLabel="Delete" confirmClass="btn-danger"
-        message={`Permanently delete "${deleteConfirm?.name}"? This cannot be undone.`} />
-      <SupplierDetailsModal
-        isOpen={!!viewingSupplier}
-        onClose={() => setViewingSupplier(null)}
-        supplier={viewingSupplier}
-        inventory={inventory} />
-    </div>
-  );
-}
 
 // ── Inventory Modal (Add/Edit Item) ────────────────────────────────────────────
 // isOnDemand REMOVED — inventory = physical stocked items only
@@ -3473,9 +3044,9 @@ function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
 }
 
 // ── Archive Confirm Modal ──────────────────────────────────────────────────────
-function ArchiveConfirmModal({ isOpen, onClose, onArchive, onDelete, itemName, isReferenced, referencingProductsCount, hasSalesHistory }) {
+function ArchiveConfirmModal({ isOpen, onClose, onArchive, onDelete, itemName, isReferenced, referencingProductsCount, hasSalesHistory, canHardDelete }) {
   if (!isOpen) return null;
-  const mustArchive = isReferenced || hasSalesHistory;
+  const mustArchive = !canHardDelete;
   return (
     <div className="modal-overlay"><div className="modal-content modal-content-sm" onClick={e => e.stopPropagation()}>
       <div className="modal-header">
@@ -3496,7 +3067,7 @@ function ArchiveConfirmModal({ isOpen, onClose, onArchive, onDelete, itemName, i
         ) : (
           <>
             <p className="delete-confirm-text">Permanently delete <strong>"{itemName}"</strong>?</p>
-            <p className="delete-confirm-warning">This cannot be undone. Only delete if this item was added by mistake and has no history.</p>
+            <p className="delete-confirm-warning">This cannot be undone. This item has no linked data.</p>
           </>
         )}
       </div>
@@ -3522,7 +3093,7 @@ export default function InventoryPage() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [editingInline, setEditingInline] = useState(null);
   const [statusFilter, setStatusFilter] = useState('');
-  const [showArchived, setShowArchived] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);  // For future Archives modal
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [pendingItemData, setPendingItemData] = useState(null);
   const [modalKey, setModalKey] = useState(0);
@@ -3530,6 +3101,10 @@ export default function InventoryPage() {
   const [expandedProducts, setExpandedProducts] = useState(new Set());
   const [expandedBatches, setExpandedBatches] = useState(new Set());
   const [expandedBatchSections, setExpandedBatchSections] = useState(new Set());
+  // For StockOutTable nested structure
+  const [expandedCategories, setExpandedCategories] = useState(new Set());
+  // Date filter for Stock Out view
+  const [stockOutDateFilter, setStockOutDateFilter] = useState('all'); // 'all', 'today', 'this-week', 'this-month'
   
   const handleExpandProduct = (productName) => {
     const newExpanded = new Set(expandedProducts);
@@ -3560,11 +3135,23 @@ export default function InventoryPage() {
     }
     setExpandedBatchSections(newExpanded);
   };
+
+  // Handler for StockOutTable category expansion
+  const handleExpandStockOutCategory = (categoryName) => {
+    const newExpanded = new Set(expandedCategories);
+    if (newExpanded.has(categoryName)) {
+      newExpanded.delete(categoryName);
+    } else {
+      newExpanded.add(categoryName);
+    }
+    setExpandedCategories(newExpanded);
+  };
   const [archiveItem, setArchiveItem] = useState(null);
   const [referencingProducts, setReferencingProducts] = useState([]);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
-  const [restoreItem, setRestoreItem] = useState(null);
+  const [restoreItem, setRestoreItem] = useState(null);  // For future Archives modal
   const [hasSalesHistory, setHasSalesHistory] = useState(false);
+  const [canHardDelete, setCanHardDelete] = useState(false);
   const [adjustmentItem, setAdjustmentItem] = useState(null);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
   const [additionItem, setAdditionItem] = useState(null);
@@ -3637,6 +3224,7 @@ export default function InventoryPage() {
     const category = (item.category || '').toLowerCase();
     if (!name.includes(q) && !category.includes(q)) return false;
     if (statusFilter === 'low-stock') return item.stockQty > 0 && item.stockQty <= item.minStockLevel;
+    if (statusFilter === 'stock-out') return (item.batches || []).some(b => (b.movements || []).some(m => m.type === 'sold' || m.type === 'damaged'));
     if (statusFilter === 'out-of-stock') return item.stockQty === 0;
     return true;
   });
@@ -3647,6 +3235,8 @@ export default function InventoryPage() {
   const activeItems = inventory.filter(i => i.isActive !== false).length;
   const lowStockItems = inventory.filter(i => i.isActive !== false && i.stockQty > 0 && i.stockQty <= i.minStockLevel).length;
   const outOfStockItems = inventory.filter(i => i.isActive !== false && i.stockQty === 0).length;
+  // Stock Out = items that have stock out movements (sold or damaged)
+  const stockOutItems = inventory.filter(i => i.isActive !== false && (i.batches || []).some(b => (b.movements || []).some(m => m.type === 'sold' || m.type === 'damaged'))).length;
   const archivedCount = archivedInventory.length;
 
   const handleAddNew = () => { setEditingItem(null); setPendingItemData(null); setIsConfirmModalOpen(false); setModalKey(p => p + 1); setIsModalOpen(true); };
@@ -3656,9 +3246,18 @@ export default function InventoryPage() {
   const handleDelete = (item) => {
     const products = JSON.parse(localStorage.getItem('pmp_products')||'[]');
     const sales = JSON.parse(localStorage.getItem('pmp_sales')||'[]');
-    setReferencingProducts(products.filter(p => p.inventoryId === item.id));
-    setHasSalesHistory(sales.some(s => s.inventoryId === item.id || s.items?.some(i => i.inventoryId === item.id)));
+    const linkedProducts = products.filter(p => p.inventoryId === item.id);
+    const hasSales = sales.some(s => s.inventoryId === item.id || s.items?.some(i => i.inventoryId === item.id));
+    const hasBatches = (item.batches || []).length > 0;
+    const hasStock = item.stockQty > 0;
+    
+    // Can only hard delete if NO linked data
+    const canHardDelete = !hasSales && !hasBatches && !hasStock && linkedProducts.length === 0;
+    
+    setReferencingProducts(linkedProducts);
+    setHasSalesHistory(hasSales);
     setArchiveItem(item);
+    setCanHardDelete(canHardDelete);
     setShowArchiveModal(true);
   };
 
@@ -3682,6 +3281,41 @@ export default function InventoryPage() {
 
   // TODO: MongoDB — Replace with: PUT /api/inventory/:id { isActive: true, deletedAt: null }
   const handleRestore = (item) => setInventory(prev => prev.map(i => i.id === item.id ? { ...i, isActive: true, deletedAt: null } : i));
+
+  // TODO: MongoDB — Replace with: PUT /api/inventory/sku/:sku { isActive: false, archivedAt: now }
+  const handleArchiveVariant = (variant, product) => {
+    if (!variant || !variant.sku) return;
+    
+    // Archive all inventory items with this SKU
+    setInventory(prev => prev.map(i => 
+      i.sku === variant.sku 
+        ? { ...i, isActive: false, archivedAt: new Date().toISOString(), archivedReason: 'variant_archived' }
+        : i
+    ));
+    
+    // Archive linked products (storefront)
+    const products = JSON.parse(localStorage.getItem('pmp_products') || '[]');
+    const updatedProducts = products.map(p => 
+      p.variantSku === variant.sku || p.sku === variant.sku
+        ? { ...p, isPublished: false, isArchived: true, archivedReason: 'variant_archived', updatedAt: new Date().toISOString() }
+        : p
+    );
+    localStorage.setItem('pmp_products', JSON.stringify(updatedProducts));
+    
+    // Note: We don't delete from masterlist - masterlist is a template
+    // The variant definition stays, only inventory is archived
+  };
+
+  // TODO: MongoDB — Replace with: DELETE /api/inventory/sku/:sku
+  const handleDeleteVariant = (variant, product) => {
+    if (!variant || !variant.sku) return;
+    
+    // Delete all inventory items with this SKU
+    setInventory(prev => prev.filter(i => i.sku !== variant.sku));
+    
+    // Note: We don't delete from masterlist - masterlist is a template
+    // User can manually delete from masterlist if needed
+  };
 
   // TODO: MongoDB — Wrap in transaction: update inventory + deduct batch + audit log + sales record
   const handleStockReduction = (data) => {
@@ -3711,61 +3345,68 @@ export default function InventoryPage() {
         variant.batches.forEach(batch => {
           deductions[batch.batchId] = batch.take;
         });
-        
+
+        // Fix: Check for 'sales' (from modal) instead of 'sales-outside'
+        const isSale = reason === 'sales' || reason === 'sales-outside';
+
         // Update batches with deductions
         const updatedBatches = currentBatches.map(batch => {
           const deduct = deductions[batch.batchId];
           if (!deduct) return batch;
-          
+
           const newRemaining = (batch.remainingQty || 0) - deduct;
+          const totalAmount = isSale && variant.sellingPrice ? (deduct * variant.sellingPrice) : 0;
+          // Fix: Properly handle 'damaged' vs 'writeoff' as separate types
+          const movementType = reason === 'sales' || reason === 'sales-outside' ? 'sold' : reason;
           const movement = {
-            type: reason === 'sales-outside' ? 'sold' : 'damaged',
+            type: movementType,
             quantity: -deduct,
             remainingAfter: newRemaining,
-            reason: reason === 'sales-outside'
-              ? `Manual sale${customer ? ` — ${customer}` : ''}${variant.sellingPrice ? ` @ ₱${formatPrice(variant.sellingPrice)}` : ''}`
-              : (remarks || variant.damageType || 'Damaged / Write-off'),
+            reason: isSale
+              ? `Manual sale${customer ? ` — ${customer}` : ''}${variant.sellingPrice ? `: ₱${formatPrice(totalAmount)} (${deduct} pcs @ ₱${formatPrice(variant.sellingPrice)})` : ''}`
+              : (remarks || variant.damageType || (reason === 'writeoff' ? 'Write-off' : 'Damaged')),
             createdAt: now,
           };
-          
+
           return { ...batch, remainingQty: newRemaining, movements: [...(batch.movements || []), movement] };
         });
-        
+
         // Update inventory
         setInventory(prev => prev.map(i => i.id === variantId
-          ? { 
-              ...i, 
-              stockQty: newStock, 
+          ? {
+              ...i,
+              stockQty: newStock,
               batches: updatedBatches,
+              // Only increment damagedQty for 'damaged' reason, not 'writeoff'
               damagedQty: reason === 'damaged' ? (i.damagedQty || 0) + qtyFulfilled : i.damagedQty,
-              updatedAt: now 
+              updatedAt: now
             }
           : i
         ));
-        
+
         // Audit log entry
         const logs = JSON.parse(localStorage.getItem('pmp_inventory_logs')||'[]');
         logs.push({
-          id: Date.now(), 
-          inventoryId: variantId, 
+          id: Date.now(),
+          inventoryId: variantId,
           itemName: variant.variantName,
-          category: variantInInventory.category, 
-          type: 'stock-out', 
+          category: variantInInventory.category,
+          type: 'stock-out',
           reason,
-          quantity: -qtyFulfilled, 
-          stockBefore: variantInInventory.stockQty, 
+          quantity: -qtyFulfilled,
+          stockBefore: variantInInventory.stockQty,
           stockAfter: newStock,
           batchId: variant.batches[0]?.batchId,
-          sellingPrice: reason==='sales-outside' ? variant.sellingPrice : null,
-          saleDate: reason==='sales-outside' ? saleDate : null,
-          customerName: reason==='sales-outside' ? customer : null,
-          remarks: reason==='damaged' ? remarks : null,
+          sellingPrice: isSale ? variant.sellingPrice : null,
+          saleDate: isSale ? saleDate : null,
+          customerName: isSale ? customer : null,
+          remarks: !isSale ? remarks : null,
           createdAt: now,
         });
         localStorage.setItem('pmp_inventory_logs', JSON.stringify(logs));
-        
+
         // Sales record (only for manual sales)
-        if (reason === 'sales-outside') {
+        if (isSale) {
           const salesData = JSON.parse(localStorage.getItem('pmp_sales')||'[]');
           salesData.push({
             id: Date.now(), 
@@ -3826,17 +3467,21 @@ export default function InventoryPage() {
     }
 
     const now = new Date().toISOString();
+    const isSale = reason === 'sales' || reason === 'sales-outside';
     const updatedBatches = currentBatches.map(batch => {
       const deduct = deductions[batch.batchId];
       if (!deduct) return batch;
       const newRemaining = (batch.remainingQty || 0) - deduct;
+      const totalAmount = isSale && sellingPrice ? (deduct * sellingPrice) : 0;
+      // Fix: Properly handle 'damaged' vs 'writeoff' as separate types
+      const movementType = reason === 'sales' || reason === 'sales-outside' ? 'sold' : reason;
       const movement = {
-        type: reason === 'sales-outside' ? 'sold' : 'damaged',
+        type: movementType,
         quantity: -deduct,
         remainingAfter: newRemaining,
-        reason: reason === 'sales-outside'
-          ? `Manual sale${customerName ? ` — ${customerName}` : ''}${sellingPrice ? ` @ ₱${formatPrice(sellingPrice)}` : ''}`
-          : (remarks || 'Damaged / Write-off'),
+        reason: isSale
+          ? `Manual sale${customerName ? ` — ${customerName}` : ''}${sellingPrice ? `: ₱${formatPrice(totalAmount)} (${deduct} pcs @ ₱${formatPrice(sellingPrice)})` : ''}`
+          : (remarks || (reason === 'writeoff' ? 'Write-off' : 'Damaged')),
         createdAt: now,
       };
       return { ...batch, remainingQty: newRemaining, movements: [...(batch.movements || []), movement] };
@@ -3844,7 +3489,7 @@ export default function InventoryPage() {
 
     setInventory(prev => prev.map(i => i.id === adjustmentItem.id
       ? { ...i, stockQty: newStock, batches: updatedBatches,
-          damagedQty: reason === 'damaged' ? (i.damagedQty || 0) + quantity : i.damagedQty,
+          damagedQty: !isSale ? (i.damagedQty || 0) + quantity : i.damagedQty,
           updatedAt: new Date().toISOString() }
       : i
     ));
@@ -3872,16 +3517,16 @@ export default function InventoryPage() {
       id: Date.now(), inventoryId: adjustmentItem.id, itemName: adjustmentItem.name,
       category: adjustmentItem.category, type: 'stock-out', reason,
       quantity: -quantity, stockBefore: adjustmentItem.stockQty, stockAfter: newStock,
-      batchId, sellingPrice: reason==='sales-outside' ? sellingPrice : null,
-      saleDate: reason==='sales-outside' ? saleDate : null,
-      customerName: reason==='sales-outside' ? customerName : null,
+      batchId, sellingPrice: isSale ? sellingPrice : null,
+      saleDate: isSale ? saleDate : null,
+      customerName: isSale ? customerName : null,
       remarks, createdAt: new Date().toISOString(),
     });
     localStorage.setItem('pmp_inventory_logs', JSON.stringify(logs));
 
     // Sales record (only for manual sales)
     // TODO: MongoDB — POST /api/sales
-    if (reason === 'sales-outside') {
+    if (isSale) {
       const salesData = JSON.parse(localStorage.getItem('pmp_sales')||'[]');
       salesData.push({
         id: Date.now(), inventoryId: adjustmentItem.id, batchId,
@@ -4081,31 +3726,20 @@ Item Masterlist
           </div>
         </div>
 
-        {/* Summary cards */}
-        <div className="inventory-summary">
+        {/* Summary cards - Relabeled as navigation */}
+        <div className="inventory-summary" style={{ display: 'flex', gap: '0.5rem' }}>
           {[
-            { label: 'Active Items', value: activeItems, filter: '', cls: '' },
-            { label: 'Low Stock', value: lowStockItems, filter: 'low-stock', cls: 'summary-card-warning' },
-            { label: 'Out of Stock', value: outOfStockItems, filter: 'out-of-stock', cls: 'summary-card-danger' },
+            { label: 'Inventory', value: '', filter: '', cls: '' },
+            { label: 'History', value: '', filter: 'history', cls: '' },
+            { label: 'Stock Out', value: '', filter: 'stock-out', cls: 'summary-card-danger' },
           ].map(({ label, value, filter, cls }) => (
             <div key={label} className={`summary-card${cls?' '+cls:''}${statusFilter===filter?' active':''}`}
-              onClick={() => setStatusFilter(statusFilter===filter?'':filter)} style={{ cursor: 'pointer' }}>
-              <div className="summary-content">
-                <span className="summary-value">{value}</span>
-                <span className="summary-label">{label}</span>
+              onClick={() => setStatusFilter(statusFilter===filter?'':filter)} style={{ cursor: 'pointer', flex: 1 }}>
+              <div className="summary-content" style={{ justifyContent: 'center' }}>
+                <span className="summary-label" style={{ fontSize: '1rem', fontWeight: 700 }}>{label}</span>
               </div>
             </div>
           ))}
-          {archivedCount > 0 && (
-            <div className={`summary-card${showArchived?' active':''}`}
-              onClick={() => setShowArchived(p => !p)}
-              style={{ cursor: 'pointer', background: showArchived ? 'rgba(100,100,100,0.2)' : 'rgba(100,100,100,0.1)', border: showArchived ? '1px solid var(--gray)' : '1px solid rgba(100,100,100,0.3)' }}>
-              <div className="summary-content">
-                <span className="summary-value" style={{ color: 'var(--gray)' }}>{archivedCount}</span>
-                <span className="summary-label" style={{ color: 'var(--gray)' }}>Archived</span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -4118,11 +3752,47 @@ Item Masterlist
           <input type="text" className="search-input" placeholder="Search by name or category..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
           {searchQuery && <button className="search-clear" onClick={() => setSearchQuery('')}>×</button>}
         </div>
-        <div className="inventory-legend">
-          <span className="legend-item"><span className="legend-dot legend-dot-low"></span>Low Stock</span>
-          <span className="legend-item"><span className="legend-dot legend-dot-out"></span>Out of Stock</span>
-        </div>
+        {/* Date filter - only show in Stock Out view */}
+        {statusFilter === 'stock-out' && (
+          <select value={stockOutDateFilter} onChange={e => setStockOutDateFilter(e.target.value)} style={{
+            padding: '0.5rem 0.75rem',
+            background: 'rgba(0,0,0,0.2)',
+            border: '1px solid var(--border)',
+            borderRadius: '6px',
+            color: 'var(--white)',
+            fontSize: '0.875rem',
+            cursor: 'pointer',
+            minWidth: '120px',
+            outline: 'none',
+          }}>
+            <option value="all">All Time</option>
+            <option value="today">Today</option>
+            <option value="this-week">This Week</option>
+            <option value="this-month">This Month</option>
+          </select>
+        )}
+        {/* Legend - only show in Inventory view */}
+        {statusFilter !== 'stock-out' && (
+          <div className="inventory-legend">
+            <span className="legend-item"><span className="legend-dot legend-dot-low"></span>Low Stock</span>
+            <span className="legend-item"><span className="legend-dot legend-dot-out"></span>Stock Out</span>
+          </div>
+        )}
       </div>
+
+      {/* Stock Out Table */}
+      {statusFilter === 'stock-out' && (
+        <div>
+          <StockOutTable
+            inventory={inventory}
+            expandedBatches={expandedBatches}
+            onExpandBatch={handleExpandBatch}
+            expandedCategories={expandedCategories}
+            onExpandCategory={handleExpandStockOutCategory}
+            dateFilter={stockOutDateFilter}
+          />
+        </div>
+      )}
 
       {/* Table */}
       <div style={{ WebkitOverflowScrolling: 'touch', border: '1px solid var(--border)', borderRadius: '10px', width: '0', minWidth: '100%', display: 'block', overflowX: 'auto', marginBottom: '1rem' }}>
@@ -4132,7 +3802,7 @@ Item Masterlist
               <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
             </div>
             <h3 className="empty-title">
-              {searchQuery ? 'No items found' : statusFilter === 'out-of-stock' ? 'No Out of Stock Items' : statusFilter === 'low-stock' ? 'No Low Stock Items' : 'No Inventory Items'}
+              {searchQuery ? 'No items found' : statusFilter === 'stock-out' ? 'No Stock Out Items' : statusFilter === 'low-stock' ? 'No Low Stock Items' : 'No Inventory Items'}
             </h3>
             <p className="empty-description">
               {searchQuery ? 'Try adjusting your search.' : statusFilter ? `No items match the "${statusFilter}" filter.` : 'Add your first physical inventory item.'}
@@ -4152,57 +3822,27 @@ Item Masterlist
             onRemoveItem={handleDelete}
             onAddStock={(item) => { setAdditionItem(item); setShowAdditionModal(true); }}
             onReduceStock={(item) => { setAdjustmentItem(item); setShowAdjustmentModal(true); }}
-            onUpdateMinStock={(id, minStock) => {
-              setInventory(prev => prev.map(i => i.id === id ? { ...i, minStockLevel: minStock, updatedAt: new Date().toISOString() } : i));
+            onUpdateMinStock={(sku, minStock) => {
+              // Update ALL items with this SKU
+              setInventory(prev => prev.map(i => i.sku === sku ? { ...i, minStockLevel: minStock, updatedAt: new Date().toISOString() } : i));
               // Save full inventory to localStorage (not just filtered)
               const fullInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
-              const updated = fullInventory.map(i => i.id === id ? { ...i, minStockLevel: minStock, updatedAt: new Date().toISOString() } : i);
+              const updated = fullInventory.map(i => i.sku === sku ? { ...i, minStockLevel: minStock, updatedAt: new Date().toISOString() } : i);
               localStorage.setItem('pmp_inventory', JSON.stringify(updated));
             }}
+            onArchiveVariant={handleArchiveVariant}
+            onDeleteVariant={handleDeleteVariant}
           />
         )}
       </div>
 
-      {/* Archived section */}
-      {showArchived && archivedInventory.length > 0 && (
-        <div style={{ marginTop: '2rem' }}>
-          <h2 style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--gray)', marginBottom: '1rem' }}>Archived Items ({archivedInventory.length})</h2>
-          <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
-            <table className="inventory-table">
-              <thead>
-                <tr>
-                  <th className="table-col-name">Product Name</th>
-                  <th className="table-col-category">Category</th>
-                  <th className="table-col-stock">Last Stock</th>
-                  <th className="table-col-status">Archived Date</th>
-                  <th className="table-col-actions">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {archivedInventory.map(item => {
-                  const hasProducts = JSON.parse(localStorage.getItem('pmp_products')||'[]').some(p => p.inventoryId===item.id);
-                  const hasSales = JSON.parse(localStorage.getItem('pmp_sales')||'[]').some(s => s.inventoryId===item.id);
-                  return (
-                    <tr key={item.id} className="inventory-table-row" style={{ opacity: 0.5 }}>
-                      <td className="table-cell-name"><span className="product-name" style={{ color: 'var(--gray)' }}>{item.name}</span><div style={{ fontSize: '0.73rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{item.sku||'—'}</div></td>
-                      <td className="table-cell"><span className="category-badge" style={{ background: 'rgba(100,100,100,0.2)', color: 'var(--gray)' }}>{item.category}</span></td>
-                      <td className="table-cell"><span style={{ color: 'var(--gray)' }}>{item.stockQty} pcs</span></td>
-                      <td className="table-cell"><span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>{item.deletedAt ? new Date(item.deletedAt).toLocaleDateString() : '—'}</span></td>
-                      <td className="table-cell-actions">
-                        <button onClick={() => setRestoreItem(item)} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', color: 'var(--white)', borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer' }}>Restore</button>
-                        {!hasProducts && !hasSales && <button onClick={() => handleDelete(item)} style={{ background: '#7f1d1d', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Delete</button>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <p style={{ marginTop: '1rem', color: 'var(--gray)', fontSize: '0.875rem', fontStyle: 'italic' }}>
-            Items with sales history or linked products cannot be permanently deleted to preserve data integrity.
-          </p>
-        </div>
-      )}
+      {/* Archived section - HIDDEN */}
+      {/* TODO: Create "Archives" button in header that opens a modal showing archivedInventory */}
+      {/* When ready, add button in page-header div:
+          <button type="button" className="btn-secondary" onClick={() => setShowArchivedModal(true)}>
+            📦 Archives ({archivedCount})
+          </button>
+      */}
 
       {/* ── All Modals ─────────────────────────────────────────────────────────── */}
 
@@ -4224,7 +3864,8 @@ Item Masterlist
         onClose={() => { setShowArchiveModal(false); setArchiveItem(null); setReferencingProducts([]); setHasSalesHistory(false); }}
         onArchive={handleArchive} onDelete={handlePermanentDelete}
         itemName={archiveItem?.name} isReferenced={referencingProducts.length > 0}
-        referencingProductsCount={referencingProducts.length} hasSalesHistory={hasSalesHistory} />
+        referencingProductsCount={referencingProducts.length} hasSalesHistory={hasSalesHistory}
+        canHardDelete={canHardDelete} />
 
       <ConfirmModal isOpen={!!restoreItem} onClose={() => setRestoreItem(null)}
         onConfirm={() => { handleRestore(restoreItem); setRestoreItem(null); }}

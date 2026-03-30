@@ -147,13 +147,22 @@ function InfoModal({ isOpen, onClose, title, message, titleClass = 'modal-title-
 }
 
 // ── AddSupplierQuickModal ─────────────────────────────────────────────────────
-function AddSupplierQuickModal({ isOpen, onClose, onAdd, categories, existingSuppliers }) {
+function AddSupplierQuickModal({ isOpen, onClose, onAdd, categories, existingSuppliers, itemCategory }) {
   const [form, setForm] = useState({ name: '', contact: '', phone: '', address: '', email: '', categories: [] });
   const [infoModal, setInfoModal] = useState(null);
 
   useEffect(() => {
-    if (isOpen) setForm({ name: '', contact: '', phone: '', address: '', email: '', categories: [] });
-  }, [isOpen]);
+    if (isOpen) {
+      setForm({ 
+        name: '', 
+        contact: '', 
+        phone: '', 
+        address: '', 
+        email: '', 
+        categories: itemCategory ? [itemCategory] : []  // Auto-link to product category
+      });
+    }
+  }, [isOpen, itemCategory]);
 
   const handlePhoneChange = (e) => {
     const val = e.target.value.replace(/[^0-9-]/g, '').slice(0, 15);
@@ -327,6 +336,14 @@ export default function AddInventoryItemModal({
   const genComboSKU = (catName, prodName, comboMap, allOptionsPerType) => {
     const catP = catName.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase() || 'ITM';
     const prodP = prodName.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase() || 'XXX';
+    
+    // If no variant types, generate simple SKU with year and sequence
+    if (!comboMap || Object.keys(comboMap).length === 0) {
+      const year = new Date().getFullYear();
+      const seq = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      return `${catP}-${prodP}-${year}-${seq}`;
+    }
+    
     const varParts = Object.entries(comboMap).map(([typeName, optVal]) => {
       const allOpts = allOptionsPerType[typeName] || [optVal];
       const prefixMap = buildPrefixMap(allOpts);
@@ -339,7 +356,23 @@ export default function AddInventoryItemModal({
   const generateRows = (ml) => {
     if (!ml) return [];
     if (!ml.variantTypes || ml.variantTypes.length === 0) {
-      return [{ comboKey: '__base__', comboLabel: ml.prodName, comboMap: {}, qty: '', damaged: '', unitCost: '', minStockLevel: '10' }];
+      // No variant types - generate simple SKU
+      const catP = ml.catName.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase() || 'ITM';
+      const prodP = ml.prodName.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase() || 'XXX';
+      const year = new Date().getFullYear();
+      const seq = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      const sku = `${catP}-${prodP}-${year}-${seq}`;
+      
+      return [{ 
+        comboKey: '__base__', 
+        comboLabel: ml.prodName, 
+        comboMap: {}, 
+        sku,  // Generate SKU for products without variants
+        qty: '', 
+        damaged: '', 
+        unitCost: '', 
+        minStockLevel: '10' 
+      }];
     }
     // All variant types are tracked now (no isTracked filter)
     const tracked = ml.variantTypes;
@@ -747,6 +780,10 @@ export default function AddInventoryItemModal({
                       const q = parseInt(row.qty) || 0;
                       const d = parseInt(row.damaged) || 0;
                       const hasErr = q > 0 && d >= q;
+                      // Check if this SKU already exists in inventory
+                      const existingItem = inventory.find(i => i.sku === row.sku);
+                      const hasExistingMinStock = existingItem?.minStockLevel;
+                      
                       return (
                         <tr key={row.comboKey} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                           <td style={{ padding: '1rem' }}>
@@ -758,22 +795,30 @@ export default function AddInventoryItemModal({
                             </div>
                           </td>
                           <td style={{ padding: '1rem 0.75rem', textAlign: 'center' }}>
-                            <IntegerInput
-                              value={row.minStockLevel}
-                              onChange={e => setStockRows(prev => prev.map((r, i) => i === idx ? { ...r, minStockLevel: e.target.value } : r))}
-                              min={1} max={9999} placeholder="10"
-                              className="form-input"
-                              style={{
-                                textAlign: 'center',
-                                width: '80px',
-                                background: 'rgba(255,255,255,0.06)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                borderRadius: '8px',
-                                color: '#E5E2E1',
-                                fontWeight: 600,
-                                padding: '0.5rem'
-                              }}
-                            />
+                            {hasExistingMinStock ? (
+                              // Show existing value as plain text (not editable)
+                              <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--gray)' }}>
+                                {existingItem.minStockLevel}
+                              </span>
+                            ) : (
+                              // Show editable input for new variants
+                              <IntegerInput
+                                value={row.minStockLevel}
+                                onChange={e => setStockRows(prev => prev.map((r, i) => i === idx ? { ...r, minStockLevel: e.target.value } : r))}
+                                min={1} max={9999} placeholder="10"
+                                className="form-input"
+                                style={{
+                                  textAlign: 'center',
+                                  width: '80px',
+                                  background: 'rgba(255,255,255,0.06)',
+                                  border: '1px solid rgba(255,255,255,0.1)',
+                                  borderRadius: '8px',
+                                  color: '#E5E2E1',
+                                  fontWeight: 600,
+                                  padding: '0.5rem'
+                                }}
+                              />
+                            )}
                           </td>
                           <td style={{ padding: '1rem 0.75rem', textAlign: 'center' }}>
                             <IntegerInput className="form-input" value={row.qty}
@@ -1167,7 +1212,10 @@ export default function AddInventoryItemModal({
       <InfoModal isOpen={!!infoModal} onClose={() => setInfoModal(null)} title={infoModal?.title || ''} message={infoModal?.message || ''} />
       <AddSupplierQuickModal isOpen={showAddSupplier} onClose={() => setShowAddSupplier(false)}
         onAdd={(data) => { const s = onAddSupplier(data); setInvoice(p => ({ ...p, supplierId: s.id, supplierName: s.name })); }}
-        categories={categories} existingSuppliers={suppliers} />
+        categories={categories} 
+        existingSuppliers={suppliers} 
+        itemCategory={selectedML?.catName}  // Auto-link supplier to product category
+      />
     </div>
   );
 }

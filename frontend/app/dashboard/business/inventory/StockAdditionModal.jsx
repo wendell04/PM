@@ -145,13 +145,22 @@ function InfoModal({ isOpen, onClose, title, message, titleClass = 'modal-title-
 }
 
 // ── AddSupplierQuickModal ──────────────────────────────────────────────────────
-function AddSupplierQuickModal({ isOpen, onClose, onAdd, categories, existingSuppliers }) {
+function AddSupplierQuickModal({ isOpen, onClose, onAdd, categories, existingSuppliers, itemCategory }) {
   const [form, setForm] = useState({ name: '', contact: '', phone: '', address: '', email: '', categories: [] });
   const [infoModal, setInfoModal] = useState(null);
 
   useEffect(() => {
-    if (isOpen) setForm({ name: '', contact: '', phone: '', address: '', email: '', categories: [] });
-  }, [isOpen]);
+    if (isOpen) {
+      setForm({ 
+        name: '', 
+        contact: '', 
+        phone: '', 
+        address: '', 
+        email: '', 
+        categories: itemCategory ? [itemCategory] : []  // Auto-link to product category
+      });
+    }
+  }, [isOpen, itemCategory]);
 
   const handlePhoneChange = (e) => {
     const val = e.target.value.replace(/[^0-9-]/g, '').slice(0, 15);
@@ -324,6 +333,14 @@ export default function StockAdditionModal({ isOpen, onClose, onConfirm, item, s
     const genComboSKU = (catName, prodName, comboMap, allOptionsPerType) => {
       const catP = catName.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase() || 'ITM';
       const prodP = prodName.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase() || 'XXX';
+      
+      // If no variant types, generate simple SKU with year and sequence
+      if (!comboMap || Object.keys(comboMap).length === 0) {
+        const year = new Date().getFullYear();
+        const seq = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+        return `${catP}-${prodP}-${year}-${seq}`;
+      }
+      
       const varParts = Object.entries(comboMap).map(([typeName, optVal]) => {
         const allOpts = allOptionsPerType[typeName] || [optVal];
         const prefixMap = buildPrefixMap(allOpts);
@@ -862,7 +879,10 @@ export default function StockAdditionModal({ isOpen, onClose, onConfirm, item, s
 
       <AddSupplierQuickModal isOpen={showAddSupplier} onClose={() => setShowAddSupplier(false)}
         onAdd={(data) => { const s = onAddSupplier(data); setSupplierId(s.id); setSupplierName(s.name); }}
-        categories={categories} existingSuppliers={suppliers} />
+        categories={categories} 
+        existingSuppliers={suppliers}
+        itemCategory={item?.category}  // Auto-link supplier to product category
+      />
       <InfoModal isOpen={!!infoModal} onClose={() => setInfoModal(null)} title={infoModal?.title||''} message={infoModal?.message||''} />
     </div>
   );
