@@ -27,16 +27,11 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
     return { start: null, end: null }; // All time
   }, [dateFilter]);
 
-  // Group items by category and product - show items with stock out movements
+  // Group items by category and product - show ALL inventory items
   const groupedData = useMemo(() => {
     const items = inventory
       .filter(item => item.isActive !== false)
-      // Only include items that have at least one stock out movement
-      .filter(item => {
-        return (item.batches || []).some(b => 
-          (b.movements || []).some(m => m.type === 'sold' || m.type === 'damaged' || m.type === 'writeoff')
-        );
-      })
+      // Don't filter by movements - show ALL items
       .map(item => {
         const totalStockOut = (item.batches || []).reduce((sum, batch) => {
           const batchStockOut = (batch.movements || [])
@@ -129,6 +124,7 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
               
               // Flatten all items under this category
               const allItems = Object.values(products).flat();
+              const catCurrentStock = allItems.reduce((sum, i) => sum + (i.stockQty || 0), 0);
               const catTotalStockOut = allItems.reduce((sum, i) => sum + i.totalStockOut, 0);
               const catTotalSold = allItems.reduce((sum, i) => sum + i.totalSold, 0);
               const catTotalDamaged = allItems.reduce((sum, i) => sum + i.totalDamaged, 0);
@@ -152,8 +148,10 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
                     <td style={{ padding: '0.875rem' }}>
                       <div style={{ fontWeight: 700, color: '#D4A843', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{categoryName}</div>
                     </td>
-                    <td style={{ padding: '0.875rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.75rem' }}>
-                      —
+                    <td style={{ padding: '0.875rem', textAlign: 'center' }}>
+                      <span style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.9rem' }}>
+                        {catCurrentStock} pcs
+                      </span>
                     </td>
                     <td style={{ padding: '0.875rem', textAlign: 'center' }}>
                       <span style={{ fontWeight: 700, color: '#D4A843', fontSize: '0.9rem' }}>
@@ -238,9 +236,15 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
                                 <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 600 }}>
                                   Movement History by Batch
                                 </div>
-                                <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                                <div style={{ 
+                                  border: '1px solid var(--border)', 
+                                  borderRadius: '8px', 
+                                  overflow: 'hidden',
+                                  maxHeight: '280px',
+                                  overflowY: 'auto',
+                                }}>
                                   <table style={{ width: '100%', fontSize: '0.8rem' }}>
-                                    <thead>
+                                    <thead style={{ position: 'sticky', top: 0, background: 'rgba(0,0,0,0.97)', zIndex: 2 }}>
                                       <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid var(--border)' }}>
                                         <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 600 }}>Batch ID</th>
                                         <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Date</th>
@@ -261,12 +265,16 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
                                             const movementDate = new Date(m.createdAt);
                                             return movementDate >= dateRange.start && movementDate <= dateRange.end;
                                           })
-                                          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                                          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) // Newest first
                                           .map((movement, mIdx) => {
                                             // Fix: Remove double ₱ - check if reason already has ₱
                                             const notes = movement.reason || '—';
                                             const cleanNotes = notes.replace(/₱₱/g, '₱');
-                                            
+                                            // Format date with time
+                                            const movementDateTime = new Date(movement.createdAt);
+                                            const dateStr = movementDateTime.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+                                            const timeStr = movementDateTime.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+
                                             return (
                                               <tr key={`${batch.batchId}-${mIdx}`} style={{
                                                 borderBottom: '1px solid rgba(255,255,255,0.04)',
@@ -275,8 +283,9 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
                                                 <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', color: '#D4A843', fontWeight: 600 }}>
                                                   {batch.batchId}
                                                 </td>
-                                                <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
-                                                  {new Date(movement.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.75rem' }}>
+                                                  <div style={{ color: 'var(--white)', fontSize: '0.8rem' }}>{dateStr}</div>
+                                                  <div style={{ fontSize: '0.7rem' }}>{timeStr}</div>
                                                 </td>
                                                 <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>
                                                   <span style={{

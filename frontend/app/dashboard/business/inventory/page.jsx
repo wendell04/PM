@@ -3794,8 +3794,9 @@ Item Masterlist
         </div>
       )}
 
-      {/* Table */}
-      <div style={{ WebkitOverflowScrolling: 'touch', border: '1px solid var(--border)', borderRadius: '10px', width: '0', minWidth: '100%', display: 'block', overflowX: 'auto', marginBottom: '1rem' }}>
+      {/* Table - Only show in Inventory/Low Stock view */}
+      {statusFilter !== 'stock-out' && (
+        <div style={{ WebkitOverflowScrolling: 'touch', border: '1px solid var(--border)', borderRadius: '10px', width: '0', minWidth: '100%', display: 'block', overflowX: 'auto', marginBottom: '1rem' }}>
         {filteredInventory.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">
@@ -3834,7 +3835,8 @@ Item Masterlist
             onDeleteVariant={handleDeleteVariant}
           />
         )}
-      </div>
+        </div>
+      )}
 
       {/* Archived section - HIDDEN */}
       {/* TODO: Create "Archives" button in header that opens a modal showing archivedInventory */}
