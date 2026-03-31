@@ -451,39 +451,30 @@ export default function AddInventoryItemModal({
   const totalGood = totalReceived - totalDamaged;
 
   const totalInvoiceValue = useMemo(() => {
-    if (invoice.costMode === 'total') {
-      return parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0;
-    }
     // Sum of per-product subtotals (each product can be unit or total mode)
     return selectedProducts.reduce((sum, p) => {
       const rows = stockRowsByProduct[p.prodId] || [];
       const rowsWithQty = rows.filter(r => (parseInt(r.qty) || 0) > 0);
       if (rowsWithQty.length === 0) return sum;
-      
+
       const productCostMode = productCostModes[p.prodId] || 'unit';
       const productTotalAmt = productTotalAmounts[p.prodId] || '';
-      
+
       if (productCostMode === 'total' && productTotalAmt) {
         return sum + (parseFloat(productTotalAmt.replace(/,/g, '')) || 0);
       }
-      
+
       // Unit mode: sum of qty × unitCost
       return sum + rowsWithQty.reduce((s, r) => {
         const qty = parseInt(r.qty) || 0;
         return s + qty * (parseFloat(r.unitCost) || 0);
       }, 0);
     }, 0);
-  }, [invoice.costMode, invoice.totalInvoiceAmount, selectedProducts, stockRowsByProduct, productCostModes, productTotalAmounts]);
+  }, [selectedProducts, stockRowsByProduct, productCostModes, productTotalAmounts]);
 
   // Compute effective and damaged values for footer breakdown
-  // Effective = good qty × unit cost (what goes into inventory)
   const effectiveValue = useMemo(() => {
-    if (invoice.costMode === 'total') {
-      const totalAmt = parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0;
-      const unitCost = totalReceived > 0 ? totalAmt / totalReceived : 0;
-      return totalGood * unitCost;
-    }
-    // For unit cost mode, sum up effective value per variant across all products
+    // Sum up effective value per variant across all products
     return selectedProducts.reduce((sum, p) => {
       const rows = stockRowsByProduct[p.prodId] || [];
       return sum + rows.reduce((s, r) => {
@@ -491,16 +482,11 @@ export default function AddInventoryItemModal({
         return s + good * (parseFloat(r.unitCost) || 0);
       }, 0);
     }, 0);
-  }, [invoice.costMode, invoice.totalInvoiceAmount, totalReceived, totalGood, selectedProducts, stockRowsByProduct]);
+  }, [selectedProducts, stockRowsByProduct, totalGood]);
 
   // Damaged = damaged qty × unit cost (loss)
   const damagedValue = useMemo(() => {
-    if (invoice.costMode === 'total') {
-      const totalAmt = parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0;
-      const unitCost = totalReceived > 0 ? totalAmt / totalReceived : 0;
-      return totalDamaged * unitCost;
-    }
-    // For unit cost mode, sum up damaged value per variant across all products
+    // Sum up damaged value per variant across all products
     return selectedProducts.reduce((sum, p) => {
       const rows = stockRowsByProduct[p.prodId] || [];
       return sum + rows.reduce((s, r) => {
@@ -508,14 +494,11 @@ export default function AddInventoryItemModal({
         return s + damaged * (parseFloat(r.unitCost) || 0);
       }, 0);
     }, 0);
-  }, [invoice.costMode, invoice.totalInvoiceAmount, totalReceived, totalDamaged, selectedProducts, stockRowsByProduct]);
+  }, [selectedProducts, stockRowsByProduct, totalDamaged]);
 
   // Build damaged breakdown string (e.g., "2×35.00=70.00  2×40.00=80.00")
   const damagedBreakdown = useMemo(() => {
     if (totalDamaged <= 0) return '';
-    // In total mode, use computed unit cost; in unit mode, use per-variant costs
-    const totalAmt = parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0;
-    const cost = invoice.costMode === 'total' && totalReceived > 0 ? (totalAmt / totalReceived) : null;
     
     const parts = selectedProducts.flatMap(p => {
       const rows = stockRowsByProduct[p.prodId] || [];
@@ -523,12 +506,12 @@ export default function AddInventoryItemModal({
         .filter(r => (parseInt(r.damaged) || 0) > 0)
         .map(r => {
           const d = parseInt(r.damaged) || 0;
-          const c = cost !== null ? cost : (parseFloat(r.unitCost) || 0);
+          const c = parseFloat(r.unitCost) || 0;
           return `${d}×${formatPrice(c)}=${formatPrice(d * c)}`;
         });
     });
     return parts.join('  ');
-  }, [selectedProducts, stockRowsByProduct, totalDamaged, totalReceived, invoice.costMode, invoice.totalInvoiceAmount]);
+  }, [selectedProducts, stockRowsByProduct, totalDamaged]);
 
   // ── Validation for step indicator (visual only) ──────────────────────────────
   const step1Valid = selectedProducts.length > 0;
@@ -1169,7 +1152,7 @@ export default function AddInventoryItemModal({
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                       <div style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', textAlign: 'center' }}>
                         <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase' }}>Good</div>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#4ade80' }}>{productTotalGood} <span style={{ fontSize: '0.6rem' }}>pcs</span></div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#E5E2E1' }}>{productTotalGood} <span style={{ fontSize: '0.6rem' }}>pcs</span></div>
                       </div>
                       <div style={{ padding: '0.5rem', background: 'rgba(248,113,113,0.06)', borderRadius: '6px', textAlign: 'center' }}>
                         <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase' }}>Damaged</div>
@@ -1233,183 +1216,114 @@ export default function AddInventoryItemModal({
                   </div>
                 </div>
 
-                {/* Cost Input Mode Toggle - Global */}
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                    <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#D4A843', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Cost Input Mode</span>
-                    <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '3px', border: '1px solid rgba(255,255,255,0.08)' }}>
-                      {[['unit', 'Unit Cost'], ['total', 'Total Amount']].map(([val, label]) => (
-                        <button key={val} type="button" onClick={() => setInvoice(p => ({ ...p, costMode: val }))}
-                          style={{
-                            padding: '0.4rem 0.85rem', fontSize: '0.7rem', fontWeight: 700, borderRadius: '6px', border: 'none', cursor: 'pointer',
-                            background: invoice.costMode === val ? '#D4A843' : 'transparent',
-                            color: invoice.costMode === val ? '#000' : 'var(--gray)',
-                            transition: 'all 0.15s',
-                            textTransform: 'uppercase', letterSpacing: '0.05em',
-                          }}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Global Total Amount Input (when mode is 'total') */}
-                  {invoice.costMode === 'total' && (
-                    <div style={{ padding: '1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '10px', marginBottom: '1.5rem' }}>
-                      <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', fontWeight: 700, letterSpacing: '0.08em' }}>Total Invoice Amount</label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontSize: '1.5rem', color: '#D4A843', fontWeight: 800, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>₱</span>
-                        <CommaNumberInput value={invoice.totalInvoiceAmount}
-                          onChange={e => setInvoice(p => ({ ...p, totalInvoiceAmount: e.target.value }))}
-                          placeholder="0.00"
-                          style={{ fontSize: '1.5rem', fontWeight: 800, color: '#E5E2E1', flex: 1, fontFamily: 'Plus Jakarta Sans, sans-serif' }} />
-                      </div>
-                      {totalReceived > 0 && (parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0) > 0 && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-                          Auto-computed Unit Cost: <strong style={{ color: '#D4A843' }}>{formatPrice((parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0) / totalReceived)}</strong> each
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Per-product cost inputs (when mode is 'unit') */}
-                  {invoice.costMode === 'unit' && (
-                    <div>
-                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.06)', padding: '0.5rem 0.75rem', borderRadius: '8px' }}>
-                          <span style={{ fontSize: '0.9rem', color: '#D4A843', fontWeight: 700 }}>₱</span>
-                          <DecimalInput value={applyAllCost} onChange={e => setApplyAllCost(e.target.value)} placeholder="0.00" max={999999.99} style={{ flex: 1, background: 'none', border: 'none', color: 'var(--white)', fontSize: '0.9rem', outline: 'none' }} />
-                        </div>
-                        <button type="button" onClick={() => {
-                          // Apply to all variants across all products
-                          const newRowsByProduct = {};
-                          Object.keys(stockRowsByProduct).forEach(prodId => {
-                            newRowsByProduct[prodId] = stockRowsByProduct[prodId].map(r => ({ ...r, unitCost: applyAllCost }));
-                          });
-                          setStockRowsByProduct(newRowsByProduct);
-                        }} style={{ background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.4)', color: '#D4A843', borderRadius: '8px', padding: '0 0.85rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                          Apply to all
-                        </button>
-                      </div>
+                {/* Per-product cost inputs */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {selectedProducts.map(product => {
+                      const rows = stockRowsByProduct[product.prodId] || [];
+                      const rowsWithQty = rows.filter(r => (parseInt(r.qty) || 0) > 0);
+                      if (rowsWithQty.length === 0) return null;
                       
-                      {/* Multiple Invoice Tables - one per product */}
-                      {selectedProducts.length > 0 ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                          {selectedProducts.map(product => {
-                            const rows = stockRowsByProduct[product.prodId] || [];
-                            const rowsWithQty = rows.filter(r => (parseInt(r.qty) || 0) > 0);
-                            if (rowsWithQty.length === 0) return null;
-                            
-                            const productCostMode = productCostModes[product.prodId] || 'unit';
-                            const productTotalAmt = productTotalAmounts[product.prodId] || '';
-                            const productTotalQty = rowsWithQty.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
-                            const productSubtotal = rowsWithQty.reduce((s, r) => {
-                              const qty = parseInt(r.qty) || 0;
-                              return s + qty * (parseFloat(r.unitCost) || 0);
-                            }, 0);
-                            const computedProductUnitCost = productTotalQty > 0 && productTotalAmt ? (parseFloat(productTotalAmt.replace(/,/g, '')) || 0) / productTotalQty : 0;
-                            
-                            return (
-                              <div key={product.prodId}>
-                                <div style={{ fontSize: '0.65rem', color: '#D4A843', fontWeight: 600, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
-                                  {product.catName} / {product.prodName}
-                                </div>
-                                <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
-                                  {/* Product-level cost mode toggle */}
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.15)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                    <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Cost Mode</span>
-                                    <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderRadius: '6px', padding: '2px' }}>
-                                      {[['unit', 'Unit'], ['total', 'Total']].map(([val, label]) => (
-                                        <button key={val} type="button" onClick={() => setProductCostModes(p => ({ ...p, [product.prodId]: val }))}
-                                          style={{
-                                            padding: '0.25rem 0.5rem', fontSize: '0.6rem', fontWeight: 700, borderRadius: '4px', border: 'none', cursor: 'pointer',
-                                            background: productCostMode === val ? '#D4A843' : 'transparent',
-                                            color: productCostMode === val ? '#000' : 'var(--gray)',
-                                            transition: 'all 0.15s',
-                                          }}>
-                                          {label}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                  
-                                  {productCostMode === 'total' ? (
-                                    <div style={{ padding: '0.75rem', background: 'rgba(212,168,67,0.05)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                      <label style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>Total Amount</label>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                        <span style={{ fontSize: '1.1rem', color: '#D4A843', fontWeight: 800 }}>₱</span>
-                                        <CommaNumberInput value={productTotalAmt}
-                                          onChange={e => setProductTotalAmounts(p => ({ ...p, [product.prodId]: e.target.value }))}
-                                          placeholder="0.00"
-                                          style={{ fontSize: '1.1rem', fontWeight: 800, color: '#E5E2E1', flex: 1 }} />
-                                      </div>
-                                      {computedProductUnitCost > 0 && (
-                                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                                          Unit Cost: <strong style={{ color: '#D4A843' }}>{formatPrice(computedProductUnitCost)}</strong>
-                                        </div>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.06)', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
-                                        <span style={{ fontSize: '0.8rem', color: '#D4A843', fontWeight: 700 }}>₱</span>
-                                        <DecimalInput value={applyAllCost} onChange={e => setApplyAllCost(e.target.value)} placeholder="0.00" max={999999.99} style={{ flex: 1, background: 'none', border: 'none', color: 'var(--white)', fontSize: '0.8rem', outline: 'none' }} />
-                                      </div>
-                                      <button type="button" onClick={() => {
-                                        const newRows = rows.map(r => ({ ...r, unitCost: applyAllCost }));
-                                        setStockRowsByProduct({ ...stockRowsByProduct, [product.prodId]: newRows });
-                                      }} style={{ background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.4)', color: '#D4A843', borderRadius: '6px', padding: '0 0.65rem', fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                                        Apply
-                                      </button>
-                                    </div>
-                                  )}
-                                  
-                                  {/* Variant rows */}
-                                  {rowsWithQty.map((row, idx) => {
-                                    const qty = parseInt(row.qty) || 0;
-                                    const cost = productCostMode === 'total' ? computedProductUnitCost : (parseFloat(row.unitCost) || 0);
-                                    const subtotal = qty * cost;
-                                    return (
-                                      <div key={row.comboKey} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px', padding: '0.625rem 0.75rem', borderTop: '1px solid rgba(255,255,255,0.04)', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '0.8rem', color: 'var(--white)', fontWeight: 500 }}>{row.comboLabel || product.prodName}</span>
-                                        {productCostMode === 'unit' ? (
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(255,255,255,0.06)', padding: '0.35rem 0.5rem', borderRadius: '6px', justifyContent: 'center' }}>
-                                            <span style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 700 }}>₱</span>
-                                            <DecimalInput value={row.unitCost} onChange={e => {
-                                              const newRows = rows.map(r => r.comboKey === row.comboKey ? { ...r, unitCost: e.target.value } : r);
-                                              setStockRowsByProduct({ ...stockRowsByProduct, [product.prodId]: newRows });
-                                            }} placeholder="0.00" max={999999.99} style={{ width: '50px', background: 'none', border: 'none', color: 'var(--white)', fontSize: '0.8rem', textAlign: 'center', outline: 'none' }} />
-                                          </div>
-                                        ) : (
-                                          <div style={{ textAlign: 'center', fontSize: '0.8rem', color: '#D4A843', fontWeight: 600 }}>
-                                            {formatPrice(cost)}
-                                          </div>
-                                        )}
-                                        <span style={{ textAlign: 'center', fontSize: '0.8rem', color: subtotal > 0 ? '#FACC15' : 'var(--gray)', fontWeight: 600 }}>
-                                          {subtotal > 0 ? formatPrice(subtotal) : '—'}
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
+                      const productCostMode = productCostModes[product.prodId] || 'unit';
+                      const productTotalAmt = productTotalAmounts[product.prodId] || '';
+                      const productTotalQty = rowsWithQty.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+                      const productSubtotal = rowsWithQty.reduce((s, r) => {
+                        const qty = parseInt(r.qty) || 0;
+                        return s + qty * (parseFloat(r.unitCost) || 0);
+                      }, 0);
+                      const computedProductUnitCost = productTotalQty > 0 && productTotalAmt ? (parseFloat(productTotalAmt.replace(/,/g, '')) || 0) / productTotalQty : 0;
+                      
+                      return (
+                        <div key={product.prodId}>
+                          <div style={{ fontSize: '0.65rem', color: '#D4A843', fontWeight: 600, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+                            {product.catName} / {product.prodName}
+                          </div>
+                          <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden', paddingBottom: rowsWithQty.length > 1 ? '0' : '0.75rem' }}>
+                            {/* Product-level cost mode toggle */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.15)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Cost Mode</span>
+                              <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderRadius: '6px', padding: '2px' }}>
+                                {[['unit', 'Unit'], ['total', 'Total']].map(([val, label]) => (
+                                  <button key={val} type="button" onClick={() => setProductCostModes(p => ({ ...p, [product.prodId]: val }))}
+                                    style={{
+                                      padding: '0.25rem 0.5rem', fontSize: '0.6rem', fontWeight: 700, borderRadius: '4px', border: 'none', cursor: 'pointer',
+                                      background: productCostMode === val ? '#D4A843' : 'transparent',
+                                      color: productCostMode === val ? '#000' : 'var(--gray)',
+                                      transition: 'all 0.15s',
+                                    }}>
+                                    {label}
+                                  </button>
+                                ))}
                               </div>
-                            );
-                          })}
+                            </div>
+                            
+                            {productCostMode === 'total' ? (
+                              <div style={{ padding: '0.75rem', background: 'rgba(212,168,67,0.05)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <label style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>Total Amount</label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <span style={{ fontSize: '1.1rem', color: '#D4A843', fontWeight: 800 }}>₱</span>
+                                  <CommaNumberInput value={productTotalAmt}
+                                    onChange={e => setProductTotalAmounts(p => ({ ...p, [product.prodId]: e.target.value }))}
+                                    placeholder="0.00"
+                                    style={{ fontSize: '1.1rem', fontWeight: 800, color: '#E5E2E1', flex: 1 }} />
+                                </div>
+                                {computedProductUnitCost > 0 && (
+                                  <div style={{ fontSize: '0.65rem', color: 'var(--gray)', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                    Unit Cost: <strong style={{ color: '#D4A843' }}>{formatPrice(computedProductUnitCost)}</strong>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <>
+                                {/* Apply to all row - only show if more than 1 variant */}
+                                {rowsWithQty.length > 1 && (
+                                  <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.06)', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
+                                      <span style={{ fontSize: '0.8rem', color: '#D4A843', fontWeight: 700 }}>₱</span>
+                                      <DecimalInput value={applyAllCost} onChange={e => setApplyAllCost(e.target.value)} placeholder="0.00" max={999999.99} style={{ flex: 1, background: 'none', border: 'none', color: 'var(--white)', fontSize: '0.8rem', outline: 'none' }} />
+                                    </div>
+                                    <button type="button" onClick={() => {
+                                      const newRows = rows.map(r => ({ ...r, unitCost: applyAllCost }));
+                                      setStockRowsByProduct({ ...stockRowsByProduct, [product.prodId]: newRows });
+                                    }} style={{ background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.4)', color: '#D4A843', borderRadius: '6px', padding: '0 0.65rem', fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                      Apply
+                                    </button>
+                                  </div>
+                                )}
+                                
+                                {/* Variant rows */}
+                                {rowsWithQty.map((row, idx) => {
+                                  const qty = parseInt(row.qty) || 0;
+                                  const cost = productCostMode === 'total' ? computedProductUnitCost : (parseFloat(row.unitCost) || 0);
+                                  const subtotal = qty * cost;
+                                  return (
+                                    <div key={row.comboKey} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px', padding: '0.625rem 0.75rem', borderTop: rowsWithQty.length > 1 && idx === 0 ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(255,255,255,0.04)', alignItems: 'center' }}>
+                                      <span style={{ fontSize: '0.8rem', color: 'var(--white)', fontWeight: 500 }}>{row.comboLabel || product.prodName}</span>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(255,255,255,0.06)', padding: '0.35rem 0.5rem', borderRadius: '6px', justifyContent: 'center' }}>
+                                        <span style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 700 }}>₱</span>
+                                        <DecimalInput value={row.unitCost} onChange={e => {
+                                          const newRows = rows.map(r => r.comboKey === row.comboKey ? { ...r, unitCost: e.target.value } : r);
+                                          setStockRowsByProduct({ ...stockRowsByProduct, [product.prodId]: newRows });
+                                        }} placeholder="0.00" max={999999.99} style={{ width: '50px', background: 'none', border: 'none', color: 'var(--white)', fontSize: '0.8rem', textAlign: 'center', outline: 'none' }} />
+                                      </div>
+                                      <span style={{ textAlign: 'center', fontSize: '0.8rem', color: subtotal > 0 ? '#FACC15' : 'var(--gray)', fontWeight: 600 }}>
+                                        {subtotal > 0 ? formatPrice(subtotal) : '—'}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </>
+                            )}
+                          </div>
                         </div>
-                      ) : (
-                        <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.1)' }}>
-                          No variants with quantity - go back to Step 2
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                      );
+                    })}
+                  </div>
+              </div>
 
-                {/* Optional Receipt Upload */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>Proof of Purchase / Reciept <span style={{ fontWeight: 400, color: 'var(--gray)' }}>(Optional)</span></label>
+              {/* Optional Receipt Upload */}
+              <div style={{ marginTop: '1.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>Proof of Purchase / Receipt <span style={{ fontWeight: 400, color: 'var(--gray)' }}>(Optional)</span></label>
                   <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '1.25rem', border: '2px dashed rgba(255,255,255,0.15)', borderRadius: '10px', background: 'rgba(0,0,0,0.15)', cursor: 'pointer', transition: 'all 0.2s' }}
                     onMouseEnter={e => { e.currentTarget.style.borderColor = '#D4A843'; e.currentTarget.style.background = 'rgba(212,168,67,0.05)'; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; e.currentTarget.style.background = 'rgba(0,0,0,0.15)'; }}>
@@ -1441,16 +1355,17 @@ export default function AddInventoryItemModal({
                 </div>
 
                 {/* Receipt Summary - Compare with actual receipt */}
-                {selectedProducts.length > 0 && invoice.costMode === 'unit' && (
-                  <div style={{ padding: '1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '10px' }}>
+                {selectedProducts.length > 0 && (
+                  <div style={{ padding: '1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '10px', marginTop: '1.5rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="8 6 5.5 9 3 6"/></svg>
                       <span style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Receipt Summary</span>
                     </div>
                     
-                    {/* Per-product breakdown */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      {selectedProducts.map(product => {
+                    {/* Per-product breakdown - only show if more than 1 product */}
+                    {selectedProducts.length > 1 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {selectedProducts.map(product => {
                         const rows = stockRowsByProduct[product.prodId] || [];
                         const rowsWithQty = rows.filter(r => (parseInt(r.qty) || 0) > 0);
                         if (rowsWithQty.length === 0) return null;
@@ -1507,8 +1422,9 @@ export default function AddInventoryItemModal({
                         );
                       })}
                     </div>
-                    
-                    {/* Grand Total */}
+                    ) : null}
+
+                    {/* Grand Total - always show */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', borderTop: '1px solid rgba(212,168,67,0.3)', marginTop: '0.75rem' }}>
                       <span style={{ fontSize: '0.7rem', color: 'var(--gray)', fontWeight: 600, textTransform: 'uppercase' }}>Total Invoice Amount</span>
                       <span style={{ fontSize: '0.9rem', color: '#facc15', fontWeight: 800 }}>{formatPrice(totalInvoiceValue)}</span>
@@ -1517,7 +1433,6 @@ export default function AddInventoryItemModal({
                 )}
               </div>
             </div>
-          </div>
         )}
 
         {/* ── Footer navigation ───────────────────────────────────────────── */}
