@@ -171,24 +171,33 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  // Load variants
+  // Load variants - include ALL items (active + archived) from inventory to get correct stock
   useEffect(() => {
     if (!isOpen || !item) return;
     const base = extractBaseProductName(item.name);
-    const src = (item.rawItems?.length > 0)
-      ? item.rawItems.filter(i => i.isActive !== false)
-      : (inventory || []).filter(inv => {
-          if (inv.isActive === false) return false;
-          if (extractBaseProductName(inv.name).toLowerCase() === base.toLowerCase()) return true;
-          const a = item.sku?.split('-').slice(0,3).join('-'), b = inv.sku?.split('-').slice(0,3).join('-');
-          return a && b && a === b;
-        });
+    // Always use full inventory to include active + archived items
+    const src = (inventory || []).filter(inv => {
+      if (extractBaseProductName(inv.name).toLowerCase() === base.toLowerCase()) return true;
+      const a = item.sku?.split('-').slice(0,3).join('-'), b = inv.sku?.split('-').slice(0,3).join('-');
+      return a && b && a === b;
+    });
+    // Group by SKU (not ID) to merge duplicate items with same SKU
+    // This handles the case where user created multiple inventory items with same SKU
     const grouped = src.reduce((acc, inv) => {
       if (!acc[inv.sku]) {
-        acc[inv.sku] = { id: inv.id, variantName: extractVariantName(inv.name, base) || inv.name, sku: inv.sku, stock: inv.stockQty || 0, batches: (inv.batches||[]).filter(b=>(b.remainingQty||0)>0).sort((a,b)=>new Date(a.dateReceived)-new Date(b.dateReceived)) };
+        acc[inv.sku] = { 
+          id: inv.id, 
+          variantName: extractVariantName(inv.name, base) || inv.name, 
+          sku: inv.sku, 
+          stock: inv.stockQty || 0, 
+          batches: (inv.batches||[]).filter(b=>(b.remainingQty||0)>0).sort((a,b)=>new Date(a.dateReceived)-new Date(b.dateReceived)),
+          allIds: [inv.id] // Track all IDs that contributed to this variant
+        };
       } else {
+        // Merge stock and batches from duplicate SKU items
         acc[inv.sku].stock += inv.stockQty || 0;
         acc[inv.sku].batches = [...acc[inv.sku].batches, ...(inv.batches||[]).filter(b=>(b.remainingQty||0)>0)].sort((a,b)=>new Date(a.dateReceived)-new Date(b.dateReceived));
+        acc[inv.sku].allIds.push(inv.id);
       }
       return acc;
     }, {});

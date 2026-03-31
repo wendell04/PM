@@ -1239,7 +1239,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
 
     // Filter only tracked variant types for SKU generation
     const trackedTypes = variantTypes;  // All types are tracked now
-    
+
     // If no tracked types, return empty (no SKU needed for non-tracked items)
     if (trackedTypes.length === 0) return [];
 
@@ -1257,12 +1257,26 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
 
     // Format as SKU objects
     return combinations.map(combo => {
-      const skuSuffix = combo.map(opt => opt.substring(0, 3).toUpperCase()).join('-');
+      // Generate unique SKU suffix from variant options
+      // e.g., "Red" → RED, "Red Violet" → REDVIO, "11oz" → 11O
+      const skuSuffix = combo.map(opt => {
+        // Remove non-alphanumeric and convert to uppercase
+        const cleanOpt = opt.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        // For multi-word options, take first 3 letters of each word
+        // e.g., "Red Violet" → "RED" + "VIO" = REDVIO
+        const words = opt.split(/[\s-]+/).filter(w => w.length > 0);
+        if (words.length > 1) {
+          return words.map(w => w.substring(0, 3).toUpperCase()).join('');
+        }
+        // Single word: use first 3 letters (or full word if shorter)
+        return cleanOpt.substring(0, Math.min(6, cleanOpt.length));
+      }).join('-');
+      
       const variantName = combo.join(' - ');
       const catPrefix = categoryName.substring(0, 3).toUpperCase();
       const prodPrefix = productName.substring(0, 3).toUpperCase();
       return {
-        sku: `${catPrefix}-${prodPrefix}-${skuSuffix}`,  // MUG-CER-WHT-11O
+        sku: `${catPrefix}-${prodPrefix}-${skuSuffix}`,  // MUG-MGA-REDVIO or MUG-CER-WHT-11O
         name: `${productName} ${variantName}`,
         category: categoryName,
         variants: combo,
@@ -1742,7 +1756,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                               );
                               
                               return (
-                                <span key={optIdx} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.25rem 0.6rem', background: optionInUse ? 'rgba(99,102,241,0.12)' : 'rgba(100,100,100,0.12)', border: optionInUse ? '1px solid rgba(99,102,241,0.35)' : '1px solid rgba(100,100,100,0.35)', borderRadius: '20px', fontSize: '0.8rem', color: optionInUse ? '#6366f1' : '#9ca3af', fontWeight: 500 }}>
+                                <span key={optIdx} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.25rem 0.6rem', background: optionInUse ? 'rgba(212,168,67,0.12)' : 'rgba(100,100,100,0.12)', border: optionInUse ? '1px solid rgba(212,168,67,0.35)' : '1px solid rgba(100,100,100,0.35)', borderRadius: '20px', fontSize: '0.8rem', color: optionInUse ? 'var(--gold, #D4A843)' : '#9ca3af', fontWeight: 500 }}>
                                   {opt}
                                   {!optionInUse && (
                                     <button type="button" onClick={() => removeVariantOption(typeIdx, optIdx)}
@@ -1751,7 +1765,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                                     </button>
                                   )}
                                   {optionInUse && (
-                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: '#f59e0b' }}>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: 'var(--gold, #D4A843)' }}>
                                       <rect x="3" y="11" width="18" height="11" rx="2"/>
                                       <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                                     </svg>
@@ -2304,10 +2318,10 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                     const catLinkedCount = getCatLinkedCount(cat);
                     const catIsLocked = catLinkedCount > 0;
                     return (
-                      <div key={cat.id} style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+                      <div key={cat.id} style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '8px', padding: '0.75rem 1rem' }}>
 
                         {/* Category header row */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.875rem 1rem', background: 'rgba(0,0,0,0.2)', cursor: 'pointer' }}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0.75rem', cursor: 'pointer' }}
                           onClick={() => setExpandedCats(prev => { const n = new Set(prev); n.has(cat.id) ? n.delete(cat.id) : n.add(cat.id); return n; })}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
                             style={{ color: 'var(--gray)', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none', flexShrink: 0 }}>
@@ -2347,9 +2361,9 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                                   const skuCombinations = hasVariantTypes ? generateSkuCombinations(prod.variantTypes, cat.name, prod.name) : [];
                                   
                                   return (
-                                    <div key={prod.id} style={{ border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px', overflow: 'hidden' }}>
+                                    <div key={prod.id} style={{ borderRadius: '6px', overflow: 'hidden', marginBottom: '0.5rem' }}>
                                       {/* Product Row */}
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.03)' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: '6px' }}>
                                         {/* Expand Chevron */}
                                         <button 
                                           onClick={() => {
@@ -2386,7 +2400,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                                             <span style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.875rem' }}>{prod.name}</span>
                                             {linked > 0 && (
-                                              <span style={{ fontSize: '0.65rem', color: '#4ade80', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>
+                                              <span style={{ fontSize: '0.65rem', color: 'var(--gold, #D4A843)', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>
                                                 {linked} in inventory
                                               </span>
                                             )}
@@ -2424,13 +2438,13 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                                       
                                       {/* Expandable SKU Combinations */}
                                       {isExpanded && hasVariantTypes && skuCombinations.length > 0 && (
-                                        <div style={{ padding: '0.75rem 1rem 1rem', background: 'rgba(0,0,0,0.15)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                        <div style={{ padding: '0.75rem 1rem 1rem', marginTop: '0.5rem', background: 'rgba(0,0,0,0.15)', borderRadius: '6px' }}>
                                           <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 600 }}>
                                             Generated SKU Combinations ({skuCombinations.length})
                                           </div>
                                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem' }}>
                                             {skuCombinations.map((combo, idx) => (
-                                              <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '4px', padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>
+                                              <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '4px', padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>
                                                 <div style={{ color: 'var(--gold)', fontWeight: 600, fontFamily: 'monospace', marginBottom: '0.25rem' }}>{combo.sku}</div>
                                                 <div style={{ color: 'var(--white)', fontSize: '0.7rem', marginBottom: '0.25rem' }}>{combo.name}</div>
                                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem' }}>
@@ -2924,12 +2938,14 @@ function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
           {/* Product Info Card */}
           <div style={{ padding: '1rem', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '10px', marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '1rem', marginBottom: '0.5rem' }}>{itemData.name}</div>
-            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: 'var(--gray)', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: 'var(--gray)', flexWrap: 'wrap', alignItems: 'center' }}>
               <span>Category: <strong style={{ color: '#D4A843' }}>{itemData.category}</strong></span>
               <span style={{ fontFamily: 'monospace', color: 'var(--gray)' }}>SKU: {itemData.sku}</span>
-            </div>
-            <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#D4A843', fontWeight: 600 }}>
-              {allItems.length} {hasMultipleVariantTypes ? 'combo' : ''} variant{allItems.length !== 1 ? 's' : ''}
+              {allItems.length > 0 && (
+                <span style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 600, background: 'rgba(212,168,67,0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
+                  {allItems.length} {hasMultipleVariantTypes ? 'combo' : ''} variant{allItems.length !== 1 ? 's' : ''}
+                </span>
+              )}
             </div>
           </div>
 
@@ -2977,53 +2993,52 @@ function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
                 Batch / Invoice History
               </div>
               <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
-                {batches.map((batch, idx) => (
-                  <div key={batch.batchId} style={{
-                    padding: '0.75rem 1rem',
-                    background: idx % 2 === 0 ? 'rgba(0,0,0,0.2)' : 'transparent',
-                    borderBottom: idx < batches.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none'
-                  }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 1fr 100px 80px 1fr 80px', gap: '0.75rem', alignItems: 'start' }}>
-                      {/* Batch ID */}
-                      <div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Batch ID</div>
-                        <div style={{ fontFamily: 'monospace', color: '#D4A843', fontWeight: 600, fontSize: '0.8rem' }}>{batch.batchId}</div>
-                      </div>
-                      {/* Supplier */}
-                      <div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Supplier</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--white)' }}>{batch.supplierName || 'General'}</div>
-                      </div>
-                      {/* Invoice */}
-                      <div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Invoice</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--white)', fontFamily: 'monospace' }}>{batch.invoiceNumber || '—'}</div>
-                      </div>
-                      {/* Delivery Date */}
-                      <div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Delivery Date</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--white)' }}>{new Date(batch.dateReceived).toLocaleDateString()}</div>
-                      </div>
-                      {/* Total Qty */}
-                      <div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Total Qty</div>
-                        <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.9rem' }}>{batch.totalQty} <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>pcs</span></div>
-                      </div>
-                      {/* Combo/Variant */}
-                      <div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Combo</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--white)' }}>
-                          {batch.items.length} {hasMultipleVariantTypes ? 'combo' : ''} variant{batch.items.length !== 1 ? 's' : ''}
+                <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '120px 150px 200px 100px 80px 1fr 100px', gap: '0.75rem', alignItems: 'start', minWidth: 'max-content', padding: '0.75rem 1rem' }}>
+                    {batches.map((batch, idx) => (
+                      <React.Fragment key={batch.batchId}>
+                        {idx > 0 && <div style={{ gridColumn: '1 / -1', height: '1px', background: 'rgba(255,255,255,0.04)', margin: '0.5rem 0' }} />}
+                        {/* Batch ID */}
+                        <div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Batch ID</div>
+                          <div style={{ fontFamily: 'monospace', color: '#D4A843', fontWeight: 600, fontSize: '0.8rem' }}>{batch.batchId}</div>
                         </div>
-                      </div>
-                      {/* Batch Total */}
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Batch Total</div>
-                        <div style={{ color: '#D4A843', fontWeight: 600, fontSize: '0.8rem' }}>{formatPrice(batch.totalCost)}</div>
-                      </div>
-                    </div>
+                        {/* Supplier */}
+                        <div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Supplier</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--white)' }}>{batch.supplierName || 'General'}</div>
+                        </div>
+                        {/* Invoice */}
+                        <div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Invoice</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--white)', fontFamily: 'monospace' }}>{batch.invoiceNumber || '—'}</div>
+                        </div>
+                        {/* Delivery Date */}
+                        <div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Delivery Date</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--white)' }}>{new Date(batch.dateReceived).toLocaleDateString()}</div>
+                        </div>
+                        {/* Total Qty */}
+                        <div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Total Qty</div>
+                          <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.9rem' }}>{batch.totalQty} <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>pcs</span></div>
+                        </div>
+                        {/* Combo/Variant */}
+                        <div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Combo</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--white)' }}>
+                            {batch.items.length} {hasMultipleVariantTypes ? 'combo' : ''} variant{batch.items.length !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+                        {/* Batch Total */}
+                        <div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Batch Total</div>
+                          <div style={{ color: '#D4A843', fontWeight: 600, fontSize: '0.8rem' }}>{formatPrice(batch.totalCost)}</div>
+                        </div>
+                      </React.Fragment>
+                    ))}
                   </div>
-                ))}
+                </div>
               </div>
             </div>
           )}
@@ -3217,14 +3232,26 @@ export default function InventoryPage() {
   const toggleExpand = (id) => setExpandedRows(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   // Active items only, filtered by search + status
+  // Exception: Stock Out view shows ALL items (including archived) for historical reporting
   const filteredInventory = inventory.filter(item => {
+    // Stock Out view: Show all items with movements, even if archived
+    if (statusFilter === 'stock-out') {
+      const q = searchQuery.toLowerCase();
+      const name = (item.name || '').toLowerCase();
+      const category = (item.category || '').toLowerCase();
+      const hasMovements = (item.batches || []).some(b => (b.movements || []).some(m => m.type === 'sold' || m.type === 'damaged'));
+      if (!hasMovements) return false;
+      if (!name.includes(q) && !category.includes(q)) return false;
+      return true;
+    }
+    
+    // Other views: Only active items
     if (item.isActive === false) return false;
     const q = searchQuery.toLowerCase();
     const name = (item.name || '').toLowerCase();
     const category = (item.category || '').toLowerCase();
     if (!name.includes(q) && !category.includes(q)) return false;
     if (statusFilter === 'low-stock') return item.stockQty > 0 && item.stockQty <= item.minStockLevel;
-    if (statusFilter === 'stock-out') return (item.batches || []).some(b => (b.movements || []).some(m => m.type === 'sold' || m.type === 'damaged'));
     if (statusFilter === 'out-of-stock') return item.stockQty === 0;
     return true;
   });
@@ -3235,8 +3262,8 @@ export default function InventoryPage() {
   const activeItems = inventory.filter(i => i.isActive !== false).length;
   const lowStockItems = inventory.filter(i => i.isActive !== false && i.stockQty > 0 && i.stockQty <= i.minStockLevel).length;
   const outOfStockItems = inventory.filter(i => i.isActive !== false && i.stockQty === 0).length;
-  // Stock Out = items that have stock out movements (sold or damaged)
-  const stockOutItems = inventory.filter(i => i.isActive !== false && (i.batches || []).some(b => (b.movements || []).some(m => m.type === 'sold' || m.type === 'damaged'))).length;
+  // Stock Out = items that have stock out movements (sold or damaged) - INCLUDE archived for reporting
+  const stockOutItems = inventory.filter(i => (i.batches || []).some(b => (b.movements || []).some(m => m.type === 'sold' || m.type === 'damaged'))).length;
   const archivedCount = archivedInventory.length;
 
   const handleAddNew = () => { setEditingItem(null); setPendingItemData(null); setIsConfirmModalOpen(false); setModalKey(p => p + 1); setIsModalOpen(true); };
@@ -3796,7 +3823,7 @@ Item Masterlist
 
       {/* Table - Only show in Inventory/Low Stock view */}
       {statusFilter !== 'stock-out' && (
-        <div style={{ WebkitOverflowScrolling: 'touch', border: '1px solid var(--border)', borderRadius: '10px', width: '0', minWidth: '100%', display: 'block', overflowX: 'auto', marginBottom: '1rem' }}>
+        <div style={{ WebkitOverflowScrolling: 'touch', borderRadius: '10px', width: '0', minWidth: '100%', display: 'block', overflowX: 'auto', marginBottom: '1rem' }}>
         {filteredInventory.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">

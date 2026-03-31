@@ -30,8 +30,8 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
   // Group items by category and product - show ALL inventory items
   const groupedData = useMemo(() => {
     const items = inventory
-      .filter(item => item.isActive !== false)
-      // Don't filter by movements - show ALL items
+      // Don't filter by isActive - show ALL items including archived (for historical reporting)
+      // Only show items that have stock out movements (sold, damaged, or writeoff)
       .map(item => {
         const totalStockOut = (item.batches || []).reduce((sum, batch) => {
           const batchStockOut = (batch.movements || [])
@@ -70,9 +70,43 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
         };
       });
 
+    // Group by SKU to merge duplicate items with same SKU
+    // This handles the case where user created multiple inventory items with same SKU
+    const uniqueItemsMap = new Map();
+    
+    items.forEach(item => {
+      if (!uniqueItemsMap.has(item.sku)) {
+        uniqueItemsMap.set(item.sku, { 
+          ...item,
+          allIds: [item.id] // Track all IDs that contributed
+        });
+      } else {
+        // Merge stock and batches from duplicate SKU items
+        const existing = uniqueItemsMap.get(item.sku);
+        existing.stockQty = (existing.stockQty || 0) + (item.stockQty || 0);
+        existing.totalStockOut += item.totalStockOut || 0;
+        existing.totalSold += item.totalSold || 0;
+        existing.totalDamaged += item.totalDamaged || 0;
+        existing.totalWriteOff += item.totalWriteOff || 0;
+        
+        // Merge batches
+        if (item.batches && item.batches.length > 0) {
+          const existingBatchIds = new Set(existing.batches.map(b => b.batchId));
+          item.batches.forEach(batch => {
+            if (!existingBatchIds.has(batch.batchId)) {
+              existing.batches.push(batch);
+            }
+          });
+        }
+        existing.allIds.push(item.id);
+      }
+    });
+    
+    const uniqueItems = Array.from(uniqueItemsMap.values());
+
     // Group by category → product name
     const groups = {};
-    items.forEach(item => {
+    uniqueItems.forEach(item => {
       if (!groups[item.category]) {
         groups[item.category] = {};
       }
@@ -233,16 +267,39 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
                           <tr>
                             <td colSpan={7} style={{ padding: 0, background: 'rgba(255,255,255,0.02)' }}>
                               <div style={{ padding: '1rem 1.5rem' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 600 }}>
-                                  Movement History by Batch
-                                </div>
-                                <div style={{ 
-                                  border: '1px solid var(--border)', 
-                                  borderRadius: '8px', 
-                                  overflow: 'hidden',
-                                  maxHeight: '280px',
-                                  overflowY: 'auto',
-                                }}>
+                                {/* Check if there are any movements */}
+                                {(() => {
+                                  const hasMovements = (item.batches || []).some(b => 
+                                    (b.movements || []).some(m => 
+                                      (m.type === 'sold' || m.type === 'damaged' || m.type === 'writeoff') &&
+                                      (!dateRange.start || (new Date(m.createdAt) >= dateRange.start && new Date(m.createdAt) <= dateRange.end))
+                                    )
+                                  );
+                                  
+                                  if (!hasMovements) {
+                                    return (
+                                      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.875rem' }}>
+                                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: '0 auto 1rem', opacity: 0.3 }}>
+                                          <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                        <p>No stock out movements recorded yet.</p>
+                                        <p style={{ fontSize: '0.75rem', marginTop: '0.5rem' }}>Sales, damages, and write-offs will appear here.</p>
+                                      </div>
+                                    );
+                                  }
+                                  
+                                  return (
+                                    <>
+                                      <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 600 }}>
+                                        Movement History by Batch
+                                      </div>
+                                      <div style={{
+                                        border: '1px solid var(--border)',
+                                        borderRadius: '8px',
+                                        overflow: 'hidden',
+                                        maxHeight: '280px',
+                                        overflowY: 'auto',
+                                      }}>
                                   <table style={{ width: '100%', fontSize: '0.8rem' }}>
                                     <thead style={{ position: 'sticky', top: 0, background: 'rgba(0,0,0,0.97)', zIndex: 2 }}>
                                       <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid var(--border)' }}>
@@ -315,6 +372,9 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
                                     </tbody>
                                   </table>
                                 </div>
+                                    </>
+                                  );
+                                })()}
                               </div>
                             </td>
                           </tr>
@@ -331,3 +391,4 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
     </div>
   );
 }
+
