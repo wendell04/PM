@@ -21,7 +21,7 @@ function extractVariantName(fullName, base) {
 function IntegerInput({ value, onChange, min = 0, max, placeholder, style, disabled }) {
   return (
     <input type="text" value={value} inputMode="numeric" pattern="[0-9]*" placeholder={placeholder} disabled={disabled} style={style}
-      onChange={e => { const v = e.target.value; if (v === '' || /^\d+$/.test(v)) { const n = v === '' ? 0 : parseInt(v,10); if (max !== undefined && n > max) return; if (n < min) return; onChange(v); } }}
+      onChange={e => { const v = e.target.value; if (v === '' || /^\d+$/.test(v)) { const n = v === '' ? 0 : parseInt(v,10); if (max !== undefined && n > max) return; if (v !== '' && n < min) return; onChange(v); } }}
       onKeyDown={e => { if (['e','E','+','-','.'].includes(e.key)) e.preventDefault(); }}
       onWheel={e => { if (document.activeElement === e.target) e.target.blur(); }}
     />

@@ -293,9 +293,13 @@ export default function AddInventoryItemModal({
       setSelectedML(null);
       setStockRows([]);
       setApplyAllCost('');
+      setExpandedCategories(new Set(masterlist.map(c => c.name))); // Expand all by default
       setInvoice({ supplierId: 'unspecified', supplierName: 'General Merchandise', invoiceNumber: '', deliveryDate: new Date().toISOString().split('T')[0], notes: '', receiptImage: null, costMode: 'unit', totalInvoiceAmount: '' });
     }
-  }, [isOpen, item]);
+  }, [isOpen, item, masterlist]);
+
+  // ── Expanded categories state ───────────────────────────────────────────────
+  const [expandedCategories, setExpandedCategories] = useState(new Set());
 
   // ── Masterlist entries ───────────────────────────────────────────────────────
   const mlEntries = useMemo(() => {
@@ -314,6 +318,30 @@ export default function AddInventoryItemModal({
     const q = search.toLowerCase();
     return mlEntries.filter(e => e.prodName.toLowerCase().includes(q) || e.catName.toLowerCase().includes(q));
   }, [mlEntries, search]);
+
+  // ── Group by category ────────────────────────────────────────────────────────
+  const groupedByCategory = useMemo(() => {
+    const groups = {};
+    filteredML.forEach(e => {
+      if (!groups[e.catName]) {
+        groups[e.catName] = { catName: e.catName, products: [] };
+      }
+      groups[e.catName].products.push(e);
+    });
+    return Object.values(groups);
+  }, [filteredML]);
+
+  const toggleCategory = (catName) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(catName)) {
+        next.delete(catName);
+      } else {
+        next.add(catName);
+      }
+      return next;
+    });
+  };
 
   // ── SKU generation ───────────────────────────────────────────────────────────
   const buildPrefixMap = (options) => {
@@ -697,40 +725,83 @@ export default function AddInventoryItemModal({
             </div>
 
             <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
-              {filteredML.length === 0 ? (
+              {groupedByCategory.length === 0 ? (
                 <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.875rem' }}>
                   {mlEntries.length === 0 ? 'Masterlist is empty. Add products in Item Masterlist first.' : `No results for "${search}"`}
                 </div>
-              ) : filteredML.map((e, idx) => {
-                const isSelected = selectedML?.prodId === e.prodId && selectedML?.catId === e.catId;
+              ) : groupedByCategory.map((group, catIdx) => {
+                const isExpanded = expandedCategories.has(group.catName);
                 return (
-                  <button key={`${e.catId}-${e.prodId}`} type="button"
-                    onClick={() => { setSelectedML(e); setStockRows(generateRows(e)); }}
-                    style={{
-                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '0.875rem 1rem', background: isSelected ? 'rgba(212,168,67,0.12)' : idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
-                      border: 'none', borderBottom: idx < filteredML.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
-                      cursor: 'pointer', textAlign: 'left',
-                    }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, color: isSelected ? '#D4A843' : 'var(--white)', fontSize: '0.9rem' }}>{e.prodName}</div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.15rem' }}>{e.catName}</div>
-                      {e.variantTypes.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.35rem' }}>
-                          {e.variantTypes.map((vt, i) => (
-                            <span key={i} style={{ fontSize: '0.62rem', color: 'var(--gray)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.1rem 0.4rem', borderRadius: '3px' }}>
-                              {vt.name}: {vt.options.join(', ')}
-                            </span>
-                          ))}
+                  <div key={group.catName}>
+                    {/* Category Header */}
+                    <button
+                      type="button"
+                      onClick={() => toggleCategory(group.catName)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '0.875rem 1rem',
+                        background: 'rgba(255,255,255,0.04)',
+                        border: 'none', borderBottom: '1px solid rgba(255,255,255,0.05)',
+                        cursor: 'pointer', textAlign: 'left',
+                      }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                          style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none', color: 'var(--gray)' }}>
+                          <path d="M9 18l6-6-6-6"/>
+                        </svg>
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.85rem' }}>{group.catName}</div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', marginTop: '0.1rem' }}>
+                            {group.products.length} product{group.products.length !== 1 ? 's' : ''}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                    {isSelected && (
-                      <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#D4A843', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: '0.75rem' }}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
                       </div>
-                    )}
-                  </button>
+                    </button>
+
+                    {/* Products under this category */}
+                    {isExpanded && group.products.map((e, idx) => {
+                      const isSelected = selectedML?.prodId === e.prodId && selectedML?.catId === e.catId;
+                      return (
+                        <button key={`${e.catId}-${e.prodId}`} type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              // Deselect
+                              setSelectedML(null);
+                              setStockRows([]);
+                            } else {
+                              // Select
+                              setSelectedML(e);
+                              setStockRows(generateRows(e));
+                            }
+                          }}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '0.75rem 1rem 0.75rem 2.5rem',
+                            background: isSelected ? 'rgba(212,168,67,0.12)' : idx % 2 === 0 ? 'rgba(0,0,0,0.15)' : 'transparent',
+                            border: 'none', borderBottom: idx < group.products.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none',
+                            cursor: 'pointer', textAlign: 'left',
+                          }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, color: isSelected ? '#D4A843' : 'var(--white)', fontSize: '0.85rem' }}>{e.prodName}</div>
+                            {e.variantTypes.length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.35rem' }}>
+                                {e.variantTypes.map((vt, i) => (
+                                  <span key={i} style={{ fontSize: '0.6rem', color: 'var(--gray)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.1rem 0.4rem', borderRadius: '3px' }}>
+                                    {vt.name}: {vt.options.slice(0, 3).join(', ')}{vt.options.length > 3 ? '...' : ''}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#D4A843', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: '0.5rem' }}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 );
               })}
             </div>
@@ -1162,22 +1233,22 @@ export default function AddInventoryItemModal({
             )}
             {step < 3 ? (
               <button type="button"
-                disabled={step === 2 && !step2Valid()}
+                disabled={(step === 1 && !selectedML) || (step === 2 && !step2Valid())}
                 onClick={() => setStep(s => s + 1)}
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '0.5rem', 
-                  background: (step === 2 && !step2Valid()) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FFDF9F 0%, #D4A843 100%)', 
-                  border: 'none', 
-                  color: (step === 2 && !step2Valid()) ? 'var(--gray)' : '#000', 
-                  borderRadius: '8px', 
-                  padding: '0.625rem 1.25rem', 
-                  fontSize: '0.85rem', 
-                  fontWeight: 700, 
-                  cursor: (step === 2 && !step2Valid()) ? 'not-allowed' : 'pointer', 
-                  boxShadow: (step === 2 && !step2Valid()) ? 'none' : '0 0 16px rgba(212,168,67,0.3)', 
-                  transition: 'all 0.2s' 
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  background: ((step === 1 && !selectedML) || (step === 2 && !step2Valid())) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FFDF9F 0%, #D4A843 100%)',
+                  border: 'none',
+                  color: ((step === 1 && !selectedML) || (step === 2 && !step2Valid())) ? 'var(--gray)' : '#000',
+                  borderRadius: '8px',
+                  padding: '0.625rem 1.25rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: ((step === 1 && !selectedML) || (step === 2 && !step2Valid())) ? 'not-allowed' : 'pointer',
+                  boxShadow: ((step === 1 && !selectedML) || (step === 2 && !step2Valid())) ? 'none' : '0 0 16px rgba(212,168,67,0.3)',
+                  transition: 'all 0.2s'
                 }}
                 onMouseEnter={e => { if (step !== 2 || step2Valid()) { e.currentTarget.style.transform = 'scale(1.02)'; } }}>
                 Next
