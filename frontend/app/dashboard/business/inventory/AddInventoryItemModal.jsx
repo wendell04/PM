@@ -536,6 +536,7 @@ export default function AddInventoryItemModal({
       return {
         id: crypto.randomUUID(), sku,
         name: itemName.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' '),
+        masterlistProductName: selectedML.prodName, // Store pure masterlist product name (no variant suffix)
         category: selectedML.catName,
         variantCombo: row.comboMap,
         stockQty: good, damagedQty: dmg, minStockLevel: parseInt(row.minStockLevel) || 10,

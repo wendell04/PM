@@ -3161,6 +3161,17 @@ export default function InventoryPage() {
     }
     setExpandedCategories(newExpanded);
   };
+  
+  // Handler for StockOutTable product expansion
+  const handleExpandStockOutProduct = (productName) => {
+    const newExpanded = new Set(expandedProducts);
+    if (newExpanded.has(productName)) {
+      newExpanded.delete(productName);
+    } else {
+      newExpanded.add(productName);
+    }
+    setExpandedProducts(newExpanded);
+  };
   const [archiveItem, setArchiveItem] = useState(null);
   const [referencingProducts, setReferencingProducts] = useState([]);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
@@ -3693,11 +3704,75 @@ export default function InventoryPage() {
       // Update existing item (first item only for now)
       setInventory(prev => prev.map(i => i.id === pendingItemData.id ? { ...pendingItemData, updatedAt: new Date().toISOString() } : i));
     } else {
-      // Add new items (all variants)
+      // NEW LOGIC: Find & Restore or Create New (ERP-style Single Source of Truth)
+      // TODO: MongoDB — This logic will be replaced by:
+      //   1. Create unique index on SKU: db.inventory.createIndex({ sku: 1 }, { unique: true })
+      //   2. Create compound index for lookup: db.inventory.createIndex({ category: 1, name: 1, variantCombo: 1 })
+      //   3. Use upsert: db.inventory.updateOne({ sku: item.sku }, { $set: {...}, $setOnInsert: {...} }, { upsert: true })
       itemsToSave.forEach(itemData => {
-        // Build initial batch if has stock + invoice
-        let batches = itemData.batches || [];
-        setInventory(prev => [...prev, { ...itemData, batches, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]);
+        // Find existing item by SKU (most reliable - unique per variant)
+        // SKU is generated from masterlist and guaranteed unique
+        const existingItem = inventory.find(i => {
+          // Primary: match by SKU (most reliable)
+          if (itemData.sku && i.sku && i.sku === itemData.sku) return true;
+          
+          // Fallback: match by category + masterlistProductName + sorted variantCombo
+          if (i.category !== itemData.category) return false;
+          
+          const masterNameA = itemData.masterlistProductName || '';
+          const masterNameB = i.masterlistProductName || '';
+          if (masterNameA && masterNameB && masterNameA !== masterNameB) return false;
+          
+          // Compare variantCombo as sorted JSON (handles object key order differences)
+          const sortObj = (obj) => JSON.stringify(
+            Object.fromEntries(Object.entries(obj || {}).sort())
+          );
+          return sortObj(itemData.variantCombo) === sortObj(i.variantCombo);
+        });
+
+        if (existingItem) {
+          // RESTORE: Update existing item (set isActive: true, add new batch)
+          // This maintains single ID per SKU - critical for sales history tracking
+          // TODO: MongoDB — Replace with:
+          //   db.inventory.updateOne(
+          //     { _id: existingItem._id },
+          //     { 
+          //       $set: { isActive: true, updatedAt: new Date() },
+          //       $push: { batches: { $each: newBatches } },
+          //       $inc: { stockQty: newStockQty }
+          //     }
+          //   )
+          setInventory(prev => prev.map(i => {
+            if (i.id === existingItem.id) {
+              // Merge: keep existing data, add new batch, update stock
+              const newBatches = itemData.batches || [];
+              const existingBatches = i.batches || [];
+              
+              // Check for duplicate batch IDs and skip them
+              const existingBatchIds = new Set(existingBatches.map(b => b.batchId));
+              const uniqueNewBatches = newBatches.filter(b => !existingBatchIds.has(b.batchId));
+              
+              return {
+                ...i,
+                isActive: true,  // Restore
+                stockQty: (i.stockQty || 0) + (itemData.stockQty || 0),  // Add new stock
+                batches: [...existingBatches, ...uniqueNewBatches],  // Merge batches
+                minStockLevel: itemData.minStockLevel || i.minStockLevel,  // Update if provided
+                updatedAt: new Date().toISOString()
+              };
+            }
+            return i;
+          }));
+        } else {
+          // CREATE: No existing item found, create new entry
+          // TODO: MongoDB — Replace with: db.inventory.insertOne({ ...itemData, createdAt: new Date(), updatedAt: new Date() })
+          setInventory(prev => [...prev, { 
+            ...itemData, 
+            batches: itemData.batches || [], 
+            createdAt: new Date().toISOString(), 
+            updatedAt: new Date().toISOString() 
+          }]);
+        }
       });
     }
 
@@ -3753,17 +3828,19 @@ Item Masterlist
           </div>
         </div>
 
-        {/* Summary cards - Relabeled as navigation */}
+        {/* Summary cards - Simple 2-tab navigation */}
         <div className="inventory-summary" style={{ display: 'flex', gap: '0.5rem' }}>
           {[
-            { label: 'Inventory', value: '', filter: '', cls: '' },
-            { label: 'History', value: '', filter: 'history', cls: '' },
-            { label: 'Stock Out', value: '', filter: 'stock-out', cls: 'summary-card-danger' },
+            { label: 'All Items', value: activeItems, filter: '', cls: '' },
+            { label: 'Stock Out', value: stockOutItems, filter: 'stock-out', cls: 'summary-card-danger' },
           ].map(({ label, value, filter, cls }) => (
             <div key={label} className={`summary-card${cls?' '+cls:''}${statusFilter===filter?' active':''}`}
               onClick={() => setStatusFilter(statusFilter===filter?'':filter)} style={{ cursor: 'pointer', flex: 1 }}>
               <div className="summary-content" style={{ justifyContent: 'center' }}>
                 <span className="summary-label" style={{ fontSize: '1rem', fontWeight: 700 }}>{label}</span>
+                {value > 0 && (
+                  <span className="summary-value" style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', marginTop: '0.25rem' }}>{value} {label === 'All Items' ? 'items' : 'items'}</span>
+                )}
               </div>
             </div>
           ))}
@@ -3816,6 +3893,8 @@ Item Masterlist
             onExpandBatch={handleExpandBatch}
             expandedCategories={expandedCategories}
             onExpandCategory={handleExpandStockOutCategory}
+            expandedProducts={expandedProducts}
+            onExpandProduct={handleExpandStockOutProduct}
             dateFilter={stockOutDateFilter}
           />
         </div>
@@ -3830,7 +3909,7 @@ Item Masterlist
               <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
             </div>
             <h3 className="empty-title">
-              {searchQuery ? 'No items found' : statusFilter === 'stock-out' ? 'No Stock Out Items' : statusFilter === 'low-stock' ? 'No Low Stock Items' : 'No Inventory Items'}
+              {searchQuery ? 'No items found' : statusFilter === 'stock-out' ? 'No Stock Out Items' : 'No Inventory Items'}
             </h3>
             <p className="empty-description">
               {searchQuery ? 'Try adjusting your search.' : statusFilter ? `No items match the "${statusFilter}" filter.` : 'Add your first physical inventory item.'}

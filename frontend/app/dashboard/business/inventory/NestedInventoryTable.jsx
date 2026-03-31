@@ -138,7 +138,8 @@ export function NestedInventoryTable({
   // Filter out archived items (isActive === false)
   const activeInventory = inventory.filter(item => item.isActive !== false);
   const productsMap = activeInventory.reduce((acc, item) => {
-    const baseProductName = extractBaseProductName(item.name);
+    // Use masterlistProductName if available (most reliable), fallback to name parsing
+    const baseProductName = item.masterlistProductName || extractBaseProductName(item.name);
     if (!acc[baseProductName]) {
       acc[baseProductName] = {
         name: baseProductName,
@@ -819,28 +820,6 @@ export function NestedInventoryTable({
                   Edit Min Stock Level
                 </button>
               </div>
-            </div>
-
-            {/* Footer */}
-            <div style={{ padding: '1.25rem 2rem', background: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'center' }}>
-              <button type="button"
-                onClick={() => setStockActionModal({ isOpen: false, variant: null, product: null, minStockLevel: 0 })}
-                style={{ 
-                  padding: '0.75rem 2rem',
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--gray)',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.15em',
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={e => { e.currentTarget.style.color = 'var(--white)'; }}
-                onMouseLeave={e => { e.currentTarget.style.color = 'var(--gray)'; }}>
-                Cancel & Close
-              </button>
             </div>
           </div>
         </div>

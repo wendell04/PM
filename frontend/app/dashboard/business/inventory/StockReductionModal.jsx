@@ -171,33 +171,26 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  // Load variants - include ALL items (active + archived) from inventory to get correct stock
+  // Load variants - only from ACTIVE inventory items
   useEffect(() => {
     if (!isOpen || !item) return;
     const base = extractBaseProductName(item.name);
-    // Always use full inventory to include active + archived items
-    const src = (inventory || []).filter(inv => {
+    // Only include ACTIVE inventory items (archived items cannot have stock reduced)
+    const src = (inventory || []).filter(inv => inv.isActive !== false).filter(inv => {
       if (extractBaseProductName(inv.name).toLowerCase() === base.toLowerCase()) return true;
       const a = item.sku?.split('-').slice(0,3).join('-'), b = inv.sku?.split('-').slice(0,3).join('-');
       return a && b && a === b;
     });
-    // Group by SKU (not ID) to merge duplicate items with same SKU
-    // This handles the case where user created multiple inventory items with same SKU
+    // Group by SKU (no longer needed since we prevent duplicates, but keeping for safety)
     const grouped = src.reduce((acc, inv) => {
       if (!acc[inv.sku]) {
-        acc[inv.sku] = { 
-          id: inv.id, 
-          variantName: extractVariantName(inv.name, base) || inv.name, 
-          sku: inv.sku, 
-          stock: inv.stockQty || 0, 
-          batches: (inv.batches||[]).filter(b=>(b.remainingQty||0)>0).sort((a,b)=>new Date(a.dateReceived)-new Date(b.dateReceived)),
-          allIds: [inv.id] // Track all IDs that contributed to this variant
+        acc[inv.sku] = {
+          id: inv.id,
+          variantName: extractVariantName(inv.name, base) || inv.name,
+          sku: inv.sku,
+          stock: inv.stockQty || 0,
+          batches: (inv.batches||[]).filter(b=>(b.remainingQty||0)>0).sort((a,b)=>new Date(a.dateReceived)-new Date(b.dateReceived))
         };
-      } else {
-        // Merge stock and batches from duplicate SKU items
-        acc[inv.sku].stock += inv.stockQty || 0;
-        acc[inv.sku].batches = [...acc[inv.sku].batches, ...(inv.batches||[]).filter(b=>(b.remainingQty||0)>0)].sort((a,b)=>new Date(a.dateReceived)-new Date(b.dateReceived));
-        acc[inv.sku].allIds.push(inv.id);
       }
       return acc;
     }, {});
@@ -485,7 +478,7 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
                 const batchInputs = pickedBatches[id]||{};
                 const pickedQty = parseInt(batchInputs[batch.batchId])||0;
                 const isPicked = pickedQty > 0;
-                // Fix: Use combination of variant ID and batch ID for unique key
+                // Use batch ID as key (now safe since we don't merge duplicate SKUs)
                 const uniqueKey = `${id}-${batch.batchId}`;
 
                 return (
