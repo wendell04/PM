@@ -264,10 +264,10 @@ export default function AddInventoryItemModal({
 
   // Step 1
   const [search, setSearch] = useState('');
-  const [selectedML, setSelectedML] = useState(null);
+  const [selectedProducts, setSelectedProducts] = useState([]);
 
-  // Step 2 - Stock Entry
-  const [stockRows, setStockRows] = useState([]);
+  // Step 2 - Stock Entry (per product)
+  const [stockRowsByProduct, setStockRowsByProduct] = useState({});
   const [applyAllCost, setApplyAllCost] = useState('');
   const [applyAllMinStock, setApplyAllMinStock] = useState('10');
 
@@ -278,6 +278,10 @@ export default function AddInventoryItemModal({
     notes: '', receiptImage: null, costMode: 'unit',
     totalInvoiceAmount: '',
   });
+
+  // Per-product cost mode and total amount
+  const [productCostModes, setProductCostModes] = useState({}); // { prodId: 'unit' | 'total' }
+  const [productTotalAmounts, setProductTotalAmounts] = useState({}); // { prodId: '1000.00' }
 
   const [infoModal, setInfoModal] = useState(null);
   const [showAddSupplier, setShowAddSupplier] = useState(false);
@@ -290,11 +294,13 @@ export default function AddInventoryItemModal({
     } else {
       setStep(1);
       setSearch('');
-      setSelectedML(null);
-      setStockRows([]);
+      setSelectedProducts([]);
+      setStockRowsByProduct({});
       setApplyAllCost('');
       setExpandedCategories(new Set(masterlist.map(c => c.name))); // Expand all by default
       setInvoice({ supplierId: 'unspecified', supplierName: 'General Merchandise', invoiceNumber: '', deliveryDate: new Date().toISOString().split('T')[0], notes: '', receiptImage: null, costMode: 'unit', totalInvoiceAmount: '' });
+      setProductCostModes({});
+      setProductTotalAmounts({});
     }
   }, [isOpen, item, masterlist]);
 
@@ -431,98 +437,138 @@ export default function AddInventoryItemModal({
     });
   };
 
-  // ── Derived totals ───────────────────────────────────────────────────────────
-  const totalReceived = stockRows.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
-  const totalDamaged = stockRows.reduce((s, r) => s + (parseInt(r.damaged) || 0), 0);
+  // ── Derived totals (computed from all products) ─────────────────────────────
+  const totalReceived = selectedProducts.reduce((sum, p) => {
+    const rows = stockRowsByProduct[p.prodId] || [];
+    return sum + rows.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+  }, 0);
+  
+  const totalDamaged = selectedProducts.reduce((sum, p) => {
+    const rows = stockRowsByProduct[p.prodId] || [];
+    return sum + rows.reduce((s, r) => s + (parseInt(r.damaged) || 0), 0);
+  }, 0);
+  
   const totalGood = totalReceived - totalDamaged;
 
-  // Filter rows with qty > 0 for invoice table
-  const invoiceRows = useMemo(() => {
-    return stockRows.filter(r => (parseInt(r.qty) || 0) > 0);
-  }, [stockRows]);
-
-  const computedUnitCost = useMemo(() => {
-    if (invoice.costMode === 'unit') return null;
-    const totalAmt = parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0;
-    // Divide by total qty (including damaged) since receipt total includes all items
-    return totalReceived > 0 ? totalAmt / totalReceived : 0;
-  }, [invoice.costMode, invoice.totalInvoiceAmount, totalReceived]);
-
-  const finalUnitCost = invoice.costMode === 'total' ? computedUnitCost : null;
-  
   const totalInvoiceValue = useMemo(() => {
     if (invoice.costMode === 'total') {
       return parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0;
     }
-    // Sum of (total_qty × unit_cost) for all variants - this is what's on the receipt
-    return stockRows.reduce((s, r) => {
-      const qty = parseInt(r.qty) || 0;
-      return s + qty * (parseFloat(r.unitCost) || 0);
+    // Sum of per-product subtotals (each product can be unit or total mode)
+    return selectedProducts.reduce((sum, p) => {
+      const rows = stockRowsByProduct[p.prodId] || [];
+      const rowsWithQty = rows.filter(r => (parseInt(r.qty) || 0) > 0);
+      if (rowsWithQty.length === 0) return sum;
+      
+      const productCostMode = productCostModes[p.prodId] || 'unit';
+      const productTotalAmt = productTotalAmounts[p.prodId] || '';
+      
+      if (productCostMode === 'total' && productTotalAmt) {
+        return sum + (parseFloat(productTotalAmt.replace(/,/g, '')) || 0);
+      }
+      
+      // Unit mode: sum of qty × unitCost
+      return sum + rowsWithQty.reduce((s, r) => {
+        const qty = parseInt(r.qty) || 0;
+        return s + qty * (parseFloat(r.unitCost) || 0);
+      }, 0);
     }, 0);
-  }, [invoice.costMode, invoice.totalInvoiceAmount, stockRows]);
-  
+  }, [invoice.costMode, invoice.totalInvoiceAmount, selectedProducts, stockRowsByProduct, productCostModes, productTotalAmounts]);
+
   // Compute effective and damaged values for footer breakdown
   // Effective = good qty × unit cost (what goes into inventory)
   const effectiveValue = useMemo(() => {
     if (invoice.costMode === 'total') {
-      const unitCost = computedUnitCost || 0;
+      const totalAmt = parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0;
+      const unitCost = totalReceived > 0 ? totalAmt / totalReceived : 0;
       return totalGood * unitCost;
     }
-    // For unit cost mode, sum up effective value per variant
-    return stockRows.reduce((s, r) => {
-      const good = Math.max(0, (parseInt(r.qty) || 0) - (parseInt(r.damaged) || 0));
-      return s + good * (parseFloat(r.unitCost) || 0);
+    // For unit cost mode, sum up effective value per variant across all products
+    return selectedProducts.reduce((sum, p) => {
+      const rows = stockRowsByProduct[p.prodId] || [];
+      return sum + rows.reduce((s, r) => {
+        const good = Math.max(0, (parseInt(r.qty) || 0) - (parseInt(r.damaged) || 0));
+        return s + good * (parseFloat(r.unitCost) || 0);
+      }, 0);
     }, 0);
-  }, [invoice.costMode, computedUnitCost, totalGood, stockRows]);
-  
+  }, [invoice.costMode, invoice.totalInvoiceAmount, totalReceived, totalGood, selectedProducts, stockRowsByProduct]);
+
   // Damaged = damaged qty × unit cost (loss)
   const damagedValue = useMemo(() => {
     if (invoice.costMode === 'total') {
-      const unitCost = computedUnitCost || 0;
+      const totalAmt = parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0;
+      const unitCost = totalReceived > 0 ? totalAmt / totalReceived : 0;
       return totalDamaged * unitCost;
     }
-    // For unit cost mode, sum up damaged value per variant
-    return stockRows.reduce((s, r) => {
-      const damaged = parseInt(r.damaged) || 0;
-      return s + damaged * (parseFloat(r.unitCost) || 0);
+    // For unit cost mode, sum up damaged value per variant across all products
+    return selectedProducts.reduce((sum, p) => {
+      const rows = stockRowsByProduct[p.prodId] || [];
+      return sum + rows.reduce((s, r) => {
+        const damaged = parseInt(r.damaged) || 0;
+        return s + damaged * (parseFloat(r.unitCost) || 0);
+      }, 0);
     }, 0);
-  }, [invoice.costMode, computedUnitCost, totalDamaged, stockRows]);
-  
+  }, [invoice.costMode, invoice.totalInvoiceAmount, totalReceived, totalDamaged, selectedProducts, stockRowsByProduct]);
+
   // Build damaged breakdown string (e.g., "2×35.00=70.00  2×40.00=80.00")
   const damagedBreakdown = useMemo(() => {
     if (totalDamaged <= 0) return '';
     // In total mode, use computed unit cost; in unit mode, use per-variant costs
-    const cost = invoice.costMode === 'total' ? (computedUnitCost || 0) : null;
-    const parts = stockRows
-      .filter(r => (parseInt(r.damaged) || 0) > 0)
-      .map(r => {
-        const d = parseInt(r.damaged) || 0;
-        const c = cost !== null ? cost : (parseFloat(r.unitCost) || 0);
-        return `${d}×${formatPrice(c)}=${formatPrice(d * c)}`;
-      });
+    const totalAmt = parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0;
+    const cost = invoice.costMode === 'total' && totalReceived > 0 ? (totalAmt / totalReceived) : null;
+    
+    const parts = selectedProducts.flatMap(p => {
+      const rows = stockRowsByProduct[p.prodId] || [];
+      return rows
+        .filter(r => (parseInt(r.damaged) || 0) > 0)
+        .map(r => {
+          const d = parseInt(r.damaged) || 0;
+          const c = cost !== null ? cost : (parseFloat(r.unitCost) || 0);
+          return `${d}×${formatPrice(c)}=${formatPrice(d * c)}`;
+        });
+    });
     return parts.join('  ');
-  }, [stockRows, totalDamaged, invoice.costMode, computedUnitCost]);
+  }, [selectedProducts, stockRowsByProduct, totalDamaged, totalReceived, invoice.costMode, invoice.totalInvoiceAmount]);
 
   // ── Validation for step indicator (visual only) ──────────────────────────────
-  const step1Valid = !!selectedML;
-  
+  const step1Valid = selectedProducts.length > 0;
+
   const step2Valid = () => {
-    if (stockRows.length === 0) return false;
-    return stockRows.some(r => (parseInt(r.qty) || 0) > 0);
+    if (selectedProducts.length === 0) return false;
+    // Check if at least one product has rows with qty > 0
+    return selectedProducts.some(p => {
+      const rows = stockRowsByProduct[p.prodId] || [];
+      return rows.some(r => (parseInt(r.qty) || 0) > 0);
+    });
   };
 
   const step3Valid = () => {
     const hasInvoice = invoice.invoiceNumber.trim() && invoice.deliveryDate;
-    const hasCost = invoice.costMode === 'total' 
-      ? (parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0) > 0
-      : invoiceRows.every(r => (parseFloat(r.unitCost) || 0) > 0);
-    return hasInvoice && hasCost;
+    if (!hasInvoice) return false;
+    
+    // Check cost for all products
+    const allProductsHaveCost = selectedProducts.every(p => {
+      const rows = stockRowsByProduct[p.prodId] || [];
+      const rowsWithQty = rows.filter(r => (parseInt(r.qty) || 0) > 0);
+      if (rowsWithQty.length === 0) return true; // Skip products without qty
+      
+      const productCostMode = productCostModes[p.prodId] || 'unit';
+      const productTotalAmt = productTotalAmounts[p.prodId] || '';
+      
+      if (productCostMode === 'total') {
+        return (parseFloat(productTotalAmt.replace(/,/g, '')) || 0) > 0;
+      }
+      // Unit mode: at least one variant must have cost
+      return rowsWithQty.some(r => (parseFloat(r.unitCost) || 0) > 0);
+    });
+    
+    return hasInvoice && allProductsHaveCost;
   };
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = () => {
     if (!step1Valid) {
-      setInfoModal({ title: 'Validation Error', message: 'Please select a product from the masterlist.' });
+      setInfoModal({ title: 'Validation Error', message: 'Please select at least one product from the masterlist.' });
       return;
     }
     if (!step2Valid()) {
@@ -534,50 +580,68 @@ export default function AddInventoryItemModal({
       return;
     }
 
-    const allOptionsPerType = {};
-    (selectedML.variantTypes || []).forEach(vt => { allOptionsPerType[vt.name] = vt.options; });
+    // Build items array from all selected products
+    const allItems = selectedProducts.flatMap(product => {
+      const rows = stockRowsByProduct[product.prodId] || [];
+      const rowsWithQty = rows.filter(r => (parseInt(r.qty) || 0) > 0);
 
-    const items = stockRows.filter(r => (parseInt(r.qty) || 0) > 0).map(row => {
-      const qty = parseInt(row.qty) || 0;
-      const dmg = parseInt(row.damaged) || 0;
-      const good = qty - dmg;
-      const unitCost = invoice.costMode === 'total' ? (computedUnitCost || 0) : (parseFloat(row.unitCost) || 0);
-      const d = new Date(invoice.deliveryDate);
-      const batchId = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${Math.floor(Math.random()*1000).toString().padStart(3,'0')}`;
-      const itemName = row.comboMap && Object.keys(row.comboMap).length > 0
-        ? `${selectedML.prodName} ${row.comboLabel}`
-        : selectedML.prodName;
-      const sku = row.sku || genComboSKU(selectedML.catName, selectedML.prodName, row.comboMap, allOptionsPerType);
-      const batch = {
-        batchId,
-        supplierId: invoice.supplierId === 'unspecified' ? null : invoice.supplierId,
-        supplierName: invoice.supplierName,
-        invoiceNumber: invoice.invoiceNumber,
-        dateReceived: invoice.deliveryDate,
-        originalQty: qty, goodQty: good, damagedQty: dmg,
-        remainingQty: good, unitCost, totalCost: good * unitCost,
-        notes: invoice.notes || '',
-        receiptImage: invoice.receiptImage || null,
-        movements: [{ type: 'received', quantity: good, remainingAfter: good, reason: 'Initial stock addition', createdAt: new Date().toISOString() }],
-        status: 'active',
-      };
-      return {
-        id: crypto.randomUUID(), sku,
-        name: itemName.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' '),
-        masterlistProductName: selectedML.prodName, // Store pure masterlist product name (no variant suffix)
-        category: selectedML.catName,
-        variantCombo: row.comboMap,
-        stockQty: good, damagedQty: dmg, minStockLevel: parseInt(row.minStockLevel) || 10,
-        averageCost: unitCost, lastUnitCost: unitCost,
-        lastSupplierId: batch.supplierId, lastSupplierName: invoice.supplierName,
-        batches: [batch], isActive: true,
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      };
+      // Get product-level cost mode
+      const productCostMode = productCostModes[product.prodId] || 'unit';
+      const productTotalAmt = productTotalAmounts[product.prodId] || '';
+      
+      // Compute product-level unit cost for total mode
+      let productUnitCost = 0;
+      if (productCostMode === 'total' && productTotalAmt) {
+        const productTotalQty = rowsWithQty.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+        const totalAmt = parseFloat(productTotalAmt.replace(/,/g, '')) || 0;
+        productUnitCost = productTotalQty > 0 ? totalAmt / productTotalQty : 0;
+      }
+
+      return rowsWithQty.map(row => {
+        const qty = parseInt(row.qty) || 0;
+        const dmg = parseInt(row.damaged) || 0;
+        const good = qty - dmg;
+
+        // Compute unit cost based on product mode
+        const unitCost = productCostMode === 'total' ? productUnitCost : (parseFloat(row.unitCost) || 0);
+
+        const d = new Date(invoice.deliveryDate);
+        const batchId = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${Math.floor(Math.random()*1000).toString().padStart(3,'0')}`;
+        const itemName = row.comboMap && Object.keys(row.comboMap).length > 0
+          ? `${product.prodName} ${row.comboLabel}`
+          : product.prodName;
+        const sku = row.sku || genComboSKU(product.catName, product.prodName, row.comboMap, {});
+
+        const batch = {
+          batchId,
+          supplierId: invoice.supplierId === 'unspecified' ? null : invoice.supplierId,
+          supplierName: invoice.supplierName,
+          invoiceNumber: invoice.invoiceNumber,
+          dateReceived: invoice.deliveryDate,
+          originalQty: qty, goodQty: good, damagedQty: dmg,
+          remainingQty: good, unitCost, totalCost: good * unitCost,
+          notes: invoice.notes || '',
+          receiptImage: invoice.receiptImage || null,
+          movements: [{ type: 'received', quantity: good, remainingAfter: good, reason: 'Initial stock addition', createdAt: new Date().toISOString() }],
+          status: 'active',
+        };
+
+        return {
+          id: crypto.randomUUID(), sku,
+          name: itemName.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' '),
+          masterlistProductName: product.prodName,
+          category: product.catName,
+          variantCombo: row.comboMap,
+          stockQty: good, damagedQty: dmg, minStockLevel: parseInt(row.minStockLevel) || 10,
+          averageCost: unitCost, lastUnitCost: unitCost,
+          lastSupplierId: batch.supplierId, lastSupplierName: invoice.supplierName,
+          batches: [batch], isActive: true,
+          createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        };
+      });
     });
 
-    onSave(items);
-    // Don't close here - page.jsx will handle closing after confirmation
-    // onClose();
+    onSave(allItems);
   };
 
   if (!isOpen) return null;
@@ -658,10 +722,10 @@ export default function AddInventoryItemModal({
             <div>
               <div style={{ fontSize: '0.62rem', color: '#D4A843', textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: '0.35rem', fontWeight: 600 }}>Inventory Management</div>
               <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#E5E2E1', margin: 0, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>Add New Inventory Item</h2>
-              {selectedML && (
+              {selectedProducts.length > 0 && (
                 <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                  Selected: <span style={{ color: '#D4A843', fontWeight: 600 }}>{selectedML.catName} / {selectedML.prodName}</span>
+                  Selected: <span style={{ color: '#D4A843', fontWeight: 600 }}>{selectedProducts.length} product{selectedProducts.length !== 1 ? 's' : ''}</span>
                 </div>
               )}
             </div>
@@ -724,6 +788,25 @@ export default function AddInventoryItemModal({
                 style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.5rem', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: '10px', color: 'var(--white)', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box' }} />
             </div>
 
+            {/* Selected products summary */}
+            {selectedProducts.length > 0 && (
+              <div style={{ padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '8px', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span style={{ fontSize: '0.75rem', color: '#D4A843', fontWeight: 600 }}>
+                    {selectedProducts.length} product{selectedProducts.length !== 1 ? 's' : ''} selected
+                  </span>
+                </div>
+                <button
+                  onClick={() => { setSelectedProducts([]); setStockRowsByProduct({}); }}
+                  style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', padding: '0.25rem 0.5rem', borderRadius: '4px' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
+                >
+                  Clear All
+                </button>
+              </div>
+            )}
+
             <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
               {groupedByCategory.length === 0 ? (
                 <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.875rem' }}>
@@ -760,18 +843,25 @@ export default function AddInventoryItemModal({
 
                     {/* Products under this category */}
                     {isExpanded && group.products.map((e, idx) => {
-                      const isSelected = selectedML?.prodId === e.prodId && selectedML?.catId === e.catId;
+                      const isSelected = selectedProducts.some(p => p.prodId === e.prodId && p.catId === e.catId);
                       return (
                         <button key={`${e.catId}-${e.prodId}`} type="button"
                           onClick={() => {
-                            if (isSelected) {
-                              // Deselect
-                              setSelectedML(null);
-                              setStockRows([]);
+                            const exists = selectedProducts.findIndex(p => p.prodId === e.prodId && p.catId === e.catId);
+                            if (exists >= 0) {
+                              // Deselect - remove from array
+                              const newSelected = selectedProducts.filter((_, i) => i !== exists);
+                              setSelectedProducts(newSelected);
+                              const newRows = { ...stockRowsByProduct };
+                              delete newRows[e.prodId];
+                              setStockRowsByProduct(newRows);
                             } else {
-                              // Select
-                              setSelectedML(e);
-                              setStockRows(generateRows(e));
+                              // Select - add to array
+                              setSelectedProducts([...selectedProducts, e]);
+                              setStockRowsByProduct({
+                                ...stockRowsByProduct,
+                                [e.prodId]: generateRows(e)
+                              });
                             }
                           }}
                           style={{
@@ -793,10 +883,12 @@ export default function AddInventoryItemModal({
                               </div>
                             )}
                           </div>
-                          {isSelected && (
+                          {isSelected ? (
                             <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#D4A843', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: '0.5rem' }}>
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
                             </div>
+                          ) : (
+                            <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.3)', flexShrink: 0, marginLeft: '0.5rem' }} />
                           )}
                         </button>
                       );
@@ -806,9 +898,9 @@ export default function AddInventoryItemModal({
               })}
             </div>
 
-            {!selectedML && (
+            {selectedProducts.length === 0 && (
               <p style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '0.875rem', textAlign: 'center' }}>
-                Select a product above to begin. All variant combinations will be shown automatically.
+                Select one or more products above to begin. All variant combinations will be shown automatically.
               </p>
             )}
           </div>
@@ -830,85 +922,115 @@ export default function AddInventoryItemModal({
                 </div>
                 <div>
                   <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '1rem', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>Step 2: Stock Entry</div>
-                  <div style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 600 }}>{stockRows.length} Variant{stockRows.length !== 1 ? 's' : ''}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 600 }}>{selectedProducts.length} Product{selectedProducts.length !== 1 ? 's' : ''}</div>
                 </div>
               </div>
 
-              {/* Variant Table */}
-              <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', marginBottom: '1.25rem' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                      <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Variant Name</th>
-                      <th style={{ padding: '0.875rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '120px' }}>
-                        <span>Min Stock Level</span>
-                      </th>
-                      <th style={{ padding: '0.875rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '140px' }}>Qty Received</th>
-                      <th style={{ padding: '0.875rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '120px' }}>Damaged</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stockRows.map((row, idx) => {
-                      const q = parseInt(row.qty) || 0;
-                      const d = parseInt(row.damaged) || 0;
-                      const hasErr = q > 0 && d >= q;
-                      // Check if this SKU already exists in inventory
-                      const existingItem = inventory.find(i => i.sku === row.sku);
-                      const hasExistingMinStock = existingItem?.minStockLevel;
-                      
-                      return (
-                        <tr key={row.comboKey} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                          <td style={{ padding: '1rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                              <div>
-                                <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{row.comboLabel || selectedML?.prodName}</div>
-                                <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.1rem' }}>SKU: {row.sku || '—'}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td style={{ padding: '1rem 0.75rem', textAlign: 'center' }}>
-                            {hasExistingMinStock ? (
-                              // Show existing value as plain text (not editable)
-                              <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--gray)' }}>
-                                {existingItem.minStockLevel}
-                              </span>
-                            ) : (
-                              // Show editable input for new variants
-                              <IntegerInput
-                                value={row.minStockLevel}
-                                onChange={e => setStockRows(prev => prev.map((r, i) => i === idx ? { ...r, minStockLevel: e.target.value } : r))}
-                                min={1} max={9999} placeholder="10"
-                                className="form-input"
-                                style={{
-                                  textAlign: 'center',
-                                  width: '80px',
-                                  background: 'rgba(255,255,255,0.06)',
-                                  border: '1px solid rgba(255,255,255,0.1)',
-                                  borderRadius: '8px',
-                                  color: '#E5E2E1',
-                                  fontWeight: 600,
-                                  padding: '0.5rem'
-                                }}
-                              />
-                            )}
-                          </td>
-                          <td style={{ padding: '1rem 0.75rem', textAlign: 'center' }}>
-                            <IntegerInput className="form-input" value={row.qty}
-                              onChange={e => setStockRows(prev => prev.map((r, i) => i === idx ? { ...r, qty: e.target.value } : r))}
-                              min={0} max={99999} placeholder="0" style={{ textAlign: 'center', width: '80px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: q > 0 ? '#D4A843' : 'var(--gray)', fontWeight: 700, padding: '0.5rem' }} />
-                          </td>
-                          <td style={{ padding: '1rem 0.75rem', textAlign: 'center' }}>
-                            <IntegerInput className="form-input" value={row.damaged}
-                              onChange={e => setStockRows(prev => prev.map((r, i) => i === idx ? { ...r, damaged: e.target.value } : r))}
-                              min={0} max={99999} placeholder="0" qtyValue={row.qty}
-                              style={{ textAlign: 'center', width: '80px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: d > 0 ? '#F87171' : 'var(--gray)', fontWeight: 600, padding: '0.5rem' }} />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              {/* Multiple tables - one per product */}
+              {selectedProducts.map((product, pIdx) => {
+                const rows = stockRowsByProduct[product.prodId] || [];
+                const totalProductQty = rows.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+                const totalProductDamaged = rows.reduce((s, r) => s + (parseInt(r.damaged) || 0), 0);
+                
+                return (
+                  <div key={product.prodId} style={{ marginBottom: pIdx < selectedProducts.length - 1 ? '2rem' : '1.25rem' }}>
+                    {/* Product Header */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(212,168,67,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2">
+                          <path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{product.catName} / {product.prodName}</div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{rows.length} Variant{rows.length !== 1 ? 's' : ''} {totalProductQty > 0 && `• ${totalProductQty} pcs`}</div>
+                      </div>
+                    </div>
+
+                    {/* Variant Table for this product */}
+                    <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', marginBottom: '1rem' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                            <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Variant Name</th>
+                            <th style={{ padding: '0.875rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '120px' }}>Min Stock Level</th>
+                            <th style={{ padding: '0.875rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '140px' }}>Qty Received</th>
+                            <th style={{ padding: '0.875rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '120px' }}>Damaged</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((row, idx) => {
+                            const q = parseInt(row.qty) || 0;
+                            const d = parseInt(row.damaged) || 0;
+                            const existingItem = inventory.find(i => i.sku === row.sku);
+                            const hasExistingMinStock = existingItem?.minStockLevel;
+
+                            return (
+                              <tr key={row.comboKey} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <td style={{ padding: '1rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <div>
+                                      <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{row.comboLabel || product.prodName}</div>
+                                      <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.1rem' }}>SKU: {row.sku || '—'}</div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '1rem 0.75rem', textAlign: 'center' }}>
+                                  {hasExistingMinStock ? (
+                                    <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--gray)' }}>
+                                      {existingItem.minStockLevel}
+                                    </span>
+                                  ) : (
+                                    <IntegerInput
+                                      value={row.minStockLevel}
+                                      onChange={e => {
+                                        const newRows = [...rows];
+                                        newRows[idx] = { ...row, minStockLevel: e.target.value };
+                                        setStockRowsByProduct({ ...stockRowsByProduct, [product.prodId]: newRows });
+                                      }}
+                                      min={1} max={9999} placeholder="10"
+                                      className="form-input"
+                                      style={{
+                                        textAlign: 'center',
+                                        width: '80px',
+                                        background: 'rgba(255,255,255,0.06)',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: '8px',
+                                        color: '#E5E2E1',
+                                        fontWeight: 600,
+                                        padding: '0.5rem'
+                                      }}
+                                    />
+                                  )}
+                                </td>
+                                <td style={{ padding: '1rem 0.75rem', textAlign: 'center' }}>
+                                  <IntegerInput className="form-input" value={row.qty}
+                                    onChange={e => {
+                                      const newRows = [...rows];
+                                      newRows[idx] = { ...row, qty: e.target.value };
+                                      setStockRowsByProduct({ ...stockRowsByProduct, [product.prodId]: newRows });
+                                    }}
+                                    min={0} max={99999} placeholder="0" style={{ textAlign: 'center', width: '80px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: q > 0 ? '#D4A843' : 'var(--gray)', fontWeight: 700, padding: '0.5rem' }} />
+                                </td>
+                                <td style={{ padding: '1rem 0.75rem', textAlign: 'center' }}>
+                                  <IntegerInput className="form-input" value={row.damaged}
+                                    onChange={e => {
+                                      const newRows = [...rows];
+                                      newRows[idx] = { ...row, damaged: e.target.value };
+                                      setStockRowsByProduct({ ...stockRowsByProduct, [product.prodId]: newRows });
+                                    }}
+                                    min={0} max={99999} placeholder="0" qtyValue={row.qty}
+                                    style={{ textAlign: 'center', width: '80px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: d > 0 ? '#F87171' : 'var(--gray)', fontWeight: 600, padding: '0.5rem' }} />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
 
               {/* Summary Cards */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
@@ -986,41 +1108,80 @@ export default function AddInventoryItemModal({
                 </div>
                 <div>
                   <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '1rem', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>Stock Summary</div>
-                  <div style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 600 }}>{invoiceRows.length} Variant{invoiceRows.length !== 1 ? 's' : ''} with qty</div>
+                  <div style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 600 }}>{selectedProducts.length} Product{selectedProducts.length !== 1 ? 's' : ''}</div>
                 </div>
               </div>
 
-              {/* Variant Table - Read-only preview */}
-              <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', marginBottom: '1.25rem' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                      <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Variant Name</th>
-                      <th style={{ padding: '0.875rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '100px' }}>Qty</th>
-                      <th style={{ padding: '0.875rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '80px' }}>Damaged</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invoiceRows.map((row, idx) => {
-                      const q = parseInt(row.qty) || 0;
-                      const d = parseInt(row.damaged) || 0;
-                      return (
-                        <tr key={row.comboKey} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                          <td style={{ padding: '1rem' }}>
-                            <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{row.comboLabel || selectedML?.prodName}</div>
-                            <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.1rem' }}>SKU: {row.sku || '—'}</div>
-                          </td>
-                          <td style={{ padding: '1rem 0.75rem', textAlign: 'center', color: '#D4A843', fontWeight: 700 }}>{q}</td>
-                          <td style={{ padding: '1rem 0.75rem', textAlign: 'center', color: d > 0 ? '#F87171' : 'var(--gray)', fontWeight: 600 }}>{d}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              {/* Multiple stock summaries - one per product */}
+              {selectedProducts.map((product, pIdx) => {
+                const rows = stockRowsByProduct[product.prodId] || [];
+                const rowsWithQty = rows.filter(r => (parseInt(r.qty) || 0) > 0);
+                const productTotalQty = rowsWithQty.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+                const productTotalDamaged = rowsWithQty.reduce((s, r) => s + (parseInt(r.damaged) || 0), 0);
+                const productTotalGood = productTotalQty - productTotalDamaged;
+                
+                if (rowsWithQty.length === 0) return null;
+                
+                return (
+                  <div key={product.prodId} style={{ marginBottom: pIdx < selectedProducts.length - 1 ? '1.5rem' : '0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <div style={{ width: '24px', height: '24px', borderRadius: '4px', background: 'rgba(212,168,67,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2">
+                          <path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>{product.catName} / {product.prodName}</div>
+                        <div style={{ fontSize: '0.6rem', color: 'var(--gray)' }}>{rowsWithQty.length} variant{rowsWithQty.length !== 1 ? 's' : ''} with qty</div>
+                      </div>
+                    </div>
 
-              {/* Summary Cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    {/* Read-only table for this product */}
+                    <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '0.75rem' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                            <th style={{ padding: '0.625rem 0.75rem', textAlign: 'left', fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Variant</th>
+                            <th style={{ padding: '0.625rem 0.5rem', textAlign: 'center', fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '60px' }}>Qty</th>
+                            <th style={{ padding: '0.625rem 0.5rem', textAlign: 'center', fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '60px' }}>Dmg</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rowsWithQty.map((row, idx) => {
+                            const q = parseInt(row.qty) || 0;
+                            const d = parseInt(row.damaged) || 0;
+                            return (
+                              <tr key={row.comboKey} style={{ borderBottom: idx < rowsWithQty.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none' }}>
+                                <td style={{ padding: '0.625rem 0.75rem' }}>
+                                  <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.75rem' }}>{row.comboLabel || product.prodName}</div>
+                                  <div style={{ fontSize: '0.55rem', color: 'var(--gray)', fontFamily: 'monospace' }}>SKU: {row.sku || '—'}</div>
+                                </td>
+                                <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center', color: '#D4A843', fontWeight: 700 }}>{q}</td>
+                                <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center', color: d > 0 ? '#F87171' : 'var(--gray)', fontWeight: 600 }}>{d}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Product summary */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase' }}>Good</div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#4ade80' }}>{productTotalGood} <span style={{ fontSize: '0.6rem' }}>pcs</span></div>
+                      </div>
+                      <div style={{ padding: '0.5rem', background: 'rgba(248,113,113,0.06)', borderRadius: '6px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase' }}>Damaged</div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#F87171' }}>{productTotalDamaged} <span style={{ fontSize: '0.6rem' }}>pcs</span></div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Overall Summary Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '1rem' }}>
                 <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px' }}>
                   <div style={{ fontSize: '0.62rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.35rem', fontWeight: 600, letterSpacing: '0.08em' }}>Total Effective Qty</div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#E5E2E1', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>{totalGood} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--gray)' }}>units</span></div>
@@ -1052,7 +1213,7 @@ export default function AddInventoryItemModal({
                   <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>Supplier</label>
                   <SupplierCombobox value={invoice.supplierId} supplierName={invoice.supplierName}
                     onChange={(id, name) => setInvoice(p => ({ ...p, supplierId: id, supplierName: name }))}
-                    suppliers={suppliers} itemCategory={selectedML?.catName || ''} onAddNew={() => setShowAddSupplier(true)} />
+                    suppliers={suppliers} itemCategory="" onAddNew={() => setShowAddSupplier(true)} />
                 </div>
 
                 {/* Invoice Number & Delivery Date */}
@@ -1072,7 +1233,7 @@ export default function AddInventoryItemModal({
                   </div>
                 </div>
 
-                {/* Cost Input Mode Toggle */}
+                {/* Cost Input Mode Toggle - Global */}
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                     <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#D4A843', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Cost Input Mode</span>
@@ -1092,8 +1253,9 @@ export default function AddInventoryItemModal({
                     </div>
                   </div>
 
-                  {invoice.costMode === 'total' ? (
-                    <div style={{ padding: '1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '10px' }}>
+                  {/* Global Total Amount Input (when mode is 'total') */}
+                  {invoice.costMode === 'total' && (
+                    <div style={{ padding: '1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '10px', marginBottom: '1.5rem' }}>
                       <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', fontWeight: 700, letterSpacing: '0.08em' }}>Total Invoice Amount</label>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <span style={{ fontSize: '1.5rem', color: '#D4A843', fontWeight: 800, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>₱</span>
@@ -1102,57 +1264,136 @@ export default function AddInventoryItemModal({
                           placeholder="0.00"
                           style={{ fontSize: '1.5rem', fontWeight: 800, color: '#E5E2E1', flex: 1, fontFamily: 'Plus Jakarta Sans, sans-serif' }} />
                       </div>
-                      {computedUnitCost > 0 && (
+                      {totalReceived > 0 && (parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0) > 0 && (
                         <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-                          Auto-computed Unit Cost: <strong style={{ color: '#D4A843' }}>{formatPrice(computedUnitCost)}</strong> each
+                          Auto-computed Unit Cost: <strong style={{ color: '#D4A843' }}>{formatPrice((parseFloat(invoice.totalInvoiceAmount.replace(/,/g, '')) || 0) / totalReceived)}</strong> each
                         </div>
                       )}
                     </div>
-                  ) : (
+                  )}
+
+                  {/* Per-product cost inputs (when mode is 'unit') */}
+                  {invoice.costMode === 'unit' && (
                     <div>
-                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                         <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.06)', padding: '0.5rem 0.75rem', borderRadius: '8px' }}>
                           <span style={{ fontSize: '0.9rem', color: '#D4A843', fontWeight: 700 }}>₱</span>
                           <DecimalInput value={applyAllCost} onChange={e => setApplyAllCost(e.target.value)} placeholder="0.00" max={999999.99} style={{ flex: 1, background: 'none', border: 'none', color: 'var(--white)', fontSize: '0.9rem', outline: 'none' }} />
                         </div>
                         <button type="button" onClick={() => {
-                          setStockRows(prev => prev.map(r => ({ ...r, unitCost: applyAllCost })));
+                          // Apply to all variants across all products
+                          const newRowsByProduct = {};
+                          Object.keys(stockRowsByProduct).forEach(prodId => {
+                            newRowsByProduct[prodId] = stockRowsByProduct[prodId].map(r => ({ ...r, unitCost: applyAllCost }));
+                          });
+                          setStockRowsByProduct(newRowsByProduct);
                         }} style={{ background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.4)', color: '#D4A843', borderRadius: '8px', padding: '0 0.85rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                           Apply to all
                         </button>
                       </div>
-                      {/* Invoice Table - Only shows variants with qty > 0 */}
-                      {invoiceRows.length > 0 ? (
-                        <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px', padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.2)', fontSize: '0.6rem', color: 'var(--gray)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            <span>Variant</span><span style={{ textAlign: 'center' }}>Unit Cost</span><span style={{ textAlign: 'center' }}>Subtotal</span>
-                          </div>
-                          {invoiceRows.map((row, idx) => {
-                            const qty = parseInt(row.qty) || 0;
-                            const good = Math.max(0, qty - (parseInt(row.damaged) || 0));
-                            // In total mode, use computed unit cost; in unit mode, use per-variant costs
-                            const cost = invoice.costMode === 'total' ? (computedUnitCost || 0) : (parseFloat(row.unitCost) || 0);
-                            const subtotal = qty * cost;  // Total qty (including damaged)
+                      
+                      {/* Multiple Invoice Tables - one per product */}
+                      {selectedProducts.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                          {selectedProducts.map(product => {
+                            const rows = stockRowsByProduct[product.prodId] || [];
+                            const rowsWithQty = rows.filter(r => (parseInt(r.qty) || 0) > 0);
+                            if (rowsWithQty.length === 0) return null;
+                            
+                            const productCostMode = productCostModes[product.prodId] || 'unit';
+                            const productTotalAmt = productTotalAmounts[product.prodId] || '';
+                            const productTotalQty = rowsWithQty.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+                            const productSubtotal = rowsWithQty.reduce((s, r) => {
+                              const qty = parseInt(r.qty) || 0;
+                              return s + qty * (parseFloat(r.unitCost) || 0);
+                            }, 0);
+                            const computedProductUnitCost = productTotalQty > 0 && productTotalAmt ? (parseFloat(productTotalAmt.replace(/,/g, '')) || 0) / productTotalQty : 0;
+                            
                             return (
-                              <div key={row.comboKey} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px', padding: '0.625rem 0.75rem', borderTop: '1px solid rgba(255,255,255,0.04)', alignItems: 'center' }}>
-                                <span style={{ fontSize: '0.8rem', color: 'var(--white)', fontWeight: 500 }}>{row.comboLabel || selectedML?.prodName}</span>
-                                {invoice.costMode === 'unit' ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(255,255,255,0.06)', padding: '0.35rem 0.5rem', borderRadius: '6px', justifyContent: 'center' }}>
-                                    <span style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 700 }}>₱</span>
-                                    <DecimalInput value={row.unitCost} onChange={e => setStockRows(prev => prev.map((r, i) => {
-                                      const targetRow = invoiceRows[i];
-                                      return targetRow?.comboKey === row.comboKey ? { ...r, unitCost: e.target.value } : r;
-                                    }))} placeholder="0.00" max={999999.99} style={{ width: '50px', background: 'none', border: 'none', color: 'var(--white)', fontSize: '0.8rem', textAlign: 'center', outline: 'none' }} />
+                              <div key={product.prodId}>
+                                <div style={{ fontSize: '0.65rem', color: '#D4A843', fontWeight: 600, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+                                  {product.catName} / {product.prodName}
+                                </div>
+                                <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
+                                  {/* Product-level cost mode toggle */}
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.15)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                    <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Cost Mode</span>
+                                    <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderRadius: '6px', padding: '2px' }}>
+                                      {[['unit', 'Unit'], ['total', 'Total']].map(([val, label]) => (
+                                        <button key={val} type="button" onClick={() => setProductCostModes(p => ({ ...p, [product.prodId]: val }))}
+                                          style={{
+                                            padding: '0.25rem 0.5rem', fontSize: '0.6rem', fontWeight: 700, borderRadius: '4px', border: 'none', cursor: 'pointer',
+                                            background: productCostMode === val ? '#D4A843' : 'transparent',
+                                            color: productCostMode === val ? '#000' : 'var(--gray)',
+                                            transition: 'all 0.15s',
+                                          }}>
+                                          {label}
+                                        </button>
+                                      ))}
+                                    </div>
                                   </div>
-                                ) : (
-                                  <div style={{ textAlign: 'center', fontSize: '0.8rem', color: '#D4A843', fontWeight: 600 }}>
-                                    {formatPrice(cost)}
-                                  </div>
-                                )}
-                                <span style={{ textAlign: 'center', fontSize: '0.8rem', color: subtotal > 0 ? '#FACC15' : 'var(--gray)', fontWeight: 600 }}>
-                                  {subtotal > 0 ? formatPrice(subtotal) : '—'}
-                                </span>
+                                  
+                                  {productCostMode === 'total' ? (
+                                    <div style={{ padding: '0.75rem', background: 'rgba(212,168,67,0.05)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                      <label style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>Total Amount</label>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <span style={{ fontSize: '1.1rem', color: '#D4A843', fontWeight: 800 }}>₱</span>
+                                        <CommaNumberInput value={productTotalAmt}
+                                          onChange={e => setProductTotalAmounts(p => ({ ...p, [product.prodId]: e.target.value }))}
+                                          placeholder="0.00"
+                                          style={{ fontSize: '1.1rem', fontWeight: 800, color: '#E5E2E1', flex: 1 }} />
+                                      </div>
+                                      {computedProductUnitCost > 0 && (
+                                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                          Unit Cost: <strong style={{ color: '#D4A843' }}>{formatPrice(computedProductUnitCost)}</strong>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.06)', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
+                                        <span style={{ fontSize: '0.8rem', color: '#D4A843', fontWeight: 700 }}>₱</span>
+                                        <DecimalInput value={applyAllCost} onChange={e => setApplyAllCost(e.target.value)} placeholder="0.00" max={999999.99} style={{ flex: 1, background: 'none', border: 'none', color: 'var(--white)', fontSize: '0.8rem', outline: 'none' }} />
+                                      </div>
+                                      <button type="button" onClick={() => {
+                                        const newRows = rows.map(r => ({ ...r, unitCost: applyAllCost }));
+                                        setStockRowsByProduct({ ...stockRowsByProduct, [product.prodId]: newRows });
+                                      }} style={{ background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.4)', color: '#D4A843', borderRadius: '6px', padding: '0 0.65rem', fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                        Apply
+                                      </button>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Variant rows */}
+                                  {rowsWithQty.map((row, idx) => {
+                                    const qty = parseInt(row.qty) || 0;
+                                    const cost = productCostMode === 'total' ? computedProductUnitCost : (parseFloat(row.unitCost) || 0);
+                                    const subtotal = qty * cost;
+                                    return (
+                                      <div key={row.comboKey} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px', padding: '0.625rem 0.75rem', borderTop: '1px solid rgba(255,255,255,0.04)', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '0.8rem', color: 'var(--white)', fontWeight: 500 }}>{row.comboLabel || product.prodName}</span>
+                                        {productCostMode === 'unit' ? (
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(255,255,255,0.06)', padding: '0.35rem 0.5rem', borderRadius: '6px', justifyContent: 'center' }}>
+                                            <span style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 700 }}>₱</span>
+                                            <DecimalInput value={row.unitCost} onChange={e => {
+                                              const newRows = rows.map(r => r.comboKey === row.comboKey ? { ...r, unitCost: e.target.value } : r);
+                                              setStockRowsByProduct({ ...stockRowsByProduct, [product.prodId]: newRows });
+                                            }} placeholder="0.00" max={999999.99} style={{ width: '50px', background: 'none', border: 'none', color: 'var(--white)', fontSize: '0.8rem', textAlign: 'center', outline: 'none' }} />
+                                          </div>
+                                        ) : (
+                                          <div style={{ textAlign: 'center', fontSize: '0.8rem', color: '#D4A843', fontWeight: 600 }}>
+                                            {formatPrice(cost)}
+                                          </div>
+                                        )}
+                                        <span style={{ textAlign: 'center', fontSize: '0.8rem', color: subtotal > 0 ? '#FACC15' : 'var(--gray)', fontWeight: 600 }}>
+                                          {subtotal > 0 ? formatPrice(subtotal) : '—'}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             );
                           })}
@@ -1198,6 +1439,82 @@ export default function AddInventoryItemModal({
                     </div>
                   )}
                 </div>
+
+                {/* Receipt Summary - Compare with actual receipt */}
+                {selectedProducts.length > 0 && invoice.costMode === 'unit' && (
+                  <div style={{ padding: '1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="8 6 5.5 9 3 6"/></svg>
+                      <span style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Receipt Summary</span>
+                    </div>
+                    
+                    {/* Per-product breakdown */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {selectedProducts.map(product => {
+                        const rows = stockRowsByProduct[product.prodId] || [];
+                        const rowsWithQty = rows.filter(r => (parseInt(r.qty) || 0) > 0);
+                        if (rowsWithQty.length === 0) return null;
+                        
+                        const productCostMode = productCostModes[product.prodId] || 'unit';
+                        const productTotalAmt = productTotalAmounts[product.prodId] || '';
+                        const productTotalQty = rowsWithQty.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+                        
+                        let productSubtotal = 0;
+                        let displayUnitCost = null;
+                        
+                        if (productCostMode === 'total' && productTotalAmt) {
+                          const totalAmt = parseFloat(productTotalAmt.replace(/,/g, '')) || 0;
+                          productSubtotal = totalAmt;
+                          displayUnitCost = productTotalQty > 0 ? totalAmt / productTotalQty : 0;
+                        } else {
+                          productSubtotal = rowsWithQty.reduce((s, r) => {
+                            const qty = parseInt(r.qty) || 0;
+                            return s + qty * (parseFloat(r.unitCost) || 0);
+                          }, 0);
+                          const unitCosts = rowsWithQty.map(r => parseFloat(r.unitCost) || 0);
+                          const allSameCost = unitCosts.length > 0 && unitCosts.every(c => c === unitCosts[0]);
+                          displayUnitCost = allSameCost ? unitCosts[0] : null;
+                        }
+                        
+                        return (
+                          <div key={product.prodId} style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#E5E2E1', fontWeight: 600, marginBottom: '0.5rem' }}>
+                              {product.prodName}
+                              {productCostMode === 'total' && productTotalAmt && (
+                                <span style={{ fontSize: '0.55rem', color: '#D4A843', marginLeft: '0.5rem', fontWeight: 600 }}>(Total: {formatPrice(productSubtotal)})</span>
+                              )}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', fontSize: '0.65rem' }}>
+                              <div>
+                                <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase' }}>Total Qty</div>
+                                <div style={{ color: '#D4A843', fontWeight: 700 }}>{productTotalQty} <span style={{ fontWeight: 400, color: 'var(--gray)' }}>pcs</span></div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase' }}>Unit Cost</div>
+                                <div style={{ color: '#D4A843', fontWeight: 700 }}>
+                                  {displayUnitCost !== null
+                                    ? formatPrice(displayUnitCost)
+                                    : <span style={{ fontSize: '0.6rem', color: 'var(--gray)' }}>Varies</span>
+                                  }
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase' }}>Subtotal</div>
+                                <div style={{ color: '#facc15', fontWeight: 700 }}>{formatPrice(productSubtotal)}</div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Grand Total */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', borderTop: '1px solid rgba(212,168,67,0.3)', marginTop: '0.75rem' }}>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--gray)', fontWeight: 600, textTransform: 'uppercase' }}>Total Invoice Amount</span>
+                      <span style={{ fontSize: '0.9rem', color: '#facc15', fontWeight: 800 }}>{formatPrice(totalInvoiceValue)}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1233,21 +1550,21 @@ export default function AddInventoryItemModal({
             )}
             {step < 3 ? (
               <button type="button"
-                disabled={(step === 1 && !selectedML) || (step === 2 && !step2Valid())}
+                disabled={(step === 1 && !step1Valid) || (step === 2 && !step2Valid())}
                 onClick={() => setStep(s => s + 1)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.5rem',
-                  background: ((step === 1 && !selectedML) || (step === 2 && !step2Valid())) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FFDF9F 0%, #D4A843 100%)',
+                  background: ((step === 1 && !step1Valid) || (step === 2 && !step2Valid())) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FFDF9F 0%, #D4A843 100%)',
                   border: 'none',
-                  color: ((step === 1 && !selectedML) || (step === 2 && !step2Valid())) ? 'var(--gray)' : '#000',
+                  color: ((step === 1 && !step1Valid) || (step === 2 && !step2Valid())) ? 'var(--gray)' : '#000',
                   borderRadius: '8px',
                   padding: '0.625rem 1.25rem',
                   fontSize: '0.85rem',
                   fontWeight: 700,
-                  cursor: ((step === 1 && !selectedML) || (step === 2 && !step2Valid())) ? 'not-allowed' : 'pointer',
-                  boxShadow: ((step === 1 && !selectedML) || (step === 2 && !step2Valid())) ? 'none' : '0 0 16px rgba(212,168,67,0.3)',
+                  cursor: ((step === 1 && !step1Valid) || (step === 2 && !step2Valid())) ? 'not-allowed' : 'pointer',
+                  boxShadow: ((step === 1 && !step1Valid) || (step === 2 && !step2Valid())) ? 'none' : '0 0 16px rgba(212,168,67,0.3)',
                   transition: 'all 0.2s'
                 }}
                 onMouseEnter={e => { if (step !== 2 || step2Valid()) { e.currentTarget.style.transform = 'scale(1.02)'; } }}>
@@ -1284,9 +1601,9 @@ export default function AddInventoryItemModal({
       <InfoModal isOpen={!!infoModal} onClose={() => setInfoModal(null)} title={infoModal?.title || ''} message={infoModal?.message || ''} />
       <AddSupplierQuickModal isOpen={showAddSupplier} onClose={() => setShowAddSupplier(false)}
         onAdd={(data) => { const s = onAddSupplier(data); setInvoice(p => ({ ...p, supplierId: s.id, supplierName: s.name })); }}
-        categories={categories} 
-        existingSuppliers={suppliers} 
-        itemCategory={selectedML?.catName}  // Auto-link supplier to product category
+        categories={categories}
+        existingSuppliers={suppliers}
+        itemCategory={selectedProducts.length > 0 ? selectedProducts[0].catName : ''}
       />
     </div>
   );
