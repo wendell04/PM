@@ -57,18 +57,6 @@ function InfoModal({ isOpen, onClose, title, message }) {
 }
 
 // ── SVG Icons ─────────────────────────────────────────────────────────────────
-const IconFifo = ({ color, size = 15 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-    <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-  </svg>
-);
-const IconBatch = ({ color, size = 15 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-    <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
-  </svg>
-);
 const IconWarning = ({ size = 14 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
@@ -174,28 +162,47 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
   // Load variants - only from ACTIVE inventory items
   useEffect(() => {
     if (!isOpen || !item) return;
-    const base = extractBaseProductName(item.name);
+    
     // Only include ACTIVE inventory items (archived items cannot have stock reduced)
-    const src = (inventory || []).filter(inv => inv.isActive !== false).filter(inv => {
-      if (extractBaseProductName(inv.name).toLowerCase() === base.toLowerCase()) return true;
+    // Match by: 1) Same masterlistProductName, OR 2) Same category + similar name, OR 3) SKU prefix match
+    const src = (inventory || []).filter(inv => {
+      if (inv.isActive === false) return false;
+      
+      // Match 1: Same masterlistProductName (most reliable!)
+      if (item.masterlistProductName && inv.masterlistProductName === item.masterlistProductName) {
+        return true;
+      }
+      
+      // Match 2: Same category + name contains same base
+      if (inv.category === item.category) {
+        const invName = inv.name.toLowerCase();
+        const itemName = item.name.toLowerCase();
+        // Check if inventory item name contains the parent item name
+        if (invName.includes(itemName) || itemName.includes(invName)) return true;
+      }
+      
+      // Match 3: SKU prefix (first 3 parts)
       const a = item.sku?.split('-').slice(0,3).join('-'), b = inv.sku?.split('-').slice(0,3).join('-');
-      return a && b && a === b;
+      if (a && b && a === b) return true;
+      
+      return false;
     });
-    // Group by SKU (no longer needed since we prevent duplicates, but keeping for safety)
+
+    // Group by SKU
     const grouped = src.reduce((acc, inv) => {
       if (!acc[inv.sku]) {
         acc[inv.sku] = {
           id: inv.id,
-          variantName: extractVariantName(inv.name, base) || inv.name,
+          variantName: inv.name,
           sku: inv.sku,
           stock: inv.stockQty || 0,
-          batches: (inv.batches||[]).filter(b=>(b.remainingQty||0)>0).sort((a,b)=>new Date(a.dateReceived)-new Date(b.dateReceived))
+          batches: Array.isArray(inv.batches) ? inv.batches.filter(b=>(b.remainingQty||0)>0).sort((a,b)=>new Date(a.dateReceived)-new Date(b.dateReceived)) : []
         };
       }
       return acc;
     }, {});
     const res = Object.values(grouped);
-    setVariants(res.length > 0 ? res : [{ id: item.id, variantName: extractVariantName(item.name, base)||item.name, sku: item.sku, stock: item.stockQty||0, batches: (item.batches||[]).filter(b=>(b.remainingQty||0)>0).sort((a,b)=>new Date(a.dateReceived)-new Date(b.dateReceived)) }]);
+    setVariants(res.length > 0 ? res : [{ id: item.id, variantName: item.name, sku: item.sku, stock: item.stockQty||0, batches: Array.isArray(item.batches) ? item.batches.filter(b=>(b.remainingQty||0)>0).sort((a,b)=>new Date(a.dateReceived)-new Date(b.dateReceived)) : [] }]);
   }, [isOpen, item, inventory]);
 
   // Reset on open
@@ -367,7 +374,7 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
       : 0;
 
     return (
-      <tr key={variant.id} style={{ borderLeft:sel?`3px solid ${GOLD}`:'3px solid transparent' }}>
+      <tr key={variant.sku || variant.id} style={{ borderLeft:sel?`3px solid ${GOLD}`:'3px solid transparent' }}>
         <td style={td(true)}><input type="checkbox" checked={sel} onChange={()=>toggleId(variant.id)} style={{ width:'16px', height:'16px', cursor:'pointer', accentColor:GOLD }} /></td>
         <td style={td()}>
           <div style={{ fontWeight:700, color:'#E5E2E1', fontSize:'0.85rem' }}>{variant.variantName}</div>
@@ -583,8 +590,8 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
             <div style={{ fontSize:'0.78rem', color:'var(--gray)', marginTop:'0.35rem' }}>{item.category} · Current stock: <strong style={{ color:GOLD }}>{totalStock} pcs</strong></div>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:'0.625rem' }}>
-            <button type="button" style={S.modeBtn(batchMode==='fifo')} onClick={()=>setBatchMode('fifo')}><IconFifo color={batchMode==='fifo'?GOLD:'var(--gray)'} /> FIFO</button>
-            <button type="button" style={S.modeBtn(batchMode==='pick')} onClick={()=>setBatchMode('pick')}><IconBatch color={batchMode==='pick'?GOLD:'var(--gray)'} /> Pick Batch</button>
+            <button type="button" style={S.modeBtn(batchMode==='fifo')} onClick={()=>setBatchMode('fifo')}>FIFO</button>
+            <button type="button" style={S.modeBtn(batchMode==='pick')} onClick={()=>setBatchMode('pick')}>Pick Batch</button>
             <button onClick={onClose} style={{ marginLeft:'0.5rem', background:'rgba(255,255,255,0.05)', border:'none', borderRadius:'50%', width:'38px', height:'38px', cursor:'pointer', color:'var(--gray)', display:'flex', alignItems:'center', justifyContent:'center' }}
               onMouseEnter={e=>{e.currentTarget.style.background='rgba(239,68,68,0.15)';e.currentTarget.style.color='#ef4444';}}
               onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.05)';e.currentTarget.style.color='var(--gray)';}}>
@@ -748,7 +755,8 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
           <div style={{ display:'flex', alignItems:'center', gap:'1rem' }}>
             {totals.qty>0 && <span style={{ fontSize:'0.75rem', color:'var(--gray)' }}>{totals.qty} pcs · {selectedIds.length} variant{selectedIds.length!==1?'s':''} selected</span>}
             <button type="button" disabled={totals.qty<=0} onClick={handleSubmit}
-              style={{ background:totals.qty<=0?'rgba(255,255,255,0.08)':GOLD, border:'none', color:totals.qty<=0?'var(--gray)':'#000', borderRadius:'8px', padding:'0.6rem 1.5rem', fontSize:'0.85rem', fontWeight:700, cursor:totals.qty<=0?'not-allowed':'pointer' }}>
+              style={{ background:totals.qty<=0?'rgba(255,255,255,0.08)':GOLD, border:'none', color:totals.qty<=0?'var(--gray)':'#000', borderRadius:'8px', padding:'0.6rem 1.5rem', fontSize:'0.85rem', fontWeight:700, cursor:totals.qty<=0?'not-allowed':'pointer', display:'flex', alignItems:'center', gap:'0.5rem' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={totals.qty<=0?'var(--gray)':'#000'} strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
               {isSale?'Confirm Reduction':reason==='damaged'?'Confirm Damage':'Confirm Write-off'}
             </button>
           </div>

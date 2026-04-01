@@ -6,44 +6,30 @@
  * Current Status: LocalStorage (Browser-only, for testing)
  * ⚠️ TODO: MongoDB Integration
  *
- * ⚠️ IMPORTANT DESIGN DECISION:
- * Inventory = Physical stocked items ONLY.
- * "Upon Order / Non-Stocked" products are managed separately
- * in the Add Product page — NO inventory link required for those.
- * isOnDemand has been REMOVED from this module entirely.
- *
- * Changes from previous version:
- * - REMOVED: isOnDemand field and all Upon Order logic
- * - REMOVED: showConvertModal (Upon Order → In Stock conversion)
- * - REMOVED: "Upon Order" summary card and filter
- * - REMOVED: Stock Correction reason (all movements must have valid source document)
- * - REMOVED: window.__supplierInUse global — replaced with proper state
- * - FIXED: SKU generated ONCE on save, never regenerates on re-render
- * - FIXED: minStockLevel is now editable when editing an item
- * - FIXED: All alert() replaced with modals
- * - ADDED: Supplier categories[] — filtered per item category in dropdowns
- *
- * MongoDB Integration Steps:
- * 1. Create collection: 'inventory'
- * 2. Replace LocalStorage calls with API endpoints
- * 3. Add API routes in app/api/inventory/route.js
- * 4. Add Mongoose schema in models/Inventory.js
- * 5. Remove LocalStorage references
+ * ⚠️ HYBRID INVENTORY MODEL:
+ * - Inventory tracks physical stock (can be 0)
+ * - Products with allowBackorder=true can be sold even at 0 stock
+ * - Storefront shows ALL active products from Masterlist
+ * - Storefront button logic:
+ *   • stockQty > 0 → "Add to Cart" (Ready to ship)
+ *   • stockQty = 0 + allowBackorder → "Pre-Order" (3-5 days)
+ *   • stockQty = 0 + !allowBackorder → "Out of Stock"
  *
  * MongoDB Document Shape:
  * {
  *   _id:              ObjectId,
- *   sku:              String (unique, indexed — generated ONCE, never changes),
- *   name:             String (Proper Case, required),
+ *   sku:              String (unique, indexed),
+ *   name:             String (required),
  *   category:         String (required),
- *   stockQty:         Number (good stock only, min: 0),
- *   damagedQty:       Number (total damaged, reference only),
+ *   stockQty:         Number (good stock, min: 0),
+ *   damagedQty:       Number (reference only),
  *   minStockLevel:    Number (reorder threshold, default: 10),
  *   averageCost:      Number (weighted moving average),
  *   lastUnitCost:     Number,
  *   lastSupplierId:   String | null,
  *   lastSupplierName: String,
  *   batches:          Array<Batch>,
+ *   allowBackorder:   Boolean (can sell even if 0 stock),
  *   isActive:         Boolean (soft delete),
  *   deletedAt:        Date | null,
  *   createdAt:        Date,
@@ -2500,17 +2486,32 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                                             Generated SKU Combinations ({skuCombinations.length})
                                           </div>
                                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem' }}>
-                                            {skuCombinations.map((combo, idx) => (
-                                              <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '4px', padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>
-                                                <div style={{ color: 'var(--gold)', fontWeight: 600, fontFamily: 'monospace', marginBottom: '0.25rem' }}>{combo.sku}</div>
-                                                <div style={{ color: 'var(--white)', fontSize: '0.7rem', marginBottom: '0.25rem' }}>{combo.name}</div>
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem' }}>
-                                                  {combo.variants.map((v, i) => (
-                                                    <span key={i} style={{ fontSize: '0.65rem', color: 'var(--gray)', background: 'rgba(255,255,255,0.05)', padding: '0.1rem 0.3rem', borderRadius: '2px' }}>{v}</span>
-                                                  ))}
+                                            {skuCombinations.map((combo, idx) => {
+                                              // Check if this SKU exists in inventory
+                                              const existsInInventory = inventory.some(i => i.sku === combo.sku && i.isActive !== false);
+                                              
+                                              return (
+                                                <div key={idx} style={{ background: existsInInventory ? 'rgba(212,168,67,0.08)' : 'rgba(255,255,255,0.03)', borderRadius: '4px', padding: '0.5rem 0.6rem', fontSize: '0.75rem', border: existsInInventory ? '1px solid rgba(212,168,67,0.3)' : 'none' }}>
+                                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                                                    <div style={{ color: existsInInventory ? '#D4A843' : 'var(--gold)', fontWeight: 600, fontFamily: 'monospace' }}>{combo.sku}</div>
+                                                    {existsInInventory && (
+                                                      <span style={{ fontSize: '0.6rem', color: '#D4A843', background: 'rgba(212,168,67,0.15)', padding: '0.1rem 0.3rem', borderRadius: '2px', fontWeight: 600 }}>Locked</span>
+                                                    )}
+                                                  </div>
+                                                  <div style={{ color: 'var(--white)', fontSize: '0.7rem', marginBottom: '0.25rem' }}>{combo.name}</div>
+                                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem' }}>
+                                                    {combo.variants.map((v, i) => (
+                                                      <span key={i} style={{ fontSize: '0.65rem', color: 'var(--gray)', background: 'rgba(255,255,255,0.05)', padding: '0.1rem 0.3rem', borderRadius: '2px' }}>{v}</span>
+                                                    ))}
+                                                  </div>
+                                                  {existsInInventory && (
+                                                    <div style={{ fontSize: '0.6rem', color: 'var(--gray)', marginTop: '0.35rem', fontStyle: 'italic' }}>
+                                                      Cannot edit - has stock history
+                                                    </div>
+                                                  )}
                                                 </div>
-                                              </div>
-                                            ))}
+                                              );
+                                            })}
                                           </div>
                                         </div>
                                       )}
@@ -2996,7 +2997,7 @@ function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
     <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '550px' }}>
         <div className="modal-header">
-          <h2 className="modal-title" style={{ color: '#D4A843' }}>{isEdit ? 'Update Item' : 'Add New Item'}</h2>
+          <h2 className="modal-title" style={{ color: '#D4A843' }}>{isEdit ? 'Update Item' : 'Add Item'}</h2>
           <button className="modal-close" onClick={onClose}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12"/>
@@ -3186,6 +3187,8 @@ export default function InventoryPage() {
   const [categories, setCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -3202,7 +3205,10 @@ export default function InventoryPage() {
   // For StockOutTable nested structure
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   // Date filter for Stock Out view
-  const [stockOutDateFilter, setStockOutDateFilter] = useState('all'); // 'all', 'today', 'this-week', 'this-month'
+  const [stockOutDateFilter, setStockOutDateFilter] = useState('all'); // 'all', 'today', 'this-week', 'this-month', 'custom'
+  const [showStockOutDateDropdown, setShowStockOutDateDropdown] = useState(false);
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
   
   const handleExpandProduct = (productName) => {
     const newExpanded = new Set(expandedProducts);
@@ -3291,6 +3297,28 @@ export default function InventoryPage() {
   // FUTURE: Each action (add/edit/delete) calls its own API endpoint
   useEffect(() => { if (isLoaded) saveInventoryList(inventory); }, [inventory, isLoaded]);
 
+  // Close category dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (isCategoryDropdownOpen && !e.target.closest('.search-wrapper')) {
+        setIsCategoryDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isCategoryDropdownOpen]);
+
+  // Close date dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (showStockOutDateDropdown && !e.target.closest('[data-date-filter]')) {
+        setShowStockOutDateDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showStockOutDateDropdown]);
+
   // Batch details event listener (from InventoryExpandRow)
   useEffect(() => {
     const h = (e) => { setSelectedBatch(e.detail.batch); setSelectedBatchItem(e.detail.item); setShowBatchDetailsModal(true); };
@@ -3315,6 +3343,112 @@ export default function InventoryPage() {
     const derivedCats = updatedList.map(c => c.name);
     setCategories(derivedCats);
     saveCategories(derivedCats); // keep pmp_inventory_categories in sync for backward compat
+    
+    // AUTO-CREATE INVENTORY RECORDS for new products (stockQty: 0, allowBackorder: true)
+    const currentInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
+    const existingSKUs = new Set(currentInventory.map(i => i.sku));
+    const newInventoryItems = [];
+    
+    updatedList.forEach(cat => {
+      cat.products?.forEach(prod => {
+        // Generate SKU combinations - ONLY STOCKABLE variant types create SKUs
+        const variantTypes = prod.variantTypes || [];
+        const stockableTypes = variantTypes.filter(vt => vt.isStockable !== false);  // Filter non-stockable
+        
+        if (stockableTypes.length === 0) {
+          // No stockable variants - create single base SKU
+          const catP = cat.name.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase();
+          const prodP = prod.name.split(' ').filter(w => w.length > 0).map(w => w.charAt(0).toUpperCase()).slice(0, 4).join('');
+          const sku = `${catP}-${prodP}-BASE`;
+          
+          if (!existingSKUs.has(sku)) {
+            newInventoryItems.push({
+              id: `inv-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+              sku,
+              name: prod.name,
+              masterlistProductName: prod.name,
+              category: cat.name,
+              variantCombo: {},
+              stockQty: 0,
+              damagedQty: 0,
+              minStockLevel: 10,
+              averageCost: 0,
+              lastUnitCost: 0,
+              lastSupplierId: null,
+              lastSupplierName: '',
+              batches: [],
+              allowBackorder: true,
+              isActive: true,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            });
+            existingSKUs.add(sku);
+          }
+        } else {
+          // Has stockable variants - create SKU for each stockable combination
+          const combinations = [[]];
+          for (const vt of stockableTypes) {  // ← Only stockable types!
+            const newCombinations = [];
+            for (const combo of combinations) {
+              for (const option of vt.options) {
+                newCombinations.push([...combo, option]);
+              }
+            }
+            combinations.length = 0;
+            combinations.push(...newCombinations);
+          }
+          
+          combinations.forEach(combo => {
+            const catP = cat.name.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase();
+            const prodP = prod.name.split(' ').filter(w => w.length > 0).map(w => w.charAt(0).toUpperCase()).slice(0, 4).join('');
+            
+            // Build variant name from stockable options only
+            const variantName = combo.join(' / ');
+            
+            // Generate SKU suffix from stockable options only
+            const skuSuffix = combo.map(opt => opt.replace(/[^A-Za-z0-9]/g, '').substring(0, 3).toUpperCase()).join('-');
+            const sku = `${catP}-${prodP}-${skuSuffix}`;
+            
+            if (!existingSKUs.has(sku)) {
+              // Build variantCombo from stockable types only
+              const variantCombo = {};
+              stockableTypes.forEach((vt, idx) => {
+                if (combo[idx]) variantCombo[vt.name] = combo[idx];
+              });
+              
+              newInventoryItems.push({
+                id: `inv-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+                sku,
+                name: `${prod.name} ${variantName}`,
+                masterlistProductName: prod.name,
+                category: cat.name,
+                variantCombo,
+                stockQty: 0,
+                damagedQty: 0,
+                minStockLevel: 10,
+                averageCost: 0,
+                lastUnitCost: 0,
+                lastSupplierId: null,
+                lastSupplierName: '',
+                batches: [],
+                allowBackorder: true,
+                isActive: true,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              });
+              existingSKUs.add(sku);
+            }
+          });
+        }
+      });
+    });
+    
+    // Add new inventory items if any
+    if (newInventoryItems.length > 0) {
+      const updatedInventory = [...currentInventory, ...newInventoryItems];
+      setInventory(updatedInventory);
+      saveInventoryList(updatedInventory);
+    }
   };
 
   const handleAddSupplier = (data) => {
@@ -3325,9 +3459,13 @@ export default function InventoryPage() {
 
   const toggleExpand = (id) => setExpandedRows(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  // Active items only, filtered by search + status
+  // Active items only, filtered by search + status + category
   // Exception: Stock Out view shows ALL items (including archived) for historical reporting
+  // Items with 0 stock ARE shown (for Pre-Order / allowBackorder items)
   const filteredInventory = inventory.filter(item => {
+    // Category filter (from combobox)
+    if (selectedCategory && item.category !== selectedCategory) return false;
+
     // Stock Out view: Show all items with movements, even if archived
     if (statusFilter === 'stock-out') {
       const q = searchQuery.toLowerCase();
@@ -3338,16 +3476,16 @@ export default function InventoryPage() {
       if (!name.includes(q) && !category.includes(q)) return false;
       return true;
     }
-    
-    // Other views: Only active items
+
+    // Other views: Only active items (including 0 stock for Pre-Order)
     if (item.isActive === false) return false;
     const q = searchQuery.toLowerCase();
     const name = (item.name || '').toLowerCase();
     const category = (item.category || '').toLowerCase();
     if (!name.includes(q) && !category.includes(q)) return false;
-    if (statusFilter === 'low-stock') return item.stockQty > 0 && item.stockQty <= item.minStockLevel;
+    if (statusFilter === 'low-stock') return item.stockQty <= item.minStockLevel;  // Include 0 stock
     if (statusFilter === 'out-of-stock') return item.stockQty === 0;
-    return true;
+    return true;  // Show all active items including 0 stock
   });
 
   const archivedInventory = inventory.filter(i => i.isActive === false);
@@ -3841,6 +3979,7 @@ export default function InventoryPage() {
                 stockQty: (i.stockQty || 0) + (itemData.stockQty || 0),  // Add new stock
                 batches: [...existingBatches, ...uniqueNewBatches],  // Merge batches
                 minStockLevel: itemData.minStockLevel || i.minStockLevel,  // Update if provided
+                allowBackorder: i.allowBackorder !== undefined ? i.allowBackorder : true,  // Preserve or default to true
                 updatedAt: new Date().toISOString()
               };
             }
@@ -3849,11 +3988,12 @@ export default function InventoryPage() {
         } else {
           // CREATE: No existing item found, create new entry
           // TODO: MongoDB — Replace with: db.inventory.insertOne({ ...itemData, createdAt: new Date(), updatedAt: new Date() })
-          setInventory(prev => [...prev, { 
-            ...itemData, 
-            batches: itemData.batches || [], 
-            createdAt: new Date().toISOString(), 
-            updatedAt: new Date().toISOString() 
+          setInventory(prev => [...prev, {
+            ...itemData,
+            batches: itemData.batches || [],
+            allowBackorder: true,  // NEW: Can be sold even at 0 stock (default true)
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
           }]);
         }
       });
@@ -3896,7 +4036,7 @@ export default function InventoryPage() {
         <div className="page-header-content">
           <div>
             <h1 className="page-title">Inventory</h1>
-            <p className="page-subtitle">Physical stocked items only. Upon Order products are managed in Add Product.</p>
+            <p className="page-subtitle">Physical stock + Pre-Order items. Products with "Pre-Order" enabled can be sold even at 0 stock.</p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button type="button" className="btn-primary" onClick={() => setShowMasterlistModal(true)}>
@@ -3906,7 +4046,7 @@ Item Masterlist
               Suppliers
             </button>
             <button type="button" className="btn-primary" onClick={handleAddNew}>
-              <span className="btn-icon">+</span> Add New Item
+              <span className="btn-icon">+</span> Add Item
             </button>
           </div>
         </div>
@@ -3930,33 +4070,221 @@ Item Masterlist
         </div>
       </div>
 
-      {/* Search */}
+      {/* Search with Category Combobox */}
       <div className="inventory-toolbar">
-        <div className="search-wrapper">
+        <div className="search-wrapper" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span className="search-icon">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
           </span>
-          <input type="text" className="search-input" placeholder="Search by name or category..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+          <input
+            type="text"
+            className="search-input"
+            placeholder="Search by name or category..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onFocus={() => setIsCategoryDropdownOpen(true)}
+            style={{ flex: 1 }}
+          />
           {searchQuery && <button className="search-clear" onClick={() => setSearchQuery('')}>×</button>}
+          
+          {/* Category Dropdown Button */}
+          <button
+            type="button"
+            onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
+            style={{
+              padding: '0.5rem 0.75rem',
+              background: 'rgba(212, 168, 67, 0.1)',
+              border: '1px solid var(--gold)',
+              borderRadius: '6px',
+              color: 'var(--gold)',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              minWidth: '140px',
+              outline: 'none',
+            }}
+          >
+            {selectedCategory || 'All Categories'}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transition: 'transform 0.2s', transform: isCategoryDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+              <path d="M6 9l6 6 6-6"/>
+            </svg>
+          </button>
+
+          {/* Category Dropdown Menu */}
+          {isCategoryDropdownOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                right: '0',
+                marginTop: '0.5rem',
+                background: 'rgba(20, 20, 20, 0.98)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                zIndex: 1000,
+                minWidth: '200px',
+                maxHeight: '300px',
+                overflowY: 'auto',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => { setSelectedCategory(''); setSearchQuery(''); setIsCategoryDropdownOpen(false); }}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem 1rem',
+                  background: selectedCategory === '' ? 'rgba(212, 168, 67, 0.15)' : 'transparent',
+                  border: 'none',
+                  borderBottom: '1px solid rgba(255,255,255,0.05)',
+                  color: selectedCategory === '' ? 'var(--gold)' : 'var(--white)',
+                  fontSize: '0.875rem',
+                  fontWeight: selectedCategory === '' ? 600 : 400,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'background 0.2s',
+                }}
+                onMouseEnter={(e) => e.target.style.background = selectedCategory === '' ? 'rgba(212, 168, 67, 0.25)' : 'rgba(255,255,255,0.05)'}
+                onMouseLeave={(e) => e.target.style.background = selectedCategory === '' ? 'rgba(212, 168, 67, 0.15)' : 'transparent'}
+              >
+                All Categories
+              </button>
+              {categories.map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => { setSelectedCategory(cat); setSearchQuery(''); setIsCategoryDropdownOpen(false); }}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    background: selectedCategory === cat ? 'rgba(212, 168, 67, 0.15)' : 'transparent',
+                    border: 'none',
+                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    color: selectedCategory === cat ? 'var(--gold)' : 'var(--white)',
+                    fontSize: '0.875rem',
+                    fontWeight: selectedCategory === cat ? 600 : 400,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseEnter={(e) => e.target.style.background = selectedCategory === cat ? 'rgba(212, 168, 67, 0.25)' : 'rgba(255,255,255,0.05)'}
+                  onMouseLeave={(e) => e.target.style.background = selectedCategory === cat ? 'rgba(212, 168, 67, 0.15)' : 'transparent'}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+
         {/* Date filter - only show in Stock Out view */}
         {statusFilter === 'stock-out' && (
-          <select value={stockOutDateFilter} onChange={e => setStockOutDateFilter(e.target.value)} style={{
-            padding: '0.5rem 0.75rem',
-            background: 'rgba(0,0,0,0.2)',
-            border: '1px solid var(--border)',
-            borderRadius: '6px',
-            color: 'var(--white)',
-            fontSize: '0.875rem',
-            cursor: 'pointer',
-            minWidth: '120px',
-            outline: 'none',
-          }}>
-            <option value="all">All Time</option>
-            <option value="today">Today</option>
-            <option value="this-week">This Week</option>
-            <option value="this-month">This Month</option>
-          </select>
+          <div data-date-filter style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div
+              onClick={() => setShowStockOutDateDropdown(!showStockOutDateDropdown)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.5rem 0.75rem',
+                background: 'rgba(0,0,0,0.2)',
+                border: '1px solid var(--border)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                color: 'var(--white)',
+                userSelect: 'none',
+                minWidth: '130px',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="4" width="18" height="18" rx="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              <span style={{ flex: 1 }}>{stockOutDateFilter === 'all' ? 'All Time' : stockOutDateFilter === 'today' ? 'Today' : stockOutDateFilter === 'this-week' ? 'This Week' : stockOutDateFilter === 'this-month' ? 'This Month' : 'Custom Range'}</span>
+              <span style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{showStockOutDateDropdown ? '▲' : '▼'}</span>
+            </div>
+            {showStockOutDateDropdown && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 4px)',
+                  right: 0,
+                  zIndex: 100,
+                  background: 'var(--dark2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  minWidth: '150px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                }}
+              >
+                {[['all', 'All Time'], ['today', 'Today'], ['this-week', 'This Week'], ['this-month', 'This Month'], ['custom', 'Custom Range']].map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => { setStockOutDateFilter(val); setShowStockOutDateDropdown(false); }}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: '0.6rem 1rem',
+                      textAlign: 'left',
+                      fontSize: '0.82rem',
+                      fontWeight: val === stockOutDateFilter ? 700 : 400,
+                      color: val === stockOutDateFilter ? 'var(--gold)' : 'var(--white)',
+                      background: val === stockOutDateFilter ? 'rgba(212, 168, 67, 0.1)' : 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* Custom Date Range Inputs */}
+            {stockOutDateFilter === 'custom' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: 'var(--gray)', fontSize: '0.8rem' }}>from</span>
+                <input
+                  type="date"
+                  value={customDateFrom}
+                  onChange={(e) => setCustomDateFrom(e.target.value)}
+                  style={{
+                    padding: '0.4rem 0.75rem',
+                    fontSize: '0.8rem',
+                    background: 'rgba(0,0,0,0.2)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    color: 'var(--white)',
+                    outline: 'none',
+                    minWidth: '140px',
+                  }}
+                />
+                <span style={{ color: 'var(--gray)', fontSize: '0.8rem' }}>to</span>
+                <input
+                  type="date"
+                  value={customDateTo}
+                  onChange={(e) => setCustomDateTo(e.target.value)}
+                  style={{
+                    padding: '0.4rem 0.75rem',
+                    fontSize: '0.8rem',
+                    background: 'rgba(0,0,0,0.2)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    color: 'var(--white)',
+                    outline: 'none',
+                    minWidth: '140px',
+                  }}
+                />
+              </div>
+            )}
+          </div>
         )}
         {/* Legend - only show in Inventory view */}
         {statusFilter !== 'stock-out' && (
@@ -3974,11 +4302,12 @@ Item Masterlist
             inventory={inventory}
             expandedBatches={expandedBatches}
             onExpandBatch={handleExpandBatch}
-            expandedCategories={expandedCategories}
-            onExpandCategory={handleExpandStockOutCategory}
             expandedProducts={expandedProducts}
             onExpandProduct={handleExpandStockOutProduct}
             dateFilter={stockOutDateFilter}
+            selectedCategory={selectedCategory}
+            customDateFrom={customDateFrom}
+            customDateTo={customDateTo}
           />
         </div>
       )}
@@ -4018,6 +4347,14 @@ Item Masterlist
               // Save full inventory to localStorage (not just filtered)
               const fullInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
               const updated = fullInventory.map(i => i.sku === sku ? { ...i, minStockLevel: minStock, updatedAt: new Date().toISOString() } : i);
+              localStorage.setItem('pmp_inventory', JSON.stringify(updated));
+            }}
+            onToggleBackorder={(sku) => {
+              // Toggle allowBackorder for ALL items with this SKU
+              setInventory(prev => prev.map(i => i.sku === sku ? { ...i, allowBackorder: !i.allowBackorder, updatedAt: new Date().toISOString() } : i));
+              // Save full inventory to localStorage
+              const fullInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
+              const updated = fullInventory.map(i => i.sku === sku ? { ...i, allowBackorder: !i.allowBackorder, updatedAt: new Date().toISOString() } : i);
               localStorage.setItem('pmp_inventory', JSON.stringify(updated));
             }}
             onArchiveVariant={handleArchiveVariant}

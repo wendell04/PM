@@ -6,15 +6,14 @@ import React, { useState, useMemo } from 'react';
 // Shows all items that have stock out movements (sold or damaged)
 // Nested structure: Category → Product → Variants → Movement History
 
-export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new Set(), onExpandCategory, expandedCategories = new Set(), onExpandProduct, expandedProducts = new Set(), dateFilter = 'all' }) {
+export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new Set(), onExpandCategory, expandedCategories, onExpandProduct, expandedProducts = new Set(), dateFilter = 'all', selectedCategory = '', customDateFrom = '', customDateTo = '' }) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
 
   // Calculate date range based on filter
   const dateRange = useMemo(() => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     if (dateFilter === 'today') {
       return { start: today, end: now };
     } else if (dateFilter === 'this-week') {
@@ -23,9 +22,15 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
     } else if (dateFilter === 'this-month') {
       const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
       return { start: monthAgo, end: now };
+    } else if (dateFilter === 'custom' && customDateFrom && customDateTo) {
+      const from = new Date(customDateFrom);
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(customDateTo);
+      to.setHours(23, 59, 59, 999);
+      return { start: from, end: to };
     }
     return { start: null, end: null }; // All time
-  }, [dateFilter]);
+  }, [dateFilter, customDateFrom, customDateTo]);
 
   // Group items by category and product - show ALL inventory items
   const groupedData = useMemo(() => {
@@ -107,6 +112,9 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
     // Group by category → product name
     const groups = {};
     uniqueItems.forEach(item => {
+      // Filter by selected category (from parent component)
+      if (selectedCategory && item.category !== selectedCategory) return;
+      
       if (!groups[item.category]) {
         groups[item.category] = {};
       }
@@ -119,7 +127,7 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
     });
 
     return groups;
-  }, [inventory]);
+  }, [inventory, selectedCategory]);
 
   if (Object.keys(groupedData).length === 0) {
     return (
@@ -138,80 +146,58 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
   }
 
   return (
-    <div>
-      {/* Table */}
-      <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-          <thead>
-            <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '2px solid var(--border)' }}>
-              <th style={{ padding: '0.875rem', textAlign: 'left', color: 'var(--gray)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', width: '40px' }}></th>
-              <th style={{ padding: '0.875rem', textAlign: 'left', color: 'var(--gray)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Name</th>
-              <th style={{ padding: '0.875rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Current Stock</th>
-              <th style={{ padding: '0.875rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Stock Out</th>
-              <th style={{ padding: '0.875rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Sold</th>
-              <th style={{ padding: '0.875rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Damaged</th>
-              <th style={{ padding: '0.875rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Write-Off</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(groupedData).map(([categoryName, products]) => {
-              const isCategoryExpanded = expandedCategories.has(categoryName);
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {/* Separate container per category */}
+      {Object.entries(groupedData).map(([categoryName, products]) => {
+        // Default: all categories expanded (no collapse functionality in Stock Out view)
+        const isCategoryExpanded = true;
 
-              // Calculate category totals
-              const allItems = Object.values(products).flat();
-              const catCurrentStock = allItems.reduce((sum, i) => sum + (i.stockQty || 0), 0);
-              const catTotalStockOut = allItems.reduce((sum, i) => sum + i.totalStockOut, 0);
-              const catTotalSold = allItems.reduce((sum, i) => sum + i.totalSold, 0);
-              const catTotalDamaged = allItems.reduce((sum, i) => sum + i.totalDamaged, 0);
-              const catTotalWriteOff = allItems.reduce((sum, i) => sum + i.totalWriteOff, 0);
+        // Calculate category totals
+        const allItems = Object.values(products).flat();
+        const catCurrentStock = allItems.reduce((sum, i) => sum + (i.stockQty || 0), 0);
+        const catTotalStockOut = allItems.reduce((sum, i) => sum + i.totalStockOut, 0);
+        const catTotalSold = allItems.reduce((sum, i) => sum + i.totalSold, 0);
+        const catTotalDamaged = allItems.reduce((sum, i) => sum + i.totalDamaged, 0);
+        const catTotalWriteOff = allItems.reduce((sum, i) => sum + i.totalWriteOff, 0);
 
-              return (
-                <React.Fragment key={categoryName}>
-                  {/* Category Row */}
-                  <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    <td style={{ padding: '0.875rem', textAlign: 'center' }}>
-                      <button
-                        onClick={() => onExpandCategory && onExpandCategory(categoryName)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', color: isCategoryExpanded ? '#D4A843' : 'var(--gray)' }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                          style={{ transition: 'transform 0.2s', transform: isCategoryExpanded ? 'rotate(90deg)' : 'none' }}>
-                          <path d="M9 18l6-6-6-6"/>
-                        </svg>
-                      </button>
-                    </td>
-                    <td style={{ padding: '0.875rem' }}>
-                      <div style={{ fontWeight: 700, color: '#D4A843', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{categoryName}</div>
-                    </td>
-                    <td style={{ padding: '0.875rem', textAlign: 'center' }}>
-                      <span style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.9rem' }}>
-                        {catCurrentStock} pcs
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.875rem', textAlign: 'center' }}>
-                      <span style={{ fontWeight: 700, color: '#D4A843', fontSize: '0.9rem' }}>
-                        {catTotalStockOut} pcs
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.875rem', textAlign: 'center' }}>
-                      <span style={{ fontWeight: 600, color: '#D4A843', fontSize: '0.9rem' }}>
-                        {catTotalSold} pcs
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.875rem', textAlign: 'center' }}>
-                      <span style={{ fontWeight: 600, color: '#D4A843', fontSize: '0.9rem' }}>
-                        {catTotalDamaged} pcs
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.875rem', textAlign: 'center' }}>
-                      <span style={{ fontWeight: 600, color: '#D4A843', fontSize: '0.9rem' }}>
-                        {catTotalWriteOff} pcs
-                      </span>
-                    </td>
-                  </tr>
+        return (
+          <div key={categoryName} style={{
+            background: 'rgba(255,255,255,0.02)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '12px',
+            overflow: 'hidden'
+          }}>
+            {/* Category Header */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '50px 1fr 120px 120px 120px 120px 120px',
+                alignItems: 'center',
+                padding: '1rem 1.25rem',
+                background: 'rgba(0,0,0,0.3)',
+                borderBottom: '1px solid rgba(255,255,255,0.1)',
+                cursor: 'default',
+                userSelect: 'none'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"
+                  style={{ transform: 'rotate(90deg)' }}>
+                  <path d="M9 18l6-6-6-6"/>
+                </svg>
+              </div>
+              <div style={{ fontWeight: 700, color: '#D4A843', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{categoryName}</div>
+              <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--gray)' }}>Current Stock</div>
+              <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--gray)' }}>Total Stock Out</div>
+              <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--gray)' }}>Sold</div>
+              <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--gray)' }}>Damaged</div>
+              <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--gray)' }}>Write Off</div>
+            </div>
 
-                  {/* Products under this category */}
-                  {isCategoryExpanded && Object.entries(products).map(([productName, variants]) => {
+            {/* Products under this category */}
+            {isCategoryExpanded && (
+              <div style={{ padding: '0.75rem' }}>
+                {Object.entries(products).map(([productName, variants]) => {
                     const isProductExpanded = expandedProducts.has(productName);
                     const productItems = variants;
                     const prodCurrentStock = productItems.reduce((sum, i) => sum + (i.stockQty || 0), 0);
@@ -223,230 +209,201 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
                     return (
                       <React.Fragment key={productName}>
                         {/* Product Row */}
-                        <tr style={{ background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            <button
-                              onClick={() => onExpandProduct && onExpandProduct(productName)}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', marginLeft: '0.5rem', color: isProductExpanded ? '#D4A843' : 'var(--gray)' }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                                style={{ transition: 'transform 0.2s', transform: isProductExpanded ? 'rotate(90deg)' : 'none' }}>
-                                <path d="M9 18l6-6-6-6"/>
-                              </svg>
-                            </button>
-                          </td>
-                          <td style={{ padding: '0.75rem' }}>
-                            <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{productName}</div>
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            <span style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>
-                              {prodCurrentStock} pcs
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            <span style={{ fontWeight: 600, color: '#D4A843', fontSize: '0.85rem' }}>
-                              {prodTotalStockOut} pcs
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            <span style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>
-                              {prodTotalSold} pcs
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            <span style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>
-                              {prodTotalDamaged} pcs
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                            <span style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>
-                              {prodTotalWriteOff} pcs
-                            </span>
-                          </td>
-                        </tr>
+                        <div
+                          onClick={() => onExpandProduct && onExpandProduct(productName)}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '50px 1fr 120px 120px 120px 120px 120px',
+                            alignItems: 'center',
+                            padding: '0.75rem 1rem',
+                            background: 'rgba(255,255,255,0.015)',
+                            borderBottom: '1px solid rgba(255,255,255,0.04)',
+                            cursor: 'pointer',
+                            userSelect: 'none'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isProductExpanded ? '#D4A843' : 'var(--gray)'} strokeWidth="2"
+                              style={{ transition: 'transform 0.2s', transform: isProductExpanded ? 'rotate(90deg)' : 'none' }}>
+                              <path d="M9 18l6-6-6-6"/>
+                            </svg>
+                          </div>
+                          <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{productName}</div>
+                          <div style={{ textAlign: 'center', fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{prodCurrentStock} pcs</div>
+                          <div style={{ textAlign: 'center', fontWeight: 600, color: '#D4A843', fontSize: '0.85rem' }}>{prodTotalStockOut} pcs</div>
+                          <div style={{ textAlign: 'center', fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{prodTotalSold} pcs</div>
+                          <div style={{ textAlign: 'center', fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{prodTotalDamaged} pcs</div>
+                          <div style={{ textAlign: 'center', fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{prodTotalWriteOff} pcs</div>
+                        </div>
 
                         {/* Variants under this product */}
-                        {isProductExpanded && productItems.map((item, idx) => {
-                          const expandKey = item.id;
-                          const isExpanded = expandedBatches.has(expandKey);
+                        {isProductExpanded && (
+                          <div>
+                            {productItems.map((item, idx) => {
+                              const expandKey = item.id;
+                              const isExpanded = expandedBatches.has(expandKey);
 
-                          return (
-                            <React.Fragment key={item.id}>
-                              <tr style={{
+                              return (
+                                <React.Fragment key={item.id}>
+                                  <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: '50px 1fr 120px 120px 120px 120px 120px',
+                                alignItems: 'center',
+                                padding: '0.75rem 1rem',
                                 background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
                                 borderBottom: '1px solid rgba(255,255,255,0.04)',
                               }}>
-                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingLeft: '1rem' }}>
                                   <button
-                                    onClick={() => onExpandBatch(expandKey)}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', marginLeft: '1rem', color: isExpanded ? '#D4A843' : 'var(--gray)' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onExpandBatch(expandKey);
+                                    }}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', color: isExpanded ? '#D4A843' : 'var(--gray)' }}
                                   >
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                                       style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
                                       <path d="M9 18l6-6-6-6"/>
                                     </svg>
                                   </button>
-                                </td>
-                                <td style={{ padding: '0.75rem' }}>
+                                </div>
+                                <div>
                                   <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>{item.name}</div>
                                   <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.2rem' }}>{item.sku}</div>
-                                </td>
-                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                  <span style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>
-                                    {item.stockQty} pcs
-                                  </span>
-                                </td>
-                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                  <span style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>
-                                    {item.totalStockOut} pcs
-                                  </span>
-                                </td>
-                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                  <span style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>
-                                    {item.totalSold} pcs
-                                  </span>
-                                </td>
-                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                  <span style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>
-                                    {item.totalDamaged} pcs
-                                  </span>
-                                </td>
-                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                  <span style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>
-                                    {item.totalWriteOff} pcs
-                                  </span>
-                                </td>
-                              </tr>
+                                </div>
+                                <div style={{ textAlign: 'center', fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>{item.stockQty} pcs</div>
+                                <div style={{ textAlign: 'center', fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>{item.totalStockOut} pcs</div>
+                                <div style={{ textAlign: 'center', fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>{item.totalSold} pcs</div>
+                                <div style={{ textAlign: 'center', fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>{item.totalDamaged} pcs</div>
+                                <div style={{ textAlign: 'center', fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>{item.totalWriteOff} pcs</div>
+                              </div>
 
                               {/* Expanded Row - Batch Details */}
                               {isExpanded && (
-                                <tr>
-                                  <td colSpan={7} style={{ padding: 0, background: 'rgba(255,255,255,0.02)' }}>
-                                    <div style={{ padding: '1rem 1.5rem' }}>
-                                {/* Check if there are any movements */}
-                                {(() => {
-                                  const hasMovements = (item.batches || []).some(b => 
-                                    (b.movements || []).some(m => 
-                                      (m.type === 'sold' || m.type === 'damaged' || m.type === 'writeoff') &&
-                                      (!dateRange.start || (new Date(m.createdAt) >= dateRange.start && new Date(m.createdAt) <= dateRange.end))
-                                    )
-                                  );
-                                  
-                                  if (!hasMovements) {
-                                    return (
-                                      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.875rem' }}>
-                                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: '0 auto 1rem', opacity: 0.3 }}>
-                                          <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                        </svg>
-                                        <p>No stock out movements recorded yet.</p>
-                                        <p style={{ fontSize: '0.75rem', marginTop: '0.5rem' }}>Sales, damages, and write-offs will appear here.</p>
-                                      </div>
+                                <div style={{ padding: '1rem 1.5rem', background: 'rgba(255,255,255,0.02)' }}>
+                                  {/* Check if there are any movements */}
+                                  {(() => {
+                                    const hasMovements = (item.batches || []).some(b =>
+                                      (b.movements || []).some(m =>
+                                        (m.type === 'sold' || m.type === 'damaged' || m.type === 'writeoff') &&
+                                        (!dateRange.start || (new Date(m.createdAt) >= dateRange.start && new Date(m.createdAt) <= dateRange.end))
+                                      )
                                     );
-                                  }
-                                  
-                                  return (
-                                    <>
-                                      <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 600 }}>
-                                        Movement History by Batch
-                                      </div>
-                                      <div style={{
-                                        border: '1px solid var(--border)',
-                                        borderRadius: '8px',
-                                        overflow: 'hidden',
-                                        maxHeight: '280px',
-                                        overflowY: 'auto',
-                                      }}>
-                                        <table style={{ width: '100%', fontSize: '0.8rem' }}>
-                                    <thead style={{ position: 'sticky', top: 0, background: 'rgba(0,0,0,0.97)', zIndex: 2 }}>
-                                      <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid var(--border)' }}>
-                                        <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 600 }}>Batch ID</th>
-                                        <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Date</th>
-                                        <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Type</th>
-                                        <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Qty</th>
-                                        <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Remaining After</th>
-                                        <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 600 }}>Notes</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {(item.batches || []).flatMap(batch =>
-                                        (batch.movements || [])
-                                          .filter(m => {
-                                            // Filter by type
-                                            if (m.type !== 'sold' && m.type !== 'damaged' && m.type !== 'writeoff') return false;
-                                            // Filter by date
-                                            if (!dateRange.start) return true;
-                                            const movementDate = new Date(m.createdAt);
-                                            return movementDate >= dateRange.start && movementDate <= dateRange.end;
-                                          })
-                                          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) // Newest first
-                                          .map((movement, mIdx) => {
-                                            // Fix: Remove double ₱ - check if reason already has ₱
-                                            const notes = movement.reason || '—';
-                                            const cleanNotes = notes.replace(/₱₱/g, '₱');
-                                            // Format date with time
-                                            const movementDateTime = new Date(movement.createdAt);
-                                            const dateStr = movementDateTime.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
-                                            const timeStr = movementDateTime.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
 
-                                            return (
-                                              <tr key={`${batch.batchId}-${mIdx}`} style={{
-                                                borderBottom: '1px solid rgba(255,255,255,0.04)',
-                                                background: mIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)'
-                                              }}>
-                                                <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', color: '#D4A843', fontWeight: 600 }}>
-                                                  {batch.batchId}
-                                                </td>
-                                                <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.75rem' }}>
-                                                  <div style={{ color: 'var(--white)', fontSize: '0.8rem' }}>{dateStr}</div>
-                                                  <div style={{ fontSize: '0.7rem' }}>{timeStr}</div>
-                                                </td>
-                                                <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>
-                                                  <span style={{
-                                                    padding: '0.2rem 0.6rem',
-                                                    borderRadius: '4px',
-                                                    fontSize: '0.7rem',
-                                                    fontWeight: 600,
-                                                    background: 'rgba(255,255,255,0.1)',
-                                                    color: '#E5E2E1'
-                                                  }}>
-                                                    {movement.type}
-                                                  </span>
-                                                </td>
-                                                <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 600, color: '#E5E2E1' }}>
-                                                  {Math.abs(movement.quantity)} pcs
-                                                </td>
-                                                <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
-                                                  {movement.remainingAfter} pcs
-                                                </td>
-                                                <td style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--gray)', fontSize: '0.8rem' }}>
-                                                  {cleanNotes}
-                                                </td>
+                                    if (!hasMovements) {
+                                      return (
+                                        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.875rem' }}>
+                                          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: '0 auto 1rem', opacity: 0.3 }}>
+                                            <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                          </svg>
+                                          <p>No stock out movements recorded yet.</p>
+                                          <p style={{ fontSize: '0.75rem', marginTop: '0.5rem' }}>Sales, damages, and write-offs will appear here.</p>
+                                        </div>
+                                      );
+                                    }
+
+                                    return (
+                                      <>
+                                        <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 600 }}>
+                                          Movement History by Batch
+                                        </div>
+                                        <div style={{
+                                          border: '1px solid var(--border)',
+                                          borderRadius: '8px',
+                                          overflow: 'hidden',
+                                          maxHeight: '280px',
+                                          overflowY: 'auto',
+                                        }}>
+                                          <table style={{ width: '100%', fontSize: '0.8rem' }}>
+                                            <thead style={{ position: 'sticky', top: 0, background: 'rgba(0,0,0,0.97)', zIndex: 2 }}>
+                                              <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid var(--border)' }}>
+                                                <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 600 }}>Batch ID</th>
+                                                <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Date</th>
+                                                <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Type</th>
+                                                <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Qty</th>
+                                                <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Remaining After</th>
+                                                <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 600 }}>Notes</th>
                                               </tr>
-                                            );
-                                          })
-                                      )}
-                                    </tbody>
-                                  </table>
-                                      </div>
-                                    </>
-                                  );
-                                })()}
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </React.Fragment>
-                            );
-                          })}
-                        </React.Fragment>
-                      );
-                    })}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                                            </thead>
+                                            <tbody>
+                                              {(item.batches || []).flatMap(batch =>
+                                                (batch.movements || [])
+                                                  .filter(m => {
+                                                    // Filter by type
+                                                    if (m.type !== 'sold' && m.type !== 'damaged' && m.type !== 'writeoff') return false;
+                                                    // Filter by date
+                                                    if (!dateRange.start) return true;
+                                                    const movementDate = new Date(m.createdAt);
+                                                    return movementDate >= dateRange.start && movementDate <= dateRange.end;
+                                                  })
+                                                  .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)) // Newest first
+                                                  .map((movement, mIdx) => {
+                                                    // Fix: Remove double ₱ - check if reason already has ₱
+                                                    const notes = movement.reason || '—';
+                                                    const cleanNotes = notes.replace(/₱₱/g, '₱');
+                                                    // Format date with time
+                                                    const movementDateTime = new Date(movement.createdAt);
+                                                    const dateStr = movementDateTime.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+                                                    const timeStr = movementDateTime.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+
+                                                    return (
+                                                      <tr key={`${batch.batchId}-${mIdx}-${movement.type}`} style={{
+                                                        borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                                        background: mIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)'
+                                                      }}>
+                                                        <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', color: '#D4A843', fontWeight: 600 }}>
+                                                          {batch.batchId}
+                                                        </td>
+                                                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.75rem' }}>
+                                                          <div style={{ color: 'var(--white)', fontSize: '0.8rem' }}>{dateStr}</div>
+                                                          <div style={{ fontSize: '0.7rem' }}>{timeStr}</div>
+                                                        </td>
+                                                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>
+                                                          <span style={{
+                                                            padding: '0.2rem 0.6rem',
+                                                            borderRadius: '4px',
+                                                            fontSize: '0.7rem',
+                                                            fontWeight: 600,
+                                                            background: 'rgba(255,255,255,0.1)',
+                                                            color: '#E5E2E1'
+                                                          }}>
+                                                            {movement.type}
+                                                          </span>
+                                                        </td>
+                                                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 600, color: '#E5E2E1' }}>
+                                                          {Math.abs(movement.quantity)} pcs
+                                                        </td>
+                                                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                                                          {movement.remainingAfter} pcs
+                                                        </td>
+                                                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                                                          {cleanNotes}
+                                                        </td>
+                                                      </tr>
+                                                    );
+                                                  })
+                                              )}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </>
+                                    );
+                                  })()}
+                                </div>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                          </div>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
 }

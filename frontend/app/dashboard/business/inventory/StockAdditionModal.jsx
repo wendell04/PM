@@ -296,9 +296,12 @@ export default function StockAdditionModal({ isOpen, onClose, onConfirm, item, s
 
     setBaseProduct({ ...foundProduct, categoryName: foundCategory.name });
 
-    // Generate all variant combinations
+    // Generate variant combinations - ONLY STOCKABLE types
     const variantTypes = foundProduct.variantTypes || [];
-    if (variantTypes.length === 0) {
+    const stockableTypes = variantTypes.filter(vt => vt.isStockable !== false);  // Filter non-stockable
+    
+    if (stockableTypes.length === 0) {
+      // No stockable variants - use single item
       setStockRows([{
         comboKey: '__base__',
         comboLabel: foundProduct.name,
@@ -357,12 +360,12 @@ export default function StockAdditionModal({ isOpen, onClose, onConfirm, item, s
       return `${catP}-${prodP}-${varParts.join('-')}`;
     };
     
-    // Generate all combinations
+    // Generate all combinations from stockable types ONLY
     const selectedPerType = {};
-    variantTypes.forEach(vt => {
+    stockableTypes.forEach(vt => {
       selectedPerType[vt.name] = vt.options;
     });
-    
+
     const cross = (types) => {
       if (types.length === 0) return [{}];
       const [first, ...rest] = types;
@@ -370,10 +373,10 @@ export default function StockAdditionModal({ isOpen, onClose, onConfirm, item, s
       if (opts.length === 0) return cross(rest);
       return opts.flatMap(o => cross(rest).map(r => ({ [first.name]: o, ...r })));
     };
-    
-    const combos = cross(variantTypes);
+
+    const combos = cross(stockableTypes);
     const allOptionsPerType = {};
-    variantTypes.forEach(vt => { allOptionsPerType[vt.name] = vt.options; });
+    stockableTypes.forEach(vt => { allOptionsPerType[vt.name] = vt.options; });
     
     const rows = combos.map(combo => {
       const label = Object.values(combo).join(' / ');

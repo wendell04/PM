@@ -42,6 +42,7 @@ export function NestedInventoryTable({
   expandedBatchSections = new Set(),
   onExpandBatchSection,
   onUpdateMinStock,
+  onToggleBackorder,
   onArchiveVariant,
   onDeleteVariant
 }) {
@@ -163,11 +164,13 @@ export function NestedInventoryTable({
         category: item.category,
         variantCombo: item.variantCombo,
         minStockLevel: item.minStockLevel || 10,
-        totalStock: 0
+        totalStock: 0,
+        allowBackorder: item.allowBackorder !== undefined ? item.allowBackorder : true  // Default true for new items
       });
     }
     const variant = acc[baseProductName].variants.get(variantKey);
     variant.totalStock += item.stockQty || 0;
+    variant.allowBackorder = item.allowBackorder !== undefined ? item.allowBackorder : true;  // Keep updated
     if (item.batches && item.batches.length > 0) {
       item.batches.forEach(batch => {
         const batchKey = batch.invoiceNumber
@@ -429,7 +432,7 @@ export function NestedInventoryTable({
                                   position: 'absolute', top: '2rem', right: '0',
                                   background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)',
                                   borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-                                  zIndex: 200, minWidth: '160px', overflow: 'hidden'
+                                  zIndex: 200, minWidth: '180px', overflow: 'hidden'
                                 }}
                               >
                                 <button
@@ -444,6 +447,19 @@ export function NestedInventoryTable({
                                   </svg>
                                   Edit Min Stock
                                 </button>
+                                {onToggleBackorder && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); onToggleBackorder(v.sku); setActionMenuOpen(null); }}
+                                    style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'transparent', border: 'none', textAlign: 'left', color: v.allowBackorder ? '#4ade80' : '#E5E2E1', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                  >
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                                    </svg>
+                                    {v.allowBackorder ? 'Pre-Order: ON' : 'Enable Pre-Order'}
+                                  </button>
+                                )}
                                 <button
                                   onClick={(e) => handleArchiveVariantClick(e, v, product)}
                                   style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'transparent', border: 'none', textAlign: 'left', color: '#fbbf24', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
