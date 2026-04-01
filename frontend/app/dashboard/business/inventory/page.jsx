@@ -4349,14 +4349,7 @@ Item Masterlist
               const updated = fullInventory.map(i => i.sku === sku ? { ...i, minStockLevel: minStock, updatedAt: new Date().toISOString() } : i);
               localStorage.setItem('pmp_inventory', JSON.stringify(updated));
             }}
-            onToggleBackorder={(sku) => {
-              // Toggle allowBackorder for ALL items with this SKU
-              setInventory(prev => prev.map(i => i.sku === sku ? { ...i, allowBackorder: !i.allowBackorder, updatedAt: new Date().toISOString() } : i));
-              // Save full inventory to localStorage
-              const fullInventory = JSON.parse(localStorage.getItem('pmp_inventory') || '[]');
-              const updated = fullInventory.map(i => i.sku === sku ? { ...i, allowBackorder: !i.allowBackorder, updatedAt: new Date().toISOString() } : i);
-              localStorage.setItem('pmp_inventory', JSON.stringify(updated));
-            }}
+            // TODO: Pre-Order toggle removed - Pre-Order is always ON by default (allowBackorder: true)
             onArchiveVariant={handleArchiveVariant}
             onDeleteVariant={handleDeleteVariant}
           />

@@ -447,6 +447,7 @@ export function NestedInventoryTable({
                                   </svg>
                                   Edit Min Stock
                                 </button>
+                                {/* TODO: Pre-Order toggle - Commented out because Pre-Order should always be ON by default
                                 {onToggleBackorder && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); onToggleBackorder(v.sku); setActionMenuOpen(null); }}
@@ -460,6 +461,7 @@ export function NestedInventoryTable({
                                     {v.allowBackorder ? 'Pre-Order: ON' : 'Enable Pre-Order'}
                                   </button>
                                 )}
+                                */}
                                 <button
                                   onClick={(e) => handleArchiveVariantClick(e, v, product)}
                                   style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'transparent', border: 'none', textAlign: 'left', color: '#fbbf24', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
