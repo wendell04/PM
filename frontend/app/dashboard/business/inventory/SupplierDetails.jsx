@@ -8,7 +8,7 @@ import { formatPrice, formatNumber } from '../../../../src/utils/format';
 // ──────────────────────────────────────────────────────────────────────────────
 export function SupplierDetailsModal({ isOpen, onClose, supplier, inventory }) {
   const [activeTab, setActiveTab] = useState('transactions');
-  const [dateFilter, setDateFilter] = useState('this-month');
+  const [dateFilter, setDateFilter] = useState('all');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [showDateDrop, setShowDateDrop] = useState(false);
@@ -19,7 +19,7 @@ export function SupplierDetailsModal({ isOpen, onClose, supplier, inventory }) {
   useEffect(() => {
     if (isOpen) {
       setActiveTab('transactions');
-      setDateFilter('this-month');
+      setDateFilter('all');
       setExpandedInvoices(new Set());
       setExpandedProducts(new Set());
       setCustomFrom('');
@@ -260,12 +260,12 @@ export function SupplierDetailsModal({ isOpen, onClose, supplier, inventory }) {
                           <line x1="8" y1="2" x2="8" y2="6"/>
                           <line x1="3" y1="10" x2="21" y2="10"/>
                         </svg>
-                        <span style={{ flex: 1 }}>{{ 'today': 'Today', 'this-week': 'This Week', 'this-month': 'This Month', 'custom': 'Custom Range' }[dateFilter]}</span>
+                        <span style={{ flex: 1 }}>{{ 'all': 'All Time', 'today': 'Today', 'this-week': 'This Week', 'this-month': 'This Month', 'custom': 'Custom Range' }[dateFilter]}</span>
                         <span style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{showDateDrop ? '▲' : '▼'}</span>
                       </div>
                       {showDateDrop && (
                         <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 100, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', minWidth: '150px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-                          {[['today','Today'],['this-week','This Week'],['this-month','This Month'],['custom','Custom Range']].map(([val, label]) => (
+                          {[['all','All Time'],['today','Today'],['this-week','This Week'],['this-month','This Month'],['custom','Custom Range']].map(([val, label]) => (
                             <button key={val} type="button" onClick={() => { setDateFilter(val); setShowDateDrop(false); }}
                               style={{ display: 'block', width: '100%', padding: '0.6rem 1rem', textAlign: 'left', fontSize: '0.82rem', fontWeight: val===dateFilter?700:400, color: val===dateFilter?'var(--gold)':'var(--white)', background: val===dateFilter?'rgba(212,168,67,0.1)':'transparent', border: 'none', cursor: 'pointer' }}>
                               {label}
@@ -413,6 +413,35 @@ export function SupplierDetailsModal({ isOpen, onClose, supplier, inventory }) {
                                           </tbody>
                                         </table>
                                       </div>
+
+                                      {/* Receipt Image Section */}
+                                      {invoice.batches.some(b => b.receiptImage) && (
+                                        <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2">
+                                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                              <polyline points="14 2 14 8 20 8"/>
+                                            </svg>
+                                            <span style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 600, textTransform: 'uppercase' }}>Receipt</span>
+                                          </div>
+                                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                            {invoice.batches.filter(b => b.receiptImage).map((batch, idx) => (
+                                              <img 
+                                                key={idx}
+                                                src={batch.receiptImage} 
+                                                alt="Receipt" 
+                                                style={{ 
+                                                  width: '80px', 
+                                                  height: '80px', 
+                                                  objectFit: 'cover', 
+                                                  borderRadius: '6px',
+                                                  border: '1px solid rgba(255,255,255,0.1)'
+                                                }}
+                                              />
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   </td>
                                 </tr>

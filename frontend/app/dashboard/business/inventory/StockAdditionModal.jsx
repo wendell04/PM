@@ -331,16 +331,24 @@ export default function StockAdditionModal({ isOpen, onClose, onConfirm, item, s
     
     // Generate combo SKU
     const genComboSKU = (catName, prodName, comboMap, allOptionsPerType) => {
+      // Category prefix: first 3 letters
       const catP = catName.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase() || 'ITM';
-      const prodP = prodName.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase() || 'XXX';
       
+      // Product prefix: first letter of each word (up to 4 words)
+      const prodP = prodName
+        .split(' ')
+        .filter(w => w.length > 0)
+        .map(w => w.charAt(0).toUpperCase())
+        .slice(0, 4)
+        .join('') || 'XXX';
+
       // If no variant types, generate simple SKU with year and sequence
       if (!comboMap || Object.keys(comboMap).length === 0) {
         const year = new Date().getFullYear();
         const seq = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
         return `${catP}-${prodP}-${year}-${seq}`;
       }
-      
+
       const varParts = Object.entries(comboMap).map(([typeName, optVal]) => {
         const allOpts = allOptionsPerType[typeName] || [optVal];
         const prefixMap = buildPrefixMap(allOpts);

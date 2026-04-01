@@ -78,7 +78,7 @@ function CommaNumberInput({ value, onChange, placeholder, className, style, max 
 }
 
 // ── SupplierCombobox ──────────────────────────────────────────────────────────
-function SupplierCombobox({ value, supplierName, onChange, suppliers, itemCategory, onAddNew }) {
+function SupplierCombobox({ value, supplierName, onChange, suppliers, selectedCategories, onAddNew }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -88,9 +88,19 @@ function SupplierCombobox({ value, supplierName, onChange, suppliers, itemCatego
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const filtered = suppliers.filter(s =>
-    !s.categories || s.categories.length === 0 || s.categories.includes(itemCategory)
-  );
+  // Filter suppliers: show if they supply ANY of the selected categories OR are General (no categories)
+  const filtered = suppliers.filter(s => {
+    // General suppliers (no categories) always show
+    if (!s.categories || s.categories.length === 0) return true;
+    
+    // If selectedCategories provided, check if supplier matches ANY of them
+    if (selectedCategories && selectedCategories.length > 0) {
+      return selectedCategories.some(cat => s.categories.includes(cat));
+    }
+    
+    // Fallback: show all suppliers
+    return true;
+  });
   const display = value === 'unspecified' ? 'General Merchandise' : (supplierName || 'General Merchandise');
 
   return (
@@ -147,22 +157,22 @@ function InfoModal({ isOpen, onClose, title, message, titleClass = 'modal-title-
 }
 
 // ── AddSupplierQuickModal ─────────────────────────────────────────────────────
-function AddSupplierQuickModal({ isOpen, onClose, onAdd, categories, existingSuppliers, itemCategory }) {
+function AddSupplierQuickModal({ isOpen, onClose, onAdd, categories, existingSuppliers, selectedCategories }) {
   const [form, setForm] = useState({ name: '', contact: '', phone: '', address: '', email: '', categories: [] });
   const [infoModal, setInfoModal] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
-      setForm({ 
-        name: '', 
-        contact: '', 
-        phone: '', 
-        address: '', 
-        email: '', 
-        categories: itemCategory ? [itemCategory] : []  // Auto-link to product category
+      setForm({
+        name: '',
+        contact: '',
+        phone: '',
+        address: '',
+        email: '',
+        categories: selectedCategories && selectedCategories.length > 0 ? selectedCategories : []  // Auto-link to selected product categories
       });
     }
-  }, [isOpen, itemCategory]);
+  }, [isOpen, selectedCategories]);
 
   const handlePhoneChange = (e) => {
     const val = e.target.value.replace(/[^0-9-]/g, '').slice(0, 15);
@@ -297,12 +307,45 @@ export default function AddInventoryItemModal({
       setSelectedProducts([]);
       setStockRowsByProduct({});
       setApplyAllCost('');
-      setExpandedCategories(new Set(masterlist.map(c => c.name))); // Expand all by default
+      setExpandedCategories(new Set()); // Collapse all by default
       setInvoice({ supplierId: 'unspecified', supplierName: 'General Merchandise', invoiceNumber: '', deliveryDate: new Date().toISOString().split('T')[0], notes: '', receiptImage: null, costMode: 'unit', totalInvoiceAmount: '' });
       setProductCostModes({});
       setProductTotalAmounts({});
     }
-  }, [isOpen, item, masterlist]);
+  }, [isOpen, item]);
+
+  // ── Reset Step 3 when going back to Step 2 ───────────────────────────────────
+  const handleBackToStep2 = () => {
+    setStep(2);
+    // Reset Step 3 inputs
+    setInvoice({ ...invoice, supplierId: 'unspecified', supplierName: 'General Merchandise', invoiceNumber: '', deliveryDate: new Date().toISOString().split('T')[0], notes: '', receiptImage: null, costMode: 'unit', totalInvoiceAmount: '' });
+    setProductCostModes({});
+    setProductTotalAmounts({});
+  };
+
+  // ── Reset Step 2 & 3 when going back to Step 1 ───────────────────────────────
+  const handleBackToStep1 = () => {
+    setStep(1);
+    // Reset Step 2 & 3 inputs, but keep selected products
+    setStockRowsByProduct({});
+    setApplyAllCost('');
+    setInvoice({ supplierId: 'unspecified', supplierName: 'General Merchandise', invoiceNumber: '', deliveryDate: new Date().toISOString().split('T')[0], notes: '', receiptImage: null, costMode: 'unit', totalInvoiceAmount: '' });
+    setProductCostModes({});
+    setProductTotalAmounts({});
+  };
+
+  // ── Go to Step 2 (regenerate rows if needed) ─────────────────────────────────
+  const handleGoToStep2 = () => {
+    // Regenerate rows for selected products if empty
+    if (selectedProducts.length > 0 && Object.keys(stockRowsByProduct).length === 0) {
+      const newRows = {};
+      selectedProducts.forEach(p => {
+        newRows[p.prodId] = generateRows(p);
+      });
+      setStockRowsByProduct(newRows);
+    }
+    setStep(2);
+  };
 
   // ── Expanded categories state ───────────────────────────────────────────────
   const [expandedCategories, setExpandedCategories] = useState(new Set());
@@ -368,16 +411,24 @@ export default function AddInventoryItemModal({
   };
 
   const genComboSKU = (catName, prodName, comboMap, allOptionsPerType) => {
+    // Category prefix: first 3 letters
     const catP = catName.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase() || 'ITM';
-    const prodP = prodName.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase() || 'XXX';
     
+    // Product prefix: first letter of each word (up to 4 words)
+    const prodP = prodName
+      .split(' ')
+      .filter(w => w.length > 0)
+      .map(w => w.charAt(0).toUpperCase())
+      .slice(0, 4)
+      .join('') || 'XXX';
+
     // If no variant types, generate simple SKU with year and sequence
     if (!comboMap || Object.keys(comboMap).length === 0) {
       const year = new Date().getFullYear();
       const seq = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
       return `${catP}-${prodP}-${year}-${seq}`;
     }
-    
+
     const varParts = Object.entries(comboMap).map(([typeName, optVal]) => {
       const allOpts = allOptionsPerType[typeName] || [optVal];
       const prefixMap = buildPrefixMap(allOpts);
@@ -450,6 +501,17 @@ export default function AddInventoryItemModal({
   
   const totalGood = totalReceived - totalDamaged;
 
+  // Get categories with qty > 0 (for supplier filtering)
+  const categoriesWithQty = useMemo(() => {
+    return selectedProducts
+      .filter(p => {
+        const rows = stockRowsByProduct[p.prodId] || [];
+        const totalQty = rows.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+        return totalQty > 0;
+      })
+      .map(p => p.catName);
+  }, [selectedProducts, stockRowsByProduct]);
+
   const totalInvoiceValue = useMemo(() => {
     // Sum of per-product subtotals (each product can be unit or total mode)
     return selectedProducts.reduce((sum, p) => {
@@ -473,28 +535,61 @@ export default function AddInventoryItemModal({
   }, [selectedProducts, stockRowsByProduct, productCostModes, productTotalAmounts]);
 
   // Compute effective and damaged values for footer breakdown
+  // Effective = good qty × unit cost (what goes into inventory)
   const effectiveValue = useMemo(() => {
     // Sum up effective value per variant across all products
     return selectedProducts.reduce((sum, p) => {
       const rows = stockRowsByProduct[p.prodId] || [];
-      return sum + rows.reduce((s, r) => {
+      const rowsWithQty = rows.filter(r => (parseInt(r.qty) || 0) > 0);
+      
+      // Get product cost mode
+      const productCostMode = productCostModes[p.prodId] || 'unit';
+      const productTotalAmt = productTotalAmounts[p.prodId] || '';
+      
+      // Compute unit cost for this product
+      let unitCost = 0;
+      if (productCostMode === 'total' && productTotalAmt) {
+        const productTotalQty = rowsWithQty.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+        const totalAmt = parseFloat(productTotalAmt.replace(/,/g, '')) || 0;
+        unitCost = productTotalQty > 0 ? totalAmt / productTotalQty : 0;
+      }
+      
+      // Sum effective value (good qty × unit cost)
+      return sum + rowsWithQty.reduce((s, r) => {
         const good = Math.max(0, (parseInt(r.qty) || 0) - (parseInt(r.damaged) || 0));
-        return s + good * (parseFloat(r.unitCost) || 0);
+        const cost = productCostMode === 'total' ? unitCost : (parseFloat(r.unitCost) || 0);
+        return s + good * cost;
       }, 0);
     }, 0);
-  }, [selectedProducts, stockRowsByProduct, totalGood]);
+  }, [selectedProducts, stockRowsByProduct, productCostModes, productTotalAmounts, totalGood]);
 
   // Damaged = damaged qty × unit cost (loss)
   const damagedValue = useMemo(() => {
     // Sum up damaged value per variant across all products
     return selectedProducts.reduce((sum, p) => {
       const rows = stockRowsByProduct[p.prodId] || [];
-      return sum + rows.reduce((s, r) => {
+      const rowsWithQty = rows.filter(r => (parseInt(r.qty) || 0) > 0);
+      
+      // Get product cost mode
+      const productCostMode = productCostModes[p.prodId] || 'unit';
+      const productTotalAmt = productTotalAmounts[p.prodId] || '';
+      
+      // Compute unit cost for this product
+      let unitCost = 0;
+      if (productCostMode === 'total' && productTotalAmt) {
+        const productTotalQty = rowsWithQty.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+        const totalAmt = parseFloat(productTotalAmt.replace(/,/g, '')) || 0;
+        unitCost = productTotalQty > 0 ? totalAmt / productTotalQty : 0;
+      }
+      
+      // Sum damaged value (damaged qty × unit cost)
+      return sum + rowsWithQty.reduce((s, r) => {
         const damaged = parseInt(r.damaged) || 0;
-        return s + damaged * (parseFloat(r.unitCost) || 0);
+        const cost = productCostMode === 'total' ? unitCost : (parseFloat(r.unitCost) || 0);
+        return s + damaged * cost;
       }, 0);
     }, 0);
-  }, [selectedProducts, stockRowsByProduct, totalDamaged]);
+  }, [selectedProducts, stockRowsByProduct, productCostModes, productTotalAmounts, totalDamaged]);
 
   // Build damaged breakdown string (e.g., "2×35.00=70.00  2×40.00=80.00")
   const damagedBreakdown = useMemo(() => {
@@ -580,6 +675,10 @@ export default function AddInventoryItemModal({
         productUnitCost = productTotalQty > 0 ? totalAmt / productTotalQty : 0;
       }
 
+      // Generate ONE batch ID per product (all variants share the same batch)
+      const d = new Date(invoice.deliveryDate);
+      const batchId = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${Math.floor(Math.random()*1000).toString().padStart(3,'0')}`;
+
       return rowsWithQty.map(row => {
         const qty = parseInt(row.qty) || 0;
         const dmg = parseInt(row.damaged) || 0;
@@ -588,8 +687,6 @@ export default function AddInventoryItemModal({
         // Compute unit cost based on product mode
         const unitCost = productCostMode === 'total' ? productUnitCost : (parseFloat(row.unitCost) || 0);
 
-        const d = new Date(invoice.deliveryDate);
-        const batchId = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${Math.floor(Math.random()*1000).toString().padStart(3,'0')}`;
         const itemName = row.comboMap && Object.keys(row.comboMap).length > 0
           ? `${product.prodName} ${row.comboLabel}`
           : product.prodName;
@@ -623,6 +720,24 @@ export default function AddInventoryItemModal({
         };
       });
     });
+
+    // Auto-update supplier categories if supplying multiple categories
+    if (invoice.supplierId !== 'unspecified' && categoriesWithQty.length > 0) {
+      const supplier = suppliers.find(s => s.id === invoice.supplierId);
+      if (supplier) {
+        const missingCategories = categoriesWithQty.filter(cat => !supplier.categories?.includes(cat));
+        if (missingCategories.length > 0) {
+          const updatedCategories = [...(supplier.categories || []), ...missingCategories];
+          const updatedSupplier = { ...supplier, categories: updatedCategories };
+          // Update supplier in the parent component
+          const updatedSuppliers = suppliers.map(s => s.id === supplier.id ? updatedSupplier : s);
+          // Save to localStorage
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('pmp_suppliers', JSON.stringify(updatedSuppliers));
+          }
+        }
+      }
+    }
 
     onSave(allItems);
   };
@@ -771,25 +886,6 @@ export default function AddInventoryItemModal({
                 style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.5rem', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: '10px', color: 'var(--white)', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box' }} />
             </div>
 
-            {/* Selected products summary */}
-            {selectedProducts.length > 0 && (
-              <div style={{ padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '8px', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
-                  <span style={{ fontSize: '0.75rem', color: '#D4A843', fontWeight: 600 }}>
-                    {selectedProducts.length} product{selectedProducts.length !== 1 ? 's' : ''} selected
-                  </span>
-                </div>
-                <button
-                  onClick={() => { setSelectedProducts([]); setStockRowsByProduct({}); }}
-                  style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', padding: '0.25rem 0.5rem', borderRadius: '4px' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
-                >
-                  Clear All
-                </button>
-              </div>
-            )}
-
             <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
               {groupedByCategory.length === 0 ? (
                 <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.875rem' }}>
@@ -870,9 +966,7 @@ export default function AddInventoryItemModal({
                             <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#D4A843', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: '0.5rem' }}>
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
                             </div>
-                          ) : (
-                            <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.3)', flexShrink: 0, marginLeft: '0.5rem' }} />
-                          )}
+                          ) : null}
                         </button>
                       );
                     })}
@@ -885,6 +979,19 @@ export default function AddInventoryItemModal({
               <p style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '0.875rem', textAlign: 'center' }}>
                 Select one or more products above to begin. All variant combinations will be shown automatically.
               </p>
+            )}
+            
+            {selectedProducts.length > 0 && (
+              <div style={{ padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '8px', marginTop: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2" style={{ flexShrink: 0, marginTop: '0.1rem' }}>
+                    <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+                  </svg>
+                  <div style={{ fontSize: '0.7rem', color: '#D4A843', lineHeight: '1.4' }}>
+                    <strong>Tip:</strong> Add all products from the same invoice/receipt together. This ensures accurate cost tracking and groups purchases by supplier.
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -1148,17 +1255,23 @@ export default function AddInventoryItemModal({
                       </table>
                     </div>
 
-                    {/* Product summary */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                      <div style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase' }}>Good</div>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#E5E2E1' }}>{productTotalGood} <span style={{ fontSize: '0.6rem' }}>pcs</span></div>
+                    {/* Product summary - only show if more than 1 product has qty */}
+                    {selectedProducts.filter(p => {
+                      const rows = stockRowsByProduct[p.prodId] || [];
+                      const totalQty = rows.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+                      return totalQty > 0;
+                    }).length > 1 && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                        <div style={{ padding: '0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase' }}>Good</div>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#E5E2E1' }}>{productTotalGood} <span style={{ fontSize: '0.6rem' }}>pcs</span></div>
+                        </div>
+                        <div style={{ padding: '0.5rem', background: 'rgba(248,113,113,0.06)', borderRadius: '6px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase' }}>Damaged</div>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#F87171' }}>{productTotalDamaged} <span style={{ fontSize: '0.6rem' }}>pcs</span></div>
+                        </div>
                       </div>
-                      <div style={{ padding: '0.5rem', background: 'rgba(248,113,113,0.06)', borderRadius: '6px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase' }}>Damaged</div>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#F87171' }}>{productTotalDamaged} <span style={{ fontSize: '0.6rem' }}>pcs</span></div>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 );
               })}
@@ -1196,7 +1309,9 @@ export default function AddInventoryItemModal({
                   <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>Supplier</label>
                   <SupplierCombobox value={invoice.supplierId} supplierName={invoice.supplierName}
                     onChange={(id, name) => setInvoice(p => ({ ...p, supplierId: id, supplierName: name }))}
-                    suppliers={suppliers} itemCategory="" onAddNew={() => setShowAddSupplier(true)} />
+                    suppliers={suppliers} 
+                    selectedCategories={categoriesWithQty} 
+                    onAddNew={() => setShowAddSupplier(true)} />
                 </div>
 
                 {/* Invoice Number & Delivery Date */}
@@ -1334,8 +1449,8 @@ export default function AddInventoryItemModal({
                       </svg>
                     </div>
                     <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600 }}>{invoice.receiptImage ? 'Receipt uploaded' : 'Upload Receipt Image'}</span>
-                    <span style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>JPG, PNG or PDF up to 5MB</span>
-                    <input type="file" accept="image/*,.pdf" style={{ display: 'none' }}
+                    <span style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--gray)' }}>JPG, PNG up to 5MB</span>
+                    <input type="file" accept="image/*" style={{ display: 'none' }}
                       onChange={e => {
                         const file = e.target.files?.[0];
                         if (!file) return;
@@ -1439,7 +1554,7 @@ export default function AddInventoryItemModal({
         <div style={{ padding: '1rem 2rem', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, background: '#131313' }}>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             {step > 1 && (
-              <button type="button" onClick={() => setStep(s => s - 1)}
+              <button type="button" onClick={step === 3 ? handleBackToStep2 : handleBackToStep1}
                 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'none', border: '1px solid rgba(255,255,255,0.15)', color: 'var(--white)', borderRadius: '8px', padding: '0.625rem 1rem', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
                 onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
@@ -1466,7 +1581,7 @@ export default function AddInventoryItemModal({
             {step < 3 ? (
               <button type="button"
                 disabled={(step === 1 && !step1Valid) || (step === 2 && !step2Valid())}
-                onClick={() => setStep(s => s + 1)}
+                onClick={step === 1 ? handleGoToStep2 : () => setStep(s => s + 1)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1518,7 +1633,7 @@ export default function AddInventoryItemModal({
         onAdd={(data) => { const s = onAddSupplier(data); setInvoice(p => ({ ...p, supplierId: s.id, supplierName: s.name })); }}
         categories={categories}
         existingSuppliers={suppliers}
-        itemCategory={selectedProducts.length > 0 ? selectedProducts[0].catName : ''}
+        selectedCategories={categoriesWithQty}
       />
     </div>
   );

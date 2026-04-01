@@ -1191,7 +1191,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
       setLocalList(masterlist.map(c => ({ ...c, products: (c.products||[]).map(p => ({ ...p })) })));
       setSearch('');
       setFormMode(null);
-      setExpandedCats(new Set(masterlist.map(c => c.id))); // expand all by default
+      setExpandedCats(new Set()); // collapse all by default
     }
   }, [isOpen, masterlist]);
 
@@ -1271,12 +1271,22 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
         // Single word: use first 3 letters (or full word if shorter)
         return cleanOpt.substring(0, Math.min(6, cleanOpt.length));
       }).join('-');
-      
+
       const variantName = combo.join(' - ');
-      const catPrefix = categoryName.substring(0, 3).toUpperCase();
-      const prodPrefix = productName.substring(0, 3).toUpperCase();
+      
+      // Category prefix: first 3 letters
+      const catPrefix = categoryName.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase();
+      
+      // Product prefix: first letter of each word (up to 4 words)
+      const prodPrefix = productName
+        .split(' ')
+        .filter(w => w.length > 0)
+        .map(w => w.charAt(0).toUpperCase())
+        .slice(0, 4)
+        .join('');
+      
       return {
-        sku: `${catPrefix}-${prodPrefix}-${skuSuffix}`,  // MUG-MGA-REDVIO or MUG-CER-WHT-11O
+        sku: `${catPrefix}-${prodPrefix}-${skuSuffix}`,  // STI-VSW-GLO or STI-VSWL-GLO
         name: `${productName} ${variantName}`,
         category: categoryName,
         variants: combo,
@@ -2865,15 +2875,27 @@ function PriceHistoryAccordion({ productPriceHistory }) {
 // ── Confirm Save Modal ─────────────────────────────────────────────────────────
 function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
   if (!isOpen || !itemData) return null;
-  
+
   const allItems = itemData._allItems || [itemData];
   const totalStock = allItems.reduce((sum, item) => sum + (item.stockQty || 0), 0);
   const totalDamaged = allItems.reduce((sum, item) => sum + (item.damagedQty || 0), 0);
-  
-  // Check if product has multiple variant types (combo)
-  const hasMultipleVariantTypes = allItems.some(item => 
-    item.variantCombo && Object.keys(item.variantCombo).length > 1
-  );
+
+  // Group items by product (category + masterlistProductName)
+  const itemsByProduct = allItems.reduce((acc, item) => {
+    const productKey = `${item.category}||${item.masterlistProductName || item.name}`;
+    if (!acc.has(productKey)) {
+      acc.set(productKey, {
+        name: item.masterlistProductName || item.name,
+        category: item.category,
+        items: [],
+        variantCombo: item.variantCombo
+      });
+    }
+    acc.get(productKey).items.push(item);
+    return acc;
+  }, new Map());
+
+  const products = Array.from(itemsByProduct.values());
   
   // Group batches by invoice number (same invoice = one batch)
   const groupedBatches = allItems.reduce((acc, item) => {
@@ -2935,19 +2957,23 @@ function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
           </button>
         </div>
         <div className="modal-body">
-          {/* Product Info Card */}
-          <div style={{ padding: '1rem', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '10px', marginBottom: '1rem' }}>
-            <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '1rem', marginBottom: '0.5rem' }}>{itemData.name}</div>
-            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: 'var(--gray)', flexWrap: 'wrap', alignItems: 'center' }}>
-              <span>Category: <strong style={{ color: '#D4A843' }}>{itemData.category}</strong></span>
-              <span style={{ fontFamily: 'monospace', color: 'var(--gray)' }}>SKU: {itemData.sku}</span>
-              {allItems.length > 0 && (
-                <span style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 600, background: 'rgba(212,168,67,0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
-                  {allItems.length} {hasMultipleVariantTypes ? 'combo' : ''} variant{allItems.length !== 1 ? 's' : ''}
-                </span>
-              )}
+          {/* Product Info Cards - show separate card for each product */}
+          {products.map((product, idx) => (
+            <div key={idx} style={{ padding: '1rem', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '10px', marginBottom: products.length > 1 ? '0.75rem' : '1rem' }}>
+              <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '1rem', marginBottom: '0.5rem' }}>{product.name}</div>
+              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: 'var(--gray)', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span>Category: <strong style={{ color: '#D4A843' }}>{product.category}</strong></span>
+                {product.items.length > 0 && (
+                  <span style={{ fontFamily: 'monospace', color: 'var(--gray)' }}>SKU: {product.items[0].sku}</span>
+                )}
+                {product.items.length > 1 && (
+                  <span style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 600, background: 'rgba(212,168,67,0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
+                    {product.items.length} combo variant{product.items.length !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
+          ))}
 
           {/* Summary Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
@@ -2966,25 +2992,35 @@ function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
           </div>
 
           {/* Variants List (if multi-variant) */}
-          {allItems.length > 1 && (
+          {products.length > 1 || (products.length === 1 && products[0].items.length > 1) ? (
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Variants</div>
-              <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}>
-                {allItems.map((item, idx) => (
-                  <div key={item.id || idx} style={{ padding: '0.625rem 0.75rem', borderBottom: idx < allItems.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#E5E2E1' }}>{item.variantCombo ? Object.values(item.variantCombo).join(' / ') : item.name}</div>
-                      <div style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: 'var(--gray)' }}>{item.sku}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#D4A843' }}>{item.stockQty || 0}</div>
-                      <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>pcs</div>
-                    </div>
+              <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}>
+                {products.map((product, pIdx) => (
+                  <div key={pIdx}>
+                    {products.length > 1 && (
+                      <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(212,168,67,0.05)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#D4A843' }}>{product.name}</div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{product.category}</div>
+                      </div>
+                    )}
+                    {product.items.map((item, idx) => (
+                      <div key={item.id || idx} style={{ padding: '0.625rem 0.75rem', borderBottom: idx < product.items.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#E5E2E1' }}>{item.variantCombo ? Object.values(item.variantCombo).join(' / ') : item.name}</div>
+                          <div style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: 'var(--gray)' }}>{item.sku}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#D4A843' }}>{item.stockQty || 0}</div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>pcs</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Batches Info */}
           {batches.length > 0 && (
@@ -3025,9 +3061,9 @@ function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
                         </div>
                         {/* Combo/Variant */}
                         <div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Combo</div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Items</div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--white)' }}>
-                            {batch.items.length} {hasMultipleVariantTypes ? 'combo' : ''} variant{batch.items.length !== 1 ? 's' : ''}
+                            {batch.items.length} variant{batch.items.length !== 1 ? 's' : ''}
                           </div>
                         </div>
                         {/* Batch Total */}
