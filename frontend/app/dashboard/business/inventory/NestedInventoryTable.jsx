@@ -42,7 +42,7 @@ export function NestedInventoryTable({
   expandedBatchSections = new Set(),
   onExpandBatchSection,
   onUpdateMinStock,
-  onToggleBackorder,
+  // onToggleBackorder,  // TODO: Removed - Pre-Order is always ON by default
   onArchiveVariant,
   onDeleteVariant
 }) {
