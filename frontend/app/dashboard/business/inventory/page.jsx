@@ -1180,10 +1180,11 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
   const [originalProd, setOriginalProd] = useState(null);
   
   // Helper to create new variant type
-  const createVariantType = (name, options = []) => ({
+  const createVariantType = (name, options = [], isStockable = true) => ({
     id: `vt-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
     name,
     options,
+    isStockable,  // NEW: Checkbox to track if variant type is stockable
   });
 
   useEffect(() => {
@@ -1237,14 +1238,14 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
   const generateSkuCombinations = (variantTypes, categoryName, productName) => {
     if (!variantTypes || variantTypes.length === 0) return [];
 
-    // Filter only tracked variant types for SKU generation
-    const trackedTypes = variantTypes;  // All types are tracked now
+    // NEW: Filter only stockable variant types (isStockable !== false)
+    const stockableTypes = (variantTypes || []).filter(vt => vt.isStockable !== false);
 
-    // If no tracked types, return empty (no SKU needed for non-tracked items)
-    if (trackedTypes.length === 0) return [];
+    // If no stockable types, return empty (no SKU needed for non-stockable items)
+    if (stockableTypes.length === 0) return [];
 
     const combinations = [[]];
-    for (const variantType of trackedTypes) {
+    for (const variantType of stockableTypes) {
       const newCombinations = [];
       for (const combo of combinations) {
         for (const option of variantType.options) {
@@ -1273,10 +1274,10 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
       }).join('-');
 
       const variantName = combo.join(' - ');
-      
+
       // Category prefix: first 3 letters
       const catPrefix = categoryName.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase();
-      
+
       // Product prefix: first letter of each word (up to 4 words)
       const prodPrefix = productName
         .split(' ')
@@ -1284,7 +1285,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
         .map(w => w.charAt(0).toUpperCase())
         .slice(0, 4)
         .join('');
-      
+
       return {
         sku: `${catPrefix}-${prodPrefix}-${skuSuffix}`,  // STI-VSW-GLO or STI-VSWL-GLO
         name: `${productName} ${variantName}`,
@@ -1516,10 +1517,13 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
     setFormVariantTypes(updated);
   };
 
-  // Calculate total combinations
+  // Calculate total combinations (only stockable variant types)
   const getTotalCombinations = () => {
     if (formVariantTypes.length === 0) return 0;
-    return formVariantTypes.reduce((total, vt) => {
+    // Filter only stockable types
+    const stockableTypes = formVariantTypes.filter(vt => vt.isStockable !== false);
+    if (stockableTypes.length === 0) return 0;
+    return stockableTypes.reduce((total, vt) => {
       if (vt.options.length === 0) return total;
       return total * vt.options.length;
     }, 1);
@@ -1715,12 +1719,47 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                               Type {typeIdx + 1}
                             </span>
                             <span style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.9rem' }}>{vt.name}</span>
+                            
+                            {/* Stockable Checkbox */}
+                            <label style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                              marginLeft: '0.5rem',
+                              cursor: 'pointer',
+                              fontSize: '0.7rem',
+                              color: vt.isStockable !== false ? 'var(--gold, #D4A843)' : 'var(--gray)',
+                              fontWeight: 600,
+                              background: vt.isStockable !== false ? 'rgba(212,168,67,0.12)' : 'rgba(100,100,100,0.12)',
+                              padding: '0.2rem 0.5rem',
+                              borderRadius: '20px',
+                              border: vt.isStockable !== false ? '1px solid rgba(212,168,67,0.3)' : '1px solid rgba(100,100,100,0.3)'
+                            }}
+                            title={vt.isStockable !== false ? 'Stockable - Will create inventory items' : 'Not Stockable - For pricing/options only'}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={vt.isStockable !== false}
+                                onChange={e => {
+                                  const updated = [...formVariantTypes];
+                                  updated[typeIdx] = { ...updated[typeIdx], isStockable: e.target.checked };
+                                  setFormVariantTypes(updated);
+                                }}
+                                style={{
+                                  width: '14px',
+                                  height: '14px',
+                                  cursor: 'pointer',
+                                  accentColor: 'var(--gold, #D4A843)'
+                                }}
+                              />
+                              {vt.isStockable !== false ? 'Stockable' : 'Not Stockable'}
+                            </label>
                           </div>
                           <button
                             type="button"
                             onClick={() => {
                               // Check if ANY option in this type is in use
-                              const hasInUseOption = formVariantTypes[typeIdx].options.some(opt => 
+                              const hasInUseOption = formVariantTypes[typeIdx].options.some(opt =>
                                 isOptionInUse(
                                   localList.find(c => c.id === formCatId)?.name,
                                   formName,
@@ -1728,7 +1767,7 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                                   opt
                                 )
                               );
-                              
+
                               if (hasInUseOption) {
                                 setInfoModal({
                                   title: 'Cannot Remove Variant Type',
@@ -1738,15 +1777,15 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                               }
                               removeVariantType(typeIdx);
                             }}
-                            style={{ 
-                              background: '#7f1d1d', 
-                              border: '1px solid #ef4444', 
-                              color: '#fca5a5', 
-                              borderRadius: '6px', 
-                              padding: '0.25rem 0.6rem', 
-                              fontSize: '0.7rem', 
-                              fontWeight: 600, 
-                              cursor: 'pointer' 
+                            style={{
+                              background: '#7f1d1d',
+                              border: '1px solid #ef4444',
+                              color: '#fca5a5',
+                              borderRadius: '6px',
+                              padding: '0.25rem 0.6rem',
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              cursor: 'pointer'
                             }}
                           >
                             Remove Type
@@ -2425,7 +2464,15 @@ function ItemMasterlistModal({ isOpen, onClose, masterlist, onSave, inventory })
                                           {hasVariantTypes ? (
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.3rem' }}>
                                               {prod.variantTypes.map((vt, idx) => (
-                                                <span key={idx} style={{ fontSize: '0.68rem', color: 'var(--gray)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.1rem 0.4rem', borderRadius: '3px' }}>
+                                                <span key={idx} style={{ 
+                                                  fontSize: '0.68rem', 
+                                                  color: vt.isStockable !== false ? 'var(--gold, #D4A843)' : 'var(--gray)', 
+                                                  background: vt.isStockable !== false ? 'rgba(212,168,67,0.12)' : 'rgba(100,100,100,0.12)', 
+                                                  border: vt.isStockable !== false ? '1px solid rgba(212,168,67,0.3)' : '1px solid rgba(100,100,100,0.3)', 
+                                                  padding: '0.1rem 0.4rem', 
+                                                  borderRadius: '12px',
+                                                  fontWeight: vt.isStockable !== false ? 600 : 400
+                                                }}>
                                                   {vt.name}: {vt.options.join(', ')}
                                                 </span>
                                               ))}

@@ -447,23 +447,38 @@ export default function AddInventoryItemModal({
       const year = new Date().getFullYear();
       const seq = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
       const sku = `${catP}-${prodP}-${year}-${seq}`;
-      
+
+      return [{
+        comboKey: '__base__',
+        comboLabel: ml.prodName,
+        comboMap: {},
+        sku,  // Generate SKU for products without variants
+        qty: '',
+        damaged: '',
+        unitCost: '',
+        minStockLevel: '10',
+        isStockable: true
+      }];
+    }
+    
+    // NEW: Filter only stockable variant types (isStockable !== false)
+    const tracked = (ml.variantTypes || []).filter(vt => vt.isStockable !== false);
+    
+    if (tracked.length === 0) {
+      // No stockable variants - return single row without SKU
       return [{ 
         comboKey: '__base__', 
         comboLabel: ml.prodName, 
         comboMap: {}, 
-        sku,  // Generate SKU for products without variants
+        sku: '',  // No SKU for non-stockable items
         qty: '', 
         damaged: '', 
         unitCost: '', 
-        minStockLevel: '10' 
+        minStockLevel: '10',
+        isStockable: false
       }];
     }
-    // All variant types are tracked now (no isTracked filter)
-    const tracked = ml.variantTypes;
-    if (tracked.length === 0) {
-      return [{ comboKey: '__base__', comboLabel: ml.prodName, comboMap: {}, qty: '', damaged: '', unitCost: '', minStockLevel: '10' }];
-    }
+    
     const selectedPerType = {};
     tracked.forEach(vt => {
       selectedPerType[vt.name] = vt.options;
@@ -484,7 +499,17 @@ export default function AddInventoryItemModal({
       const label = Object.values(combo).join(' / ');
       const key = Object.entries(combo).map(([k, v]) => `${k}:${v}`).join('|');
       const sku = genComboSKU(ml.catName, ml.prodName, combo, allOptionsPerType);
-      return { comboKey: key, comboLabel: label, comboMap: combo, sku, qty: '', damaged: '', unitCost: '', minStockLevel: '10' };
+      return { 
+        comboKey: key, 
+        comboLabel: label, 
+        comboMap: combo, 
+        sku, 
+        qty: '', 
+        damaged: '', 
+        unitCost: '', 
+        minStockLevel: '10',
+        isStockable: true
+      };
     });
   };
 
@@ -1056,11 +1081,27 @@ export default function AddInventoryItemModal({
                             const hasExistingMinStock = existingItem?.minStockLevel;
 
                             return (
-                              <tr key={row.comboKey} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <tr key={row.comboKey} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.04)', opacity: row.isStockable === false ? 0.5 : 1 }}>
                                 <td style={{ padding: '1rem' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                     <div>
-                                      <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{row.comboLabel || product.prodName}</div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <span style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{row.comboLabel || product.prodName}</span>
+                                        {row.isStockable === false && (
+                                          <span style={{
+                                            padding: '0.2rem 0.5rem',
+                                            background: 'rgba(100,100,100,0.2)',
+                                            border: '1px solid rgba(100,100,100,0.4)',
+                                            borderRadius: '20px',
+                                            color: '#9ca3af',
+                                            fontSize: '0.6rem',
+                                            fontWeight: 600,
+                                            textTransform: 'uppercase'
+                                          }}>
+                                            Not Stockable
+                                          </span>
+                                        )}
+                                      </div>
                                       <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.1rem' }}>SKU: {row.sku || '—'}</div>
                                     </div>
                                   </div>
@@ -1078,17 +1119,19 @@ export default function AddInventoryItemModal({
                                         newRows[idx] = { ...row, minStockLevel: e.target.value };
                                         setStockRowsByProduct({ ...stockRowsByProduct, [product.prodId]: newRows });
                                       }}
-                                      min={1} max={9999} placeholder="10"
+                                      min={1} max={9999} placeholder={row.isStockable === false ? 'N/A' : '10'}
+                                      disabled={row.isStockable === false}
                                       className="form-input"
                                       style={{
                                         textAlign: 'center',
                                         width: '80px',
-                                        background: 'rgba(255,255,255,0.06)',
+                                        background: row.isStockable === false ? 'rgba(100,100,100,0.1)' : 'rgba(255,255,255,0.06)',
                                         border: '1px solid rgba(255,255,255,0.1)',
                                         borderRadius: '8px',
-                                        color: '#E5E2E1',
+                                        color: row.isStockable === false ? 'var(--gray)' : '#E5E2E1',
                                         fontWeight: 600,
-                                        padding: '0.5rem'
+                                        padding: '0.5rem',
+                                        cursor: row.isStockable === false ? 'not-allowed' : 'pointer'
                                       }}
                                     />
                                   )}
@@ -1100,7 +1143,9 @@ export default function AddInventoryItemModal({
                                       newRows[idx] = { ...row, qty: e.target.value };
                                       setStockRowsByProduct({ ...stockRowsByProduct, [product.prodId]: newRows });
                                     }}
-                                    min={0} max={99999} placeholder="0" style={{ textAlign: 'center', width: '80px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: q > 0 ? '#D4A843' : 'var(--gray)', fontWeight: 700, padding: '0.5rem' }} />
+                                    min={0} max={99999} placeholder={row.isStockable === false ? 'N/A' : '0'}
+                                    disabled={row.isStockable === false}
+                                    style={{ textAlign: 'center', width: '80px', background: row.isStockable === false ? 'rgba(100,100,100,0.1)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: q > 0 ? '#D4A843' : 'var(--gray)', fontWeight: 700, padding: '0.5rem', cursor: row.isStockable === false ? 'not-allowed' : 'pointer' }} />
                                 </td>
                                 <td style={{ padding: '1rem 0.75rem', textAlign: 'center' }}>
                                   <IntegerInput className="form-input" value={row.damaged}
@@ -1109,8 +1154,10 @@ export default function AddInventoryItemModal({
                                       newRows[idx] = { ...row, damaged: e.target.value };
                                       setStockRowsByProduct({ ...stockRowsByProduct, [product.prodId]: newRows });
                                     }}
-                                    min={0} max={99999} placeholder="0" qtyValue={row.qty}
-                                    style={{ textAlign: 'center', width: '80px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: d > 0 ? '#F87171' : 'var(--gray)', fontWeight: 600, padding: '0.5rem' }} />
+                                    min={0} max={99999} placeholder={row.isStockable === false ? 'N/A' : '0'}
+                                    disabled={row.isStockable === false}
+                                    qtyValue={row.qty}
+                                    style={{ textAlign: 'center', width: '80px', background: row.isStockable === false ? 'rgba(100,100,100,0.1)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: d > 0 ? '#F87171' : 'var(--gray)', fontWeight: 600, padding: '0.5rem', cursor: row.isStockable === false ? 'not-allowed' : 'pointer' }} />
                                 </td>
                               </tr>
                             );
