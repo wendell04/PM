@@ -251,7 +251,13 @@ export default function StockAdditionModal({ isOpen, onClose, onConfirm, item, s
   const [stockRows, setStockRows] = useState([]);
   const [baseProduct, setBaseProduct] = useState(null);
 
-  const genBatchId = () => { const d=new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${Math.floor(Math.random()*1000).toString().padStart(3,'0')}`; };
+  // Generate unique batch ID with timestamp for uniqueness
+  const genBatchId = () => {
+    const d = new Date();
+    const timestamp = Date.now().toString(36).slice(-4).toUpperCase();
+    const randomSeq = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${timestamp}-${randomSeq}`;
+  };
 
   // Extract base product name from variant name
   const extractBaseProductName = (variantName) => {

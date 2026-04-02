@@ -700,9 +700,12 @@ export default function AddInventoryItemModal({
         productUnitCost = productTotalQty > 0 ? totalAmt / productTotalQty : 0;
       }
 
-      // Generate ONE batch ID per product (all variants share the same batch)
+      // Generate UNIQUE batch ID per PRODUCT (not per invoice)
+      // This ensures each product has its own batch tracking
       const d = new Date(invoice.deliveryDate);
-      const batchId = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${Math.floor(Math.random()*1000).toString().padStart(3,'0')}`;
+      const timestamp = Date.now().toString(36).slice(-4).toUpperCase();
+      const randomSeq = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const batchId = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${timestamp}-${randomSeq}`;
 
       return rowsWithQty.map(row => {
         const qty = parseInt(row.qty) || 0;

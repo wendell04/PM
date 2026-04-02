@@ -3039,11 +3039,11 @@ function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
             </div>
           </div>
 
-          {/* Variants List (if multi-variant) */}
+          {/* Variants List with Batch Info (if multi-variant) */}
           {products.length > 1 || (products.length === 1 && products[0].items.length > 1) ? (
             <div style={{ marginBottom: '1rem' }}>
-              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Variants</div>
-              <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}>
+              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem', fontWeight: 600, letterSpacing: '0.08em' }}>Variants & Batch Details</div>
+              <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
                 {products.map((product, pIdx) => (
                   <div key={pIdx}>
                     {products.length > 1 && (
@@ -3052,80 +3052,48 @@ function ConfirmSaveModal({ isOpen, onClose, onConfirm, itemData, isEdit }) {
                         <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{product.category}</div>
                       </div>
                     )}
-                    {product.items.map((item, idx) => (
-                      <div key={item.id || idx} style={{ padding: '0.625rem 0.75rem', borderBottom: idx < product.items.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#E5E2E1' }}>{item.variantCombo ? Object.values(item.variantCombo).join(' / ') : item.name}</div>
-                          <div style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: 'var(--gray)' }}>{item.sku}</div>
+                    {product.items.map((item, idx) => {
+                      const batch = item.batches?.[0];
+                      return (
+                        <div key={item.id || idx} style={{ padding: '0.75rem', borderBottom: idx < product.items.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}>
+                          {/* Top row: Variant name + Stock */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                            <div>
+                              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#E5E2E1', marginBottom: '0.25rem' }}>
+                                {item.variantCombo ? Object.values(item.variantCombo).join(' / ') : item.name}
+                              </div>
+                              <div style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: 'var(--gray)' }}>{item.sku}</div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#D4A843' }}>{item.stockQty || 0}</div>
+                              <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>pcs</div>
+                            </div>
+                          </div>
+                          {/* Bottom row: Batch details */}
+                          {batch && (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.15)', borderRadius: '6px', fontSize: '0.65rem' }}>
+                              <div>
+                                <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.15rem' }}>Batch ID</div>
+                                <div style={{ fontFamily: 'monospace', color: '#D4A843', fontWeight: 600 }}>{batch.batchId}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.15rem' }}>Supplier</div>
+                                <div style={{ color: 'var(--white)' }}>{batch.supplierName || 'General'}</div>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '0.55rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.15rem' }}>Invoice</div>
+                                <div style={{ color: 'var(--white)', fontFamily: 'monospace' }}>{batch.invoiceNumber || '—'}</div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#D4A843' }}>{item.stockQty || 0}</div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>pcs</div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ))}
               </div>
             </div>
           ) : null}
-
-          {/* Batches Info */}
-          {batches.length > 0 && (
-            <div style={{ marginBottom: '1rem' }}>
-              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.5rem', fontWeight: 600, letterSpacing: '0.08em' }}>
-                Batch / Invoice History
-              </div>
-              <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
-                <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '120px 150px 200px 100px 80px 1fr 100px', gap: '0.75rem', alignItems: 'start', minWidth: 'max-content', padding: '0.75rem 1rem' }}>
-                    {batches.map((batch, idx) => (
-                      <React.Fragment key={batch.batchId}>
-                        {idx > 0 && <div style={{ gridColumn: '1 / -1', height: '1px', background: 'rgba(255,255,255,0.04)', margin: '0.5rem 0' }} />}
-                        {/* Batch ID */}
-                        <div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Batch ID</div>
-                          <div style={{ fontFamily: 'monospace', color: '#D4A843', fontWeight: 600, fontSize: '0.8rem' }}>{batch.batchId}</div>
-                        </div>
-                        {/* Supplier */}
-                        <div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Supplier</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--white)' }}>{batch.supplierName || 'General'}</div>
-                        </div>
-                        {/* Invoice */}
-                        <div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Invoice</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--white)', fontFamily: 'monospace' }}>{batch.invoiceNumber || '—'}</div>
-                        </div>
-                        {/* Delivery Date */}
-                        <div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Delivery Date</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--white)' }}>{new Date(batch.dateReceived).toLocaleDateString()}</div>
-                        </div>
-                        {/* Total Qty */}
-                        <div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Total Qty</div>
-                          <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.9rem' }}>{batch.totalQty} <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>pcs</span></div>
-                        </div>
-                        {/* Combo/Variant */}
-                        <div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Items</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--white)' }}>
-                            {batch.items.length} variant{batch.items.length !== 1 ? 's' : ''}
-                          </div>
-                        </div>
-                        {/* Batch Total */}
-                        <div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Batch Total</div>
-                          <div style={{ color: '#D4A843', fontWeight: 600, fontSize: '0.8rem' }}>{formatPrice(batch.totalCost)}</div>
-                        </div>
-                      </React.Fragment>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           <p style={{ fontSize: '0.8rem', color: 'var(--gray)', textAlign: 'center', fontStyle: 'italic' }}>
             {isEdit ? 'This will update the inventory item.' : 'This will add a new item to your physical inventory.'}
@@ -3277,6 +3245,9 @@ export default function InventoryPage() {
   const [showBatchDetailsModal, setShowBatchDetailsModal] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [selectedBatchItem, setSelectedBatchItem] = useState(null);
+
+  // For Remove Product confirmation
+  const [confirmModal, setConfirmModal] = useState(null);
 
   // TODO: MongoDB — Replace with:
   // GET /api/inventory, GET /api/categories, GET /api/suppliers, GET /api/masterlist
@@ -3544,25 +3515,82 @@ export default function InventoryPage() {
   // TODO: MongoDB — Replace with: PUT /api/inventory/sku/:sku { isActive: false, archivedAt: now }
   const handleArchiveVariant = (variant, product) => {
     if (!variant || !variant.sku) return;
-    
+
     // Archive all inventory items with this SKU
-    setInventory(prev => prev.map(i => 
-      i.sku === variant.sku 
+    setInventory(prev => prev.map(i =>
+      i.sku === variant.sku
         ? { ...i, isActive: false, archivedAt: new Date().toISOString(), archivedReason: 'variant_archived' }
         : i
     ));
-    
+
     // Archive linked products (storefront)
     const products = JSON.parse(localStorage.getItem('pmp_products') || '[]');
-    const updatedProducts = products.map(p => 
+    const updatedProducts = products.map(p =>
       p.variantSku === variant.sku || p.sku === variant.sku
         ? { ...p, isPublished: false, isArchived: true, archivedReason: 'variant_archived', updatedAt: new Date().toISOString() }
         : p
     );
     localStorage.setItem('pmp_products', JSON.stringify(updatedProducts));
-    
+
     // Note: We don't delete from masterlist - masterlist is a template
     // The variant definition stays, only inventory is archived
+  };
+
+  // Remove entire product (all variants) - for out of stock products
+  const handleRemoveProduct = (productFromNestedTable) => {
+    // productFromNestedTable has: { name, category, variants: Map, batches: Map }
+    // Get all SKUs from this product's variants
+    const variantList = Array.from(productFromNestedTable.variants.values());
+    const allSkus = variantList.map(v => v.sku);
+
+    // Find all inventory items that match these SKUs
+    const itemsToDelete = inventory.filter(i => allSkus.includes(i.sku) && i.isActive !== false);
+
+    // Check if any can be deleted
+    const products = JSON.parse(localStorage.getItem('pmp_products')||'[]');
+    const sales = JSON.parse(localStorage.getItem('pmp_sales')||'[]');
+
+    // Check each item
+    let hasAnyLinkedData = false;
+    itemsToDelete.forEach(item => {
+      const linkedProducts = products.filter(p => p.inventoryId === item.id || p.sku === item.sku || p.variantSku === item.sku);
+      const hasSales = sales.some(s => s.inventoryId === item.id || s.items?.some(i => i.inventoryId === item.id || i.sku === item.sku));
+      const hasBatches = (item.batches || []).length > 0;
+      const hasStock = item.stockQty > 0;
+
+      if (linkedProducts.length > 0 || hasSales || hasBatches || hasStock) {
+        hasAnyLinkedData = true;
+      }
+    });
+
+    // Show confirmation
+    setConfirmModal({
+      isOpen: true,
+      title: 'Remove Out of Stock Product',
+      message: `Permanently remove "${productFromNestedTable.name}" and all ${itemsToDelete.length} variant(s)?`,
+      confirmLabel: 'Remove',
+      confirmClass: 'btn-danger',
+      onConfirm: () => {
+        // Archive all variants of this product
+        setInventory(prev => prev.map(i => {
+          if (allSkus.includes(i.sku)) {
+            return { ...i, isActive: false, deletedAt: new Date().toISOString() };
+          }
+          return i;
+        }));
+
+        // Also archive linked storefront products
+        const updatedProducts = products.map(p => {
+          if (allSkus.some(sku => p.sku === sku || p.variantSku === sku)) {
+            return { ...p, isPublished: false, isArchived: true, updatedAt: new Date().toISOString() };
+          }
+          return p;
+        });
+        localStorage.setItem('pmp_products', JSON.stringify(updatedProducts));
+
+        setConfirmModal({ isOpen: false });
+      }
+    });
   };
 
   // TODO: MongoDB — Replace with: DELETE /api/inventory/sku/:sku
@@ -4082,7 +4110,6 @@ Item Masterlist
             placeholder="Search by name or category..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            onFocus={() => setIsCategoryDropdownOpen(true)}
             style={{ flex: 1 }}
           />
           {searchQuery && <button className="search-clear" onClick={() => setSearchQuery('')}>×</button>}
@@ -4290,7 +4317,7 @@ Item Masterlist
         {statusFilter !== 'stock-out' && (
           <div className="inventory-legend">
             <span className="legend-item"><span className="legend-dot legend-dot-low"></span>Low Stock</span>
-            <span className="legend-item"><span className="legend-dot legend-dot-out"></span>Stock Out</span>
+            <span className="legend-item"><span className="legend-dot legend-dot-out"></span>Out of Stock</span>
           </div>
         )}
       </div>
@@ -4338,7 +4365,7 @@ Item Masterlist
             onExpandBatch={handleExpandBatch}
             onExpandBatchSection={handleExpandBatchSection}
             onEditItem={handleEdit}
-            onRemoveItem={handleDelete}
+            onRemoveItem={handleRemoveProduct}
             onAddStock={(item) => { setAdditionItem(item); setShowAdditionModal(true); }}
             onReduceStock={(item) => { setAdjustmentItem(item); setShowAdjustmentModal(true); }}
             onUpdateMinStock={(sku, minStock) => {

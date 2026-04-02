@@ -371,18 +371,18 @@ export function SupplierDetailsModal({ isOpen, onClose, supplier, inventory }) {
                                 <tr>
                                   <td colSpan={6} style={{ padding: '0', background: 'rgba(0,0,0,0.15)' }}>
                                     <div style={{ padding: '1rem 1.5rem' }}>
-                                      <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 600 }}>
+                                      <div style={{ fontSize: '0.75rem', color: '#9CA3AF', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 700, letterSpacing: '0.08em' }}>
                                         Items in this purchase ({itemsArray.length})
                                       </div>
                                       <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
                                         <table style={{ width: '100%', fontSize: '0.8rem' }}>
                                           <thead>
-                                            <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                                              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 600 }}>Item</th>
-                                              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Category</th>
-                                              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600 }}>Qty</th>
-                                              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: 'var(--gray)', fontWeight: 600 }}>Unit Cost</th>
-                                              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: 'var(--gray)', fontWeight: 600 }}>Subtotal</th>
+                                            <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '2px solid rgba(212,168,67,0.3)' }}>
+                                              <th style={{ padding: '0.75rem', textAlign: 'left', color: '#9CA3AF', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Item</th>
+                                              <th style={{ padding: '0.75rem', textAlign: 'center', color: '#9CA3AF', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Category</th>
+                                              <th style={{ padding: '0.75rem', textAlign: 'center', color: '#9CA3AF', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Qty</th>
+                                              <th style={{ padding: '0.75rem', textAlign: 'right', color: '#9CA3AF', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Unit Cost</th>
+                                              <th style={{ padding: '0.75rem', textAlign: 'right', color: '#9CA3AF', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Subtotal</th>
                                             </tr>
                                           </thead>
                                           <tbody>
@@ -396,16 +396,16 @@ export function SupplierDetailsModal({ isOpen, onClose, supplier, inventory }) {
                                                     </div>
                                                   )}
                                                 </td>
-                                                <td style={{ padding: '0.625rem 0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.75rem' }}>
+                                                <td style={{ padding: '0.625rem 0.75rem', textAlign: 'center', color: '#9CA3AF', fontSize: '0.85rem' }}>
                                                   {item.itemCategory}
                                                 </td>
-                                                <td style={{ padding: '0.625rem 0.75rem', textAlign: 'center', color: '#D4A843', fontWeight: 600 }}>
+                                                <td style={{ padding: '0.625rem 0.75rem', textAlign: 'center', color: '#D4A843', fontWeight: 700, fontSize: '0.9rem' }}>
                                                   {formatNumber(item.qty)} pcs
                                                 </td>
-                                                <td style={{ padding: '0.625rem 0.75rem', textAlign: 'right', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                                                <td style={{ padding: '0.625rem 0.75rem', textAlign: 'right', color: '#E5E2E1', fontWeight: 600, fontSize: '0.9rem' }}>
                                                   ₱{formatPrice(item.unitCost)}
                                                 </td>
-                                                <td style={{ padding: '0.625rem 0.75rem', textAlign: 'right', color: '#facc15', fontWeight: 700 }}>
+                                                <td style={{ padding: '0.625rem 0.75rem', textAlign: 'right', color: '#FACC15', fontWeight: 700, fontSize: '0.95rem' }}>
                                                   ₱{formatPrice(item.totalCost)}
                                                 </td>
                                               </tr>
@@ -416,29 +416,42 @@ export function SupplierDetailsModal({ isOpen, onClose, supplier, inventory }) {
 
                                       {/* Receipt Image Section */}
                                       {invoice.batches.some(b => b.receiptImage) && (
-                                        <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2">
+                                        <div style={{ marginTop: '1.5rem', padding: '1.25rem', background: 'rgba(0,0,0,0.3)', borderRadius: '12px', border: '1px solid rgba(212,168,67,0.2)' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2">
                                               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                                               <polyline points="14 2 14 8 20 8"/>
                                             </svg>
-                                            <span style={{ fontSize: '0.7rem', color: '#D4A843', fontWeight: 600, textTransform: 'uppercase' }}>Receipt</span>
+                                            <span style={{ fontSize: '0.8rem', color: '#D4A843', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Receipt / Invoice</span>
                                           </div>
-                                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                            {invoice.batches.filter(b => b.receiptImage).map((batch, idx) => (
-                                              <img 
-                                                key={idx}
-                                                src={batch.receiptImage} 
-                                                alt="Receipt" 
-                                                style={{ 
-                                                  width: '80px', 
-                                                  height: '80px', 
-                                                  objectFit: 'cover', 
-                                                  borderRadius: '6px',
-                                                  border: '1px solid rgba(255,255,255,0.1)'
-                                                }}
-                                              />
-                                            ))}
+                                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                                            {(() => {
+                                              // Deduplicate receipt images - same invoice = same receipt
+                                              const seenReceipts = new Set();
+                                              const uniqueReceipts = invoice.batches
+                                                .filter(b => b.receiptImage)
+                                                .filter(b => {
+                                                  if (seenReceipts.has(b.receiptImage)) return false;
+                                                  seenReceipts.add(b.receiptImage);
+                                                  return true;
+                                                });
+                                              return uniqueReceipts.map((batch, idx) => (
+                                                <img
+                                                  key={idx}
+                                                  src={batch.receiptImage}
+                                                  alt="Receipt"
+                                                  style={{
+                                                    maxWidth: '100%',
+                                                    width: 'auto',
+                                                    maxHeight: '400px',
+                                                    objectFit: 'contain',
+                                                    borderRadius: '8px',
+                                                    border: '1px solid rgba(212,168,67,0.3)',
+                                                    background: 'rgba(0,0,0,0.2)'
+                                                  }}
+                                                />
+                                              ));
+                                            })()}
                                           </div>
                                         </div>
                                       )}

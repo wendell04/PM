@@ -38,30 +38,49 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
       // Don't filter by isActive - show ALL items including archived (for historical reporting)
       // Only show items that have stock out movements (sold, damaged, or writeoff)
       .map(item => {
+        // Calculate totals WITH date filter
         const totalStockOut = (item.batches || []).reduce((sum, batch) => {
           const batchStockOut = (batch.movements || [])
-            .filter(m => m.type === 'sold' || m.type === 'damaged' || m.type === 'writeoff')
+            .filter(m => {
+              // Filter by type
+              if (m.type !== 'sold' && m.type !== 'damaged' && m.type !== 'writeoff') return false;
+              // Filter by date
+              if (dateRange.start && (new Date(m.createdAt) < dateRange.start || new Date(m.createdAt) > dateRange.end)) return false;
+              return true;
+            })
             .reduce((s, m) => s + Math.abs(m.quantity), 0);
           return sum + batchStockOut;
         }, 0);
 
         const totalSold = (item.batches || []).reduce((sum, batch) => {
           const batchSold = (batch.movements || [])
-            .filter(m => m.type === 'sold')
+            .filter(m => {
+              if (m.type !== 'sold') return false;
+              if (dateRange.start && (new Date(m.createdAt) < dateRange.start || new Date(m.createdAt) > dateRange.end)) return false;
+              return true;
+            })
             .reduce((s, m) => s + Math.abs(m.quantity), 0);
           return sum + batchSold;
         }, 0);
 
         const totalDamaged = (item.batches || []).reduce((sum, batch) => {
           const batchDamaged = (batch.movements || [])
-            .filter(m => m.type === 'damaged')
+            .filter(m => {
+              if (m.type !== 'damaged') return false;
+              if (dateRange.start && (new Date(m.createdAt) < dateRange.start || new Date(m.createdAt) > dateRange.end)) return false;
+              return true;
+            })
             .reduce((s, m) => s + Math.abs(m.quantity), 0);
           return sum + batchDamaged;
         }, 0);
 
         const totalWriteOff = (item.batches || []).reduce((sum, batch) => {
           const batchWriteOff = (batch.movements || [])
-            .filter(m => m.type === 'writeoff')
+            .filter(m => {
+              if (m.type !== 'writeoff') return false;
+              if (dateRange.start && (new Date(m.createdAt) < dateRange.start || new Date(m.createdAt) > dateRange.end)) return false;
+              return true;
+            })
             .reduce((s, m) => s + Math.abs(m.quantity), 0);
           return sum + batchWriteOff;
         }, 0);
@@ -268,7 +287,13 @@ export function StockOutTable({ inventory, onExpandBatch, expandedBatches = new 
                                   </button>
                                 </div>
                                 <div>
-                                  <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>{item.name}</div>
+                                  {/* Show variant combo if available, otherwise extract from name */}
+                                  <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>
+                                    {item.variantCombo 
+                                      ? Object.values(item.variantCombo).join(' / ')
+                                      : item.name.replace(item.masterlistProductName || '', '').trim() || item.name
+                                    }
+                                  </div>
                                   <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.2rem' }}>{item.sku}</div>
                                 </div>
                                 <div style={{ textAlign: 'center', fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>{item.stockQty} pcs</div>

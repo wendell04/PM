@@ -34,7 +34,7 @@ export function NestedInventoryTable({
   onExpandProduct,
   onExpandBatch,
   onEditItem,
-  onRemoveItem,
+  onRemoveItem,  // This is now handleRemoveProduct
   onAddStock,
   onReduceStock,
   expandedProducts = new Set(),
@@ -306,17 +306,23 @@ export function NestedInventoryTable({
                     </div>
                   </div>
 
-                  {/* Remove */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onRemoveItem(product); }}
-                    style={{
-                      background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.28)',
-                      color: '#f87171', borderRadius: '7px', padding: '0.35rem 0.7rem',
-                      fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap'
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.22)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; }}
-                  >Remove</button>
+                  {/* Remove - Only show when ALL variants are out of stock */}
+                  {productTotalStock === 0 && (
+                    <button
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        // Pass the full product object with variants Map
+                        onRemoveItem(product); 
+                      }}
+                      style={{
+                        background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.28)',
+                        color: '#f87171', borderRadius: '7px', padding: '0.35rem 0.7rem',
+                        fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap'
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.22)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; }}
+                    >Remove</button>
+                  )}
 
                   {/* Chevron */}
                   <div style={{
