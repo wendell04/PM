@@ -203,6 +203,7 @@ function RTVListTab({ rtvs, onRefresh }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, rtv: null, newStatus: '' });
 
   const materials = useMemo(() => getStore(MATERIALS_KEY), []);
   const vendors = useMemo(() => getStore(VENDORS_KEY), []);
@@ -222,7 +223,14 @@ function RTVListTab({ rtvs, onRefresh }) {
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }, [rtvs, search, statusFilter]);
 
-  const handleStatusChange = (rtv, newStatus) => {
+  const requestStatusChange = (rtv, newStatus) => {
+    // If already resolved, don't allow changes
+    if (rtv.status !== 'pending') return;
+    setConfirmModal({ isOpen: true, rtv, newStatus });
+  };
+
+  const confirmStatusChange = () => {
+    const { rtv, newStatus } = confirmModal;
     const all = getStore(RTV_KEY);
     const updated = all.map(r => r.id === rtv.id ? { ...r, status: newStatus, updatedAt: new Date().toISOString() } : r);
     setStore(RTV_KEY, updated);
@@ -239,6 +247,7 @@ function RTVListTab({ rtvs, onRefresh }) {
         ));
       }
     }
+    setConfirmModal({ isOpen: false, rtv: null, newStatus: '' });
     onRefresh();
   };
 
@@ -365,29 +374,35 @@ function RTVListTab({ rtvs, onRefresh }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                     <div>
                       <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Reason</div>
-                      <select
-                        style={{ ...inputStyle, padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '160px', textAlign: 'center' }}
-                        value={rtv.reason || ''}
-                        onChange={e => {
-                          const all = getStore(RTV_KEY);
-                          setStore(RTV_KEY, all.map(r => r.id === rtv.id ? { ...r, reason: e.target.value } : r));
-                          onRefresh();
-                        }}
-                      >
-                        {RETURN_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-                      </select>
+                      <div style={{
+                        ...inputStyle, padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '160px', textAlign: 'center',
+                        background: 'rgba(255,255,255,0.03)', color: '#E5E2E1', cursor: 'default',
+                      }}>
+                        {rtv.reason || '—'}
+                      </div>
                     </div>
                     <div>
                       <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Update Status</div>
-                      <select
-                        style={{ ...inputStyle, padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px', textAlign: 'center' }}
-                        value={rtv.status}
-                        onChange={e => handleStatusChange(rtv, e.target.value)}
-                      >
-                        {Object.entries(RTV_UPDATE_STATUSES).map(([k, v]) => (
-                          <option key={k} value={k}>{v.label}</option>
-                        ))}
-                      </select>
+                      {rtv.status === 'pending' ? (
+                        <select
+                          style={{ ...inputStyle, padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px', textAlign: 'center' }}
+                          value=""
+                          onChange={e => { if (e.target.value) requestStatusChange(rtv, e.target.value); e.target.value = ''; }}
+                        >
+                          <option value="">Select action...</option>
+                          {Object.entries(RTV_UPDATE_STATUSES).map(([k, v]) => (
+                            <option key={k} value={k}>{v.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div style={{
+                          ...inputStyle, padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px', textAlign: 'center',
+                          background: 'rgba(255,255,255,0.03)', color: RTV_STATUS[rtv.status]?.color || 'var(--gray)',
+                          fontWeight: 700, cursor: 'default',
+                        }}>
+                          {RTV_STATUS[rtv.status]?.label || rtv.status}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -433,6 +448,57 @@ function RTVListTab({ rtvs, onRefresh }) {
           onClose={() => setShowManualForm(false)}
           onSave={handleManualRTV}
         />
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmModal.isOpen && confirmModal.rtv && (
+        <div className="modal-overlay" onClick={() => setConfirmModal({ isOpen: false, rtv: null, newStatus: '' })}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h2 className="modal-title">Confirm Status Update</h2>
+              <button className="modal-close" onClick={() => setConfirmModal({ isOpen: false, rtv: null, newStatus: '' })}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div style={{ padding: '1.5rem 2rem' }}>
+              <p style={{ fontSize: '0.875rem', color: '#E5E2E1', lineHeight: 1.6, marginBottom: '0.75rem' }}>
+                Update <strong>{confirmModal.rtv.materialName}</strong> ({confirmModal.rtv.qty} {confirmModal.rtv.uom}) status to:
+              </p>
+              <div style={{
+                padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px',
+                border: '1px solid var(--border)', textAlign: 'center', marginBottom: '1rem',
+              }}>
+                <span style={{
+                  fontWeight: 700, fontSize: '0.9rem',
+                  color: RTV_UPDATE_STATUSES[confirmModal.newStatus]?.color || '#E5E2E1',
+                }}>
+                  {RTV_UPDATE_STATUSES[confirmModal.newStatus]?.label || confirmModal.newStatus}
+                </span>
+              </div>
+              {confirmModal.newStatus === 'replacement_received' && (
+                <div style={{
+                  padding: '0.6rem 0.75rem', background: 'rgba(34,197,94,0.06)', borderRadius: '6px',
+                  border: '1px solid rgba(34,197,94,0.15)', fontSize: '0.8rem', color: '#86efac',
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/>
+                  </svg>
+                  This will restore {confirmModal.rtv.qty} {confirmModal.rtv.uom} to stock.
+                </div>
+              )}
+              <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.75rem' }}>
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setConfirmModal({ isOpen: false, rtv: null, newStatus: '' })}>Cancel</button>
+              <button type="button" className="btn-primary" onClick={confirmStatusChange}>Confirm</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
