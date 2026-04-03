@@ -39,7 +39,7 @@ function NumberInput({ value, onChange, min = 0, max, placeholder, className, di
 }
 
 // ── Inventory Helper (LocalStorage) ─────────────────────────────────────────
-import { getInventoryList } from '../../inventory/page';
+import { getInventoryList } from '../../inventory-old/page';
 
 // ─── Category Product Selector (Two-Step Dropdown) ──────────────────────────
 function CategoryProductSelector({ inventoryList, selectedCategory, onCategoryChange, selectedProduct, onProductChange, linkedProductIds }) {

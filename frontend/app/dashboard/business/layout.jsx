@@ -125,7 +125,7 @@ export default function BusinessDashboardLayout({ children }) {
     }
   };
 
-  const [expandedItems, setExpandedItems] = useState(['Product CMS']);
+  const [expandedItems, setExpandedItems] = useState(['Product CMS', 'Inventory']);
 
   const navItems = [
     {
@@ -137,7 +137,15 @@ export default function BusinessDashboardLayout({ children }) {
       ],
     },
     { name: 'Orders', href: '/dashboard/business/orders' },
-    { name: 'Inventory', href: '/dashboard/business/inventory' },
+    {
+      name: 'Inventory',
+      children: [
+        { name: 'Master Data', href: '/dashboard/business/inventory/master-data' },
+        { name: 'Procurement (PO)', href: '/dashboard/business/inventory/purchasing' },
+        { name: 'Stocks', href: '/dashboard/business/inventory/stocks' },
+        { name: 'Returns to Vendor', href: '/dashboard/business/inventory/returns' },
+      ],
+    },
     { name: 'Sales', href: '/dashboard/business/sales' },
     { name: 'Reports', href: '/dashboard/business/reports' },
   ];
