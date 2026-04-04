@@ -1577,6 +1577,201 @@ function StockInHistoryTab({ stockIns }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// PO DOCUMENT PREVIEW — Printable Purchase Order (Letter Size)
+// ══════════════════════════════════════════════════════════════════════════════
+function PODocumentPreview({ poData, vendors, materials, onClose, onEdit, onConfirm }) {
+  const total = (poData.items || []).reduce(
+    (sum, item) => sum + ((parseFloat(item.unitCost) || 0) * (parseInt(item.qty) || 0)), 0
+  );
+  const vendor = vendors.find(v => v.id === poData.vendorId);
+  const expectedDate = poData.expectedDate ? new Date(poData.expectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+  const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  // Generate a preview PO number (will be replaced on save)
+  const previewPONum = `PO-REQUEST-${new Date().getFullYear()}-NEW`;
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  return (
+    <div className="modal-overlay" style={{ overflowY: 'auto', paddingTop: '1rem', paddingBottom: '1rem' }}>
+      <style>{`
+        @media print {
+          @page {
+            size: letter portrait;
+            margin: 0.5in;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            overflow: visible !important;
+          }
+          body * { visibility: hidden !important; }
+          #po-print-area, #po-print-area * { visibility: visible !important; }
+          #po-print-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 7.5in;
+            max-width: 100%;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+          }
+          .no-print { display: none !important; }
+          .po-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+      `}</style>
+      <div id="po-print-area" style={{
+        background: '#fff', color: '#1a1a1a', width: '7.5in', margin: '0 auto',
+        fontFamily: "'DM Sans', sans-serif",
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+      }}>
+        {/* Header */}
+        <div className="po-header" style={{
+          background: '#1a1a1a',
+          color: '#fff', padding: '1.2rem 1.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 800, letterSpacing: '0.05em', color: '#D4A843' }}>
+              PERSONALIZE ME PRINTS
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.15rem' }}>
+              Order Request
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 800, fontFamily: 'monospace', color: '#D4A843' }}>
+              {previewPONum}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.1rem' }}>
+              {today}
+            </div>
+          </div>
+        </div>
+
+        {/* Vendor + Expected Delivery */}
+        <div style={{
+          padding: '0.8rem 1.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          borderBottom: '1px solid #e5e5e5',
+        }}>
+          <div>
+            <div style={{ fontSize: '0.55rem', color: '#999', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.15rem', letterSpacing: '0.05em' }}>Vendor</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1a1a1a' }}>{vendor?.name || 'General Merchandise'}</div>
+            {vendor?.phone && <div style={{ fontSize: '0.7rem', color: '#888', marginTop: '0.1rem' }}>{vendor.phone}</div>}
+            {vendor?.email && <div style={{ fontSize: '0.7rem', color: '#888', marginTop: '0.05rem' }}>{vendor.email}</div>}
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.55rem', color: '#999', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.15rem', letterSpacing: '0.05em' }}>Expected Delivery</div>
+            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1a1a1a' }}>{expectedDate}</div>
+          </div>
+        </div>
+
+        {/* Items Table */}
+        <div style={{ padding: '0.8rem 1.8rem 1.2rem' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #1a1a1a' }}>
+                <th style={{ padding: '0.45rem 0.4rem', textAlign: 'left', color: '#999', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', width: '25px' }}>#</th>
+                <th style={{ padding: '0.45rem 0.4rem', textAlign: 'left', color: '#999', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>Material</th>
+                <th style={{ padding: '0.45rem 0.4rem', textAlign: 'center', color: '#999', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', width: '50px' }}>Qty</th>
+                <th style={{ padding: '0.45rem 0.4rem', textAlign: 'center', color: '#999', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', width: '50px' }}>Unit</th>
+                <th style={{ padding: '0.45rem 0.4rem', textAlign: 'right', color: '#999', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', width: '80px' }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(poData.items || []).map((item, idx) => {
+                const mat = materials.find(m => m.id === item.materialId);
+                const lineTotal = (parseFloat(item.unitCost) || 0) * (parseInt(item.qty) || 0);
+                return (
+                  <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '0.5rem 0.4rem', color: '#aaa', fontSize: '0.75rem' }}>{idx + 1}</td>
+                    <td style={{ padding: '0.5rem 0.4rem' }}>
+                      <div style={{ fontWeight: 600, color: '#1a1a1a', fontSize: '0.8rem' }}>
+                        {mat?.name || item.materialName || '—'}
+                      </div>
+                      {mat?.sku && <div style={{ fontSize: '0.65rem', color: '#aaa', fontFamily: 'monospace', marginTop: '0.05rem' }}>{mat.sku}</div>}
+                    </td>
+                    <td style={{ padding: '0.5rem 0.4rem', textAlign: 'center', color: '#1a1a1a', fontWeight: 600, fontSize: '0.8rem' }}>{item.qty}</td>
+                    <td style={{ padding: '0.5rem 0.4rem', textAlign: 'center', color: '#888', fontSize: '0.75rem' }}>{mat?.uom || item.uom || 'pcs'}</td>
+                    <td style={{ padding: '0.5rem 0.4rem', textAlign: 'right', fontWeight: 700, color: '#1a1a1a', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                      ₱{lineTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {/* Grand Total */}
+          <div style={{
+            display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1rem',
+            marginTop: '0.8rem', paddingTop: '0.6rem', borderTop: '2px solid #1a1a1a',
+          }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#888', textTransform: 'uppercase' }}>Grand Total</span>
+            <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#D4A843', fontFamily: 'monospace' }}>
+              ₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+
+          {/* Notes */}
+          {poData.notes && (
+            <div style={{
+              marginTop: '1rem', padding: '0.5rem 0.75rem', background: '#f8f8f8',
+              borderRadius: '6px', borderLeft: '3px solid #D4A843',
+            }}>
+              <div style={{ fontSize: '0.55rem', color: '#999', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.1rem' }}>Notes</div>
+              <div style={{ fontSize: '0.72rem', color: '#555', lineHeight: 1.4 }}>{poData.notes}</div>
+            </div>
+          )}
+
+          {/* Signature — Prepared By only */}
+          <div style={{
+            display: 'flex', justifyContent: 'flex-start', gap: '2rem', marginTop: '2rem',
+          }}>
+            <div style={{ textAlign: 'center', width: '180px' }}>
+              <div style={{ borderBottom: '1px solid #ccc', height: '35px', marginBottom: '0.3rem' }}></div>
+              <div style={{ fontSize: '0.6rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Prepared By</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div className="no-print" style={{
+          background: '#1a1a1a', padding: '1rem 1.8rem', display: 'flex',
+          justifyContent: 'space-between', alignItems: 'center', gap: '1rem',
+        }}>
+          <button onClick={onClose} style={{
+            background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
+            padding: '0.6rem 1.25rem', color: '#999', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+          }}>Cancel</button>
+          <div style={{ display: 'flex', gap: '0.65rem' }}>
+            <button onClick={onEdit} style={{
+              background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
+              padding: '0.6rem 1.25rem', color: '#E5E2E1', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+            }}>Edit</button>
+            <button onClick={handlePrint} style={{
+              background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
+              padding: '0.6rem 1.25rem', color: '#E5E2E1', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '0.4rem',
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              Print
+            </button>
+            <button onClick={() => onConfirm(poData)} style={{
+              background: '#D4A843', border: 'none', borderRadius: '8px',
+              padding: '0.6rem 1.25rem', color: '#1a1a1a', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+            }}>Confirm & Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // PURCHASE ORDERS TAB
 // ══════════════════════════════════════════════════════════════════════════════
 function POTab({ pos, vendors, materials, onRefresh }) {
@@ -1589,6 +1784,7 @@ function POTab({ pos, vendors, materials, onRefresh }) {
   const [expandedPO,   setExpandedPO]   = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [statusChangeTarget, setStatusChangeTarget] = useState(null);
+  const [poPreviewData, setPOPreviewData] = useState(null); // unsaved PO data for preview
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -1602,6 +1798,17 @@ function POTab({ pos, vendors, materials, onRefresh }) {
   }, [pos, search, statusFilter]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
+  const handlePreviewPO = (poData) => {
+    // For new POs, open preview. For edits, save directly.
+    if (poData.id && pos.find(p => p.id === poData.id)) {
+      handleSavePO(poData);
+    } else {
+      setPOPreviewData(poData);
+      setShowForm(false);
+      setEditPO(null);
+    }
+  };
+
   const handleSavePO = (po) => {
     const all = getStore(PO_KEY);
     let updated;
@@ -1620,6 +1827,7 @@ function POTab({ pos, vendors, materials, onRefresh }) {
     setStore(PO_KEY, updated);
     setShowForm(false);
     setEditPO(null);
+    setPOPreviewData(null);
     onRefresh();
   };
 
@@ -1885,9 +2093,6 @@ function POTab({ pos, vendors, materials, onRefresh }) {
                             display: 'flex', alignItems: 'center', gap: '0.4rem',
                           }}
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                          </svg>
                           Receive Stock
                         </button>
                       )}
@@ -1951,7 +2156,21 @@ function POTab({ pos, vendors, materials, onRefresh }) {
           vendors={vendors}
           materials={materials}
           onClose={() => { setShowForm(false); setEditPO(null); }}
-          onSave={handleSavePO}
+          onSave={handlePreviewPO}
+        />
+      )}
+      {poPreviewData && (
+        <PODocumentPreview
+          poData={poPreviewData}
+          vendors={vendors}
+          materials={materials}
+          onClose={() => setPOPreviewData(null)}
+          onEdit={() => {
+            setEditPO(poPreviewData);
+            setShowForm(true);
+            setPOPreviewData(null);
+          }}
+          onConfirm={handleSavePO}
         />
       )}
       {showGRForm && grTargetPO && (
