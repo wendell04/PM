@@ -262,10 +262,13 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
     if (!form.vendorId) return [];
     const vendor = vendors.find(v => v.id === form.vendorId);
     if (!vendor) return [];
-    const vendorCategories = vendor.itemsSupplied || [];
-    if (vendorCategories.length === 0) return [];
+    // Extract item names — handle both old string format and new {name, uom} format
+    const vendorItemNames = (vendor.itemsSupplied || []).map(item =>
+      typeof item === 'string' ? item : item.name
+    );
+    if (vendorItemNames.length === 0) return [];
     return materials.filter(m =>
-      vendorCategories.includes(m.category) &&
+      vendorItemNames.includes(m.category) &&
       (!m.hasVariants || m.parentId) // standalone OR variant children, not parents
     );
   }, [materials, form.vendorId, vendors]);
