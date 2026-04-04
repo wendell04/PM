@@ -267,10 +267,20 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
       typeof item === 'string' ? item : item.name
     );
     if (vendorItemNames.length === 0) return [];
-    return materials.filter(m =>
+    const filtered = materials.filter(m =>
       vendorItemNames.includes(m.category) &&
       (!m.hasVariants || m.parentId) // standalone OR variant children, not parents
     );
+    // Deduplicate by normalized name — keep the one with the longest/newest SKU
+    const normalizeName = (n) => n.replace(/[—–\-]/g, ' ').replace(/[,]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const seen = new Map();
+    filtered.forEach(m => {
+      const key = normalizeName(m.name);
+      if (!seen.has(key) || (m.sku || '').length > (seen.get(key).sku || '').length) {
+        seen.set(key, m);
+      }
+    });
+    return [...seen.values()];
   }, [materials, form.vendorId, vendors]);
 
   return (
