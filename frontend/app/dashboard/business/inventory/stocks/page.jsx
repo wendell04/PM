@@ -12,6 +12,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import CustomDropdown from '@/app/components/CustomDropdown';
 
 // ── Storage Keys ───────────────────────────────────────────────────────────────
 const MATERIALS_KEY  = 'pmp_materials';
@@ -195,7 +196,7 @@ function GoodsIssueModal({ materials, onClose, onSave }) {
   const selectableMaterials = materials.filter(m => !m.parentId);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()}
         style={{ maxWidth: '520px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
 
@@ -219,18 +220,16 @@ function GoodsIssueModal({ materials, onClose, onSave }) {
             {/* Material */}
             <div>
               <label className="form-label">Material <span className="required">*</span></label>
-              <select
-                style={{ ...inputStyle, borderColor: errors.material ? 'rgba(239,68,68,0.5)' : undefined }}
+              <CustomDropdown
                 value={form.materialId}
-                onChange={e => { setForm(p => ({ ...p, materialId: e.target.value })); setErrors(p => ({ ...p, material: null, quantity: null })); }}
-              >
-                <option value="">Select material...</option>
-                {selectableMaterials.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}{m.sku ? ` (${m.sku})` : ''} — Stock: {m.stockQty || 0} {m.uom || 'pcs'}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => { setForm(p => ({ ...p, materialId: val })); setErrors(p => ({ ...p, material: null, quantity: null })); }}
+                options={[
+                  { value: '', label: 'Select material...' },
+                  ...selectableMaterials.map(m => ({ value: m.id, label: `${m.name}${m.sku ? ` (${m.sku})` : ''} — Stock: ${m.stockQty || 0} ${m.uom || 'pcs'}` })),
+                ]}
+                placeholder="Select material..."
+                style={{ borderColor: errors.material ? 'rgba(239,68,68,0.5)' : undefined }}
+              />
               {errors.material && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{errors.material}</p>}
             </div>
 
@@ -433,23 +432,29 @@ function StockOverviewTab({ materials, vendors, onIssueStock }) {
             <input className="search-input" placeholder="Search materials..." value={search} onChange={e => setSearch(e.target.value)} />
             {search && <button className="search-clear" onClick={() => setSearch('')}>×</button>}
           </div>
-          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} style={{
-            padding: '0.5rem 0.75rem', background: 'var(--dark2)', border: '1px solid var(--border)',
-            borderRadius: '6px', color: 'var(--white)', fontSize: '0.8rem', cursor: 'pointer', minWidth: '140px'
-          }}>
-            <option value="" style={{ background: 'var(--dark)', color: 'var(--white)' }}>All Categories</option>
-            {categories.map(c => <option key={c} value={c} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{c}</option>)}
-          </select>
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{
-            padding: '0.5rem 0.75rem', background: 'var(--dark2)', border: '1px solid var(--border)',
-            borderRadius: '6px', color: 'var(--white)', fontSize: '0.8rem', cursor: 'pointer', minWidth: '130px'
-          }}>
-            <option value="" style={{ background: 'var(--dark)', color: 'var(--white)' }}>All Status</option>
-            <option value="healthy" style={{ background: 'var(--dark)', color: 'var(--white)' }}>Healthy</option>
-            <option value="low-stock" style={{ background: 'var(--dark)', color: 'var(--white)' }}>Low Stock</option>
-            <option value="out-of-stock" style={{ background: 'var(--dark)', color: 'var(--white)' }}>Out of Stock</option>
-            <option value="on-demand" style={{ background: 'var(--dark)', color: 'var(--white)' }}>On-Demand</option>
-          </select>
+          <CustomDropdown
+            value={categoryFilter}
+            onChange={setCategoryFilter}
+            options={[
+              { value: '', label: 'All Categories' },
+              ...categories.map(c => ({ value: c, label: c })),
+            ]}
+            placeholder="All Categories"
+            style={{ minWidth: '140px' }}
+          />
+          <CustomDropdown
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: '', label: 'All Status' },
+              { value: 'healthy', label: 'Healthy' },
+              { value: 'low-stock', label: 'Low Stock' },
+              { value: 'out-of-stock', label: 'Out of Stock' },
+              { value: 'on-demand', label: 'On-Demand' },
+            ]}
+            placeholder="All Status"
+            style={{ minWidth: '130px' }}
+          />
         </div>
         <button className="btn-primary" onClick={onIssueStock} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -554,15 +559,16 @@ function StockOutHistoryTab({ stockOuts }) {
             <input className="search-input" placeholder="Search stock-out records..." value={search} onChange={e => setSearch(e.target.value)} />
             {search && <button className="search-clear" onClick={() => setSearch('')}>×</button>}
           </div>
-          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{
-            padding: '0.5rem 0.75rem', background: 'var(--dark2)', border: '1px solid var(--border)',
-            borderRadius: '6px', color: 'var(--white)', fontSize: '0.8rem', cursor: 'pointer', minWidth: '150px'
-          }}>
-            <option value="" style={{ background: 'var(--dark)', color: 'var(--white)' }}>All Types</option>
-            {Object.entries(ISSUE_TYPES).map(([k, v]) => (
-              <option key={k} value={k} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{v.label}</option>
-            ))}
-          </select>
+          <CustomDropdown
+            value={typeFilter}
+            onChange={setTypeFilter}
+            options={[
+              { value: '', label: 'All Types' },
+              ...Object.entries(ISSUE_TYPES).map(([k, v]) => ({ value: k, label: v.label })),
+            ]}
+            placeholder="All Types"
+            style={{ minWidth: '150px' }}
+          />
         </div>
       </div>
 

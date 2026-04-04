@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
+import CustomDropdown from '@/app/components/CustomDropdown';
 
 // ── LocalStorage Keys ──────────────────────────────────────────────────────────
 const MATERIALS_KEY = 'pmp_materials';
@@ -268,7 +269,7 @@ function DecimalInput({ value, onChange, placeholder, style, disabled, max = 999
 function InfoModal({ isOpen, onClose, title, message }) {
   if (!isOpen) return null;
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
         <div className="modal-header">
           <h2 className="modal-title" style={{ fontSize: '1rem' }}>{title}</h2>
@@ -291,7 +292,7 @@ function InfoModal({ isOpen, onClose, title, message }) {
 function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confirmLabel = 'Confirm', confirmClass = 'btn-danger' }) {
   if (!isOpen) return null;
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
         <div className="modal-header">
           <h2 className="modal-title" style={{ fontSize: '1rem' }}>{title}</h2>
@@ -317,7 +318,7 @@ function MaterialDetailsModal({ material, vendors, onClose }) {
   const vendor = vendors.find(v => v.id === material.preferredVendorId);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
         <div className="modal-header">
           <div>
@@ -383,7 +384,7 @@ function MaterialDetailsModal({ material, vendors, onClose }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // MATERIAL MASTER TAB
 // ══════════════════════════════════════════════════════════════════════════════
-function MaterialMasterTab({ itemCategories, materials, onMaterialsChange }) {
+function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVendorsChange }) {
   const [vendors, setVendors] = useState([]);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -393,10 +394,55 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange }) {
   const [editMaterial, setEditMaterial] = useState(null);
   const [viewMaterial, setViewMaterial] = useState(null);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
+  const [showVendorModal, setShowVendorModal] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [showCategoryInput, setShowCategoryInput] = useState(false);
 
   useEffect(() => {
     setVendors(getVendors());
   }, []);
+
+  // Handler to add a new category
+  const handleAddCategory = () => {
+    setShowCategoryInput(true);
+    setNewCategoryInput('');
+  };
+
+  const handleSaveCategory = () => {
+    const trimmed = newCategoryInput.trim();
+    if (!trimmed) { setShowCategoryInput(false); return; }
+    if (itemCategories.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+      setShowCategoryInput(false);
+      return;
+    }
+    // Add to all vendors' itemsSupplied
+    const updatedVendors = vendors.map(v => ({
+      ...v,
+      itemsSupplied: v.itemsSupplied.includes(trimmed) ? v.itemsSupplied : [...(v.itemsSupplied || []), trimmed],
+    }));
+    setVendors(updatedVendors);
+    saveVendors(updatedVendors);
+    if (onVendorsChange) onVendorsChange(updatedVendors);
+    setShowCategoryInput(false);
+    setNewCategoryInput('');
+  };
+
+  // Handler to open vendor add modal
+  const handleAddVendor = () => {
+    setShowAddModal(false);
+    setEditMaterial(null);
+    setShowVendorModal(true);
+  };
+
+  const handleSaveVendorFromMaterial = (vendor) => {
+    const updated = [...vendors, { ...vendor, id: `vendor-${Date.now()}`, createdAt: new Date().toISOString() }];
+    setVendors(updated);
+    saveVendors(updated);
+    if (onVendorsChange) onVendorsChange(updated);
+    setShowVendorModal(false);
+    // Re-open material modal
+    setShowAddModal(true);
+  };
 
   const groupedMaterials = useMemo(() => {
     const parents = materials.filter(m => m.hasVariants && !m.parentId);
@@ -534,21 +580,27 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange }) {
             <input className="search-input" placeholder="Filter materials..." value={search} onChange={e => setSearch(e.target.value)} />
             {search && <button className="search-clear" onClick={() => setSearch('')}>x</button>}
           </div>
-          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} style={{
-            padding: '0.5rem 0.75rem', background: 'var(--dark2)', border: '1px solid var(--border)',
-            borderRadius: '6px', color: 'var(--white)', fontSize: '0.8rem', cursor: 'pointer', minWidth: '140px'
-          }}>
-            <option value="" style={{ background: 'var(--dark)', color: 'var(--white)' }}>All Categories</option>
-            {itemCategories.map(c => <option key={c} value={c} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{c}</option>)}
-          </select>
-          <select value={procurementFilter} onChange={e => setProcurementFilter(e.target.value)} style={{
-            padding: '0.5rem 0.75rem', background: 'var(--dark2)', border: '1px solid var(--border)',
-            borderRadius: '6px', color: 'var(--white)', fontSize: '0.8rem', cursor: 'pointer', minWidth: '130px'
-          }}>
-            <option value="" style={{ background: 'var(--dark)', color: 'var(--white)' }}>All Procurement</option>
-            <option value="stock" style={{ background: 'var(--dark)', color: 'var(--white)' }}>Stock (MTS)</option>
-            <option value="on-demand" style={{ background: 'var(--dark)', color: 'var(--white)' }}>On-Demand (MTO)</option>
-          </select>
+          <CustomDropdown
+            value={categoryFilter}
+            onChange={setCategoryFilter}
+            options={[
+              { value: '', label: 'All Categories' },
+              ...itemCategories.map(c => ({ value: c, label: c })),
+            ]}
+            placeholder="All Categories"
+            style={{ minWidth: '140px' }}
+          />
+          <CustomDropdown
+            value={procurementFilter}
+            onChange={setProcurementFilter}
+            options={[
+              { value: '', label: 'All Procurement' },
+              { value: 'stock', label: 'Stock (MTS)' },
+              { value: 'on-demand', label: 'On-Demand (MTO)' },
+            ]}
+            placeholder="All Procurement"
+            style={{ minWidth: '130px' }}
+          />
         </div>
         <button className="btn-primary" onClick={() => setShowAddModal(true)}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
@@ -699,6 +751,8 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange }) {
           editMaterial={editMaterial}
           onClose={() => { setShowAddModal(false); setEditMaterial(null); }}
           onSave={handleSave}
+          onAddCategory={handleAddCategory}
+          onAddVendor={handleAddVendor}
         />
       )}
       {viewMaterial && (
@@ -717,12 +771,54 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange }) {
         confirmLabel="Delete"
         confirmClass="btn-danger"
       />
+
+      {/* Category Input Modal */}
+      {showCategoryInput && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h2 className="modal-title">Add New Category</h2>
+              <button className="modal-close" onClick={() => { setShowCategoryInput(false); setNewCategoryInput(''); }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div style={{ padding: '1.5rem 2rem' }}>
+              <label className="form-label">Category Name</label>
+              <input
+                type="text"
+                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#E5E2E1', padding: '0.625rem 0.75rem', fontSize: '0.85rem', outline: 'none' }}
+                value={newCategoryInput}
+                onChange={e => setNewCategoryInput(e.target.value.slice(0, 50))}
+                placeholder="e.g., Mugs, Packaging..."
+                maxLength={50}
+                autoFocus
+                onKeyDown={e => { if (e.key === 'Enter') handleSaveCategory(); }}
+              />
+            </div>
+            <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => { setShowCategoryInput(false); setNewCategoryInput(''); }}>Cancel</button>
+              <button type="button" className="btn-primary" onClick={handleSaveCategory}>Add Category</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vendor Add Modal (from Material form) */}
+      {showVendorModal && (
+        <VendorFormModal
+          vendor={null}
+          allVendors={vendors}
+          materials={materials}
+          onClose={() => { setShowVendorModal(false); setShowAddModal(true); }}
+          onSave={handleSaveVendorFromMaterial}
+        />
+      )}
     </div>
   );
 }
 
 // ── Material Form Modal ────────────────────────────────────────────────────────
-function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, onClose, onSave }) {
+function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, onClose, onSave, onAddCategory, onAddVendor }) {
   const [form, setForm] = useState({
     name: '', category: itemCategories[0] || '', uom: 'pcs',
     minStock: '', baseCost: '',
@@ -733,6 +829,32 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
   const [previewSKUs, setPreviewSKUs] = useState([]);
   const [variantTypeInput, setVariantTypeInput] = useState('');
   const [variantOptionInputs, setVariantOptionInputs] = useState({});
+  const [variantTypeRemoveModal, setVariantTypeRemoveModal] = useState(false);
+
+  // Find which variant options are locked (used by existing child materials with stock)
+  const lockedOptions = useMemo(() => {
+    if (!editMaterial || !editMaterial.hasVariants) return {};
+    const locked = {};
+    // Find all child materials of this parent
+    const children = materials.filter(m => m.parentId === editMaterial.id);
+    children.forEach(child => {
+      if (child.variantCombo) {
+        Object.entries(child.variantCombo).forEach(([typeName, optionVal]) => {
+          const key = `${typeName}::${optionVal}`;
+          locked[key] = true;
+        });
+      }
+    });
+    return locked;
+  }, [editMaterial, materials]);
+
+  // Check if a variant type has any locked options
+  const hasLockedOptions = (typeIdx) => {
+    if (!editMaterial || !editMaterial.hasVariants) return false;
+    const vt = form.variantTypes[typeIdx];
+    if (!vt) return false;
+    return vt.options.some(opt => lockedOptions[`${vt.name}::${opt}`]);
+  };
 
   // Populate form when editing
   useEffect(() => {
@@ -900,7 +1022,7 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
         <div className="modal-header" style={{ flexShrink: 0 }}>
           <h2 className="modal-title">{editMaterial ? 'Edit Material' : 'Add Material'}</h2>
@@ -912,47 +1034,66 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
           <div className="modal-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {/* Name */}
             <div>
-              <label className="form-label">Name <span className="required">*</span></label>
-              <input type="text" style={inputStyle} value={form.name}
+              <label className="form-label">
+                Name <span className="required">*</span>
+                {editMaterial && editMaterial.stockQty > 0 && (
+                  <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>(Locked: Stock exists)</span>
+                )}
+              </label>
+              <input type="text" style={{ ...inputStyle, opacity: editMaterial && editMaterial.stockQty > 0 ? 0.5 : 1 }} value={form.name}
                 onChange={e => setForm(p => ({ ...p, name: e.target.value.slice(0, 100) }))}
-                placeholder="e.g., Inner Color Mug" required maxLength={100} />
+                placeholder="e.g., Inner Color Mug" required maxLength={100}
+                disabled={editMaterial && editMaterial.stockQty > 0} />
             </div>
 
             {/* Category + Unit */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
-                <label className="form-label">Item / Material Category</label>
-                <select style={inputStyle} value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))}>
-                  {itemCategories.length === 0 ? (
-                    <option value="" style={{ background: 'var(--dark)', color: 'var(--gray)' }}>Add a vendor first to see categories</option>
-                  ) : (
-                    itemCategories.map(c => <option key={c} value={c} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{c}</option>)
+                <label className="form-label">
+                  Item / Material Category
+                  {editMaterial && editMaterial.stockQty > 0 && (
+                    <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>(Locked)</span>
                   )}
-                </select>
+                </label>
+                <CustomDropdown
+                  value={form.category}
+                  onChange={(val) => {
+                    if (val === '__add__') {
+                      onAddCategory?.();
+                    } else {
+                      setForm(p => ({ ...p, category: val }));
+                    }
+                  }}
+                  options={[
+                    ...itemCategories.map(c => ({ value: c, label: c })),
+                    { value: '__add__', label: '+ Add Category...' },
+                  ]}
+                  placeholder="Select category..."
+                  disabled={editMaterial && editMaterial.stockQty > 0}
+                />
               </div>
               <div>
                 <label className="form-label">
                   Unit
                   {editMaterial && editMaterial.stockQty > 0 && (
-                    <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>
-                      (Locked: Stock exists)
-                    </span>
+                    <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>(Locked: Stock exists)</span>
                   )}
                 </label>
-                <select
-                  style={{ ...inputStyle, opacity: editMaterial && editMaterial.stockQty > 0 ? 0.5 : 1, cursor: editMaterial && editMaterial.stockQty > 0 ? 'not-allowed' : 'pointer' }}
+                <CustomDropdown
                   value={form.uom}
-                  onChange={e => setForm(p => ({ ...p, uom: e.target.value }))}
+                  onChange={(val) => setForm(p => ({ ...p, uom: val }))}
+                  options={[
+                    { value: 'pcs', label: 'Pieces' },
+                    { value: 'bottle', label: 'Bottle' },
+                    { value: 'liter', label: 'Liter' },
+                    { value: 'kg', label: 'Kilogram' },
+                    { value: 'meter', label: 'Meter' },
+                    { value: 'roll', label: 'Roll' },
+                    { value: 'box', label: 'Box' },
+                  ]}
+                  placeholder="Select unit..."
                   disabled={editMaterial && editMaterial.stockQty > 0}
-                >
-                  <option value="pcs">Pieces</option>
-                  <option value="bottle">Bottle</option>
-                  <option value="liter">Liter</option>
-                  <option value="kg">Kilogram</option>
-                  <option value="meter">Meter</option>
-                  <option value="roll">Roll</option>
-                  <option value="box">Box</option>
-                </select>
+                />
               </div>
             </div>
 
@@ -986,10 +1127,15 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                   </svg>
                 </Tooltip>
               </label>
-              <select style={inputStyle} value={form.procurementType} onChange={e => setForm(p => ({ ...p, procurementType: e.target.value }))}>
-                <option value="stock">Stock (Make to Stock)</option>
-                <option value="on-demand">On-Demand (Make to Order)</option>
-              </select>
+              <CustomDropdown
+                value={form.procurementType}
+                onChange={(val) => setForm(p => ({ ...p, procurementType: val }))}
+                options={[
+                  { value: 'stock', label: 'Stock (Make to Stock)' },
+                  { value: 'on-demand', label: 'On-Demand (Make to Order)' },
+                ]}
+                placeholder="Select type..."
+              />
               {form.procurementType === 'on-demand' && (
                 <div style={{ fontSize: '0.72rem', color: '#818cf8', marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
@@ -1018,10 +1164,22 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
             {/* Preferred Vendor */}
             <div>
               <label className="form-label">Preferred Vendor</label>
-              <select style={inputStyle} value={form.preferredVendorId} onChange={e => setForm(p => ({ ...p, preferredVendorId: e.target.value }))}>
-                <option value="">Select a vendor</option>
-                {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-              </select>
+              <CustomDropdown
+                value={form.preferredVendorId}
+                onChange={(val) => {
+                  if (val === '__add__') {
+                    onAddVendor?.();
+                  } else {
+                    setForm(p => ({ ...p, preferredVendorId: val }));
+                  }
+                }}
+                options={[
+                  { value: '', label: 'Select a vendor' },
+                  ...vendors.map(v => ({ value: v.id, label: v.name })),
+                  { value: '__add__', label: '+ Add New Vendor...' },
+                ]}
+                placeholder="Select a vendor"
+              />
             </div>
 
             <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '0.5rem 0' }}></div>
@@ -1030,19 +1188,26 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <input type="checkbox" id="hasVariants" checked={form.hasVariants}
                 onChange={e => setForm(p => ({ ...p, hasVariants: e.target.checked, variantTypes: e.target.checked ? p.variantTypes : [] }))}
-                style={{ width: '16px', height: '16px', accentColor: '#D4A843' }} />
-              <label htmlFor="hasVariants" style={{ fontSize: '0.85rem', color: '#E5E2E1', cursor: 'pointer', fontWeight: 600 }}>This material has variants (e.g., Size, Color)</label>
+                style={{ width: '16px', height: '16px', accentColor: '#D4A843' }}
+                disabled={editMaterial && editMaterial.stockQty > 0} />
+              <label htmlFor="hasVariants" style={{ fontSize: '0.85rem', color: editMaterial && editMaterial.stockQty > 0 ? 'var(--gray)' : '#E5E2E1', cursor: editMaterial && editMaterial.stockQty > 0 ? 'not-allowed' : 'pointer', fontWeight: 600 }}>
+                This material has variants (e.g., Size, Color)
+                {editMaterial && editMaterial.stockQty > 0 && (
+                  <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>(Locked: Stock exists)</span>
+                )}
+              </label>
             </div>
 
             {/* Variant Types — Old Inventory Style */}
             {form.hasVariants && form.name.trim() && (
-              <div>
+              <div style={{ opacity: editMaterial && editMaterial.stockQty > 0 ? 0.5 : 1, pointerEvents: editMaterial && editMaterial.stockQty > 0 ? 'none' : 'auto' }}>
                 <label className="form-label">
                   Variant Types
                   <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)', marginLeft: '0.5rem' }}>(Optional — e.g., Capacity, Color, Size)</span>
                 </label>
                 <p className="form-hint" style={{ marginBottom: '1rem' }}>
                   Define product variations. All variant types will be included in SKU generation and stock tracking.
+                  {editMaterial && editMaterial.stockQty > 0 && <span style={{ color: '#f59e0b', marginLeft: '0.5rem' }}>⚠ Locked: Stock exists</span>}
                 </p>
 
                 {/* Variant Types List */}
@@ -1057,50 +1222,25 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                               Type {typeIdx + 1}
                             </span>
                             <span style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.9rem' }}>{vt.name}</span>
-
-                            {/* Stockable Checkbox */}
-                            <label style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.35rem',
-                              marginLeft: '0.5rem',
-                              cursor: 'pointer',
-                              fontSize: '0.7rem',
-                              color: vt.isStockable !== false ? 'var(--gold, #D4A843)' : 'var(--gray)',
-                              fontWeight: 600,
-                              background: vt.isStockable !== false ? 'rgba(212,168,67,0.12)' : 'rgba(100,100,100,0.12)',
-                              padding: '0.2rem 0.5rem',
-                              borderRadius: '20px',
-                              border: vt.isStockable !== false ? '1px solid rgba(212,168,67,0.3)' : '1px solid rgba(100,100,100,0.3)'
-                            }}
-                            title={vt.isStockable !== false ? 'Stockable - Will create inventory items' : 'Not Stockable - For pricing/options only'}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={vt.isStockable !== false}
-                                onChange={() => toggleStockable(typeIdx)}
-                                style={{
-                                  width: '14px',
-                                  height: '14px',
-                                  cursor: 'pointer',
-                                  accentColor: 'var(--gold, #D4A843)'
-                                }}
-                              />
-                              {vt.isStockable !== false ? 'Stockable' : 'Not Stockable'}
-                            </label>
                           </div>
                           <button
                             type="button"
-                            onClick={() => removeVariantType(typeIdx)}
+                            onClick={() => {
+                              if (hasLockedOptions(typeIdx)) {
+                                setVariantTypeRemoveModal(true);
+                              } else {
+                                removeVariantType(typeIdx);
+                              }
+                            }}
                             style={{
-                              background: '#7f1d1d',
-                              border: '1px solid #ef4444',
-                              color: '#fca5a5',
+                              background: hasLockedOptions(typeIdx) ? 'rgba(100,100,100,0.15)' : '#7f1d1d',
+                              border: `1px solid ${hasLockedOptions(typeIdx) ? 'rgba(100,100,100,0.3)' : '#ef4444'}`,
+                              color: hasLockedOptions(typeIdx) ? 'rgba(255,255,255,0.3)' : '#fca5a5',
                               borderRadius: '6px',
                               padding: '0.25rem 0.6rem',
                               fontSize: '0.7rem',
                               fontWeight: 600,
-                              cursor: 'pointer'
+                              cursor: hasLockedOptions(typeIdx) ? 'not-allowed' : 'pointer'
                             }}
                           >
                             Remove Type
@@ -1110,15 +1250,33 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                         {/* Variant Options Chips */}
                         {vt.options.length > 0 && (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem' }}>
-                            {vt.options.map((opt, optIdx) => (
-                              <span key={optIdx} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.25rem 0.6rem', background: 'rgba(100,100,100,0.12)', border: '1px solid rgba(100,100,100,0.35)', borderRadius: '20px', fontSize: '0.8rem', color: '#9ca3af', fontWeight: 500 }}>
-                                {opt}
-                                <button type="button" onClick={() => removeVariantOption(typeIdx, optIdx)}
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center' }}>
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                                </button>
-                              </span>
-                            ))}
+                            {vt.options.map((opt, optIdx) => {
+                              const isLocked = lockedOptions[`${vt.name}::${opt}`];
+                              return (
+                                <span key={optIdx} style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                                  padding: '0.25rem 0.6rem',
+                                  background: isLocked ? 'rgba(212,168,67,0.08)' : 'rgba(100,100,100,0.12)',
+                                  border: `1px solid ${isLocked ? 'rgba(212,168,67,0.3)' : 'rgba(100,100,100,0.35)'}`,
+                                  borderRadius: '20px',
+                                  fontSize: '0.8rem',
+                                  color: isLocked ? '#D4A843' : '#9ca3af',
+                                  fontWeight: 500
+                                }}>
+                                  {opt}
+                                  {isLocked ? (
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2.5" style={{ flexShrink: 0 }}>
+                                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+                                    </svg>
+                                  ) : (
+                                    <button type="button" onClick={() => removeVariantOption(typeIdx, optIdx)}
+                                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center' }}>
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                    </button>
+                                  )}
+                                </span>
+                              );
+                            })}
                           </div>
                         )}
 
@@ -1144,7 +1302,7 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                 )}
 
                 {/* Add Variant Type Input */}
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', opacity: editMaterial && editMaterial.stockQty > 0 ? 0.5 : 1, pointerEvents: editMaterial && editMaterial.stockQty > 0 ? 'none' : 'auto' }}>
                   <input
                     type="text"
                     style={{ ...inputStyle, flex: 1 }}
@@ -1191,18 +1349,198 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
           </div>
         </form>
       </div>
+
+      {/* Variant Type Remove Error Modal */}
+      {variantTypeRemoveModal && (
+        <div className="modal-overlay" onClick={() => setVariantTypeRemoveModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h2 className="modal-title" style={{ color: '#f59e0b' }}>Cannot Remove Variant Type</h2>
+              <button className="modal-close" onClick={() => setVariantTypeRemoveModal(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div style={{ padding: '1.5rem 2rem' }}>
+              <p style={{ color: '#E5E2E1', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                This variant type has options that are used by active inventory items. Remove all options first or archive the linked inventory items.
+              </p>
+            </div>
+            <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-primary" onClick={() => setVariantTypeRemoveModal(false)}>OK</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Vendor Catalog Modal ───────────────────────────────────────────────────────
+function VendorCatalogModal({ vendor, materials, onClose }) {
+  if (!vendor) return null;
+
+  // Find all materials linked to this vendor
+  const catalogItems = materials.filter(m => m.preferredVendorId === vendor.id && !m.parentId);
+
+  // Get price history from Goods Receipt records
+  const grs = useMemo(() => {
+    if (typeof window === 'undefined') return [];
+    try { return JSON.parse(localStorage.getItem('pmp_goods_receipts') || '[]'); }
+    catch { return []; }
+  }, []);
+
+  const pos = useMemo(() => {
+    if (typeof window === 'undefined') return [];
+    try { return JSON.parse(localStorage.getItem('pmp_purchase_orders') || '[]'); }
+    catch { return []; }
+  }, []);
+
+  // Get POs from this vendor
+  const vendorPOs = pos.filter(p => p.vendorId === vendor.id);
+  const vendorPOIds = new Set(vendorPOs.map(p => p.id));
+
+  // Build price history per material
+  const getPriceHistory = (materialId) => {
+    const history = [];
+    grs.forEach(gr => {
+      if (!vendorPOIds.has(gr.poId)) return;
+      const grItem = (gr.items || []).find(i => i.materialId === materialId);
+      if (!grItem) return;
+      history.push({
+        date: gr.receivedDate || gr.createdAt,
+        unitCost: grItem.unitCost || 0,
+        qty: grItem.receivedQty || 0,
+        poNumber: gr.poNumber || '',
+      });
+    });
+    return history.sort((a, b) => new Date(b.date) - new Date(a.date));
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '560px' }}>
+        <div className="modal-header">
+          <div>
+            <h2 className="modal-title" style={{ fontSize: '1.1rem' }}>{vendor.name} — Catalog</h2>
+            <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.1rem' }}>
+              Available raw materials from this vendor.
+            </p>
+          </div>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '450px', overflowY: 'auto' }}>
+          {catalogItems.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.85rem' }}>
+              No materials linked to this vendor yet.
+            </div>
+          ) : (
+            catalogItems.map(mat => {
+              const priceHistory = getPriceHistory(mat.id);
+              const avgCost = mat.baseCost || 0;
+              return (
+                <div key={mat.id} style={{
+                  padding: '1rem 1.25rem',
+                  background: 'rgba(255,255,255,0.02)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: '10px',
+                }}>
+                  {/* Material Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.95rem' }}>{mat.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.3rem' }}>
+                        <span style={{
+                          fontSize: '0.7rem', color: 'var(--gray)',
+                          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                          padding: '0.15rem 0.5rem', borderRadius: '4px',
+                        }}>
+                          {mat.category}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
+                          Unit: {mat.uom || 'pcs'}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 700, color: '#D4A843', fontSize: '1rem', fontFamily: 'monospace' }}>
+                        ₱{avgCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                      </div>
+                      <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>
+                        Avg. Cost
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Price History */}
+                  {priceHistory.length > 0 && (
+                    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
+                        Price History
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                        {priceHistory.slice(0, 5).map((ph, idx) => (
+                          <div key={idx} style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '0.35rem 0.5rem',
+                            background: 'rgba(255,255,255,0.02)',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                              <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>
+                                {new Date(ph.date).toLocaleDateString('en-PH')}
+                              </span>
+                              <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>
+                                {ph.qty} {mat.uom || 'pcs'}
+                              </span>
+                              {ph.poNumber && (
+                                <span style={{ color: 'var(--gray)', fontSize: '0.65rem', fontFamily: 'monospace' }}>
+                                  {ph.poNumber}
+                                </span>
+                              )}
+                            </div>
+                            <span style={{ fontWeight: 600, color: '#E5E2E1', fontFamily: 'monospace' }}>
+                              ₱{ph.unitCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        ))}
+                        {priceHistory.length > 5 && (
+                          <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textAlign: 'center', paddingTop: '0.25rem' }}>
+                            +{priceHistory.length - 5} more orders
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+        <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
+          <button type="button" className="btn-secondary" onClick={onClose}>Close Catalog</button>
+        </div>
+      </div>
     </div>
   );
 }
 
 // ── Vendor Details Modal (Read-only) ───────────────────────────────────────────
-function VendorDetailsModal({ vendor, onClose }) {
+function VendorDetailsModal({ vendor, materials, onClose }) {
   if (!vendor) return null;
 
+  // Find materials matching this vendor's categories
+  const vendorCategories = vendor.itemsSupplied || [];
+  const catalogMaterials = materials.filter(m =>
+    vendorCategories.includes(m.category) && (!m.hasVariants || m.parentId)
+  );
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
-        <div className="modal-header">
+    <div className="modal-overlay">
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="modal-header" style={{ flexShrink: 0 }}>
           <div>
             <h2 className="modal-title" style={{ fontSize: '1.1rem' }}>{vendor.name}</h2>
             {vendor.itemsSupplied && vendor.itemsSupplied.length > 0 && (
@@ -1217,8 +1555,8 @@ function VendorDetailsModal({ vendor, onClose }) {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <div style={{ padding: '1.5rem 2rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.5rem' }}>
             {vendor.contact && (
               <div>
                 <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem' }}>Contact Person</div>
@@ -1244,8 +1582,35 @@ function VendorDetailsModal({ vendor, onClose }) {
               </div>
             )}
           </div>
+
+          {/* Available Materials / Catalog */}
+          {catalogMaterials.length > 0 && (
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.75rem', letterSpacing: '0.08em' }}>
+                Available Materials ({catalogMaterials.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {catalogMaterials.map(m => (
+                  <div key={m.id} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '0.625rem 0.75rem', background: 'rgba(255,255,255,0.02)',
+                    borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)',
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.825rem' }}>{m.name}</div>
+                      {m.sku && <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{m.sku}</div>}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 600 }}>{m.stockQty || 0} {m.uom || 'pcs'}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#D4A843', fontFamily: 'monospace' }}>₱{(m.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-        <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
+        <div className="modal-actions" style={{ flexShrink: 0, justifyContent: 'flex-end' }}>
           <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
         </div>
       </div>
@@ -1254,7 +1619,7 @@ function VendorDetailsModal({ vendor, onClose }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// VENDOR MASTER TAB — Card Layout
+// VENDOR MASTER TAB — Card Layout with Catalog
 // ══════════════════════════════════════════════════════════════════════════════
 function VendorMasterTab({ materials, onVendorsChange }) {
   const [vendors, setVendors] = useState([]);
@@ -1262,6 +1627,7 @@ function VendorMasterTab({ materials, onVendorsChange }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editVendor, setEditVendor] = useState(null);
   const [viewVendor, setViewVendor] = useState(null);
+  const [catalogVendor, setCatalogVendor] = useState(null);
   const [infoModal, setInfoModal] = useState({ isOpen: false, title: '', message: '' });
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
@@ -1275,7 +1641,6 @@ function VendorMasterTab({ materials, onVendorsChange }) {
   }, [vendors, search]);
 
   const handleDelete = (id) => {
-    // Check if vendor is referenced by any material
     const linkedMaterials = materials.filter(m => m.preferredVendorId === id);
     if (linkedMaterials.length > 0) {
       const names = linkedMaterials.map(m => `• ${m.name}`).join('\n');
@@ -1315,7 +1680,6 @@ function VendorMasterTab({ materials, onVendorsChange }) {
   };
 
   const TrashIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>;
-  const EyeIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
   const EditIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
 
   return (
@@ -1337,110 +1701,150 @@ function VendorMasterTab({ materials, onVendorsChange }) {
           <input className="search-input" placeholder="Search vendors..." value={search} onChange={e => setSearch(e.target.value)} />
           {search && <button className="search-clear" onClick={() => setSearch('')}>x</button>}
         </div>
+        <button className="btn-primary" onClick={() => { setEditVendor(null); setShowAddModal(true); }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          Add New Supplier
+        </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
-        {filtered.map(v => (
-          <div key={v.id} style={{
-            background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px',
-            padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem',
-            transition: 'border-color 0.2s', cursor: 'pointer',
-          }}
-            onClick={() => setViewVendor(v)}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(212,168,67,0.3)'; e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--dark)'; }}
-          >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-              <div style={{
-                width: '40px', height: '40px', borderRadius: '10px',
-                background: 'rgba(59,130,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1rem', fontWeight: 800, color: '#3b82f6', flexShrink: 0,
-              }}>
-                {v.name.charAt(0).toUpperCase()}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '1rem' }}>{v.name}</div>
-                {v.itemsSupplied && v.itemsSupplied.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.3rem' }}>
-                    {v.itemsSupplied.slice(0, 3).map((item, i) => (
-                      <span key={i} style={{ fontSize: '0.6rem', color: '#D4A843', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.15)', padding: '0.1rem 0.4rem', borderRadius: '3px', fontWeight: 600 }}>{item}</span>
-                    ))}
-                    {v.itemsSupplied.length > 3 && (
-                      <span style={{ fontSize: '0.6rem', color: 'var(--gray)' }}>+{v.itemsSupplied.length - 3} more</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
+        {filtered.map(v => {
+          const activeMaterials = materials.filter(m => m.preferredVendorId === v.id && !m.parentId);
+          return (
+            <div key={v.id} style={{
+              background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '14px',
+              padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem',
+              transition: 'border-color 0.2s',
+            }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{
+                    width: '44px', height: '44px', borderRadius: '12px',
+                    background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.15)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '1.1rem', fontWeight: 800, color: '#3b82f6', flexShrink: 0,
+                  }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '1.05rem' }}>{v.name}</div>
+                    {v.category && (
+                      <span style={{
+                        display: 'inline-block', fontSize: '0.6rem', color: 'var(--gray)',
+                        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                        padding: '0.15rem 0.5rem', borderRadius: '4px', marginTop: '0.25rem',
+                        textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em',
+                      }}>
+                        {v.category}
+                      </span>
                     )}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.25rem' }} onClick={e => e.stopPropagation()}>
+                  <button onClick={() => { setEditVendor(v); setShowAddModal(true); }} style={{
+                    background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+                    borderRadius: '6px', padding: '0.35rem', cursor: 'pointer', color: 'var(--gray)',
+                  }}><EditIcon /></button>
+                  <button onClick={() => handleDelete(v.id)} style={{
+                    background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
+                    borderRadius: '6px', padding: '0.35rem', cursor: 'pointer', color: '#f87171',
+                  }}><TrashIcon /></button>
+                </div>
+              </div>
+
+              {/* Contact Info */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.825rem' }}>
+                {v.phone && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#E5E2E1' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                    {v.phone}
+                  </div>
+                )}
+                {v.email && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--gray)' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    {v.email}
                   </div>
                 )}
               </div>
-            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.825rem' }}>
-              {v.contact && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#E5E2E1' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  {v.contact}
+              {/* Primary Categories */}
+              {v.itemsSupplied && v.itemsSupplied.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', letterSpacing: '0.05em' }}>
+                    Primary Categories
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#E5E2E1', fontStyle: 'italic' }}>
+                    {v.itemsSupplied.slice(0, 3).join(', ')}
+                    {v.itemsSupplied.length > 3 && `, +${v.itemsSupplied.length - 3} more`}
+                  </div>
                 </div>
               )}
-              {v.email && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--gray)' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                  {v.email}
-                </div>
-              )}
-              {v.phone && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--gray)' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-                  {v.phone}
-                </div>
-              )}
-              {v.address && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--gray)' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  {v.address}
-                </div>
-              )}
-            </div>
 
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)' }} onClick={e => e.stopPropagation()}>
-              <button onClick={() => setViewVendor(v)} style={{
-                flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
-                borderRadius: '8px', color: 'var(--gray)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem',
-              }}><EyeIcon /> View</button>
-              <button onClick={() => { setEditVendor(v); setShowAddModal(true); }} style={{
-                flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
-                borderRadius: '8px', color: 'var(--gray)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem',
-              }}><EditIcon /> Edit</button>
-              <button onClick={() => handleDelete(v.id)} style={{
-                padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
-                borderRadius: '8px', color: '#f87171', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}><TrashIcon /></button>
+              {/* Footer: Active Materials + View Catalog */}
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)',
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>
+                    Active Materials
+                  </div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#E5E2E1' }}>
+                    {activeMaterials.length}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setCatalogVendor(v)}
+                  style={{
+                    background: 'none', border: 'none', color: '#D4A843',
+                    fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '0.3rem',
+                  }}
+                >
+                  View Catalog
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                  </svg>
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
-        <div onClick={() => setShowAddModal(true)} style={{
-          background: 'transparent', border: '2px dashed rgba(255,255,255,0.1)', borderRadius: '12px',
+        {/* Add New Vendor Card */}
+        <div onClick={() => { setEditVendor(null); setShowAddModal(true); }} style={{
+          background: 'transparent', border: '2px dashed rgba(255,255,255,0.1)', borderRadius: '14px',
           padding: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          gap: '0.75rem', cursor: 'pointer', minHeight: '200px',
+          gap: '0.75rem', cursor: 'pointer', minHeight: '240px',
           transition: 'border-color 0.2s, background 0.2s',
         }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(212,168,67,0.3)'; e.currentTarget.style.background = 'rgba(212,168,67,0.03)'; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.background = 'transparent'; }}
         >
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5"><path d="M12 5v14M5 12h14"/></svg>
-          <span style={{ fontSize: '0.875rem', color: 'var(--gray)', fontWeight: 600 }}>Add New Vendor</span>
+          <span style={{ fontSize: '0.875rem', color: 'var(--gray)', fontWeight: 600 }}>Add New Supplier</span>
         </div>
       </div>
 
       {showAddModal && (
-        <VendorFormModal vendor={editVendor} allVendors={vendors} onClose={() => { setShowAddModal(false); setEditVendor(null); }} onSave={handleSave} />
+        <VendorFormModal vendor={editVendor} allVendors={vendors} materials={materials} onClose={() => { setShowAddModal(false); setEditVendor(null); }} onSave={handleSave} />
       )}
       {viewVendor && (
         <VendorDetailsModal
           vendor={viewVendor}
+          materials={materials}
           onClose={() => setViewVendor(null)}
+        />
+      )}
+      {catalogVendor && (
+        <VendorCatalogModal
+          vendor={catalogVendor}
+          materials={materials}
+          onClose={() => setCatalogVendor(null)}
         />
       )}
       <InfoModal
@@ -1462,10 +1866,28 @@ function VendorMasterTab({ materials, onVendorsChange }) {
   );
 }
 
-function VendorFormModal({ vendor, allVendors, onClose, onSave }) {
+function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
   const [form, setForm] = useState({ name: '', contact: '', itemsSupplied: [], email: '', phone: '', address: '' });
   const [itemInput, setItemInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Check if this vendor has linked materials
+  const linkedMaterials = useMemo(() => {
+    if (!vendor) return [];
+    return (materials || []).filter(m => m.preferredVendorId === vendor.id);
+  }, [vendor, materials]);
+
+  const hasLinkedMaterials = linkedMaterials.length > 0;
+
+  // Get items that are actually used by linked materials (from their categories)
+  const usedItems = useMemo(() => {
+    if (!hasLinkedMaterials) return [];
+    const items = new Set();
+    linkedMaterials.forEach(m => {
+      if (m.category) items.add(m.category);
+    });
+    return [...items];
+  }, [linkedMaterials, hasLinkedMaterials]);
 
   // Collect all unique items from all vendors
   const allKnownItems = useMemo(() => {
@@ -1501,13 +1923,19 @@ function VendorFormModal({ vendor, allVendors, onClose, onSave }) {
   };
 
   const removeItem = (idx) => {
+    const itemToRemove = form.itemsSupplied[idx];
+    // Don't allow removing items that are used by linked materials
+    if (usedItems.includes(itemToRemove)) return;
     setForm(p => ({ ...p, itemsSupplied: p.itemsSupplied.filter((_, i) => i !== idx) }));
   };
 
   const handleItemKeyDown = (e) => {
     if (e.key === 'Enter') { e.preventDefault(); addItem(); }
     if (e.key === 'Backspace' && itemInput === '' && form.itemsSupplied.length > 0) {
-      removeItem(form.itemsSupplied.length - 1);
+      const lastItem = form.itemsSupplied[form.itemsSupplied.length - 1];
+      if (!usedItems.includes(lastItem)) {
+        removeItem(form.itemsSupplied.length - 1);
+      }
     }
   };
 
@@ -1528,9 +1956,10 @@ function VendorFormModal({ vendor, allVendors, onClose, onSave }) {
 
   const handleSubmit = (e) => { e.preventDefault(); if (!form.name.trim()) return; onSave({ ...form }); };
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#E5E2E1', padding: '0.625rem 0.75rem', fontSize: '0.85rem', outline: 'none' };
+  const lockedInputStyle = { ...inputStyle, opacity: 0.5, cursor: 'not-allowed', background: 'rgba(255,255,255,0.03)' };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
         <div className="modal-header">
           <h2 className="modal-title">{vendor ? 'Edit Vendor' : 'Add New Vendor'}</h2>
@@ -1539,8 +1968,24 @@ function VendorFormModal({ vendor, allVendors, onClose, onSave }) {
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
-              <label className="form-label">Company Name <span className="required">*</span></label>
-              <input type="text" style={inputStyle} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value.slice(0, 100) }))} placeholder="e.g., Global Garments Inc." required maxLength={100} />
+              <label className="form-label">
+                Company Name <span className="required">*</span>
+                {hasLinkedMaterials && (
+                  <span style={{ fontSize: '0.65rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>
+                    (Locked: {linkedMaterials.length} material{linkedMaterials.length > 1 ? 's' : ''} linked)
+                  </span>
+                )}
+              </label>
+              <input
+                type="text"
+                style={hasLinkedMaterials ? lockedInputStyle : inputStyle}
+                value={form.name}
+                onChange={e => setForm(p => ({ ...p, name: e.target.value.slice(0, 100) }))}
+                placeholder="e.g., Global Garments Inc."
+                required
+                maxLength={100}
+                readOnly={hasLinkedMaterials}
+              />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
@@ -1548,25 +1993,45 @@ function VendorFormModal({ vendor, allVendors, onClose, onSave }) {
                 <input type="text" style={inputStyle} value={form.contact} onChange={e => setForm(p => ({ ...p, contact: e.target.value.slice(0, 80) }))} placeholder="Juan Dela Cruz" maxLength={80} />
               </div>
               <div style={{ position: 'relative' }}>
-                <label className="form-label">Items Supplied</label>
+                <label className="form-label">
+                  Items Supplied
+                  {hasLinkedMaterials && (
+                    <span style={{ fontSize: '0.6rem', color: 'var(--gray)', marginLeft: '0.5rem', fontWeight: 400 }}>
+                      (Locked items in use)
+                    </span>
+                  )}
+                </label>
                 <div style={{
                   ...inputStyle, display: 'flex', flexWrap: 'wrap', gap: '0.35rem',
                   padding: '0.4rem 0.5rem', minHeight: '42px', alignItems: 'center', cursor: 'text',
                 }} onClick={() => document.getElementById('itemInput')?.focus()}>
-                  {form.itemsSupplied.map((item, i) => (
-                    <span key={i} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                      fontSize: '0.72rem', color: '#D4A843', background: 'rgba(212,168,67,0.1)',
-                      border: '1px solid rgba(212,168,67,0.2)', padding: '0.15rem 0.5rem',
-                      borderRadius: '4px', fontWeight: 600,
-                    }}>
-                      {item}
-                      <button type="button" onClick={() => removeItem(i)} style={{
-                        background: 'none', border: 'none', color: '#D4A843', cursor: 'pointer',
-                        padding: 0, lineHeight: 1, fontSize: '0.85rem',
-                      }}>×</button>
-                    </span>
-                  ))}
+                  {form.itemsSupplied.map((item, i) => {
+                    const isUsed = usedItems.includes(item);
+                    return (
+                      <span key={i} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                        fontSize: '0.72rem', color: isUsed ? '#D4A843' : '#9ca3af',
+                        background: isUsed ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.06)',
+                        border: isUsed ? '1px solid rgba(212,168,67,0.3)' : '1px solid rgba(255,255,255,0.1)',
+                        padding: '0.15rem 0.5rem',
+                        borderRadius: '4px', fontWeight: 600,
+                        opacity: isUsed ? 1 : 0.7,
+                      }}>
+                        {item}
+                        {!isUsed && (
+                          <button type="button" onClick={() => removeItem(i)} style={{
+                            background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer',
+                            padding: 0, lineHeight: 1, fontSize: '0.85rem',
+                          }}>×</button>
+                        )}
+                        {isUsed && (
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ color: '#D4A843' }}>
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                          </svg>
+                        )}
+                      </span>
+                    );
+                  })}
                   <input
                     id="itemInput"
                     type="text"
@@ -1786,7 +2251,7 @@ function BOMFormModal({ bom, materials, onClose, onSave }) {
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#E5E2E1', padding: '0.625rem 0.75rem', fontSize: '0.85rem', outline: 'none' };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px' }}>
         <div className="modal-header">
           <h2 className="modal-title">{bom ? 'Edit BOM' : 'Add BOM'}</h2>
@@ -1809,10 +2274,15 @@ function BOMFormModal({ bom, materials, onClose, onSave }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {form.components.map((comp, idx) => (
                     <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 36px', gap: '0.5rem', alignItems: 'center' }}>
-                      <select style={inputStyle} value={comp.materialId} onChange={e => updateComponent(idx, 'materialId', e.target.value)}>
-                        <option value="">Select material...</option>
-                        {materials.filter(m => !m.parentId).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                      </select>
+                      <CustomDropdown
+                        value={comp.materialId}
+                        onChange={(val) => updateComponent(idx, 'materialId', val)}
+                        options={[
+                          { value: '', label: 'Select material...' },
+                          ...materials.filter(m => !m.parentId).map(m => ({ value: m.id, label: m.name })),
+                        ]}
+                        placeholder="Select material..."
+                      />
                       <IntegerInput style={inputStyle} value={comp.qty} onChange={e => updateComponent(idx, 'qty', e.target.value)} min={0} placeholder="1" />
                       <button type="button" onClick={() => removeComponent(idx)} style={{ background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: '#f87171', fontSize: '0.8rem' }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -1887,7 +2357,7 @@ export default function MasterDataPage() {
         </div>
       </div>
 
-      {activeTab === 'materials' && <MaterialMasterTab itemCategories={itemCategories} materials={materials} onMaterialsChange={setMaterials} />}
+      {activeTab === 'materials' && <MaterialMasterTab itemCategories={itemCategories} materials={materials} onMaterialsChange={setMaterials} onVendorsChange={setVendors} />}
       {activeTab === 'vendors' && <VendorMasterTab materials={materials} onVendorsChange={setVendors} />}
       {activeTab === 'bom' && <BOMTab />}
     </div>

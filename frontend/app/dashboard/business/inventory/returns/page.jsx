@@ -12,6 +12,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import CustomDropdown from '@/app/components/CustomDropdown';
 
 // ── Storage Keys ───────────────────────────────────────────────────────────────
 const RTV_KEY        = 'pmp_returns_to_vendor';
@@ -122,7 +123,7 @@ function ManualRTVFormModal({ materials, vendors, onClose, onSave }) {
   const selectableMaterials = materials.filter(m => !m.parentId);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()}
         style={{ maxWidth: '520px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
 
@@ -139,28 +140,30 @@ function ManualRTVFormModal({ materials, vendors, onClose, onSave }) {
           <div className="modal-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
               <label className="form-label">Vendor <span className="required">*</span></label>
-              <select
-                style={{ ...inputStyle, borderColor: errors.vendor ? 'rgba(239,68,68,0.5)' : undefined }}
+              <CustomDropdown
                 value={form.vendorId}
-                onChange={e => { setForm(p => ({ ...p, vendorId: e.target.value })); setErrors(p => ({ ...p, vendor: null })); }}
-              >
-                <option value="">Select vendor...</option>
-                {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-              </select>
+                onChange={(val) => { setForm(p => ({ ...p, vendorId: val })); setErrors(p => ({ ...p, vendor: null })); }}
+                options={[
+                  { value: '', label: 'Select vendor...' },
+                  ...vendors.map(v => ({ value: v.id, label: v.name })),
+                ]}
+                placeholder="Select vendor..."
+                style={{ borderColor: errors.vendor ? 'rgba(239,68,68,0.5)' : undefined }}
+              />
               {errors.vendor && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{errors.vendor}</p>}
             </div>
             <div>
               <label className="form-label">Material <span className="required">*</span></label>
-              <select
-                style={{ ...inputStyle, borderColor: errors.material ? 'rgba(239,68,68,0.5)' : undefined }}
+              <CustomDropdown
                 value={form.materialId}
-                onChange={e => { setForm(p => ({ ...p, materialId: e.target.value })); setErrors(p => ({ ...p, material: null })); }}
-              >
-                <option value="">Select material...</option>
-                {selectableMaterials.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}{m.sku ? ` (${m.sku})` : ''}</option>
-                ))}
-              </select>
+                onChange={(val) => { setForm(p => ({ ...p, materialId: val })); setErrors(p => ({ ...p, material: null })); }}
+                options={[
+                  { value: '', label: 'Select material...' },
+                  ...selectableMaterials.map(m => ({ value: m.id, label: `${m.name}${m.sku ? ` (${m.sku})` : ''}` })),
+                ]}
+                placeholder="Select material..."
+                style={{ borderColor: errors.material ? 'rgba(239,68,68,0.5)' : undefined }}
+              />
               {errors.material && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{errors.material}</p>}
             </div>
             <div>
@@ -175,9 +178,12 @@ function ManualRTVFormModal({ materials, vendors, onClose, onSave }) {
             </div>
             <div>
               <label className="form-label">Reason</label>
-              <select style={inputStyle} value={form.reason} onChange={e => setForm(p => ({ ...p, reason: e.target.value }))}>
-                {RETURN_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
+              <CustomDropdown
+                value={form.reason}
+                onChange={(val) => setForm(p => ({ ...p, reason: val }))}
+                options={RETURN_REASONS.map(r => ({ value: r, label: r }))}
+                placeholder="Select reason..."
+              />
             </div>
             <div>
               <label className="form-label">Notes</label>
@@ -309,15 +315,16 @@ function RTVListTab({ rtvs, onRefresh }) {
             <input className="search-input" placeholder="Search RTVs..." value={search} onChange={e => setSearch(e.target.value)} />
             {search && <button className="search-clear" onClick={() => setSearch('')}>×</button>}
           </div>
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{
-            padding: '0.5rem 0.75rem', background: 'var(--dark2)', border: '1px solid var(--border)',
-            borderRadius: '6px', color: 'var(--white)', fontSize: '0.8rem', cursor: 'pointer', minWidth: '140px'
-          }}>
-            <option value="" style={{ background: 'var(--dark)', color: 'var(--white)' }}>All Status</option>
-            {Object.entries(RTV_STATUS).map(([k, v]) => (
-              <option key={k} value={k} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{v.label}</option>
-            ))}
-          </select>
+          <CustomDropdown
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: '', label: 'All Status' },
+              ...Object.entries(RTV_STATUS).map(([k, v]) => ({ value: k, label: v.label })),
+            ]}
+            placeholder="All Status"
+            style={{ minWidth: '140px' }}
+          />
         </div>
         <button className="btn-primary" onClick={() => setShowManualForm(true)} style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -343,7 +350,7 @@ function RTVListTab({ rtvs, onRefresh }) {
                 background: 'var(--dark)',
                 border: '1px solid var(--border)',
                 borderRadius: '12px',
-                overflow: 'hidden',
+                overflow: 'visible',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem' }}>
                   {/* Left: Icon + Material Info */}
@@ -384,16 +391,13 @@ function RTVListTab({ rtvs, onRefresh }) {
                     <div>
                       <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Update Status</div>
                       {rtv.status === 'pending' ? (
-                        <select
-                          style={{ ...inputStyle, padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px', textAlign: 'center' }}
+                        <CustomDropdown
                           value=""
-                          onChange={e => { if (e.target.value) requestStatusChange(rtv, e.target.value); e.target.value = ''; }}
-                        >
-                          <option value="">Select action...</option>
-                          {Object.entries(RTV_UPDATE_STATUSES).map(([k, v]) => (
-                            <option key={k} value={k}>{v.label}</option>
-                          ))}
-                        </select>
+                          onChange={(val) => { if (val) requestStatusChange(rtv, val); }}
+                          options={Object.entries(RTV_UPDATE_STATUSES).map(([k, v]) => ({ value: k, label: v.label }))}
+                          placeholder="Select action..."
+                          style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px' }}
+                        />
                       ) : (
                         <div style={{
                           ...inputStyle, padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px', textAlign: 'center',
@@ -452,7 +456,7 @@ function RTVListTab({ rtvs, onRefresh }) {
 
       {/* Confirmation Modal */}
       {confirmModal.isOpen && confirmModal.rtv && (
-        <div className="modal-overlay" onClick={() => setConfirmModal({ isOpen: false, rtv: null, newStatus: '' })}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
             <div className="modal-header">
               <h2 className="modal-title">Confirm Status Update</h2>
@@ -522,7 +526,7 @@ export default function ReturnsPage() {
       <div className="page-header">
         <div className="page-header-content">
           <div>
-            <h1 className="page-title">Returns to Vendor (RTV)</h1>
+            <h1 className="page-title">Returns to Vendor</h1>
             <p className="page-subtitle">
               Manage damaged goods and track the return workflow with your suppliers.
             </p>

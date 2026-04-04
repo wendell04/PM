@@ -3088,6 +3088,59 @@ input[type="text"][inputMode="numeric"] {
   color: var(--white);
 }
 
+/* ── Global Select/Dropdown Dark Theme Fix ── */
+select,
+select option,
+select optgroup {
+  background: var(--dark2) !important;
+  color: var(--white) !important;
+  accent-color: var(--gold) !important;
+  color-scheme: dark !important;
+}
+
+select option:hover,
+select option:focus,
+select option:checked,
+select option:active,
+select option:selected {
+  background: var(--gold) !important;
+  color: var(--black) !important;
+}
+
+/* Chrome/Edge/Safari native dropdown highlight override */
+select::-webkit-scrollbar {
+  width: 8px;
+}
+select::-webkit-scrollbar-track {
+  background: var(--dark2);
+}
+select::-webkit-scrollbar-thumb {
+  background: var(--gold);
+  border-radius: 4px;
+}
+
+/* Firefox dropdown highlight */
+@-moz-document url-prefix() {
+  select option:checked {
+    background: var(--gold) !important;
+    color: var(--black) !important;
+  }
+}
+
+/* Force dark native controls */
+select {
+  color-scheme: dark;
+}
+
+/* Modal overlay - prevent closing on backdrop click */
+.modal-overlay {
+  pointer-events: none;
+}
+
+.modal-overlay > * {
+  pointer-events: auto;
+}
+
 .profile-modal-footer {
   display: flex;
   justify-content: flex-end;

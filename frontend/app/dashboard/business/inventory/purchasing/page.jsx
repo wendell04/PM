@@ -14,12 +14,15 @@
 
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import CustomDropdown from '@/app/components/CustomDropdown';
 
 // ── Storage Keys ───────────────────────────────────────────────────────────────
 const PO_KEY         = 'pmp_purchase_orders';
 const GR_KEY         = 'pmp_goods_receipts';
 const RTV_KEY        = 'pmp_returns_to_vendor';
+const PENDING_RTV_KEY = 'pmp_pending_rtvs';
 const STOCK_IN_KEY   = 'pmp_stock_in_log';
+const STOCK_OUT_KEY  = 'pmp_stock_out_log';
 const MATERIALS_KEY  = 'pmp_materials';
 const VENDORS_KEY    = 'pmp_vendors';
 
@@ -60,7 +63,6 @@ const RETURN_REASONS = [
   'Defective Product',
   'Wrong Item Shipped',
   'Quantity Shortage',
-  'Expired',
   'Other',
 ];
 
@@ -95,7 +97,11 @@ function IntInput({ value, onChange, min = 0, max, placeholder, style, disabled 
       onChange={e => {
         const v = e.target.value;
         if (v === '' || /^\d+$/.test(v)) {
-          const n = v === '' ? 0 : parseInt(v, 10);
+          if (v === '') {
+            onChange(v);
+            return;
+          }
+          const n = parseInt(v, 10);
           if (max !== undefined && n > max) return;
           if (n < min) return;
           onChange(v);
@@ -236,19 +242,38 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
     });
   };
 
-  // Filter materials by selected vendor — show variants (children) and standalone materials, not parents
+  const [showPriceHistory, setShowPriceHistory] = useState(null); // { materialId, materialName }
+  const priceHistory = useMemo(() => {
+    if (!showPriceHistory) return [];
+    const stockIns = getStore(STOCK_IN_KEY) || [];
+    return stockIns
+      .filter(si => si.materialId === showPriceHistory.materialId)
+      .sort((a, b) => new Date(b.dateReceived) - new Date(a.dateReceived))
+      .slice(0, 10)
+      .map(si => ({
+        date: si.dateReceived,
+        vendorName: si.vendorName,
+        unitCost: si.unitCost,
+        qty: si.goodQty,
+        refNo: si.referenceNo || si.siNumber || '—',
+      }));
+  }, [showPriceHistory]);
   const selectableMaterials = useMemo(() => {
     if (!form.vendorId) return [];
+    const vendor = vendors.find(v => v.id === form.vendorId);
+    if (!vendor) return [];
+    const vendorCategories = vendor.itemsSupplied || [];
+    if (vendorCategories.length === 0) return [];
     return materials.filter(m =>
-      m.preferredVendorId === form.vendorId &&
+      vendorCategories.includes(m.category) &&
       (!m.hasVariants || m.parentId) // standalone OR variant children, not parents
     );
-  }, [materials, form.vendorId]);
+  }, [materials, form.vendorId, vendors]);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()}
-        style={{ maxWidth: '700px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        style={{ maxWidth: '900px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
 
         <div className="modal-header" style={{ flexShrink: 0 }}>
           <h2 className="modal-title">{po ? 'Edit Purchase Order' : 'Create Purchase Order'}</h2>
@@ -266,14 +291,16 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label className="form-label">Vendor <span className="required">*</span></label>
-                <select
-                  style={{ ...inputStyle, borderColor: errors.vendor ? 'rgba(239,68,68,0.5)' : undefined }}
+                <CustomDropdown
                   value={form.vendorId}
-                  onChange={e => { selectVendor(e.target.value); setErrors(p => ({ ...p, vendor: null })); }}
-                >
-                  <option value="">Select vendor...</option>
-                  {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                </select>
+                  onChange={(val) => { selectVendor(val); setErrors(p => ({ ...p, vendor: null })); }}
+                  options={[
+                    { value: '', label: 'Select vendor...' },
+                    ...vendors.map(v => ({ value: v.id, label: v.name })),
+                  ]}
+                  placeholder="Select vendor..."
+                  style={{ borderColor: errors.vendor ? 'rgba(239,68,68,0.5)' : undefined }}
+                />
                 {errors.vendor && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{errors.vendor}</p>}
               </div>
               <div>
@@ -346,33 +373,47 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
 
                   {form.items.map((item, idx) => (
                     <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 80px 130px 32px', gap: '0.5rem', alignItems: 'center' }}>
-                      <select
-                        style={{ ...inputStyle, padding: '0.5rem 0.65rem', fontSize: '0.8rem' }}
+                      <CustomDropdown
                         value={item.materialId}
-                        onChange={e => { updateItem(idx, 'materialId', e.target.value); setErrors(p => ({ ...p, items: null })); }}
-                      >
-                        <option value="">Select material...</option>
-                        {selectableMaterials.map(m => (
-                          <option key={m.id} value={m.id}>
-                            {m.name}{m.sku ? ` (${m.sku})` : ''}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(val) => { updateItem(idx, 'materialId', val); setErrors(p => ({ ...p, items: null })); }}
+                        options={[
+                          { value: '', label: 'Select material...' },
+                          ...selectableMaterials.map(m => ({ value: m.id, label: `${m.name}${m.sku ? ` (${m.sku})` : ''}` })),
+                        ]}
+                        placeholder="Select material..."
+                        style={{ padding: '0.5rem 0.65rem', fontSize: '0.8rem' }}
+                      />
 
                       <IntInput
                         style={{ ...inputStyle, padding: '0.5rem', fontSize: '0.8rem', textAlign: 'center' }}
                         value={item.qty}
                         onChange={v => { updateItem(idx, 'qty', v); setErrors(p => ({ ...p, items: null })); }}
                         min={1}
+                        max={999999}
                         placeholder="0"
                       />
 
-                      <DecInput
-                        style={{ ...inputStyle, padding: '0.5rem 0.65rem', fontSize: '0.8rem', textAlign: 'right' }}
-                        value={item.unitCost}
-                        onChange={v => updateItem(idx, 'unitCost', v)}
-                        placeholder="0.00"
-                      />
+                      <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                        <DecInput
+                          style={{ ...inputStyle, padding: '0.5rem 0.65rem', fontSize: '0.8rem', textAlign: 'right', flex: 1 }}
+                          value={item.unitCost}
+                          onChange={v => updateItem(idx, 'unitCost', v)}
+                          placeholder="0.00"
+                          max={9999999.99}
+                        />
+                        {item.materialId && (
+                          <button type="button" onClick={() => {
+                            const mat = materials.find(m => m.id === item.materialId);
+                            setShowPriceHistory({ materialId: item.materialId, materialName: mat?.name || '' });
+                          }} title="View Price History" style={{
+                            background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px',
+                            padding: '0.45rem 0.55rem', cursor: 'pointer', color: 'var(--gray)', flexShrink: 0,
+                            display: 'flex', alignItems: 'center',
+                          }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                          </button>
+                        )}
+                      </div>
 
                       <button type="button" onClick={() => removeItem(idx)} style={{
                         background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: '6px',
@@ -395,18 +436,6 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
                 </div>
               )}
             </div>
-
-            {/* Notes */}
-            <div>
-              <label className="form-label">Notes / Delivery Instructions</label>
-              <textarea
-                style={{ ...inputStyle, resize: 'vertical', minHeight: '64px' }}
-                value={form.notes}
-                onChange={e => setForm(p => ({ ...p, notes: e.target.value.slice(0, 500) }))}
-                placeholder="Delivery address, special handling, payment terms..."
-                maxLength={500}
-              />
-            </div>
           </div>
 
           <div className="modal-actions" style={{ flexShrink: 0 }}>
@@ -415,6 +444,52 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
           </div>
         </form>
       </div>
+
+      {/* Price History Modal */}
+      {showPriceHistory && (
+        <div className="modal-overlay" onClick={() => setShowPriceHistory(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-header" style={{ flexShrink: 0 }}>
+              <div>
+                <h2 className="modal-title">Price History</h2>
+                <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.1rem' }}>{showPriceHistory.materialName}</p>
+              </div>
+              <button className="modal-close" onClick={() => setShowPriceHistory(null)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.5rem' }}>
+              {priceHistory.length === 0 ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.85rem' }}>No purchase history found for this material.</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                      <th style={{ padding: '0.5rem', textAlign: 'left', color: 'var(--gray)', fontSize: '0.6rem', textTransform: 'uppercase', fontWeight: 700 }}>Date</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.6rem', textTransform: 'uppercase', fontWeight: 700 }}>Vendor</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.6rem', textTransform: 'uppercase', fontWeight: 700 }}>Qty</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'right', color: 'var(--gray)', fontSize: '0.6rem', textTransform: 'uppercase', fontWeight: 700 }}>Unit Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {priceHistory.map((ph, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '0.5rem', color: '#E5E2E1', fontSize: '0.75rem' }}>{ph.date ? new Date(ph.date).toLocaleDateString('en-PH') : '—'}</td>
+                        <td style={{ padding: '0.5rem', textAlign: 'center', color: '#E5E2E1', fontSize: '0.75rem' }}>{ph.vendorName}</td>
+                        <td style={{ padding: '0.5rem', textAlign: 'center', color: '#E5E2E1', fontSize: '0.75rem' }}>{ph.qty}</td>
+                        <td style={{ padding: '0.5rem', textAlign: 'right', color: '#D4A843', fontWeight: 700, fontFamily: 'monospace', fontSize: '0.75rem' }}>₱{ph.unitCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="modal-actions" style={{ flexShrink: 0, justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowPriceHistory(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -455,7 +530,7 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()}
         style={{ maxWidth: '560px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
 
@@ -510,7 +585,9 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize }) {
                         <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.825rem' }}>{item.materialName}</div>
                         <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>
                           Good qty: {goodQty} {item.uom}
-                          {item.damagedQty > 0 && <span style={{ color: '#f59e0b' }}> · Damaged: {item.damagedQty}</span>}
+                          {item.damagedQty > 0 && (
+                            <span style={{ color: '#f59e0b' }}> · {item.damagedQty} {item.returnReason || 'damaged'}</span>
+                          )}
                         </div>
                       </div>
                       <input
@@ -560,8 +637,12 @@ function GRFormModal({ po, onClose, onSave }) {
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
   const [showInvoice, setShowInvoice] = useState(false);
+  const [showPendingRTV, setShowPendingRTV] = useState(false);
   const [pendingGRData, setPendingGRData] = useState(null);
   const [pendingUpdatedPO, setPendingUpdatedPO] = useState(null);
+  const [pendingDiscrepancyItems, setPendingDiscrepancyItems] = useState([]);
+  const [approvedDiscrepancies, setApprovedDiscrepancies] = useState([]);
+  const [customReasons, setCustomReasons] = useState({});
 
   useEffect(() => {
     if (!po) return;
@@ -573,6 +654,7 @@ function GRFormModal({ po, onClose, onSave }) {
       .filter(i => i.remaining > 0)
       .map(i => ({ ...i, toReceive: String(i.remaining), damagedQty: '0', returnReason: '' }));
     setItems(pending);
+    setCustomReasons({});
   }, [po]);
 
   const updateToReceive = (idx, val) => {
@@ -600,6 +682,10 @@ function GRFormModal({ po, onClose, onSave }) {
     setItems(prev => prev.map((item, i) => i !== idx ? item : { ...item, returnReason: val }));
   };
 
+  const updateCustomReason = (idx, val) => {
+    setCustomReasons(prev => ({ ...prev, [idx]: val.slice(0, 100) }));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const hasQty = items.some(i => parseInt(i.toReceive) > 0);
@@ -610,7 +696,7 @@ function GRFormModal({ po, onClose, onSave }) {
 
     const grItems = items
       .filter(i => parseInt(i.toReceive) > 0)
-      .map(item => ({
+      .map((item, idx) => ({
         materialId:        item.materialId,
         materialName:      item.materialName,
         sku:               item.sku,
@@ -619,7 +705,7 @@ function GRFormModal({ po, onClose, onSave }) {
         previouslyReceived: parseInt(item.receivedQty) || 0,
         receivedQty:       parseInt(item.toReceive) || 0,
         damagedQty:        parseInt(item.damagedQty) || 0,
-        returnReason:      item.returnReason || '',
+        returnReason:      item.returnReason === 'Other' ? (customReasons[idx] || 'Other') : (item.returnReason || ''),
         unitCost:          parseFloat(item.unitCost) || 0,
       }));
 
@@ -633,23 +719,45 @@ function GRFormModal({ po, onClose, onSave }) {
     const anyReceived  = updatedItems.some(i => (parseInt(i.receivedQty) || 0) > 0);
     const newStatus    = allFulfilled ? 'received' : anyReceived ? 'partial' : po.status;
 
-    // Store pending data and show invoice modal
-    setPendingGRData({ poId: po.id, poNumber: po.poNumber, vendorId: po.vendorId, vendorName: po.vendorName, items: grItems, notes, receivedDate: new Date().toISOString() });
-    setPendingUpdatedPO({ ...po, items: updatedItems, status: newStatus });
+    const grPayload = { poId: po.id, poNumber: po.poNumber, vendorId: po.vendorId, vendorName: po.vendorName, items: grItems, notes, receivedDate: new Date().toISOString() };
+    const updatedPO = { ...po, items: updatedItems, status: newStatus };
+
+    // Check if there are discrepancies (damaged/shortage items)
+    const discrepancies = grItems.filter(i => i.damagedQty > 0);
+    if (discrepancies.length > 0) {
+      // Show Pending RTV Review first
+      setPendingGRData(grPayload);
+      setPendingUpdatedPO(updatedPO);
+      setPendingDiscrepancyItems(discrepancies);
+      setShowPendingRTV(true);
+    } else {
+      // No discrepancies → go straight to Invoice
+      setPendingGRData(grPayload);
+      setPendingUpdatedPO(updatedPO);
+      setShowInvoice(true);
+    }
+  };
+
+  const handlePendingRTVApprove = (approvedItems) => {
+    // approvedItems includes disposition per item
+    setApprovedDiscrepancies(approvedItems);
+    setShowPendingRTV(false);
     setShowInvoice(true);
   };
 
   const handleInvoiceFinalize = (finalizedData) => {
-    onSave(finalizedData, pendingUpdatedPO);
+    onSave(finalizedData, pendingUpdatedPO, approvedDiscrepancies);
     setShowInvoice(false);
     setPendingGRData(null);
     setPendingUpdatedPO(null);
+    setPendingDiscrepancyItems([]);
+    setApprovedDiscrepancies([]);
   };
 
   if (!po) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()}
         style={{ maxWidth: '720px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
 
@@ -715,7 +823,7 @@ function GRFormModal({ po, onClose, onSave }) {
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: '0.65rem', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>Damaged / Return</label>
+                          <label style={{ fontSize: '0.65rem', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>Damaged / Shortage / Others</label>
                           <IntInput
                             style={{ ...inputStyle, padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderColor: damaged > 0 ? 'rgba(245,158,11,0.4)' : undefined }}
                             value={item.damagedQty}
@@ -730,14 +838,31 @@ function GRFormModal({ po, onClose, onSave }) {
                       {damaged > 0 && (
                         <div style={{ marginTop: '0.5rem' }}>
                           <label style={{ fontSize: '0.65rem', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>Return Reason</label>
-                          <select
-                            style={{ ...inputStyle, padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderColor: 'rgba(245,158,11,0.3)' }}
+                          <CustomDropdown
                             value={item.returnReason}
-                            onChange={e => updateReturnReason(idx, e.target.value)}
-                          >
-                            <option value="">Select reason...</option>
-                            {RETURN_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-                          </select>
+                            onChange={(val) => updateReturnReason(idx, val)}
+                            options={[
+                              { value: '', label: 'Select reason...' },
+                              ...RETURN_REASONS.map(r => ({ value: r, label: r })),
+                            ]}
+                            placeholder="Select reason..."
+                            style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
+                          />
+                          {item.returnReason === 'Other' && (
+                            <div style={{ marginTop: '0.5rem' }}>
+                              <input
+                                type="text"
+                                style={{ ...inputStyle, padding: '0.5rem 0.75rem', fontSize: '0.8rem' }}
+                                value={customReasons[idx] || ''}
+                                onChange={e => updateCustomReason(idx, e.target.value)}
+                                placeholder="Specify reason..."
+                                maxLength={100}
+                              />
+                              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', marginTop: '0.2rem', textAlign: 'right' }}>
+                                {(customReasons[idx] || '').length}/100
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -763,16 +888,6 @@ function GRFormModal({ po, onClose, onSave }) {
               </div>
             )}
 
-            <div>
-              <label className="form-label">Receipt Notes</label>
-              <textarea
-                style={{ ...inputStyle, resize: 'vertical', minHeight: '56px' }}
-                value={notes}
-                onChange={e => setNotes(e.target.value.slice(0, 300))}
-                placeholder="Condition of goods, short shipment, damage notes..."
-                maxLength={300}
-              />
-            </div>
           </div>
 
           <div className="modal-actions" style={{ flexShrink: 0 }}>
@@ -789,15 +904,189 @@ function GRFormModal({ po, onClose, onSave }) {
         </form>
       </div>
 
+      {/* Pending RTV Review Modal (shown after Confirm Receipt, before Invoice) */}
+      {showPendingRTV && pendingDiscrepancyItems.length > 0 && (
+        <PendingRTVReviewModal
+          grItems={pendingDiscrepancyItems}
+          po={po}
+          onClose={() => { setShowPendingRTV(false); setPendingGRData(null); setPendingUpdatedPO(null); setPendingDiscrepancyItems([]); }}
+          onApprove={handlePendingRTVApprove}
+        />
+      )}
+
       {/* Invoice Entry Modal (shown after Confirm Receipt) */}
       {showInvoice && pendingGRData && (
         <InvoiceEntryModal
           grData={pendingGRData}
           po={po}
-          onClose={() => { setShowInvoice(false); setPendingGRData(null); setPendingUpdatedPO(null); }}
+          onClose={() => { setShowInvoice(false); setPendingGRData(null); setPendingUpdatedPO(null); setPendingDiscrepancyItems([]); setApprovedDiscrepancies([]); }}
           onFinalize={handleInvoiceFinalize}
         />
       )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PENDING RTV REVIEW MODAL (Staging — damaged items from GR before formal RTV)
+// ══════════════════════════════════════════════════════════════════════════════
+function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
+  const [dispositions, setDispositions] = useState({});
+
+  useEffect(() => {
+    const init = {};
+    grItems.forEach(item => { init[item.materialId] = 'rtv'; });
+    setDispositions(init);
+  }, [grItems]);
+
+  const updateDisposition = (materialId, val) => {
+    setDispositions(p => ({ ...p, [materialId]: val }));
+  };
+
+  const approvedItems = grItems.filter(item => {
+    const disp = dispositions[item.materialId] || 'rtv';
+    return disp !== 'cancel';
+  }).map(item => ({
+    ...item,
+    disposition: dispositions[item.materialId] || 'rtv',
+  }));
+
+  const rtyCount = approvedItems.filter(i => i.disposition === 'rtv').length;
+  const writeOffCount = approvedItems.filter(i => i.disposition === 'write_off').length;
+  const cancelCount = grItems.length - approvedItems.length;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onApprove(approvedItems);
+  };
+
+  const dispOptions = [
+    { value: 'rtv', label: 'Return to Vendor', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
+    { value: 'write_off', label: 'Write Off (Loss)', color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)' },
+    { value: 'cancel', label: 'Cancel (Keep in Stock)', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
+  ];
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" onClick={e => e.stopPropagation()}
+        style={{ maxWidth: '680px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+
+        <div className="modal-header" style={{ flexShrink: 0 }}>
+          <div>
+            <h2 className="modal-title">Pending Discrepancies</h2>
+            <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.1rem' }}>
+              {po.poNumber} — Review and decide disposition for each discrepancy.
+            </p>
+          </div>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="modal-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+
+            {/* Disposition Buttons Legend */}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', paddingBottom: '0.25rem' }}>
+              {dispOptions.map(opt => (
+                <span key={opt.value} style={{
+                  padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 700,
+                  background: opt.bg, color: opt.color, border: `1px solid ${opt.border}`,
+                }}>
+                  {opt.label}
+                </span>
+              ))}
+            </div>
+
+            {grItems.map((item, idx) => {
+              const disp = dispositions[item.materialId] || 'rtv';
+              const opt = dispOptions.find(o => o.value === disp);
+              return (
+                <div key={idx} style={{
+                  padding: '1rem 1.25rem',
+                  background: 'rgba(255,255,255,0.02)', borderRadius: '10px',
+                  border: `1px solid ${opt?.border || 'rgba(255,255,255,0.06)'}`,
+                }}>
+                  {/* Material Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.95rem' }}>{item.materialName}</div>
+                      {item.sku && <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{item.sku}</div>}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700 }}>
+                      {item.damagedQty} {item.uom} discrepancy
+                    </div>
+                  </div>
+
+                  {/* Reason Display */}
+                  {item.returnReason && (
+                    <div style={{ fontSize: '0.75rem', color: '#f59e0b', marginBottom: '0.75rem' }}>
+                      <span style={{ textTransform: 'uppercase', fontSize: '0.6rem', fontWeight: 700, marginRight: '0.25rem' }}>Reason:</span>
+                      {item.returnReason}
+                    </div>
+                  )}
+
+                  {/* Disposition Selector */}
+                  <div>
+                    <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>
+                      Disposition
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {dispOptions.map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => updateDisposition(item.materialId, opt.value)}
+                          style={{
+                            padding: '0.45rem 0.85rem',
+                            borderRadius: '8px',
+                            border: disp === opt.value ? `2px solid ${opt.color}` : '1px solid rgba(255,255,255,0.1)',
+                            background: disp === opt.value ? opt.bg : 'rgba(255,255,255,0.02)',
+                            color: disp === opt.value ? opt.color : 'var(--gray)',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Summary Line */}
+                  <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
+                    {disp === 'rtv' && `→ ${item.damagedQty} ${item.uom} will be sent to RTV (Return to Vendor)`}
+                    {disp === 'write_off' && `→ ${item.damagedQty} ${item.uom} will be written off as loss (recorded in Goods Issue)`}
+                    {disp === 'cancel' && `→ ${item.damagedQty} ${item.uom} will be kept in stock (no action)`}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Footer Summary */}
+            <div style={{
+              padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)',
+              borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
+                {rtyCount} RTV · {writeOffCount} Write Off · {cancelCount} Cancelled
+              </span>
+            </div>
+          </div>
+
+          <div className="modal-actions" style={{ flexShrink: 0 }}>
+            <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn-primary">
+              Confirm &amp; Proceed
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -808,9 +1097,12 @@ function GRFormModal({ po, onClose, onSave }) {
 function StockInFormModal({ materials, vendors, onClose, onSave }) {
   const [form, setForm] = useState({
     materialId: '', vendorId: '', receivedQty: '', damagedQty: '',
-    unitCost: '', referenceNo: '', notes: '',
+    unitCost: '', referenceNo: '', notes: '', returnReason: '',
   });
   const [errors, setErrors] = useState({});
+  const [showPendingRTV, setShowPendingRTV] = useState(false);
+  const [pendingSIData, setPendingSIData] = useState(null);
+  const [approvedDisposition, setApprovedDisposition] = useState('rtv');
 
   const material = materials.find(m => m.id === form.materialId);
   const vendor = vendors.find(v => v.id === form.vendorId);
@@ -845,7 +1137,7 @@ function StockInFormModal({ materials, vendors, onClose, onSave }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!validate()) return;
-    onSave({
+    const siData = {
       materialId:     form.materialId,
       materialName:   material?.name || '',
       sku:            material?.sku || '',
@@ -860,15 +1152,36 @@ function StockInFormModal({ materials, vendors, onClose, onSave }) {
       totalPaid,
       referenceNo:    form.referenceNo.trim(),
       notes:          form.notes.trim(),
+      returnReason:   form.returnReason || '',
       dateReceived:   new Date().toISOString(),
-    });
+    };
+
+    // If there are damaged items, show Pending RTV Review first
+    if (damaged > 0) {
+      setPendingSIData(siData);
+      setShowPendingRTV(true);
+    } else {
+      // No damaged → save directly
+      onSave(siData, 'cancel');
+    }
+  };
+
+  const handlePendingRTVApprove = (approvedItems) => {
+    if (approvedItems.length > 0) {
+      setApprovedDisposition(approvedItems[0].disposition || 'rtv');
+    }
+    setShowPendingRTV(false);
+    if (pendingSIData) {
+      onSave(pendingSIData, approvedItems[0]?.disposition || 'rtv');
+    }
+    setPendingSIData(null);
   };
 
   // Only non-child materials (parents + standalone)
   const selectableMaterials = materials.filter(m => !m.parentId);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()}
         style={{ maxWidth: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
 
@@ -892,31 +1205,30 @@ function StockInFormModal({ materials, vendors, onClose, onSave }) {
             {/* Material + Vendor */}
             <div>
               <label className="form-label">Material <span className="required">*</span></label>
-              <select
-                style={{ ...inputStyle, borderColor: errors.material ? 'rgba(239,68,68,0.5)' : undefined }}
+              <CustomDropdown
                 value={form.materialId}
-                onChange={e => { selectMaterial(e.target.value); setErrors(p => ({ ...p, material: null })); }}
-              >
-                <option value="">Select material...</option>
-                {selectableMaterials.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}{m.sku ? ` (${m.sku})` : ''}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => { selectMaterial(val); setErrors(p => ({ ...p, material: null })); }}
+                options={[
+                  { value: '', label: 'Select material...' },
+                  ...selectableMaterials.map(m => ({ value: m.id, label: `${m.name}${m.sku ? ` (${m.sku})` : ''}` })),
+                ]}
+                placeholder="Select material..."
+                style={{ borderColor: errors.material ? 'rgba(239,68,68,0.5)' : undefined }}
+              />
               {errors.material && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{errors.material}</p>}
             </div>
 
             <div>
               <label className="form-label">Vendor <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>(Optional)</span></label>
-              <select
-                style={inputStyle}
+              <CustomDropdown
                 value={form.vendorId}
-                onChange={e => setForm(p => ({ ...p, vendorId: e.target.value }))}
-              >
-                <option value="">General Merchandise (Walk-in)</option>
-                {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-              </select>
+                onChange={(val) => setForm(p => ({ ...p, vendorId: val }))}
+                options={[
+                  { value: '', label: 'General Merchandise (Walk-in)' },
+                  ...vendors.map(v => ({ value: v.id, label: v.name })),
+                ]}
+                placeholder="General Merchandise (Walk-in)"
+              />
             </div>
 
             {/* Qty Row */}
@@ -928,6 +1240,7 @@ function StockInFormModal({ materials, vendors, onClose, onSave }) {
                   value={form.receivedQty}
                   onChange={v => { setForm(p => ({ ...p, receivedQty: v })); setErrors(p => ({ ...p, received: null, damaged: null })); }}
                   min={1}
+                  max={999999}
                   placeholder="0"
                 />
                 {errors.received && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{errors.received}</p>}
@@ -956,6 +1269,22 @@ function StockInFormModal({ materials, vendors, onClose, onSave }) {
               </div>
             </div>
 
+            {/* Return Reason (shown when damaged > 0) */}
+            {damaged > 0 && (
+              <div>
+                <label className="form-label">Return Reason</label>
+                <CustomDropdown
+                  value={form.returnReason}
+                  onChange={(val) => setForm(p => ({ ...p, returnReason: val }))}
+                  options={[
+                    { value: '', label: 'Select reason...' },
+                    ...RETURN_REASONS.map(r => ({ value: r, label: r })),
+                  ]}
+                  placeholder="Select reason..."
+                />
+              </div>
+            )}
+
             {/* Unit Cost + Effective Cost */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
@@ -965,6 +1294,7 @@ function StockInFormModal({ materials, vendors, onClose, onSave }) {
                   value={form.unitCost}
                   onChange={v => { setForm(p => ({ ...p, unitCost: v })); setErrors(p => ({ ...p, unitCost: null })); }}
                   placeholder="0.00"
+                  max={9999999.99}
                 />
                 {errors.unitCost && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{errors.unitCost}</p>}
               </div>
@@ -1007,18 +1337,6 @@ function StockInFormModal({ materials, vendors, onClose, onSave }) {
                 maxLength={50}
               />
             </div>
-
-            {/* Notes */}
-            <div>
-              <label className="form-label">Notes</label>
-              <textarea
-                style={{ ...inputStyle, resize: 'vertical', minHeight: '56px' }}
-                value={form.notes}
-                onChange={e => setForm(p => ({ ...p, notes: e.target.value.slice(0, 300) }))}
-                placeholder="Condition of goods, delivery notes..."
-                maxLength={300}
-              />
-            </div>
           </div>
 
           <div className="modal-actions" style={{ flexShrink: 0 }}>
@@ -1029,6 +1347,24 @@ function StockInFormModal({ materials, vendors, onClose, onSave }) {
           </div>
         </form>
       </div>
+
+      {/* Pending RTV Review Modal for Stock-In */}
+      {showPendingRTV && pendingSIData && (
+        <PendingRTVReviewModal
+          grItems={[{
+            materialId: pendingSIData.materialId,
+            materialName: pendingSIData.materialName,
+            sku: pendingSIData.sku,
+            uom: pendingSIData.uom,
+            damagedQty: pendingSIData.damagedQty,
+            returnReason: pendingSIData.returnReason,
+            unitCost: pendingSIData.unitCost,
+          }]}
+          po={{ poNumber: pendingSIData.referenceNo || 'Direct Stock-In' }}
+          onClose={() => { setShowPendingRTV(false); setPendingSIData(null); }}
+          onApprove={handlePendingRTVApprove}
+        />
+      )}
     </div>
   );
 }
@@ -1066,7 +1402,7 @@ function StockInHistoryTab({ stockIns }) {
         </div>
       </div>
 
-      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--dark)' }}>
+      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'visible', background: 'var(--dark)' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
             <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '2px solid var(--border)' }}>
@@ -1195,6 +1531,8 @@ function POTab({ pos, vendors, materials, onRefresh }) {
   const [showGRForm,   setShowGRForm]   = useState(false);
   const [grTargetPO,   setGRTargetPO]   = useState(null);
   const [expandedPO,   setExpandedPO]   = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [statusChangeTarget, setStatusChangeTarget] = useState(null);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -1230,20 +1568,33 @@ function POTab({ pos, vendors, materials, onRefresh }) {
   };
 
   const handleStatusChange = (po, newStatus) => {
-    if (!confirm(`Change PO ${po.poNumber} status to "${PO_STATUS[newStatus]?.label}"?`)) return;
+    setStatusChangeTarget({ po, newStatus });
+  };
+
+  const handleStatusConfirm = () => {
+    if (!statusChangeTarget) return;
+    const { po, newStatus } = statusChangeTarget;
     const all = getStore(PO_KEY);
     setStore(PO_KEY, all.map(p => p.id === po.id ? { ...p, status: newStatus, updatedAt: new Date().toISOString() } : p));
+    setStatusChangeTarget(null);
     onRefresh();
   };
 
-  const handleCancel = (po) => {
-    if (!confirm(`Cancel PO ${po.poNumber}? This cannot be undone.`)) return;
+  const handleCancelConfirm = () => {
+    if (!cancelTarget) return;
     const all = getStore(PO_KEY);
-    setStore(PO_KEY, all.map(p => p.id === po.id ? { ...p, status: 'cancelled', updatedAt: new Date().toISOString() } : p));
+    setStore(PO_KEY, all.map(p => p.id === cancelTarget.id ? { ...p, status: 'cancelled', updatedAt: new Date().toISOString() } : p));
+    setCancelTarget(null);
     onRefresh();
   };
 
-  const handleSaveGR = (grData, updatedPO) => {
+  const handleSaveGR = (grData, updatedPO, approvedDiscrepancies = []) => {
+    // Build a disposition map: materialId → disposition
+    const dispMap = {};
+    (approvedDiscrepancies || []).forEach(item => {
+      dispMap[item.materialId] = item.disposition || 'rtv';
+    });
+
     // 1. Persist GR record with invoice data
     const grs   = getStore(GR_KEY);
     const newGR = {
@@ -1252,6 +1603,7 @@ function POTab({ pos, vendors, materials, onRefresh }) {
       grNumber: genDocNumber('GR', grs),
       invoiceNo: grData.invoiceNo || '',
       totalAmount: grData.totalAmount || 0,
+      approvedDiscrepancies: approvedDiscrepancies || [],
       createdAt: new Date().toISOString(),
     };
     setStore(GR_KEY, [...grs, newGR]);
@@ -1260,14 +1612,19 @@ function POTab({ pos, vendors, materials, onRefresh }) {
     const allPOs = getStore(PO_KEY);
     setStore(PO_KEY, allPOs.map(p => p.id === updatedPO.id ? { ...updatedPO, updatedAt: new Date().toISOString() } : p));
 
-    // 3. Update material stock quantities + Moving Average Cost (only GOOD qty, using actual invoice costs)
+    // 3. Update material stock quantities + Moving Average Cost
+    //    - disposition 'rtv' or 'write_off': damaged qty NOT added to stock
+    //    - disposition 'cancel': damaged qty IS added to stock (kept)
     const mats = getStore(MATERIALS_KEY);
     setStore(MATERIALS_KEY, mats.map(mat => {
       const rcv = grData.items.find(i => i.materialId === mat.id);
       if (!rcv || !rcv.receivedQty) return mat;
       const oldStock = parseInt(mat.stockQty) || 0;
       const oldCost  = parseFloat(mat.baseCost) || 0;
-      const goodQty  = rcv.receivedQty - (rcv.damagedQty || 0);
+      const disp = dispMap[mat.id] || 'rtv';
+      // If cancelled, damaged qty stays in stock; otherwise it doesn't
+      const effectiveDamaged = disp === 'cancel' ? 0 : (rcv.damagedQty || 0);
+      const goodQty  = rcv.receivedQty - effectiveDamaged;
       if (goodQty <= 0) return mat;
       // Use actual cost from invoice if available, otherwise fall back to GR unit cost
       const unitCost = grData.actualCosts && grData.actualCosts[mat.id]
@@ -1288,30 +1645,62 @@ function POTab({ pos, vendors, materials, onRefresh }) {
       };
     }));
 
-    // 4. Create RTV records for damaged items
+    // 4. Process discrepancies based on disposition
     const rtvs = getStore(RTV_KEY);
-    const newRTVs = grData.items
-      .filter(item => (item.damagedQty || 0) > 0)
-      .map(item => ({
-        id: `rtv-${Date.now()}-${item.materialId}`,
-        rtvNumber: genDocNumber('RTV', rtvs),
-        poId: grData.poId,
-        poNumber: grData.poNumber,
-        vendorId: grData.vendorId || '',
-        vendorName: grData.vendorName,
-        materialId: item.materialId,
-        materialName: item.materialName,
-        sku: item.sku || '',
-        uom: item.uom || 'pcs',
-        qty: item.damagedQty,
-        unitCost: item.unitCost,
-        reason: item.returnReason || 'Damaged in Transit',
-        status: 'pending', // pending → replacement_received
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }));
+    const stockOuts = getStore(STOCK_OUT_KEY);
+    const newRTVs = [];
+    const newStockOuts = [];
+
+    (approvedDiscrepancies || []).forEach(item => {
+      if (item.disposition === 'rtv') {
+        // Create formal RTV record
+        newRTVs.push({
+          id: `rtv-${Date.now()}-${item.materialId}`,
+          rtvNumber: genDocNumber('RTV', rtvs),
+          poId: grData.poId,
+          poNumber: grData.poNumber,
+          vendorId: grData.vendorId || '',
+          vendorName: grData.vendorName,
+          materialId: item.materialId,
+          materialName: item.materialName,
+          sku: item.sku || '',
+          uom: item.uom || 'pcs',
+          qty: item.damagedQty,
+          unitCost: item.unitCost,
+          reason: item.returnReason || 'Damaged in Transit',
+          source: 'goods_receipt',
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      } else if (item.disposition === 'write_off') {
+        // Record as Goods Issue (loss)
+        newStockOuts.push({
+          id: `so-${Date.now()}-${item.materialId}`,
+          docNumber: genDocNumber('SO', stockOuts),
+          materialId: item.materialId,
+          materialName: item.materialName,
+          sku: item.sku || '',
+          uom: item.uom || 'pcs',
+          issueType: 'damage',
+          quantity: item.damagedQty,
+          previousStock: 0,
+          newStock: 0,
+          unitCost: item.unitCost,
+          totalLoss: item.damagedQty * item.unitCost,
+          referenceNo: grData.poNumber,
+          notes: `Write-off from ${grData.poNumber} — ${item.returnReason || 'No reason given'}`,
+          dateIssued: new Date().toISOString(),
+        });
+      }
+      // disposition 'cancel' → no action needed
+    });
+
     if (newRTVs.length > 0) {
       setStore(RTV_KEY, [...rtvs, ...newRTVs]);
+    }
+    if (newStockOuts.length > 0) {
+      setStore(STOCK_OUT_KEY, [...stockOuts, ...newStockOuts]);
     }
 
     setShowGRForm(false);
@@ -1337,15 +1726,16 @@ function POTab({ pos, vendors, materials, onRefresh }) {
             {search && <button className="search-clear" onClick={() => setSearch('')}>×</button>}
           </div>
 
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{
-            padding: '0.5rem 0.75rem', background: 'var(--dark2)', border: '1px solid var(--border)',
-            borderRadius: '6px', color: 'var(--white)', fontSize: '0.8rem', cursor: 'pointer', minWidth: '130px',
-          }}>
-            <option value="">All Status</option>
-            {Object.entries(PO_STATUS).map(([k, v]) => (
-              <option key={k} value={k} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{v.label}</option>
-            ))}
-          </select>
+          <CustomDropdown
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: '', label: 'All Status' },
+              ...Object.entries(PO_STATUS).map(([k, v]) => ({ value: k, label: v.label })),
+            ]}
+            placeholder="All Status"
+            style={{ minWidth: '130px' }}
+          />
         </div>
 
         <button className="btn-primary" onClick={() => { setEditPO(null); setShowForm(true); }}>
@@ -1376,7 +1766,7 @@ function POTab({ pos, vendors, materials, onRefresh }) {
                 background: 'var(--dark)',
                 border: '1px solid var(--border)',
                 borderRadius: '12px',
-                overflow: 'hidden',
+                overflow: 'visible',
               }}>
                 {/* Card Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem' }}>
@@ -1419,7 +1809,7 @@ function POTab({ pos, vendors, materials, onRefresh }) {
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       {canCancel && (
                         <button
-                          onClick={() => handleCancel(po)}
+                          onClick={() => setCancelTarget(po)}
                           style={{
                             background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
                             borderRadius: '8px', padding: '0.5rem 0.85rem', cursor: 'pointer',
@@ -1468,6 +1858,7 @@ function POTab({ pos, vendors, materials, onRefresh }) {
                         const grItems = grs.filter(g => g.poId === po.id).flatMap(g => g.items || []);
                         const grItem = grItems.find(g => g.materialId === item.materialId);
                         const damaged = grItem ? (parseInt(grItem.damagedQty) || 0) : 0;
+                        const reason = grItem?.returnReason || '';
                         return (
                           <div key={idx} style={{
                             display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
@@ -1481,7 +1872,7 @@ function POTab({ pos, vendors, materials, onRefresh }) {
                               <>
                                 <span style={{ fontWeight: 700, color: '#22c55e' }}>Received: {received}</span>
                                 {damaged > 0 && (
-                                  <span style={{ fontWeight: 700, color: '#ef4444' }}>Damaged: {damaged}</span>
+                                  <span style={{ fontWeight: 700, color: '#ef4444' }}>{reason ? reason : 'Damaged'}: {damaged}</span>
                                 )}
                               </>
                             )}
@@ -1513,6 +1904,77 @@ function POTab({ pos, vendors, materials, onRefresh }) {
           onClose={() => { setShowGRForm(false); setGRTargetPO(null); }}
           onSave={handleSaveGR}
         />
+      )}
+
+      {/* Cancel Confirmation Modal */}
+      {cancelTarget && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h2 className="modal-title">Cancel Purchase Order</h2>
+              <button className="modal-close" onClick={() => setCancelTarget(null)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div style={{ padding: '1.5rem 2rem' }}>
+              <p style={{ fontSize: '0.875rem', color: '#E5E2E1', lineHeight: 1.6, marginBottom: '0.75rem' }}>
+                Are you sure you want to cancel <strong style={{ fontFamily: 'monospace' }}>{cancelTarget.poNumber}</strong>?
+              </p>
+              <p style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                Vendor: {cancelTarget.vendorName}<br/>
+                Total: <strong style={{ color: '#D4A843', fontFamily: 'monospace' }}>₱{(cancelTarget.items || []).reduce((s, i) => s + ((parseFloat(i.unitCost) || 0) * (parseInt(i.qty) || 0)), 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong>
+              </p>
+              <div style={{
+                marginTop: '1rem', padding: '0.6rem 0.75rem', background: 'rgba(239,68,68,0.06)',
+                borderRadius: '6px', border: '1px solid rgba(239,68,68,0.15)',
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+              }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <span style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: 600 }}>This action cannot be undone.</span>
+              </div>
+            </div>
+            <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setCancelTarget(null)}>Keep PO</button>
+              <button type="button" className="btn-danger" onClick={handleCancelConfirm}>Yes, Cancel PO</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Status Change Confirmation Modal */}
+      {statusChangeTarget && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h2 className="modal-title">Update PO Status</h2>
+              <button className="modal-close" onClick={() => setStatusChangeTarget(null)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div style={{ padding: '1.5rem 2rem' }}>
+              <p style={{ fontSize: '0.875rem', color: '#E5E2E1', lineHeight: 1.6, marginBottom: '0.75rem' }}>
+                Change <strong style={{ fontFamily: 'monospace' }}>{statusChangeTarget.po.poNumber}</strong> status to:
+              </p>
+              <div style={{
+                padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px',
+                border: '1px solid var(--border)', textAlign: 'center', marginBottom: '1rem',
+              }}>
+                <span style={{
+                  fontWeight: 700, fontSize: '0.9rem',
+                  color: PO_STATUS[statusChangeTarget.newStatus]?.color || '#E5E2E1',
+                }}>
+                  {PO_STATUS[statusChangeTarget.newStatus]?.label || statusChangeTarget.newStatus}
+                </span>
+              </div>
+            </div>
+            <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setStatusChangeTarget(null)}>Cancel</button>
+              <button type="button" className="btn-primary" onClick={handleStatusConfirm}>Confirm</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1550,7 +2012,7 @@ function GRHistoryTab({ grs }) {
         </div>
       </div>
 
-      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--dark)' }}>
+      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'visible', background: 'var(--dark)' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
             <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '2px solid var(--border)' }}>
@@ -1684,14 +2146,17 @@ export default function PurchasingPage() {
   const totalStockInValue = stockIns.reduce((s, si) => s + si.totalPaid, 0);
 
   // ── Stock-In Handler ─────────────────────────────────────────────────────────
-  const handleStockIn = (siData) => {
+  // disposition: 'rtv' | 'write_off' | 'cancel'
+  const handleStockIn = (siData, disposition = 'cancel') => {
     const mats = getStore(MATERIALS_KEY);
     const mat = mats.find(m => m.id === siData.materialId);
     if (!mat) return;
 
     const oldStock = parseInt(mat.stockQty) || 0;
     const oldCost  = parseFloat(mat.baseCost) || 0;
-    const goodQty  = siData.goodQty;
+    // disposition 'cancel' → damaged qty stays in stock; otherwise it doesn't
+    const effectiveDamaged = disposition === 'cancel' ? 0 : siData.damagedQty;
+    const goodQty  = siData.receivedQty - effectiveDamaged;
     const newCost  = siData.effectiveUnitCost;
 
     // Moving Average Cost: ((oldStock * oldCost) + (goodQty * newCost)) / (oldStock + goodQty)
@@ -1720,9 +2185,56 @@ export default function PurchasingPage() {
       ...siData,
       id: `si-${Date.now()}`,
       siNumber: genDocNumber('SI', log),
+      disposition,
       createdAt: new Date().toISOString(),
     };
     setStore(STOCK_IN_KEY, [...log, newEntry]);
+
+    // Process disposition
+    if (disposition === 'rtv' && siData.damagedQty > 0) {
+      const rtvs = getStore(RTV_KEY);
+      const newRTV = {
+        id: `rtv-${Date.now()}-si-${siData.materialId}`,
+        rtvNumber: genDocNumber('RTV', rtvs),
+        poId: '',
+        poNumber: siData.referenceNo || 'Direct Stock-In',
+        vendorId: siData.vendorId || '',
+        vendorName: siData.vendorName,
+        materialId: siData.materialId,
+        materialName: siData.materialName,
+        sku: siData.sku || '',
+        uom: siData.uom || 'pcs',
+        qty: siData.damagedQty,
+        unitCost: siData.unitCost,
+        reason: siData.returnReason || 'Damaged',
+        source: 'stock_in',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setStore(RTV_KEY, [...rtvs, newRTV]);
+    } else if (disposition === 'write_off' && siData.damagedQty > 0) {
+      const stockOuts = getStore(STOCK_OUT_KEY);
+      const newSO = {
+        id: `so-${Date.now()}-si-${siData.materialId}`,
+        docNumber: genDocNumber('SO', stockOuts),
+        materialId: siData.materialId,
+        materialName: siData.materialName,
+        sku: siData.sku || '',
+        uom: siData.uom || 'pcs',
+        issueType: 'damage',
+        quantity: siData.damagedQty,
+        previousStock: oldStock,
+        newStock: oldStock + goodQty,
+        unitCost: siData.unitCost,
+        totalLoss: siData.damagedQty * siData.unitCost,
+        referenceNo: siData.referenceNo || 'Direct Stock-In',
+        notes: `Write-off from stock-in — ${siData.returnReason || 'No reason given'}`,
+        dateIssued: new Date().toISOString(),
+      };
+      setStore(STOCK_OUT_KEY, [...stockOuts, newSO]);
+    }
+    // disposition 'cancel' → no additional action
 
     setShowStockIn(false);
     refresh();
@@ -1742,7 +2254,7 @@ export default function PurchasingPage() {
       <div className="page-header">
         <div className="page-header-content">
           <div>
-            <h1 className="page-title">Procurement &amp; Sourcing</h1>
+            <h1 className="page-title">Procurement and Sourcing</h1>
             <p className="page-subtitle">
               Track purchase orders, incoming stock, and vendor deliveries.
             </p>
