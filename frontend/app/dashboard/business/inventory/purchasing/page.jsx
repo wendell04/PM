@@ -707,6 +707,27 @@ function GRFormModal({ po, onClose, onSave }) {
     const invalidDamaged = items.find(i => (parseInt(i.damagedQty) || 0) > (parseInt(i.toReceive) || 0));
     if (invalidDamaged) { setError(`Damaged qty cannot exceed received qty for ${invalidDamaged.materialName}.`); return; }
 
+    // Validate: damaged items must have a return reason
+    const damagedNoReason = items.findIndex((i, idx) => {
+      const damaged = parseInt(i.damagedQty) || 0;
+      if (damaged === 0) return false;
+      const reason = i.returnReason;
+      if (!reason) return true;
+      if (reason === 'Other' && !(customReasons[idx] || '').trim()) return true;
+      return false;
+    });
+    if (damagedNoReason !== -1) {
+      const itemName = items[damagedNoReason].materialName;
+      const hasDamaged = parseInt(items[damagedNoReason].damagedQty) || 0;
+      const isOther = items[damagedNoReason].returnReason === 'Other';
+      if (isOther) {
+        setError(`${itemName}: Please specify a reason for ${hasDamaged} damaged unit(s).`);
+      } else {
+        setError(`${itemName}: Please select a return reason for ${hasDamaged} damaged unit(s).`);
+      }
+      return;
+    }
+
     const grItems = items
       .filter(i => parseInt(i.toReceive) > 0)
       .map((item, idx) => ({
@@ -850,17 +871,16 @@ function GRFormModal({ po, onClose, onSave }) {
 
                       {damaged > 0 && (
                         <div style={{ marginTop: '0.5rem' }}>
-                          <label style={{ fontSize: '0.65rem', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>Return Reason</label>
+                          <label style={{ fontSize: '0.65rem', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>
+                            Return Reason <span style={{ color: '#ef4444' }}>*</span>
+                          </label>
                           <CustomDropdown
-                            value={item.returnReason}
-                            onChange={(val) => updateReturnReason(idx, val)}
-                            options={[
-                              { value: '', label: 'Select reason...' },
-                              ...RETURN_REASONS.map(r => ({ value: r, label: r })),
-                            ]}
-                            placeholder="Select reason..."
-                            style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
-                          />
+                              value={item.returnReason}
+                              onChange={(val) => updateReturnReason(idx, val)}
+                              options={RETURN_REASONS.map(r => ({ value: r, label: r }))}
+                              placeholder="Select reason..."
+                              style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
+                            />
                           {item.returnReason === 'Other' && (
                             <div style={{ marginTop: '0.5rem' }}>
                               <input
@@ -870,6 +890,7 @@ function GRFormModal({ po, onClose, onSave }) {
                                 onChange={e => updateCustomReason(idx, e.target.value)}
                                 placeholder="Specify reason..."
                                 maxLength={100}
+                                required
                               />
                               <div style={{ fontSize: '0.65rem', color: 'var(--gray)', marginTop: '0.2rem', textAlign: 'right' }}>
                                 {(customReasons[idx] || '').length}/100
@@ -1110,7 +1131,7 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
 function StockInFormModal({ materials, vendors, onClose, onSave }) {
   const [form, setForm] = useState({
     materialId: '', vendorId: '', receivedQty: '', damagedQty: '',
-    unitCost: '', referenceNo: '', notes: '', returnReason: '',
+    unitCost: '', referenceNo: '', notes: '', returnReason: '', returnOther: '',
   });
   const [errors, setErrors] = useState({});
   const [showPendingRTV, setShowPendingRTV] = useState(false);
@@ -1143,6 +1164,8 @@ function StockInFormModal({ materials, vendors, onClose, onSave }) {
     if (!form.receivedQty || received <= 0) e.received = 'Quantity must be greater than 0.';
     if (damaged > received)            e.damaged = 'Damaged qty cannot exceed received qty.';
     if (!form.unitCost || unitCost <= 0) e.unitCost = 'Unit cost is required and must be greater than 0.';
+    if (damaged > 0 && !form.returnReason) e.returnReason = 'Select a return reason.';
+    if (damaged > 0 && form.returnReason === 'Other' && !(form.returnOther || '').trim()) e.returnOther = 'Please specify the reason.';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -1165,7 +1188,7 @@ function StockInFormModal({ materials, vendors, onClose, onSave }) {
       totalPaid,
       referenceNo:    form.referenceNo.trim(),
       notes:          form.notes.trim(),
-      returnReason:   form.returnReason || '',
+      returnReason:   form.returnReason === 'Other' ? (form.returnOther || 'Other') : (form.returnReason || ''),
       dateReceived:   new Date().toISOString(),
     };
 
@@ -1285,16 +1308,36 @@ function StockInFormModal({ materials, vendors, onClose, onSave }) {
             {/* Return Reason (shown when damaged > 0) */}
             {damaged > 0 && (
               <div>
-                <label className="form-label">Return Reason</label>
+                <label className="form-label">
+                  Return Reason <span className="required">*</span>
+                </label>
                 <CustomDropdown
-                  value={form.returnReason}
-                  onChange={(val) => setForm(p => ({ ...p, returnReason: val }))}
-                  options={[
-                    { value: '', label: 'Select reason...' },
-                    ...RETURN_REASONS.map(r => ({ value: r, label: r })),
-                  ]}
-                  placeholder="Select reason..."
-                />
+                    value={form.returnReason}
+                    onChange={(val) => {
+                      setForm(p => ({ ...p, returnReason: val }));
+                      if (errors.returnReason) setErrors(e => ({ ...e, returnReason: '' }));
+                    }}
+                    options={RETURN_REASONS.map(r => ({ value: r, label: r }))}
+                    placeholder="Select reason..."
+                  />
+                {errors.returnReason && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '0.2rem', display: 'block' }}>{errors.returnReason}</span>}
+                {form.returnReason === 'Other' && (
+                  <div>
+                    <input
+                      type="text"
+                      style={{ ...inputStyle, marginTop: '0.5rem' }}
+                      value={form.returnOther || ''}
+                      onChange={e => {
+                        setForm(p => ({ ...p, returnOther: e.target.value.slice(0, 100) }));
+                        if (errors.returnOther) setErrors(er => ({ ...er, returnOther: '' }));
+                      }}
+                      placeholder="Specify reason..."
+                      maxLength={100}
+                      required
+                    />
+                    {errors.returnOther && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '0.2rem', display: 'block' }}>{errors.returnOther}</span>}
+                  </div>
+                )}
               </div>
             )}
 

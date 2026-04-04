@@ -527,10 +527,7 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
     setEditMaterial(null);
   };
 
-  const totalMaterials = materials.filter(m => !m.parentId).length;
-  const lowStockCount = materials.filter(m => !m.parentId && m.procurementType !== 'on-demand' && m.stockQty < (m.minStock || 10)).length;
-  const outOfStockCount = materials.filter(m => !m.parentId && m.procurementType !== 'on-demand' && m.stockQty === 0).length;
-  const onDemandCount = materials.filter(m => !m.parentId && m.procurementType === 'on-demand').length;
+  const totalMaterials = materials.filter(m => !m.parentId && !m.hasVariants).length + materials.filter(m => m.parentId).length;
 
   // SVG icons
   const EditIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
@@ -545,24 +542,6 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
           <div className="summary-content">
             <span className="summary-value">{totalMaterials}</span>
             <span className="summary-label">Total Materials</span>
-          </div>
-        </div>
-        <div className="summary-card summary-card-warning">
-          <div className="summary-content">
-            <span className="summary-value">{lowStockCount}</span>
-            <span className="summary-label">Low Stock</span>
-          </div>
-        </div>
-        <div className="summary-card summary-card-danger">
-          <div className="summary-content">
-            <span className="summary-value">{outOfStockCount}</span>
-            <span className="summary-label">Out of Stock</span>
-          </div>
-        </div>
-        <div className="summary-card" style={{ background: 'rgba(129,140,248,0.08)', borderColor: 'rgba(129,140,248,0.3)' }}>
-          <div className="summary-content">
-            <span className="summary-value" style={{ color: '#818cf8' }}>{onDemandCount}</span>
-            <span className="summary-label" style={{ color: '#818cf8' }}>On-Demand</span>
           </div>
         </div>
       </div>
@@ -673,7 +652,6 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
                             <span style={{ padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 700, background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}>Has Variants</span>
                           )}
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.15rem' }}>{parent.sku || '—'}</div>
                         {parent.variantTypes && parent.variantTypes.length > 0 && (
                           <div style={{ fontSize: '0.65rem', color: 'var(--gray)', marginTop: '0.2rem' }}>
                             {parent.variantTypes.map(vt => `${vt.name}: ${vt.options.join(', ')}`).join(' · ')}
