@@ -816,6 +816,7 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
   const [variantTypeInput, setVariantTypeInput] = useState('');
   const [variantOptionInputs, setVariantOptionInputs] = useState({});
   const [variantTypeRemoveModal, setVariantTypeRemoveModal] = useState(false);
+  const [errors, setErrors] = useState({});
 
   // Find which variant options are locked (used by existing child materials with stock)
   const lockedOptions = useMemo(() => {
@@ -965,7 +966,15 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!form.name.trim()) return;
+    const newErrors = {};
+    if (!form.preferredVendorId) newErrors.vendor = 'Please select a vendor';
+    if (!form.category) newErrors.category = 'Please select a category';
+    if (!form.name.trim()) newErrors.name = 'Please enter an item name';
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    setErrors({});
 
     const minStock = form.minStock === '' ? 10 : parseInt(form.minStock) || 10;
     const baseCost = form.baseCost === '' ? 0 : parseFloat(form.baseCost) || 0;
@@ -1050,23 +1059,27 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
               <label className="form-label">
                 Preferred Vendor <span className="required">*</span>
               </label>
-              <CustomDropdown
-                value={form.preferredVendorId}
-                onChange={(val) => {
-                  if (val === '__add__') {
-                    onAddVendor?.();
-                  } else {
-                    setForm(p => ({ ...p, preferredVendorId: val, category: '' }));
-                  }
-                }}
-                options={[
-                  { value: '', label: 'Select a vendor' },
-                  ...vendors.map(v => ({ value: v.id, label: v.name })),
-                  { value: '__add__', label: '+ Add New Vendor...' },
-                ]}
-                placeholder="Select a vendor..."
-              />
-              {vendors.length === 0 && (
+              <div style={{ border: errors.vendor ? '1px solid #ef4444' : 'none', borderRadius: '8px' }}>
+                <CustomDropdown
+                  value={form.preferredVendorId}
+                  onChange={(val) => {
+                    if (val === '__add__') {
+                      onAddVendor?.();
+                    } else {
+                      setForm(p => ({ ...p, preferredVendorId: val, category: '' }));
+                      if (errors.vendor) setErrors(e => ({ ...e, vendor: '' }));
+                    }
+                  }}
+                  options={[
+                    { value: '', label: 'Select a vendor' },
+                    ...vendors.map(v => ({ value: v.id, label: v.name })),
+                    { value: '__add__', label: '+ Add New Vendor...' },
+                  ]}
+                  placeholder="Select a vendor..."
+                />
+              </div>
+              {errors.vendor && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '0.2rem', display: 'block' }}>{errors.vendor}</span>}
+              {vendors.length === 0 && !errors.vendor && (
                 <div style={{ fontSize: '0.7rem', color: '#f59e0b', marginTop: '0.3rem' }}>
                   ⚠ Add a vendor first in the Vendor Master tab
                 </div>
@@ -1077,30 +1090,41 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label className="form-label">Item / Material Category</label>
-                <CustomDropdown
-                  value={form.category}
-                  onChange={(val) => {
-                    // Auto-fill unit from vendor's item definition
-                    const selectedItem = vendorItems.find(i => i.name === val);
-                    const autoUom = selectedItem ? (selectedItem.uom || 'pcs') : 'pcs';
-                    setForm(p => ({ ...p, category: val, name: '', uom: autoUom }));
-                  }}
-                  options={vendorItems.map(item => ({ value: item.name, label: item.name }))}
-                  placeholder={!form.preferredVendorId ? 'Select vendor first...' : vendorItems.length === 0 ? 'No items from this vendor' : 'Select category...'}
-                  disabled={!form.preferredVendorId || vendorItems.length === 0}
-                />
+                <div style={{ border: errors.category ? '1px solid #ef4444' : 'none', borderRadius: '8px' }}>
+                  <CustomDropdown
+                    value={form.category}
+                    onChange={(val) => {
+                      // Auto-fill unit from vendor's item definition
+                      const selectedItem = vendorItems.find(i => i.name === val);
+                      const autoUom = selectedItem ? (selectedItem.uom || 'pcs') : 'pcs';
+                      setForm(p => ({ ...p, category: val, name: '', uom: autoUom }));
+                      if (errors.category) setErrors(e => ({ ...e, category: '' }));
+                    }}
+                    options={vendorItems.map(item => ({ value: item.name, label: item.name }))}
+                    placeholder={!form.preferredVendorId ? 'Select vendor first...' : vendorItems.length === 0 ? 'No items from this vendor' : 'Select category...'}
+                    disabled={!form.preferredVendorId || vendorItems.length === 0}
+                  />
+                </div>
+                {errors.category && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '0.2rem', display: 'block' }}>{errors.category}</span>}
               </div>
               <div>
                 <label className="form-label">
                   Item Name <span className="required">*</span>
                 </label>
                 <input type="text"
-                  style={fieldsLocked ? lockedStyle : inputStyle}
+                  style={{
+                    ...(fieldsLocked ? lockedStyle : inputStyle),
+                    borderColor: errors.name ? '#ef4444' : undefined,
+                  }}
                   value={form.name}
-                  onChange={e => setForm(p => ({ ...p, name: e.target.value.slice(0, 100) }))}
+                  onChange={e => {
+                    setForm(p => ({ ...p, name: e.target.value.slice(0, 100) }));
+                    if (errors.name) setErrors(e2 => ({ ...e2, name: '' }));
+                  }}
                   placeholder={fieldsLocked ? 'Select vendor & category first' : 'e.g., Inner Color Mug'}
                   required maxLength={100}
                   disabled={fieldsLocked} />
+                {errors.name && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '0.2rem', display: 'block' }}>{errors.name}</span>}
               </div>
             </div>
 
@@ -1902,6 +1926,7 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
   const [itemNameInput, setItemNameInput] = useState('');
   const [itemUomInput, setItemUomInput] = useState('pcs');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [errors, setErrors] = useState({});
 
   // Check if this vendor has linked materials
   const linkedMaterials = useMemo(() => {
@@ -2001,7 +2026,18 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
     setForm(p => ({ ...p, phone: val }));
   };
 
-  const handleSubmit = (e) => { e.preventDefault(); if (!form.name.trim()) return; onSave({ ...form }); };
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const newErrors = {};
+    if (!form.name.trim()) newErrors.name = 'Company name is required';
+    if (form.itemsSupplied.length === 0) newErrors.items = 'Add at least one item';
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    setErrors({});
+    onSave({ ...form });
+  };
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#E5E2E1', padding: '0.625rem 0.75rem', fontSize: '0.85rem', outline: 'none' };
   const lockedInputStyle = { ...inputStyle, opacity: 0.5, cursor: 'not-allowed', background: 'rgba(255,255,255,0.03)' };
 
@@ -2025,26 +2061,31 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
               </label>
               <input
                 type="text"
-                style={hasLinkedMaterials ? lockedInputStyle : inputStyle}
+                style={hasLinkedMaterials ? lockedInputStyle : { ...inputStyle, borderColor: errors.name ? '#ef4444' : undefined }}
                 value={form.name}
-                onChange={e => setForm(p => ({ ...p, name: e.target.value.slice(0, 100) }))}
+                onChange={e => {
+                  setForm(p => ({ ...p, name: e.target.value.slice(0, 100) }));
+                  if (errors.name) setErrors(er => ({ ...er, name: '' }));
+                }}
                 placeholder="e.g., Global Garments Inc."
                 required
                 maxLength={100}
                 readOnly={hasLinkedMaterials}
               />
+              {errors.name && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '0.2rem', display: 'block' }}>{errors.name}</span>}
             </div>
 
             {/* Items Supplied — each item has name + required unit */}
             <div>
               <label className="form-label">
-                Items Supplied
+                Items Supplied <span className="required">*</span>
                 {hasLinkedMaterials && (
                   <span style={{ fontSize: '0.6rem', color: 'var(--gray)', marginLeft: '0.5rem', fontWeight: 400 }}>
                     (Locked items cannot be removed)
                   </span>
                 )}
               </label>
+              {errors.items && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginBottom: '0.3rem', display: 'block' }}>{errors.items}</span>}
               {/* Existing items as cards */}
               {form.itemsSupplied.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
@@ -2311,6 +2352,7 @@ function BOMTab() {
 
 function BOMFormModal({ bom, materials, onClose, onSave }) {
   const [form, setForm] = useState({ productName: '', sku: '', components: [] });
+  const [errors, setErrors] = useState({});
   useEffect(() => {
     if (bom) setForm({ productName: bom.productName || '', sku: bom.sku || '', components: bom.components || [] });
   }, [bom]);
@@ -2321,7 +2363,20 @@ function BOMFormModal({ bom, materials, onClose, onSave }) {
     comps[idx] = { ...comps[idx], [field]: value };
     return { ...p, components: comps };
   });
-  const handleSubmit = (e) => { e.preventDefault(); if (!form.productName.trim()) return; onSave({ ...bom, ...form }); };
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const newErrors = {};
+    if (!form.productName.trim()) newErrors.productName = 'Product name is required';
+    if (form.components.length === 0) newErrors.components = 'Add at least one component';
+    const emptyComponent = form.components.some(c => !c.materialId);
+    if (emptyComponent) newErrors.material = 'Please select a material for all components';
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    setErrors({});
+    onSave({ ...bom, ...form });
+  };
   const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#E5E2E1', padding: '0.625rem 0.75rem', fontSize: '0.85rem', outline: 'none' };
 
   return (
@@ -2334,12 +2389,20 @@ function BOMFormModal({ bom, materials, onClose, onSave }) {
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
-              <div><label className="form-label">Product Name <span className="required">*</span></label><input type="text" style={inputStyle} value={form.productName} onChange={e => setForm(p => ({ ...p, productName: e.target.value.slice(0, 100) }))} placeholder="Custom Mug 11oz" required maxLength={100} /></div>
+              <div>
+                <label className="form-label">Product Name <span className="required">*</span></label>
+                <input type="text" style={{ ...inputStyle, borderColor: errors.productName ? '#ef4444' : undefined }} value={form.productName} onChange={e => { setForm(p => ({ ...p, productName: e.target.value.slice(0, 100) })); if (errors.productName) setErrors(er => ({ ...er, productName: '' })); }} placeholder="Custom Mug 11oz" required maxLength={100} />
+                {errors.productName && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '0.2rem', display: 'block' }}>{errors.productName}</span>}
+              </div>
               <div><label className="form-label">SKU</label><input type="text" style={inputStyle} value={form.sku} onChange={e => setForm(p => ({ ...p, sku: e.target.value.replace(/[^A-Za-z0-9\-]/g, '').slice(0, 50) }))} placeholder="Auto" maxLength={50} /></div>
             </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <label className="form-label" style={{ margin: 0 }}>Components / Recipe</label>
+                <div>
+                  <label className="form-label" style={{ margin: 0 }}>Components / Recipe <span className="required">*</span></label>
+                  {errors.material && <span style={{ fontSize: '0.72rem', color: '#ef4444', display: 'block' }}>{errors.material}</span>}
+                  {errors.components && <span style={{ fontSize: '0.72rem', color: '#ef4444', display: 'block' }}>{errors.components}</span>}
+                </div>
                 <button type="button" onClick={addComponent} style={{ background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '6px', padding: '0.3rem 0.75rem', color: '#D4A843', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>+ Add Component</button>
               </div>
               {form.components.length === 0 ? (
@@ -2348,15 +2411,20 @@ function BOMFormModal({ bom, materials, onClose, onSave }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {form.components.map((comp, idx) => (
                     <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 36px', gap: '0.5rem', alignItems: 'center' }}>
-                      <CustomDropdown
-                        value={comp.materialId}
-                        onChange={(val) => updateComponent(idx, 'materialId', val)}
-                        options={[
-                          { value: '', label: 'Select material...' },
-                          ...materials.filter(m => !m.parentId).map(m => ({ value: m.id, label: m.name })),
-                        ]}
-                        placeholder="Select material..."
-                      />
+                      <div style={{ border: errors.material ? '1px solid #ef4444' : 'none', borderRadius: '8px' }}>
+                        <CustomDropdown
+                          value={comp.materialId}
+                          onChange={(val) => {
+                            updateComponent(idx, 'materialId', val);
+                            if (errors.material) setErrors(er => ({ ...er, material: '' }));
+                          }}
+                          options={[
+                            { value: '', label: 'Select material...' },
+                            ...materials.filter(m => !m.parentId).map(m => ({ value: m.id, label: m.name })),
+                          ]}
+                          placeholder="Select material..."
+                        />
+                      </div>
                       <IntegerInput style={inputStyle} value={comp.qty} onChange={e => updateComponent(idx, 'qty', e.target.value)} min={0} placeholder="1" />
                       <button type="button" onClick={() => removeComponent(idx)} style={{ background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: '#f87171', fontSize: '0.8rem' }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
