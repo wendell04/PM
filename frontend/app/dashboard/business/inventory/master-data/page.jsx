@@ -388,7 +388,6 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
   const [vendors, setVendors] = useState([]);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [procurementFilter, setProcurementFilter] = useState('');
   const [expandedParents, setExpandedParents] = useState(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
   const [editMaterial, setEditMaterial] = useState(null);
@@ -461,14 +460,12 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
     for (const m of groupedMaterials.standalone) {
       const matchSearch = !q || m.name.toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q);
       const matchCat = !categoryFilter || m.category === categoryFilter;
-      const matchProc = !procurementFilter || m.procurementType === procurementFilter;
-      if (matchSearch && matchCat && matchProc) result.push({ type: 'standalone', item: m });
+      if (matchSearch && matchCat) result.push({ type: 'standalone', item: m });
     }
     for (const parent of groupedMaterials.parents) {
       const matchSearch = !q || parent.name.toLowerCase().includes(q) || (parent.sku || '').toLowerCase().includes(q);
       const matchCat = !categoryFilter || parent.category === categoryFilter;
-      const matchProc = !procurementFilter || parent.procurementType === procurementFilter;
-      if (matchSearch && matchCat && matchProc) {
+      if (matchSearch && matchCat) {
         const children = (groupedMaterials.childrenMap.get(parent.id) || []).filter(c => {
           if (!q) return true;
           return c.name.toLowerCase().includes(q) || (c.sku || '').toLowerCase().includes(q);
@@ -477,7 +474,7 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
       }
     }
     return result;
-  }, [materials, search, categoryFilter, procurementFilter, groupedMaterials]);
+  }, [search, categoryFilter, groupedMaterials]);
 
   const toggleExpand = (id) => {
     setExpandedParents(prev => {
@@ -589,17 +586,6 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
             ]}
             placeholder="All Categories"
             style={{ minWidth: '140px' }}
-          />
-          <CustomDropdown
-            value={procurementFilter}
-            onChange={setProcurementFilter}
-            options={[
-              { value: '', label: 'All Procurement' },
-              { value: 'stock', label: 'Stock (MTS)' },
-              { value: 'on-demand', label: 'On-Demand (MTO)' },
-            ]}
-            placeholder="All Procurement"
-            style={{ minWidth: '130px' }}
           />
         </div>
         <button className="btn-primary" onClick={() => setShowAddModal(true)}>
@@ -883,11 +869,31 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
     }
   }, [editMaterial, itemCategories]);
 
+  // Get items supplied by the selected vendor — each with {name, uom}
+  const vendorItems = useMemo(() => {
+    if (!form.preferredVendorId) return [];
+    const selectedVendor = vendors.find(v => v.id === form.preferredVendorId);
+    if (!selectedVendor) return [];
+    // Normalize: handle old string format and new object format
+    return (selectedVendor.itemsSupplied || []).map(item => {
+      if (typeof item === 'string') return { name: item, uom: 'pcs' };
+      return item;
+    });
+  }, [form.preferredVendorId, vendors]);
+
   useEffect(() => {
     if (form.procurementType === 'on-demand') {
       setForm(p => ({ ...p, allowBackorder: false }));
     }
   }, [form.procurementType]);
+
+  // When vendor changes, clear category if it's not in the vendor's items
+  useEffect(() => {
+    const vendorItemNames = vendorItems.map(i => i.name);
+    if (vendorItemNames.length > 0 && form.category && !vendorItemNames.includes(form.category)) {
+      setForm(p => ({ ...p, category: '', uom: 'pcs' }));
+    }
+  }, [vendorItems, form.category]);
 
   useEffect(() => {
     if (form.hasVariants && form.name && form.variantTypes.length > 0 && form.variantTypes.every(vt => vt.options.length > 0)) {
@@ -1016,10 +1022,16 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
     }
   };
 
+  // Determine which fields are locked based on vendor/category selection
+  const noVendor = !form.preferredVendorId;
+  const noCategory = !form.category;
+  const fieldsLocked = noVendor || noCategory;
+
   const inputStyle = {
     width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
     borderRadius: '8px', color: '#E5E2E1', padding: '0.625rem 0.75rem', fontSize: '0.85rem', outline: 'none'
   };
+  const lockedStyle = { ...inputStyle, opacity: 0.35, cursor: 'not-allowed' };
 
   return (
     <div className="modal-overlay">
@@ -1032,47 +1044,85 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
         </div>
         <form onSubmit={handleSubmit} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div className="modal-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {/* Name */}
+
+            {/* 1. Preferred Vendor — ALWAYS VISIBLE */}
             <div>
               <label className="form-label">
-                Name <span className="required">*</span>
-                {editMaterial && editMaterial.stockQty > 0 && (
-                  <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>(Locked: Stock exists)</span>
-                )}
+                Preferred Vendor <span className="required">*</span>
               </label>
-              <input type="text" style={{ ...inputStyle, opacity: editMaterial && editMaterial.stockQty > 0 ? 0.5 : 1 }} value={form.name}
-                onChange={e => setForm(p => ({ ...p, name: e.target.value.slice(0, 100) }))}
-                placeholder="e.g., Inner Color Mug" required maxLength={100}
-                disabled={editMaterial && editMaterial.stockQty > 0} />
+              <CustomDropdown
+                value={form.preferredVendorId}
+                onChange={(val) => {
+                  if (val === '__add__') {
+                    onAddVendor?.();
+                  } else {
+                    setForm(p => ({ ...p, preferredVendorId: val, category: '' }));
+                  }
+                }}
+                options={[
+                  { value: '', label: 'Select a vendor' },
+                  ...vendors.map(v => ({ value: v.id, label: v.name })),
+                  { value: '__add__', label: '+ Add New Vendor...' },
+                ]}
+                placeholder="Select a vendor..."
+              />
+              {vendors.length === 0 && (
+                <div style={{ fontSize: '0.7rem', color: '#f59e0b', marginTop: '0.3rem' }}>
+                  ⚠ Add a vendor first in the Vendor Master tab
+                </div>
+              )}
             </div>
 
-            {/* Category + Unit */}
+            {/* 2. Category + Item Name — unlocks when vendor is selected */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
-                <label className="form-label">
-                  Item / Material Category
-                  {editMaterial && editMaterial.stockQty > 0 && (
-                    <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>(Locked)</span>
-                  )}
-                </label>
+                <label className="form-label">Item / Material Category</label>
                 <CustomDropdown
                   value={form.category}
                   onChange={(val) => {
-                    if (val === '__add__') {
-                      onAddCategory?.();
-                    } else {
-                      setForm(p => ({ ...p, category: val }));
-                    }
+                    // Auto-fill unit from vendor's item definition
+                    const selectedItem = vendorItems.find(i => i.name === val);
+                    const autoUom = selectedItem ? (selectedItem.uom || 'pcs') : 'pcs';
+                    setForm(p => ({ ...p, category: val, name: '', uom: autoUom }));
                   }}
-                  options={[
-                    ...itemCategories.map(c => ({ value: c, label: c })),
-                    { value: '__add__', label: '+ Add Category...' },
-                  ]}
-                  placeholder="Select category..."
-                  disabled={editMaterial && editMaterial.stockQty > 0}
+                  options={vendorItems.map(item => ({ value: item.name, label: item.name }))}
+                  placeholder={!form.preferredVendorId ? 'Select vendor first...' : vendorItems.length === 0 ? 'No items from this vendor' : 'Select category...'}
+                  disabled={!form.preferredVendorId || vendorItems.length === 0}
                 />
               </div>
               <div>
+                <label className="form-label">
+                  Item Name <span className="required">*</span>
+                </label>
+                <input type="text"
+                  style={fieldsLocked ? lockedStyle : inputStyle}
+                  value={form.name}
+                  onChange={e => setForm(p => ({ ...p, name: e.target.value.slice(0, 100) }))}
+                  placeholder={fieldsLocked ? 'Select vendor & category first' : 'e.g., Inner Color Mug'}
+                  required maxLength={100}
+                  disabled={fieldsLocked} />
+              </div>
+            </div>
+
+            {/* Lock message when fields are locked */}
+            {fieldsLocked && (
+              <div style={{ padding: '0.75rem', background: 'rgba(245,158,11,0.08)', borderRadius: '8px', border: '1px solid rgba(245,158,11,0.2)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+                </svg>
+                <span style={{ fontSize: '0.75rem', color: '#f59e0b' }}>
+                  {!form.preferredVendorId
+                    ? 'Select a vendor to unlock the form'
+                    : 'Select a category to unlock the remaining fields'}
+                </span>
+              </div>
+            )}
+
+            {/* 3. All other fields — locked until both vendor AND category are selected */}
+            <div style={{ opacity: fieldsLocked ? 0.4 : 1, pointerEvents: fieldsLocked ? 'none' : 'auto' }}>
+
+              {/* Unit */}
+              <div style={{ marginBottom: '1rem' }}>
                 <label className="form-label">
                   Unit
                   {editMaterial && editMaterial.stockQty > 0 && (
@@ -1095,108 +1145,65 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                   disabled={editMaterial && editMaterial.stockQty > 0}
                 />
               </div>
-            </div>
 
-            {/* Base Cost + Min Stock — empty by default */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label className="form-label">Base Cost (P)</label>
-                <DecimalInput style={inputStyle} value={form.baseCost}
-                  onChange={e => setForm(p => ({ ...p, baseCost: e.target.value }))}
-                  placeholder="0.00" />
-              </div>
-              <div>
-                <label className="form-label">Min Stock</label>
-                <IntegerInput style={inputStyle} value={form.minStock}
-                  onChange={e => setForm(p => ({ ...p, minStock: e.target.value }))}
-                  min={0} placeholder="10" />
-              </div>
-            </div>
-
-            {/* Procurement Type */}
-            <div>
-              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                Procurement Type
-                <Tooltip text={
-                  form.procurementType === 'stock'
-                    ? 'Stock: Items kept in inventory. Enable backorder to allow sales when stock hits zero.'
-                    : 'On-Demand: Items sourced only after a customer order is placed. Always purchasable regardless of stock level.'
-                }>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2" style={{ cursor: 'help' }}>
-                    <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                  </svg>
-                </Tooltip>
-              </label>
-              <CustomDropdown
-                value={form.procurementType}
-                onChange={(val) => setForm(p => ({ ...p, procurementType: val }))}
-                options={[
-                  { value: 'stock', label: 'Stock (Make to Stock)' },
-                  { value: 'on-demand', label: 'On-Demand (Make to Order)' },
-                ]}
-                placeholder="Select type..."
-              />
-              {form.procurementType === 'on-demand' && (
-                <div style={{ fontSize: '0.72rem', color: '#818cf8', marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                  Always purchasable — no stock limit enforced
+              {/* Base Cost + Min Stock */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label className="form-label">Base Cost (P)</label>
+                  <DecimalInput style={inputStyle} value={form.baseCost}
+                    onChange={e => setForm(p => ({ ...p, baseCost: e.target.value }))}
+                    placeholder="0.00" />
                 </div>
-              )}
-            </div>
-
-            {/* Allow Backorder — ONLY for Stock type */}
-            {form.procurementType === 'stock' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
-                <input type="checkbox" id="allowBackorder" checked={form.allowBackorder}
-                  onChange={e => setForm(p => ({ ...p, allowBackorder: e.target.checked }))}
-                  style={{ width: '16px', height: '16px', accentColor: '#D4A843' }} />
-                <label htmlFor="allowBackorder" style={{ fontSize: '0.85rem', color: '#E5E2E1', cursor: 'pointer', fontWeight: 600 }}>
-                  Allow Backorder
-                </label>
-                <Tooltip text="Allow customers to purchase even when stock reaches zero. Orders will be fulfilled once restocked.">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2" style={{ cursor: 'help' }}>
-                    <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                  </svg>
-                </Tooltip>
+                <div>
+                  <label className="form-label">Min Stock</label>
+                  <IntegerInput style={inputStyle} value={form.minStock}
+                    onChange={e => setForm(p => ({ ...p, minStock: e.target.value }))}
+                    min={0} max={999999} placeholder="10" />
+                </div>
               </div>
-            )}
 
-            {/* Preferred Vendor */}
-            <div>
-              <label className="form-label">Preferred Vendor</label>
-              <CustomDropdown
-                value={form.preferredVendorId}
-                onChange={(val) => {
-                  if (val === '__add__') {
-                    onAddVendor?.();
-                  } else {
-                    setForm(p => ({ ...p, preferredVendorId: val }));
-                  }
-                }}
-                options={[
-                  { value: '', label: 'Select a vendor' },
-                  ...vendors.map(v => ({ value: v.id, label: v.name })),
-                  { value: '__add__', label: '+ Add New Vendor...' },
-                ]}
-                placeholder="Select a vendor"
-              />
-            </div>
+              {/* TODO: Re-enable for future inventory management */}
+              {/*
+              <div>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  Procurement Type
+                  <Tooltip text={
+                    form.procurementType === 'stock'
+                      ? 'Stock: Items kept in inventory. Enable backorder to allow sales when stock hits zero.'
+                      : 'On-Demand: Items sourced only after a customer order is placed. Always purchasable regardless of stock level.'
+                  }>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2" style={{ cursor: 'help' }}>
+                      <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                  </Tooltip>
+                </label>
+                <CustomDropdown
+                  value={form.procurementType}
+                  onChange={(val) => setForm(p => ({ ...p, procurementType: val }))}
+                  options={[
+                    { value: 'stock', label: 'Stock (Make to Stock)' },
+                    { value: 'on-demand', label: 'On-Demand (Make to Order)' },
+                  ]}
+                  placeholder="Select type..."
+                />
+              </div>
+              */}
 
-            <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '0.5rem 0' }}></div>
+              <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '0.5rem 0' }}></div>
 
-            {/* Has Variants */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <input type="checkbox" id="hasVariants" checked={form.hasVariants}
-                onChange={e => setForm(p => ({ ...p, hasVariants: e.target.checked, variantTypes: e.target.checked ? p.variantTypes : [] }))}
-                style={{ width: '16px', height: '16px', accentColor: '#D4A843' }}
-                disabled={editMaterial && editMaterial.stockQty > 0} />
-              <label htmlFor="hasVariants" style={{ fontSize: '0.85rem', color: editMaterial && editMaterial.stockQty > 0 ? 'var(--gray)' : '#E5E2E1', cursor: editMaterial && editMaterial.stockQty > 0 ? 'not-allowed' : 'pointer', fontWeight: 600 }}>
-                This material has variants (e.g., Size, Color)
-                {editMaterial && editMaterial.stockQty > 0 && (
-                  <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>(Locked: Stock exists)</span>
-                )}
-              </label>
-            </div>
+              {/* Has Variants */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                <input type="checkbox" id="hasVariants" checked={form.hasVariants}
+                  onChange={e => setForm(p => ({ ...p, hasVariants: e.target.checked, variantTypes: e.target.checked ? p.variantTypes : [] }))}
+                  style={{ width: '16px', height: '16px', accentColor: '#D4A843' }}
+                  disabled={editMaterial && editMaterial.stockQty > 0} />
+                <label htmlFor="hasVariants" style={{ fontSize: '0.85rem', color: editMaterial && editMaterial.stockQty > 0 ? 'var(--gray)' : '#E5E2E1', cursor: editMaterial && editMaterial.stockQty > 0 ? 'not-allowed' : 'pointer', fontWeight: 600 }}>
+                  This material has variants (e.g., Size, Color)
+                  {editMaterial && editMaterial.stockQty > 0 && (
+                    <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>(Locked: Stock exists)</span>
+                  )}
+                </label>
+              </div>
 
             {/* Variant Types — Old Inventory Style */}
             {form.hasVariants && form.name.trim() && (
@@ -1342,6 +1349,8 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                 </p>
               </div>
             )}
+
+            </div>
           </div>
           <div className="modal-actions" style={{ flexShrink: 0 }}>
             <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
@@ -1377,12 +1386,7 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
 
 // ── Vendor Catalog Modal ───────────────────────────────────────────────────────
 function VendorCatalogModal({ vendor, materials, onClose }) {
-  if (!vendor) return null;
-
-  // Find all materials linked to this vendor
-  const catalogItems = materials.filter(m => m.preferredVendorId === vendor.id && !m.parentId);
-
-  // Get price history from Goods Receipt records
+  // Get price history from Goods Receipt records — must be called before early return
   const grs = useMemo(() => {
     if (typeof window === 'undefined') return [];
     try { return JSON.parse(localStorage.getItem('pmp_goods_receipts') || '[]'); }
@@ -1394,6 +1398,11 @@ function VendorCatalogModal({ vendor, materials, onClose }) {
     try { return JSON.parse(localStorage.getItem('pmp_purchase_orders') || '[]'); }
     catch { return []; }
   }, []);
+
+  if (!vendor) return null;
+
+  // Find all materials linked to this vendor
+  const catalogItems = materials.filter(m => m.preferredVendorId === vendor.id && !m.parentId);
 
   // Get POs from this vendor
   const vendorPOs = pos.filter(p => p.vendorId === vendor.id);
@@ -1771,15 +1780,37 @@ function VendorMasterTab({ materials, onVendorsChange }) {
                 )}
               </div>
 
-              {/* Primary Categories */}
-              {v.itemsSupplied && v.itemsSupplied.length > 0 && (
+              {/* Items Supplied — individual boxes */}
+              {(v.itemsSupplied || []).length > 0 && (
                 <div>
-                  <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', letterSpacing: '0.05em' }}>
-                    Primary Categories
+                  <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.4rem', letterSpacing: '0.05em' }}>
+                    Items Supplied ({v.itemsSupplied.length})
                   </div>
-                  <div style={{ fontSize: '0.85rem', color: '#E5E2E1', fontStyle: 'italic' }}>
-                    {v.itemsSupplied.slice(0, 3).join(', ')}
-                    {v.itemsSupplied.length > 3 && `, +${v.itemsSupplied.length - 3} more`}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    {(v.itemsSupplied || []).map((item, i) => {
+                      const name = typeof item === 'string' ? item : item.name;
+                      const uom = typeof item === 'string' ? 'pcs' : (item.uom || 'pcs');
+                      return (
+                        <div key={i} style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem',
+                          padding: '0.4rem 0.6rem',
+                          background: 'rgba(255,255,255,0.03)',
+                          border: '1px solid rgba(255,255,255,0.06)',
+                          borderRadius: '6px',
+                        }}>
+                          <span style={{ fontSize: '0.78rem', color: '#E5E2E1', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {name}
+                          </span>
+                          <span style={{
+                            fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase',
+                            background: 'rgba(255,255,255,0.04)', padding: '0.1rem 0.35rem', borderRadius: '4px',
+                            fontWeight: 600, flexShrink: 0,
+                          }}>
+                            {uom}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1868,7 +1899,8 @@ function VendorMasterTab({ materials, onVendorsChange }) {
 
 function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
   const [form, setForm] = useState({ name: '', contact: '', itemsSupplied: [], email: '', phone: '', address: '' });
-  const [itemInput, setItemInput] = useState('');
+  const [itemNameInput, setItemNameInput] = useState('');
+  const [itemUomInput, setItemUomInput] = useState('pcs');
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Check if this vendor has linked materials
@@ -1889,51 +1921,66 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
     return [...items];
   }, [linkedMaterials, hasLinkedMaterials]);
 
-  // Collect all unique items from all vendors
+  // Collect all unique items from all vendors — normalize to {name, uom} objects
   const allKnownItems = useMemo(() => {
-    const items = new Set();
+    const items = [];
+    const seen = new Set();
     (allVendors || []).forEach(v => {
-      (v.itemsSupplied || []).forEach(item => items.add(item));
+      (v.itemsSupplied || []).forEach(item => {
+        const name = typeof item === 'string' ? item : item.name;
+        if (!seen.has(name)) {
+          seen.add(name);
+          items.push(name);
+        }
+      });
     });
-    return [...items].sort();
+    return items.sort();
   }, [allVendors]);
 
   // Filter suggestions based on current input
   const suggestions = useMemo(() => {
-    if (!itemInput.trim()) return allKnownItems;
-    return allKnownItems.filter(i => i.toLowerCase().includes(itemInput.toLowerCase()));
-  }, [itemInput, allKnownItems]);
+    if (!itemNameInput.trim()) return allKnownItems;
+    return allKnownItems.filter(i => i.toLowerCase().includes(itemNameInput.toLowerCase()));
+  }, [itemNameInput, allKnownItems]);
+
+  // Normalize itemsSupplied to {name, uom} objects
+  const normalizeItems = (items) => {
+    return (items || []).map(item => {
+      if (typeof item === 'string') return { name: item, uom: 'pcs' };
+      return item;
+    });
+  };
 
   useEffect(() => {
     if (vendor) {
       setForm({
-        name: vendor.name || '', contact: vendor.contact || '', itemsSupplied: vendor.itemsSupplied || [],
+        name: vendor.name || '', contact: vendor.contact || '', itemsSupplied: normalizeItems(vendor.itemsSupplied),
         email: vendor.email || '', phone: vendor.phone || '', address: vendor.address || '',
       });
     }
   }, [vendor]);
 
-  const addItem = (item) => {
-    const trimmed = (item || itemInput).trim();
+  const addItem = () => {
+    const trimmed = itemNameInput.trim();
     if (!trimmed) return;
-    if (form.itemsSupplied.some(i => i.toLowerCase() === trimmed.toLowerCase())) return;
-    setForm(p => ({ ...p, itemsSupplied: [...p.itemsSupplied, trimmed] }));
-    setItemInput('');
+    if (form.itemsSupplied.some(i => i.name.toLowerCase() === trimmed.toLowerCase())) return;
+    setForm(p => ({ ...p, itemsSupplied: [...p.itemsSupplied, { name: trimmed, uom: itemUomInput }] }));
+    setItemNameInput('');
+    setItemUomInput('pcs');
     setShowSuggestions(false);
   };
 
   const removeItem = (idx) => {
     const itemToRemove = form.itemsSupplied[idx];
-    // Don't allow removing items that are used by linked materials
-    if (usedItems.includes(itemToRemove)) return;
+    if (usedItems.includes(itemToRemove.name)) return;
     setForm(p => ({ ...p, itemsSupplied: p.itemsSupplied.filter((_, i) => i !== idx) }));
   };
 
   const handleItemKeyDown = (e) => {
     if (e.key === 'Enter') { e.preventDefault(); addItem(); }
-    if (e.key === 'Backspace' && itemInput === '' && form.itemsSupplied.length > 0) {
+    if (e.key === 'Backspace' && itemNameInput === '' && form.itemsSupplied.length > 0) {
       const lastItem = form.itemsSupplied[form.itemsSupplied.length - 1];
-      if (!usedItems.includes(lastItem)) {
+      if (!usedItems.includes(lastItem.name)) {
         removeItem(form.itemsSupplied.length - 1);
       }
     }
@@ -1960,7 +2007,7 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '560px' }}>
         <div className="modal-header">
           <h2 className="modal-title">{vendor ? 'Edit Vendor' : 'Add New Vendor'}</h2>
           <button className="modal-close" onClick={onClose}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
@@ -1987,66 +2034,86 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
                 readOnly={hasLinkedMaterials}
               />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label className="form-label">Contact Person</label>
-                <input type="text" style={inputStyle} value={form.contact} onChange={e => setForm(p => ({ ...p, contact: e.target.value.slice(0, 80) }))} placeholder="Juan Dela Cruz" maxLength={80} />
-              </div>
-              <div style={{ position: 'relative' }}>
-                <label className="form-label">
-                  Items Supplied
-                  {hasLinkedMaterials && (
-                    <span style={{ fontSize: '0.6rem', color: 'var(--gray)', marginLeft: '0.5rem', fontWeight: 400 }}>
-                      (Locked items in use)
-                    </span>
-                  )}
-                </label>
-                <div style={{
-                  ...inputStyle, display: 'flex', flexWrap: 'wrap', gap: '0.35rem',
-                  padding: '0.4rem 0.5rem', minHeight: '42px', alignItems: 'center', cursor: 'text',
-                }} onClick={() => document.getElementById('itemInput')?.focus()}>
+
+            {/* Items Supplied — each item has name + required unit */}
+            <div>
+              <label className="form-label">
+                Items Supplied
+                {hasLinkedMaterials && (
+                  <span style={{ fontSize: '0.6rem', color: 'var(--gray)', marginLeft: '0.5rem', fontWeight: 400 }}>
+                    (Locked items cannot be removed)
+                  </span>
+                )}
+              </label>
+              {/* Existing items as cards */}
+              {form.itemsSupplied.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
                   {form.itemsSupplied.map((item, i) => {
-                    const isUsed = usedItems.includes(item);
+                    const isUsed = usedItems.includes(item.name);
                     return (
-                      <span key={i} style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                        fontSize: '0.72rem', color: isUsed ? '#D4A843' : '#9ca3af',
-                        background: isUsed ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.06)',
-                        border: isUsed ? '1px solid rgba(212,168,67,0.3)' : '1px solid rgba(255,255,255,0.1)',
-                        padding: '0.15rem 0.5rem',
-                        borderRadius: '4px', fontWeight: 600,
-                        opacity: isUsed ? 1 : 0.7,
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem',
+                        padding: '0.5rem 0.75rem',
+                        background: isUsed ? 'rgba(212,168,67,0.08)' : 'rgba(255,255,255,0.04)',
+                        border: `1px solid ${isUsed ? 'rgba(212,168,67,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                        borderRadius: '8px',
                       }}>
-                        {item}
-                        {!isUsed && (
+                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                          <span style={{ fontSize: '0.82rem', color: '#E5E2E1', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {item.name}
+                          </span>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase' }}>
+                            {item.uom || 'pcs'}
+                          </span>
+                        </div>
+                        {!isUsed ? (
                           <button type="button" onClick={() => removeItem(i)} style={{
-                            background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer',
-                            padding: 0, lineHeight: 1, fontSize: '0.85rem',
-                          }}>×</button>
-                        )}
-                        {isUsed && (
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ color: '#D4A843' }}>
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
+                            borderRadius: '6px', padding: '0.2rem 0.4rem', cursor: 'pointer', color: '#f87171',
+                            display: 'flex', alignItems: 'center', lineHeight: 1, fontSize: '0.7rem',
+                          }}>✕</button>
+                        ) : (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2.5" style={{ flexShrink: 0 }}>
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
                           </svg>
                         )}
-                      </span>
+                      </div>
                     );
                   })}
-                  <input
-                    id="itemInput"
-                    type="text"
-                    value={itemInput}
-                    onChange={e => { setItemInput(e.target.value.slice(0, 40)); setShowSuggestions(true); }}
-                    onFocus={() => setShowSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                    onKeyDown={handleItemKeyDown}
-                    placeholder={form.itemsSupplied.length === 0 ? 'Type or select...' : 'Add more...'}
-                    style={{
-                      background: 'none', border: 'none', outline: 'none', color: '#E5E2E1',
-                      fontSize: '0.8rem', flex: 1, minWidth: '80px', padding: '0.15rem 0',
-                    }}
-                  />
                 </div>
+              )}
+              {/* Add new item row */}
+              <div style={{ display: 'flex', gap: '0.5rem', position: 'relative' }}>
+                <input
+                  type="text"
+                  style={{ ...inputStyle, flex: 2 }}
+                  value={itemNameInput}
+                  onChange={e => { setItemNameInput(e.target.value.slice(0, 60)); setShowSuggestions(true); }}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  onKeyDown={handleItemKeyDown}
+                  placeholder="Item name..."
+                  maxLength={60}
+                />
+                <select
+                  style={{ ...inputStyle, flex: 1, minWidth: '100px' }}
+                  value={itemUomInput}
+                  onChange={e => setItemUomInput(e.target.value)}
+                >
+                  <option value="pcs">Pieces</option>
+                  <option value="bottle">Bottle</option>
+                  <option value="liter">Liter</option>
+                  <option value="kg">Kilogram</option>
+                  <option value="meter">Meter</option>
+                  <option value="roll">Roll</option>
+                  <option value="box">Box</option>
+                  <option value="pack">Pack</option>
+                  <option value="set">Set</option>
+                </select>
+                <button type="button" className="btn-primary" onClick={addItem}
+                  style={{ padding: '0 1rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  + Add
+                </button>
                 {/* Suggestions dropdown */}
                 {showSuggestions && suggestions.length > 0 && (
                   <div style={{
@@ -2055,11 +2122,11 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
                     maxHeight: '160px', overflowY: 'auto', marginTop: '0.25rem',
                     boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                   }}>
-                    {suggestions.filter(s => !form.itemsSupplied.some(i => i.toLowerCase() === s.toLowerCase())).map((item, i) => (
+                    {suggestions.filter(s => !form.itemsSupplied.some(i => i.name.toLowerCase() === s.toLowerCase())).map((name, i) => (
                       <button
                         key={i}
                         type="button"
-                        onMouseDown={() => addItem(item)}
+                        onMouseDown={() => setItemNameInput(name)}
                         style={{
                           display: 'block', width: '100%', padding: '0.5rem 0.75rem',
                           background: 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.05)',
@@ -2068,18 +2135,25 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,168,67,0.1)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                       >
-                        {item}
+                        {name}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
             </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div>
+                <label className="form-label">Contact Person</label>
+                <input type="text" style={inputStyle} value={form.contact} onChange={e => setForm(p => ({ ...p, contact: e.target.value.slice(0, 80) }))} placeholder="Juan Dela Cruz" maxLength={80} />
+              </div>
               <div>
                 <label className="form-label">Email</label>
                 <input type="email" style={inputStyle} value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value.slice(0, 100) }))} placeholder="vendor@email.com" maxLength={100} />
               </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label className="form-label">Phone</label>
                 <input type="text" style={inputStyle} value={form.phone} onChange={handlePhoneChange} placeholder="09xx-xxx-xxxx" maxLength={15} inputMode="tel" />
