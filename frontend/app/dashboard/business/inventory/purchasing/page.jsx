@@ -1181,79 +1181,226 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// STOCK-IN FORM MODAL (Direct Stock-In — no PO needed)
+// MANUAL STOCK-IN WIZARD MODAL (3 Steps)
+// Step 1: Select Material(s)
+// Step 2: Stock Entry (qty, damaged, unit cost)
+// Step 3: Invoice Details (vendor, ref no, delivery date, notes)
 // ══════════════════════════════════════════════════════════════════════════════
-function StockInFormModal({ materials, vendors, onClose, onSave }) {
-  const [form, setForm] = useState({
-    materialId: '', vendorId: '', receivedQty: '', damagedQty: '',
-    unitCost: '', referenceNo: '', notes: '', returnReason: '', returnOther: '',
+function ManualStockInModal({ materials, vendors, onClose, onSave }) {
+  const [step, setStep] = useState(1);
+
+  // Step 1
+  const [search, setSearch] = useState('');
+  const [selectedMaterials, setSelectedMaterials] = useState([]);
+
+  // Step 2 - Stock rows per material: { materialId: [{ qty, damaged, unitCost }] }
+  const [stockRowsByMaterial, setStockRowsByMaterial] = useState({});
+
+  // Apply-all helpers
+  const [applyAllCost, setApplyAllCost] = useState('');
+  const [applyAllDamaged, setApplyAllDamaged] = useState('');
+
+  // Step 3 - Invoice
+  const [invoice, setInvoice] = useState({
+    vendorId: '', vendorName: '',
+    referenceNo: '', deliveryDate: new Date().toISOString().split('T')[0],
+    notes: '',
   });
+
   const [errors, setErrors] = useState({});
   const [showPendingRTV, setShowPendingRTV] = useState(false);
-  const [pendingSIData, setPendingSIData] = useState(null);
+  const [pendingSIEntries, setPendingSIEntries] = useState(null);
   const [approvedDisposition, setApprovedDisposition] = useState('rtv');
 
-  const material = materials.find(m => m.id === form.materialId);
-  const vendor = vendors.find(v => v.id === form.vendorId);
+  // Selectable: only parent materials (not variant children)
+  const selectableMaterials = useMemo(() => {
+    const parents = materials.filter(m => m.hasVariants && !m.parentId);
+    const standalone = materials.filter(m => !m.hasVariants && !m.parentId);
+    return [...parents, ...standalone];
+  }, [materials]);
 
-  const received = parseInt(form.receivedQty) || 0;
-  const damaged = parseInt(form.damagedQty) || 0;
-  const goodQty = Math.max(0, received - damaged);
-  const unitCost = parseFloat(form.unitCost) || 0;
-  const totalPaid = received * unitCost;
-  // Effective cost per good unit: if all good, same as unitCost; if damaged, cost absorbed
-  const effectiveUnitCost = goodQty > 0 ? totalPaid / goodQty : 0;
+  // Filtered materials for Step 1 search
+  const filteredMaterials = useMemo(() => {
+    if (!search.trim()) return selectableMaterials;
+    const q = search.toLowerCase();
+    return selectableMaterials.filter(m =>
+      m.name.toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q) || (m.category || '').toLowerCase().includes(q)
+    );
+  }, [search, selectableMaterials]);
 
-  const selectMaterial = (materialId) => {
-    const mat = materials.find(m => m.id === materialId);
-    setForm(p => ({
-      ...p,
-      materialId,
-      unitCost: mat?.baseCost != null && mat.baseCost > 0 ? String(mat.baseCost) : p.unitCost,
+  // Group by category for Step 1
+  const groupedByCategory = useMemo(() => {
+    const groups = {};
+    filteredMaterials.forEach(m => {
+      const cat = m.category || 'Uncategorized';
+      if (!groups[cat]) groups[cat] = { category: cat, materials: [] };
+      groups[cat].materials.push(m);
+    });
+    return Object.values(groups);
+  }, [filteredMaterials]);
+
+  // Generate stock rows for a material (parent + children or standalone)
+  const generateMaterialRows = (material) => {
+    if (!material.hasVariants) {
+      // Standalone material — single row
+      return [{
+        materialId: material.id,
+        materialName: material.name,
+        sku: material.sku || '',
+        uom: material.uom || 'pcs',
+        isVariant: false,
+        variantLabel: material.name,
+        qty: '',
+        damaged: '',
+        unitCost: material.baseCost != null && material.baseCost > 0 ? String(material.baseCost) : '',
+        minStockLevel: material.minStock || 10,
+      }];
+    }
+    // Has variants — generate a row per child
+    const children = materials.filter(m => m.parentId === material.id);
+    if (children.length === 0) {
+      // Parent with no children yet — single row for the parent
+      return [{
+        materialId: material.id,
+        materialName: material.name,
+        sku: material.sku || '',
+        uom: material.uom || 'pcs',
+        isVariant: true,
+        variantLabel: material.name + ' (Parent)',
+        qty: '',
+        damaged: '',
+        unitCost: material.baseCost != null && material.baseCost > 0 ? String(material.baseCost) : '',
+        minStockLevel: material.minStock || 10,
+      }];
+    }
+    return children.map(c => ({
+      materialId: c.id,
+      materialName: c.name,
+      sku: c.sku || '',
+      uom: c.uom || material.uom || 'pcs',
+      isVariant: true,
+      variantLabel: c.name.replace(new RegExp(`^${material.name}\\s*[-–]`, 'i'), ''),
+      qty: '',
+      damaged: '',
+      unitCost: c.baseCost != null && c.baseCost > 0 ? String(c.baseCost) : (material.baseCost != null && material.baseCost > 0 ? String(material.baseCost) : ''),
+      minStockLevel: c.minStock || material.minStock || 10,
     }));
   };
 
-  const validate = () => {
-    const e = {};
-    if (!form.materialId)              e.material = 'Select a material.';
-    if (!form.receivedQty || received <= 0) e.received = 'Quantity must be greater than 0.';
-    if (damaged > received)            e.damaged = 'Damaged qty cannot exceed received qty.';
-    if (!form.unitCost || unitCost <= 0) e.unitCost = 'Unit cost is required and must be greater than 0.';
-    if (damaged > 0 && !form.returnReason) e.returnReason = 'Select a return reason.';
-    if (damaged > 0 && form.returnReason === 'Other' && !(form.returnOther || '').trim()) e.returnOther = 'Please specify the reason.';
-    setErrors(e);
-    return Object.keys(e).length === 0;
+  // Toggle material selection
+  const toggleMaterial = (material) => {
+    const exists = selectedMaterials.find(m => m.id === material.id);
+    if (exists) {
+      setSelectedMaterials(prev => prev.filter(m => m.id !== material.id));
+      setStockRowsByMaterial(prev => {
+        const next = { ...prev };
+        delete next[material.id];
+        return next;
+      });
+    } else {
+      setSelectedMaterials(prev => [...prev, material]);
+      setStockRowsByMaterial(prev => ({
+        ...prev,
+        [material.id]: generateMaterialRows(material),
+      }));
+    }
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!validate()) return;
-    const siData = {
-      materialId:     form.materialId,
-      materialName:   material?.name || '',
-      sku:            material?.sku || '',
-      uom:            material?.uom || 'pcs',
-      vendorId:       form.vendorId || null,
-      vendorName:     vendor?.name || 'General Merchandise',
-      receivedQty:    received,
-      damagedQty:     damaged,
-      goodQty,
-      unitCost,
-      effectiveUnitCost,
-      totalPaid,
-      referenceNo:    form.referenceNo.trim(),
-      notes:          form.notes.trim(),
-      returnReason:   form.returnReason === 'Other' ? (form.returnOther || 'Other') : (form.returnReason || ''),
-      dateReceived:   new Date().toISOString(),
-    };
+  // Update a stock row
+  const updateStockRow = (materialId, rowIndex, field, value) => {
+    setStockRowsByMaterial(prev => {
+      const rows = [...(prev[materialId] || [])];
+      rows[rowIndex] = { ...rows[rowIndex], [field]: value };
+      return { ...prev, [materialId]: rows };
+    });
+  };
 
-    // If there are damaged items, show Pending RTV Review first
-    if (damaged > 0) {
-      setPendingSIData(siData);
+  // Apply cost/damaged to all rows
+  const applyToAll = (field, value) => {
+    setStockRowsByMaterial(prev => {
+      const updated = {};
+      Object.keys(prev).forEach(mid => {
+        updated[mid] = prev[mid].map(row => {
+          const qty = parseInt(row.qty) || 0;
+          if (field === 'unitCost') return { ...row, unitCost: value };
+          if (field === 'damaged' && value && qty > 0) {
+            const num = Math.min(parseInt(value) || 0, qty);
+            return { ...row, damaged: String(num) };
+          }
+          return row;
+        });
+      });
+      return updated;
+    });
+  };
+
+  // Computed totals
+  const totalReceived = Object.values(stockRowsByMaterial).flat().reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+  const totalDamaged = Object.values(stockRowsByMaterial).flat().reduce((s, r) => s + (parseInt(r.damaged) || 0), 0);
+  const totalGood = totalReceived - totalDamaged;
+
+  const totalPaid = Object.values(stockRowsByMaterial).flat().reduce((sum, r) => {
+    const qty = parseInt(r.qty) || 0;
+    const cost = parseFloat(r.unitCost) || 0;
+    return sum + qty * cost;
+  }, 0);
+
+  // Step validation
+  const step1Valid = selectedMaterials.length > 0;
+  const step2Valid = () => {
+    if (selectedMaterials.length === 0) return false;
+    return Object.values(stockRowsByMaterial).flat().some(r => (parseInt(r.qty) || 0) > 0);
+  };
+  const step3Valid = () => {
+    return invoice.deliveryDate && invoice.referenceNo.trim() && Object.values(stockRowsByMaterial).flat().some(r => (parseFloat(r.unitCost) || 0) > 0);
+  };
+
+  const handleSubmit = () => {
+    const newErrors = {};
+    if (!step1Valid) newErrors.step1 = 'Select at least one material.';
+    if (!step2Valid()) newErrors.step2 = 'Enter received quantity for at least one item.';
+    if (!step3Valid()) newErrors.step3 = 'Complete all required invoice fields (delivery date, reference number, and unit cost).';
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    setErrors({});
+
+    // Build stock-in entries — one per material row
+    const siEntries = Object.values(stockRowsByMaterial).flat()
+      .filter(r => (parseInt(r.qty) || 0) > 0)
+      .map(r => {
+        const received = parseInt(r.qty) || 0;
+        const damaged = parseInt(r.damaged) || 0;
+        const good = received - damaged;
+        const unitCost = parseFloat(r.unitCost) || 0;
+        return {
+          materialId: r.materialId,
+          materialName: r.materialName,
+          sku: r.sku || '',
+          uom: r.uom || 'pcs',
+          vendorId: invoice.vendorId || null,
+          vendorName: invoice.vendorName || 'General Merchandise',
+          receivedQty: received,
+          damagedQty: damaged,
+          goodQty: good,
+          unitCost,
+          effectiveUnitCost: good > 0 ? (received * unitCost) / good : unitCost,
+          totalPaid: received * unitCost,
+          referenceNo: invoice.referenceNo.trim(),
+          notes: invoice.notes.trim(),
+          returnReason: '',
+          dateReceived: invoice.deliveryDate + 'T00:00:00.000Z',
+        };
+      });
+
+    // Check for any damaged items across all entries
+    const hasDamaged = siEntries.some(e => e.damagedQty > 0);
+    if (hasDamaged) {
+      setPendingSIEntries(siEntries);
       setShowPendingRTV(true);
     } else {
-      // No damaged → save directly
-      onSave(siData, 'cancel');
+      onSave(siEntries, 'cancel');
     }
   };
 
@@ -1262,217 +1409,376 @@ function StockInFormModal({ materials, vendors, onClose, onSave }) {
       setApprovedDisposition(approvedItems[0].disposition || 'rtv');
     }
     setShowPendingRTV(false);
-    if (pendingSIData) {
-      onSave(pendingSIData, approvedItems[0]?.disposition || 'rtv');
+    if (pendingSIEntries) {
+      onSave(pendingSIEntries, approvedItems[0]?.disposition || 'rtv');
     }
-    setPendingSIData(null);
+    setPendingSIEntries(null);
   };
 
-  // Only non-child materials (parents + standalone)
-  const selectableMaterials = materials.filter(m => !m.parentId);
+  // Navigation
+  const goNext = () => {
+    const stepErrors = {};
+    if (step === 1 && !step1Valid) stepErrors.step1 = 'Select at least one material.';
+    if (step === 2 && !step2Valid()) stepErrors.step2 = 'Enter received quantity for at least one item.';
+    if (Object.keys(stepErrors).length > 0) {
+      setErrors(stepErrors);
+      return;
+    }
+    setErrors({});
+    setStep(s => Math.min(s + 1, 3));
+  };
+  const goBack = () => { setErrors({}); setStep(s => Math.max(s - 1, 1)); };
 
   return (
     <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()}
-        style={{ maxWidth: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        style={{ maxWidth: '900px', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
 
-        <div className="modal-header" style={{ flexShrink: 0 }}>
-          <div>
-            <h2 className="modal-title">Direct Stock-In</h2>
-            <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.1rem' }}>
-              Receive goods without a Purchase Order
-            </p>
-          </div>
-          <button className="modal-close" onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div className="modal-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-
-            {/* Material + Vendor */}
+        {/* Header */}
+        <div style={{ padding: '1.25rem 2rem', flexShrink: 0, borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <div>
-              <label className="form-label">Material <span className="required">*</span></label>
-              <CustomDropdown
-                value={form.materialId}
-                onChange={(val) => { selectMaterial(val); setErrors(p => ({ ...p, material: null })); }}
-                options={[
-                  { value: '', label: 'Select material...' },
-                  ...selectableMaterials.map(m => ({ value: m.id, label: `${m.name}${m.sku ? ` (${m.sku})` : ''}` })),
-                ]}
-                placeholder="Select material..."
-                style={{ borderColor: errors.material ? 'rgba(239,68,68,0.5)' : undefined }}
-              />
-              {errors.material && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{errors.material}</p>}
-            </div>
-
-            <div>
-              <label className="form-label">Vendor <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>(Optional)</span></label>
-              <CustomDropdown
-                value={form.vendorId}
-                onChange={(val) => setForm(p => ({ ...p, vendorId: val }))}
-                options={[
-                  { value: '', label: 'General Merchandise (Walk-in)' },
-                  ...vendors.map(v => ({ value: v.id, label: v.name })),
-                ]}
-                placeholder="General Merchandise (Walk-in)"
-              />
-            </div>
-
-            {/* Qty Row */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label className="form-label">Received Qty <span className="required">*</span></label>
-                <IntInput
-                  style={{ ...inputStyle, borderColor: errors.received ? 'rgba(239,68,68,0.5)' : undefined }}
-                  value={form.receivedQty}
-                  onChange={v => { setForm(p => ({ ...p, receivedQty: v })); setErrors(p => ({ ...p, received: null, damaged: null })); }}
-                  min={1}
-                  max={999999}
-                  placeholder="0"
-                />
-                {errors.received && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{errors.received}</p>}
-              </div>
-              <div>
-                <label className="form-label">Damaged / Rejected Qty</label>
-                <IntInput
-                  style={{ ...inputStyle, borderColor: errors.damaged ? 'rgba(239,68,68,0.5)' : undefined }}
-                  value={form.damagedQty}
-                  onChange={v => { setForm(p => ({ ...p, damagedQty: v })); setErrors(p => ({ ...p, damaged: null })); }}
-                  min={0}
-                  max={received}
-                  placeholder="0"
-                />
-                {errors.damaged && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{errors.damaged}</p>}
-              </div>
-              <div>
-                <label className="form-label">Good Qty</label>
-                <div style={{
-                  ...inputStyle, background: 'rgba(34,197,94,0.06)',
-                  border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e',
-                  fontWeight: 800, fontSize: '1rem', textAlign: 'center',
-                }}>
-                  {goodQty}
+              <h2 className="modal-title">Manual Stock-In Entry</h2>
+              {selectedMaterials.length > 0 && (
+                <div style={{ fontSize: '0.75rem', color: '#D4A843', marginTop: '0.25rem', fontWeight: 600 }}>
+                  {selectedMaterials.length} material{selectedMaterials.length !== 1 ? 's' : ''} selected
                 </div>
-              </div>
+              )}
             </div>
-
-            {/* Return Reason (shown when damaged > 0) */}
-            {damaged > 0 && (
-              <div>
-                <label className="form-label">
-                  Return Reason <span className="required">*</span>
-                </label>
-                <CustomDropdown
-                    value={form.returnReason}
-                    onChange={(val) => {
-                      setForm(p => ({ ...p, returnReason: val }));
-                      if (errors.returnReason) setErrors(e => ({ ...e, returnReason: '' }));
-                    }}
-                    options={RETURN_REASONS.map(r => ({ value: r, label: r }))}
-                    placeholder="Select reason..."
-                  />
-                {errors.returnReason && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '0.2rem', display: 'block' }}>{errors.returnReason}</span>}
-                {form.returnReason === 'Other' && (
-                  <div>
-                    <input
-                      type="text"
-                      style={{ ...inputStyle, marginTop: '0.5rem' }}
-                      value={form.returnOther || ''}
-                      onChange={e => {
-                        setForm(p => ({ ...p, returnOther: e.target.value.slice(0, 100) }));
-                        if (errors.returnOther) setErrors(er => ({ ...er, returnOther: '' }));
-                      }}
-                      placeholder="Specify reason..."
-                      maxLength={100}
-                      required
-                    />
-                    {errors.returnOther && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '0.2rem', display: 'block' }}>{errors.returnOther}</span>}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Unit Cost + Effective Cost */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label className="form-label">Actual Unit Cost (₱) <span className="required">*</span></label>
-                <DecInput
-                  style={{ ...inputStyle, borderColor: errors.unitCost ? 'rgba(239,68,68,0.5)' : undefined }}
-                  value={form.unitCost}
-                  onChange={v => { setForm(p => ({ ...p, unitCost: v })); setErrors(p => ({ ...p, unitCost: null })); }}
-                  placeholder="0.00"
-                  max={9999999.99}
-                />
-                {errors.unitCost && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{errors.unitCost}</p>}
-              </div>
-              <div>
-                <label className="form-label">Effective Cost / Good Unit</label>
-                <div style={{
-                  ...inputStyle, background: 'rgba(212,168,67,0.06)',
-                  border: '1px solid rgba(212,168,67,0.2)', color: '#D4A843',
-                  fontWeight: 700, fontFamily: 'monospace', fontSize: '0.95rem',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {effectiveUnitCost > 0 ? `₱${effectiveUnitCost.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
-                </div>
-              </div>
-            </div>
-
-            {/* Total Paid */}
-            {totalPaid > 0 && (
-              <div style={{
-                padding: '0.625rem 1rem', background: 'rgba(255,255,255,0.03)',
-                borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Total Paid</span>
-                <span style={{ fontSize: '1rem', fontWeight: 800, color: '#D4A843', fontFamily: 'monospace' }}>
-                  ₱{totalPaid.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-            )}
-
-            {/* Reference No */}
-            <div>
-              <label className="form-label">Reference / Receipt No</label>
-              <input
-                type="text"
-                style={inputStyle}
-                value={form.referenceNo}
-                onChange={e => setForm(p => ({ ...p, referenceNo: e.target.value.slice(0, 50) }))}
-                placeholder="e.g., OR-12345, INV-ABC"
-                maxLength={50}
-              />
-            </div>
-          </div>
-
-          <div className="modal-actions" style={{ flexShrink: 0 }}>
-            <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn-primary">
-              Confirm Stock-In & Update Stock
+            <button className="modal-close" onClick={onClose}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </div>
-        </form>
+
+          {/* Step Indicator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0, position: 'relative', paddingLeft: '2rem', paddingRight: '2rem' }}>
+            {[
+              { num: 1, label: 'Select Materials' },
+              { num: 2, label: 'Stock Entry' },
+              { num: 3, label: 'Invoice' },
+            ].map((s, i) => {
+              const isComplete = s.num === 1 ? step1Valid : s.num === 2 ? step2Valid() : step3Valid();
+              const isCurrent = step === s.num;
+              const isPast = step > s.num;
+              return (
+                <div key={s.num} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', flex: 1, position: 'relative', zIndex: 2 }}>
+                  <div style={{
+                    width: '26px', height: '26px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: isComplete || isPast ? '#D4A843' : isCurrent ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.06)',
+                    color: isComplete || isPast ? '#000' : isCurrent ? '#D4A843' : 'var(--gray)',
+                    border: isCurrent ? '2px solid #D4A843' : 'none',
+                    transition: 'all 0.3s',
+                  }}>
+                    {isComplete || isPast
+                      ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                      : <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{s.num}</span>
+                    }
+                  </div>
+                  <span style={{ fontSize: '0.55rem', letterSpacing: '0.1em', fontWeight: 600, color: isComplete || isCurrent ? '#D4A843' : 'var(--gray)', textTransform: 'uppercase' }}>{s.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Step Content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' }}>
+
+          {/* STEP 1: Select Materials */}
+          {step === 1 && (
+            <div>
+              {/* Search */}
+              <div style={{ position: 'relative', marginBottom: '1rem' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                  style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--gray)', pointerEvents: 'none' }}>
+                  <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Search materials by name, SKU, or category..."
+                  style={{ width: '100%', padding: '0.7rem 1rem 0.7rem 2.5rem', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: '8px', color: '#E5E2E1', fontSize: '0.85rem', outline: 'none' }} />
+              </div>
+              {errors.step1 && <p style={{ fontSize: '0.72rem', color: '#f87171', marginBottom: '0.75rem' }}>{errors.step1}</p>}
+
+              {/* Material list grouped by category */}
+              <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+                {groupedByCategory.length === 0 ? (
+                  <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.85rem' }}>
+                    {selectableMaterials.length === 0 ? 'No materials available. Add materials in Master Data first.' : `No results for "${search}"`}
+                  </div>
+                ) : groupedByCategory.map(group => (
+                  <div key={group.category}>
+                    <div style={{
+                      padding: '0.6rem 1rem', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--border)',
+                      fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.1em',
+                    }}>
+                      {group.category} ({group.materials.length})
+                    </div>
+                    {group.materials.map(m => {
+                      const isSelected = selectedMaterials.some(sel => sel.id === m.id);
+                      return (
+                        <button key={m.id} type="button"
+                          onClick={() => toggleMaterial(m)}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '0.7rem 1rem',
+                            background: isSelected ? 'rgba(212,168,67,0.1)' : 'transparent',
+                            border: 'none', borderBottom: '1px solid rgba(255,255,255,0.03)',
+                            cursor: 'pointer', textAlign: 'left',
+                          }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, color: isSelected ? '#D4A843' : '#E5E2E1', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {m.name}
+                            </div>
+                            <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace' }}>
+                              {m.sku || '—'} {m.hasVariants && `(${materials.filter(c => c.parentId === m.id).length} variants)`}
+                            </div>
+                          </div>
+                          {isSelected ? (
+                            <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#D4A843', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                            </div>
+                          ) : (
+                            <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.15)', flexShrink: 0 }} />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+              {selectedMaterials.length === 0 && (
+                <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.75rem', textAlign: 'center' }}>
+                  Select one or more materials to receive.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* STEP 2: Stock Entry */}
+          {step === 2 && (
+            <div>
+              {errors.step2 && <p style={{ fontSize: '0.72rem', color: '#f87171', marginBottom: '0.75rem' }}>{errors.step2}</p>}
+
+              {/* Apply-all controls */}
+              {selectedMaterials.length > 1 && (
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, display: 'block', marginBottom: '0.25rem' }}>Apply Unit Cost to All</label>
+                    <input type="text" inputMode="decimal" placeholder="e.g., 30.00" value={applyAllCost}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d{0,2}$/.test(val)) setApplyAllCost(val);
+                      }}
+                      style={{ ...inputStyle, padding: '0.45rem 0.65rem', fontSize: '0.8rem' }} />
+                    <button type="button" onClick={() => { if (applyAllCost) applyToAll('unitCost', applyAllCost); }}
+                      style={{ marginTop: '0.3rem', fontSize: '0.7rem', color: '#D4A843', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                      Apply to All
+                    </button>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, display: 'block', marginBottom: '0.25rem' }}>Apply Damaged to All</label>
+                    <input type="text" inputMode="numeric" placeholder="e.g., 0" value={applyAllDamaged}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d+$/.test(val)) setApplyAllDamaged(val);
+                      }}
+                      style={{ ...inputStyle, padding: '0.45rem 0.65rem', fontSize: '0.8rem' }} />
+                    <button type="button" onClick={() => { if (applyAllDamaged) applyToAll('damaged', applyAllDamaged); }}
+                      style={{ marginTop: '0.3rem', fontSize: '0.7rem', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                      Apply to All
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Stock entry tables per material */}
+              {selectedMaterials.map(mat => {
+                const rows = stockRowsByMaterial[mat.id] || [];
+                const matReceived = rows.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+                const matDamaged = rows.reduce((s, r) => s + (parseInt(r.damaged) || 0), 0);
+                const matTotal = rows.reduce((s, r) => s + (parseInt(r.qty) || 0) * (parseFloat(r.unitCost) || 0), 0);
+
+                return (
+                  <div key={mat.id} style={{ marginBottom: '1.25rem', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+                    {/* Material header */}
+                    <div style={{ padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.08)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.9rem' }}>{mat.name}</div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{mat.sku || '—'} {mat.hasVariants && `• ${rows.length} variant${rows.length !== 1 ? 's' : ''}`}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#D4A843', fontFamily: 'monospace' }}>
+                          ₱{matTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        </div>
+                        {matReceived > 0 && <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{matReceived} {rows[0]?.uom || 'pcs'} received</div>}
+                      </div>
+                    </div>
+
+                    {/* Rows */}
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(0,0,0,0.2)' }}>
+                            <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase' }}>Item</th>
+                            <th style={{ padding: '0.5rem 0.5rem', textAlign: 'center', fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', width: '80px' }}>Qty</th>
+                            <th style={{ padding: '0.5rem 0.5rem', textAlign: 'center', fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', width: '80px' }}>Damaged</th>
+                            <th style={{ padding: '0.5rem 0.5rem', textAlign: 'center', fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', width: '100px' }}>Unit Cost</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((row, idx) => (
+                            <tr key={row.materialId} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <td style={{ padding: '0.5rem 0.75rem' }}>
+                                <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.8rem' }}>{row.variantLabel}</div>
+                              </td>
+                              <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                                <input type="text" inputMode="numeric" value={row.qty}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    if (val === '' || /^\d+$/.test(val)) updateStockRow(row.materialId, idx, 'qty', val);
+                                  }}
+                                  style={{ ...inputStyle, padding: '0.4rem', fontSize: '0.8rem', textAlign: 'center', width: '70px' }} />
+                              </td>
+                              <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                                <input type="text" inputMode="numeric" value={row.damaged}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    if (val === '' || /^\d+$/.test(val)) updateStockRow(row.materialId, idx, 'damaged', val);
+                                  }}
+                                  style={{ ...inputStyle, padding: '0.4rem', fontSize: '0.8rem', textAlign: 'center', width: '70px' }} />
+                              </td>
+                              <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                                <input type="text" inputMode="decimal" value={row.unitCost}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    if (val === '' || /^\d*\.?\d{0,2}$/.test(val)) updateStockRow(row.materialId, idx, 'unitCost', val);
+                                  }}
+                                  placeholder="0.00"
+                                  style={{ ...inputStyle, padding: '0.4rem', fontSize: '0.8rem', textAlign: 'center', width: '90px' }} />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Summary */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                <div style={{ padding: '0.75rem', background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>Good Qty</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#22c55e' }}>{totalGood}</div>
+                </div>
+                <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>Damaged</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ef4444' }}>{totalDamaged}</div>
+                </div>
+                <div style={{ padding: '0.75rem', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>Total Value</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#D4A843' }}>₱{totalPaid.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: Invoice Details */}
+          {step === 3 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {errors.step3 && <p style={{ fontSize: '0.72rem', color: '#f87171' }}>{errors.step3}</p>}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label className="form-label">Vendor <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>(Optional)</span></label>
+                  <CustomDropdown
+                    value={invoice.vendorId}
+                    onChange={(val) => {
+                      const v = vendors.find(v => v.id === val);
+                      setInvoice(p => ({ ...p, vendorId: val, vendorName: v?.name || '' }));
+                    }}
+                    options={[
+                      { value: '', label: 'General Merchandise (Walk-in)' },
+                      ...vendors.map(v => ({ value: v.id, label: v.name })),
+                    ]}
+                    placeholder="General Merchandise (Walk-in)"
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Reference / Receipt No <span className="required">*</span></label>
+                  <input type="text" style={inputStyle} value={invoice.referenceNo}
+                    onChange={e => setInvoice(p => ({ ...p, referenceNo: e.target.value.slice(0, 50) }))}
+                    placeholder="e.g., OR-12345, INV-ABC" maxLength={50} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label className="form-label">Delivery Date <span className="required">*</span></label>
+                  <input type="date" style={{ ...inputStyle, colorScheme: 'dark' }} value={invoice.deliveryDate}
+                    max={new Date().toISOString().split('T')[0]}
+                    onChange={e => setInvoice(p => ({ ...p, deliveryDate: e.target.value }))} />
+                </div>
+              </div>
+
+              <div>
+                <label className="form-label">Notes</label>
+                <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: '60px' }} value={invoice.notes}
+                  onChange={e => setInvoice(p => ({ ...p, notes: e.target.value.slice(0, 500) }))}
+                  placeholder="Optional notes..." maxLength={500} />
+              </div>
+
+              {/* Summary preview */}
+              <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem' }}>Entry Summary</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'var(--gray)' }}>Materials:</span>
+                  <span style={{ color: '#E5E2E1', fontWeight: 600 }}>{selectedMaterials.length}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'var(--gray)' }}>Total Received:</span>
+                  <span style={{ color: '#E5E2E1', fontWeight: 600 }}>{totalReceived}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'var(--gray)' }}>Total Value:</span>
+                  <span style={{ color: '#D4A843', fontWeight: 700 }}>₱{totalPaid.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="modal-actions" style={{ flexShrink: 0 }}>
+          {step > 1 && (
+            <button type="button" className="btn-secondary" onClick={goBack}>Back</button>
+          )}
+          <div style={{ flex: 1 }}></div>
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+          {step < 3 ? (
+            <button type="button" className="btn-primary" onClick={goNext}>Next Step</button>
+          ) : (
+            <button type="button" className="btn-primary" onClick={handleSubmit}>
+              Confirm Stock-In
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Pending RTV Review Modal for Stock-In */}
-      {showPendingRTV && pendingSIData && (
+      {/* Pending RTV Review */}
+      {showPendingRTV && pendingSIEntries && (
         <PendingRTVReviewModal
-          grItems={[{
-            materialId: pendingSIData.materialId,
-            materialName: pendingSIData.materialName,
-            sku: pendingSIData.sku,
-            uom: pendingSIData.uom,
-            damagedQty: pendingSIData.damagedQty,
-            returnReason: pendingSIData.returnReason,
-            unitCost: pendingSIData.unitCost,
-          }]}
-          po={{ poNumber: pendingSIData.referenceNo || 'Direct Stock-In' }}
-          onClose={() => { setShowPendingRTV(false); setPendingSIData(null); }}
+          grItems={pendingSIEntries.map(e => ({
+            materialId: e.materialId,
+            materialName: e.materialName,
+            sku: e.sku,
+            uom: e.uom,
+            damagedQty: e.damagedQty,
+            returnReason: '',
+            unitCost: e.unitCost,
+          }))}
+          po={{ poNumber: pendingSIEntries[0]?.referenceNo || 'Manual Stock-In' }}
+          onClose={() => { setShowPendingRTV(false); setPendingSIEntries(null); }}
           onApprove={handlePendingRTVApprove}
         />
       )}
@@ -2539,94 +2845,45 @@ export default function PurchasingPage() {
 
   // ── Stock-In Handler ─────────────────────────────────────────────────────────
   // disposition: 'rtv' | 'write_off' | 'cancel'
-  const handleStockIn = (siData, disposition = 'cancel') => {
-    const mats = getStore(MATERIALS_KEY);
-    const mat = mats.find(m => m.id === siData.materialId);
-    if (!mat) return;
+  const handleStockIn = (siEntries, disposition = 'cancel') => {
+    // siEntries can be a single entry or an array
+    const entries = Array.isArray(siEntries) ? siEntries : [siEntries];
 
-    const oldStock = parseInt(mat.stockQty) || 0;
-    const oldCost  = parseFloat(mat.baseCost) || 0;
-    // disposition 'cancel' → damaged qty stays in stock; otherwise it doesn't
-    const effectiveDamaged = disposition === 'cancel' ? 0 : siData.damagedQty;
-    const goodQty  = siData.receivedQty - effectiveDamaged;
-    const newCost  = siData.effectiveUnitCost;
+    entries.forEach(siData => {
+      const mats = getStore(MATERIALS_KEY);
+      const mat = mats.find(m => m.id === siData.materialId);
+      if (!mat) return;
 
-    // Moving Average Cost: ((oldStock * oldCost) + (goodQty * newCost)) / (oldStock + goodQty)
-    let updatedBaseCost;
-    if (oldStock === 0) {
-      updatedBaseCost = newCost;
-    } else {
-      updatedBaseCost = ((oldStock * oldCost) + (goodQty * newCost)) / (oldStock + goodQty);
-    }
+      const oldStock = parseInt(mat.stockQty) || 0;
+      const oldCost  = parseFloat(mat.baseCost) || 0;
+      const effectiveDamaged = disposition === 'cancel' ? 0 : siData.damagedQty;
+      const goodQty  = siData.receivedQty - effectiveDamaged;
+      const newCost  = siData.effectiveUnitCost;
 
-    // Update material stock
-    const updatedMats = mats.map(m => {
-      if (m.id !== siData.materialId) return m;
-      return {
-        ...m,
-        stockQty:  oldStock + goodQty,
-        baseCost:  Math.round(updatedBaseCost * 100) / 100,
-        updatedAt: new Date().toISOString(),
-      };
+      let updatedBaseCost;
+      if (oldStock === 0) {
+        updatedBaseCost = newCost;
+      } else {
+        updatedBaseCost = ((oldStock * oldCost) + (goodQty * newCost)) / (oldStock + goodQty);
+      }
+
+      const updatedMats = mats.map(m => {
+        if (m.id !== siData.materialId) return m;
+        return { ...m, stockQty: oldStock + goodQty, baseCost: Math.round(updatedBaseCost * 100) / 100, updatedAt: new Date().toISOString() };
+      });
+      setStore(MATERIALS_KEY, updatedMats);
+
+      const log = getStore(STOCK_IN_KEY);
+      setStore(STOCK_IN_KEY, [...log, { ...siData, id: `si-${Date.now()}-${siData.materialId}`, siNumber: genDocNumber('SI', log), disposition, createdAt: new Date().toISOString() }]);
+
+      if (disposition === 'rtv' && siData.damagedQty > 0) {
+        const rtvs = getStore(RTV_KEY);
+        setStore(RTV_KEY, [...rtvs, { id: `rtv-${Date.now()}-${siData.materialId}`, rtvNumber: genDocNumber('RTV', rtvs), poId: '', poNumber: siData.referenceNo || 'Manual Stock-In', vendorId: siData.vendorId || '', vendorName: siData.vendorName, materialId: siData.materialId, materialName: siData.materialName, sku: siData.sku || '', uom: siData.uom || 'pcs', qty: siData.damagedQty, unitCost: siData.unitCost, reason: siData.returnReason || 'Damaged', source: 'stock_in', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]);
+      } else if (disposition === 'write_off' && siData.damagedQty > 0) {
+        const stockOuts = getStore(STOCK_OUT_KEY);
+        setStore(STOCK_OUT_KEY, [...stockOuts, { id: `so-${Date.now()}-${siData.materialId}`, docNumber: genDocNumber('SO', stockOuts), materialId: siData.materialId, materialName: siData.materialName, sku: siData.sku || '', uom: siData.uom || 'pcs', issueType: 'damage', quantity: siData.damagedQty, previousStock: oldStock, newStock: oldStock + goodQty, unitCost: siData.unitCost, totalLoss: siData.damagedQty * siData.unitCost, referenceNo: siData.referenceNo || 'Manual Stock-In', notes: `Write-off from stock-in`, dateIssued: new Date().toISOString() }]);
+      }
     });
-    setStore(MATERIALS_KEY, updatedMats);
-
-    // Save to stock-in log
-    const log = getStore(STOCK_IN_KEY);
-    const newEntry = {
-      ...siData,
-      id: `si-${Date.now()}`,
-      siNumber: genDocNumber('SI', log),
-      disposition,
-      createdAt: new Date().toISOString(),
-    };
-    setStore(STOCK_IN_KEY, [...log, newEntry]);
-
-    // Process disposition
-    if (disposition === 'rtv' && siData.damagedQty > 0) {
-      const rtvs = getStore(RTV_KEY);
-      const newRTV = {
-        id: `rtv-${Date.now()}-si-${siData.materialId}`,
-        rtvNumber: genDocNumber('RTV', rtvs),
-        poId: '',
-        poNumber: siData.referenceNo || 'Direct Stock-In',
-        vendorId: siData.vendorId || '',
-        vendorName: siData.vendorName,
-        materialId: siData.materialId,
-        materialName: siData.materialName,
-        sku: siData.sku || '',
-        uom: siData.uom || 'pcs',
-        qty: siData.damagedQty,
-        unitCost: siData.unitCost,
-        reason: siData.returnReason || 'Damaged',
-        source: 'stock_in',
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      setStore(RTV_KEY, [...rtvs, newRTV]);
-    } else if (disposition === 'write_off' && siData.damagedQty > 0) {
-      const stockOuts = getStore(STOCK_OUT_KEY);
-      const newSO = {
-        id: `so-${Date.now()}-si-${siData.materialId}`,
-        docNumber: genDocNumber('SO', stockOuts),
-        materialId: siData.materialId,
-        materialName: siData.materialName,
-        sku: siData.sku || '',
-        uom: siData.uom || 'pcs',
-        issueType: 'damage',
-        quantity: siData.damagedQty,
-        previousStock: oldStock,
-        newStock: oldStock + goodQty,
-        unitCost: siData.unitCost,
-        totalLoss: siData.damagedQty * siData.unitCost,
-        referenceNo: siData.referenceNo || 'Direct Stock-In',
-        notes: `Write-off from stock-in — ${siData.returnReason || 'No reason given'}`,
-        dateIssued: new Date().toISOString(),
-      };
-      setStore(STOCK_OUT_KEY, [...stockOuts, newSO]);
-    }
-    // disposition 'cancel' → no additional action
 
     setShowStockIn(false);
     refresh();
@@ -2734,7 +2991,7 @@ export default function PurchasingPage() {
 
       {/* Stock-In Modal */}
       {showStockIn && (
-        <StockInFormModal
+        <ManualStockInModal
           materials={materials}
           vendors={vendors}
           onClose={() => setShowStockIn(false)}
