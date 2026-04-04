@@ -225,6 +225,7 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
   const validate = () => {
     const e = {};
     if (!form.vendorId)             e.vendor = 'Select a vendor.';
+    if (!form.expectedDate)         e.expectedDate = 'Expected delivery date is required.';
     if (form.items.length === 0)    e.items  = 'Add at least one item.';
     else if (form.items.some(i => !i.materialId || !i.qty || parseInt(i.qty) <= 0))
                                     e.items  = 'Every line item needs a material and qty > 0.';
@@ -317,14 +318,15 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
                 {errors.vendor && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{errors.vendor}</p>}
               </div>
               <div>
-                <label className="form-label">Expected Delivery Date</label>
+                <label className="form-label">Expected Delivery Date <span className="required">*</span></label>
                 <input
                   type="date"
                   style={{ ...inputStyle, colorScheme: 'dark' }}
                   value={form.expectedDate}
                   min={new Date().toISOString().substring(0, 10)}
-                  onChange={e => setForm(p => ({ ...p, expectedDate: e.target.value }))}
+                  onChange={e => { setForm(p => ({ ...p, expectedDate: e.target.value })); if (errors.expectedDate) setErrors(er => ({ ...er, expectedDate: '' })); }}
                 />
+                {errors.expectedDate && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '0.2rem', display: 'block' }}>{errors.expectedDate}</span>}
               </div>
             </div>
 
@@ -967,9 +969,53 @@ function GRFormModal({ po, onClose, onSave }) {
 function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
   const [dispositions, setDispositions] = useState({});
 
+  // Check if this discrepancy is from shortage (not returnable)
+  const isShortage = (reason) => {
+    return reason && (reason.toLowerCase().includes('shortage') || reason.toLowerCase().includes('partial'));
+  };
+
+  // Disposition options — different for shortage vs. damaged/defective
+  const dispOptionsForItem = (reason) => {
+    if (isShortage(reason)) {
+      // For shortage: can't return what was never received
+      return [
+        { value: 'bill_adj', label: 'Bill Adjustment', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.2)' },
+        { value: 'backorder', label: 'Backorder Remaining', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
+        { value: 'cancel', label: 'Accept Partial', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
+      ];
+    }
+    // For damaged/defective: return or write off
+    return [
+      { value: 'rtv', label: 'Return to Vendor', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
+      { value: 'write_off', label: 'Write Off (Loss)', color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)' },
+      { value: 'cancel', label: 'Cancel (Keep in Stock)', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
+    ];
+  };
+
+  // Get all unique disposition options across all items for the legend
+  const allDispOptions = useMemo(() => {
+    const all = new Set();
+    grItems.forEach(item => {
+      const opts = dispOptionsForItem(item.returnReason);
+      opts.forEach(o => all.add(o.value));
+    });
+    const masterOrder = ['bill_adj', 'backorder', 'rtv', 'write_off', 'cancel'];
+    const masterLabels = {
+      bill_adj: { label: 'Bill Adjustment', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.2)' },
+      backorder: { label: 'Backorder Remaining', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
+      rtv: { label: 'Return to Vendor', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
+      write_off: { label: 'Write Off (Loss)', color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)' },
+      cancel: { label: 'Accept / Keep', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
+    };
+    return masterOrder.filter(v => all.has(v)).map(v => ({ value: v, ...masterLabels[v] }));
+  }, [grItems]);
+
   useEffect(() => {
     const init = {};
-    grItems.forEach(item => { init[item.materialId] = 'rtv'; });
+    grItems.forEach(item => {
+      // For shortage, default to bill_adj; for damaged, default to rtv
+      init[item.materialId] = isShortage(item.returnReason) ? 'bill_adj' : 'rtv';
+    });
     setDispositions(init);
   }, [grItems]);
 
@@ -978,13 +1024,15 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
   };
 
   const approvedItems = grItems.filter(item => {
-    const disp = dispositions[item.materialId] || 'rtv';
+    const disp = dispositions[item.materialId] || (isShortage(item.returnReason) ? 'bill_adj' : 'rtv');
     return disp !== 'cancel';
   }).map(item => ({
     ...item,
-    disposition: dispositions[item.materialId] || 'rtv',
+    disposition: dispositions[item.materialId] || (isShortage(item.returnReason) ? 'bill_adj' : 'rtv'),
   }));
 
+  const billAdjCount = approvedItems.filter(i => i.disposition === 'bill_adj').length;
+  const backorderCount = approvedItems.filter(i => i.disposition === 'backorder').length;
   const rtyCount = approvedItems.filter(i => i.disposition === 'rtv').length;
   const writeOffCount = approvedItems.filter(i => i.disposition === 'write_off').length;
   const cancelCount = grItems.length - approvedItems.length;
@@ -993,12 +1041,6 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
     e.preventDefault();
     onApprove(approvedItems);
   };
-
-  const dispOptions = [
-    { value: 'rtv', label: 'Return to Vendor', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
-    { value: 'write_off', label: 'Write Off (Loss)', color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)' },
-    { value: 'cancel', label: 'Cancel (Keep in Stock)', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
-  ];
 
   return (
     <div className="modal-overlay">
@@ -1022,9 +1064,9 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
         <form onSubmit={handleSubmit} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div className="modal-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
 
-            {/* Disposition Buttons Legend */}
+            {/* Disposition Options Legend */}
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', paddingBottom: '0.25rem' }}>
-              {dispOptions.map(opt => (
+              {allDispOptions.map(opt => (
                 <span key={opt.value} style={{
                   padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 700,
                   background: opt.bg, color: opt.color, border: `1px solid ${opt.border}`,
@@ -1035,13 +1077,13 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
             </div>
 
             {grItems.map((item, idx) => {
-              const disp = dispositions[item.materialId] || 'rtv';
-              const opt = dispOptions.find(o => o.value === disp);
+              const disp = dispositions[item.materialId] || (isShortage(item.returnReason) ? 'bill_adj' : 'rtv');
+              const itemOptions = dispOptionsForItem(item.returnReason);
               return (
                 <div key={idx} style={{
                   padding: '1rem 1.25rem',
                   background: 'rgba(255,255,255,0.02)', borderRadius: '10px',
-                  border: `1px solid ${opt?.border || 'rgba(255,255,255,0.06)'}`,
+                  border: `1px solid ${itemOptions.find(o => o.value === disp)?.border || 'rgba(255,255,255,0.06)'}`,
                 }}>
                   {/* Material Header */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -1068,7 +1110,7 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
                       Disposition
                     </label>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      {dispOptions.map(opt => (
+                      {itemOptions.map(opt => (
                         <button
                           key={opt.value}
                           type="button"
@@ -1093,9 +1135,13 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
 
                   {/* Summary Line */}
                   <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
+                    {disp === 'bill_adj' && `→ Invoice will be adjusted — pay only for received items`}
+                    {disp === 'backorder' && `→ Vendor to send remaining ${item.damagedQty} ${item.uom} later`}
                     {disp === 'rtv' && `→ ${item.damagedQty} ${item.uom} will be sent to RTV (Return to Vendor)`}
                     {disp === 'write_off' && `→ ${item.damagedQty} ${item.uom} will be written off as loss (recorded in Goods Issue)`}
-                    {disp === 'cancel' && `→ ${item.damagedQty} ${item.uom} will be kept in stock (no action)`}
+                    {disp === 'cancel' && (isShortage(item.returnReason)
+                      ? `→ Accept partial delivery — no further action needed`
+                      : `→ ${item.damagedQty} ${item.uom} will be kept in stock (no action)`)}
                   </div>
                 </div>
               );
@@ -1108,7 +1154,16 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
               <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
-                {rtyCount} RTV · {writeOffCount} Write Off · {cancelCount} Cancelled
+                {billAdjCount > 0 && `${billAdjCount} Bill Adj`}
+                {billAdjCount > 0 && backorderCount > 0 && ` · `}
+                {backorderCount > 0 && `${backorderCount} Backorder`}
+                {(billAdjCount > 0 || backorderCount > 0) && (rtyCount > 0 || writeOffCount > 0) && ` · `}
+                {rtyCount > 0 && `${rtyCount} RTV`}
+                {rtyCount > 0 && writeOffCount > 0 && ` · `}
+                {writeOffCount > 0 && `${writeOffCount} Write Off`}
+                {(rtyCount > 0 || writeOffCount > 0 || billAdjCount > 0 || backorderCount > 0) && cancelCount > 0 && ` · `}
+                {cancelCount > 0 && `${cancelCount} Accepted`}
+                {billAdjCount === 0 && backorderCount === 0 && rtyCount === 0 && writeOffCount === 0 && cancelCount === 0 && '—'}
               </span>
             </div>
           </div>
@@ -1426,7 +1481,7 @@ function StockInFormModal({ materials, vendors, onClose, onSave }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// STOCK-IN HISTORY TAB
+// MANUAL STOCK-IN HISTORY TAB
 // ══════════════════════════════════════════════════════════════════════════════
 function StockInHistoryTab({ stockIns }) {
   const [search, setSearch] = useState('');
@@ -1453,7 +1508,7 @@ function StockInHistoryTab({ stockIns }) {
               <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
             </svg>
           </span>
-          <input className="search-input" placeholder="Search stock-in records..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input className="search-input" placeholder="Search manual entries..." value={search} onChange={e => setSearch(e.target.value)} />
           {search && <button className="search-clear" onClick={() => setSearch('')}>×</button>}
         </div>
       </div>
@@ -1579,7 +1634,7 @@ function StockInHistoryTab({ stockIns }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // PO DOCUMENT PREVIEW — Printable Purchase Order (Letter Size)
 // ══════════════════════════════════════════════════════════════════════════════
-function PODocumentPreview({ poData, vendors, materials, onClose, onEdit, onConfirm }) {
+function PODocumentPreview({ poData, vendors, materials, onClose, onConfirm }) {
   const total = (poData.items || []).reduce(
     (sum, item) => sum + ((parseFloat(item.unitCost) || 0) * (parseInt(item.qty) || 0)), 0
   );
@@ -1589,6 +1644,18 @@ function PODocumentPreview({ poData, vendors, materials, onClose, onEdit, onConf
 
   // Show the actual PO number (for new POs, it was pre-generated by handlePreviewPO)
   const displayPONum = poData.poNumber || `PO-${new Date().getFullYear()}-NEW`;
+
+  // Business details from business card
+  const business = {
+    name: 'PERSONALIZE ME PRINTING SERVICES',
+    owner: 'Jerlyn Barrameda',
+    title: 'Business Owner',
+    phone1: '+63 945972 6272',
+    phone2: '+63 962436 2161',
+    address: '5 Ford St., Fil.2, Batasan Hills, Quezon City',
+    email: 'personalizemeprinting@gmail.com',
+    logo: '/logos/NEW logo no BG.png',
+  };
 
   const handlePrint = () => {
     window.print();
@@ -1622,6 +1689,7 @@ function PODocumentPreview({ poData, vendors, materials, onClose, onEdit, onConf
           }
           .no-print { display: none !important; }
           .po-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .po-logo { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
       `}</style>
       <div id="po-print-area" style={{
@@ -1632,22 +1700,59 @@ function PODocumentPreview({ poData, vendors, materials, onClose, onEdit, onConf
         {/* Header */}
         <div className="po-header" style={{
           background: '#1a1a1a',
-          color: '#fff', padding: '1.2rem 1.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          color: '#fff', padding: '1.2rem 1.8rem',
         }}>
-          <div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 800, letterSpacing: '0.05em', color: '#D4A843' }}>
-              PERSONALIZE ME PRINTS
+          {/* Top: Logo + Company Name + PO Info */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8rem' }}>
+              <img
+                className="po-logo"
+                src={business.logo}
+                alt="Logo"
+                style={{ width: '48px', height: '48px', objectFit: 'contain', marginTop: '0.1rem' }}
+              />
+              <div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, letterSpacing: '0.03em', color: '#D4A843', lineHeight: 1.2 }}>
+                  {business.name}
+                </div>
+                <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.45)', marginTop: '0.15rem' }}>
+                  {poData.status === 'pending' ? 'Order Request' : (poData.status || 'Order Request').charAt(0).toUpperCase() + (poData.status || 'Order Request').slice(1)}
+                </div>
+              </div>
             </div>
-            <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.15rem' }}>
-              {poData.status === 'pending' ? 'Order Request' : (poData.status || 'Order Request').charAt(0).toUpperCase() + (poData.status || 'Order Request').slice(1)}
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 800, fontFamily: 'monospace', color: '#D4A843' }}>
+                {displayPONum}
+              </div>
+              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.45)', marginTop: '0.15rem' }}>
+                {today}
+              </div>
             </div>
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 800, fontFamily: 'monospace', color: '#D4A843' }}>
-              {displayPONum}
+
+          {/* Bottom: Owner + Contact Info */}
+          <div style={{
+            marginTop: '1rem', paddingTop: '0.8rem', borderTop: '1px solid rgba(255,255,255,0.1)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          }}>
+            <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.6rem', color: 'rgba(255,255,255,0.55)', flex: 1 }}>
+              <div>
+                <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.7)', marginBottom: '0.15rem' }}>From:</div>
+                <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.7rem' }}>{business.owner}</div>
+                <div style={{ color: 'rgba(255,255,255,0.5)' }}>{business.title}</div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.7)', marginBottom: '0.15rem' }}>Contact:</div>
+                <div>{business.phone1}</div>
+                <div>{business.phone2}</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.7)', marginBottom: '0.15rem' }}>Address:</div>
+                <div>{business.address}</div>
+              </div>
             </div>
-            <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.1rem' }}>
-              {today}
+            <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.1rem' }}>
+              {business.email}
             </div>
           </div>
         </div>
@@ -1748,10 +1853,6 @@ function PODocumentPreview({ poData, vendors, materials, onClose, onEdit, onConf
             padding: '0.6rem 1.25rem', color: '#999', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
           }}>Cancel</button>
           <div style={{ display: 'flex', gap: '0.65rem' }}>
-            <button onClick={onEdit} style={{
-              background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
-              padding: '0.6rem 1.25rem', color: '#E5E2E1', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-            }}>Edit</button>
             <button onClick={handlePrint} style={{
               background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
               padding: '0.6rem 1.25rem', color: '#E5E2E1', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
@@ -2177,11 +2278,6 @@ function POTab({ pos, vendors, materials, onRefresh }) {
           vendors={vendors}
           materials={materials}
           onClose={() => setPOPreviewData(null)}
-          onEdit={() => {
-            setEditPO(poPreviewData);
-            setShowForm(true);
-            setPOPreviewData(null);
-          }}
           onConfirm={handleSavePO}
         />
       )}
@@ -2191,11 +2287,6 @@ function POTab({ pos, vendors, materials, onRefresh }) {
           vendors={vendors}
           materials={materials}
           onClose={() => setViewDocPO(null)}
-          onEdit={() => {
-            setEditPO(viewDocPO);
-            setShowForm(true);
-            setViewDocPO(null);
-          }}
           onConfirm={handleSavePO}
         />
       )}
@@ -2557,7 +2648,7 @@ export default function PurchasingPage() {
           <div>
             <h1 className="page-title">Procurement and Sourcing</h1>
             <p className="page-subtitle">
-              Track purchase orders, incoming stock, and vendor deliveries.
+              Track purchase orders, incoming stock, and direct purchases.
             </p>
           </div>
         </div>
@@ -2566,7 +2657,7 @@ export default function PurchasingPage() {
         <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '0.25rem', width: 'fit-content' }}>
           <button style={tabStyle('po')} onClick={() => setActiveTab('po')}>Purchase Orders</button>
           <button style={tabStyle('gr')} onClick={() => setActiveTab('gr')}>Goods Receipts</button>
-          <button style={tabStyle('si')} onClick={() => setActiveTab('si')}>Stock-In Log</button>
+          <button style={tabStyle('si')} onClick={() => setActiveTab('si')}>Manual Stock-In</button>
         </div>
       </div>
 
@@ -2603,7 +2694,7 @@ export default function PurchasingPage() {
             <div className="summary-card" style={{ background: 'rgba(129,140,248,0.08)', borderColor: 'rgba(129,140,248,0.3)' }}>
               <div className="summary-content">
                 <span className="summary-value" style={{ color: '#818cf8' }}>{totalStockIn}</span>
-                <span className="summary-label" style={{ color: '#818cf8' }}>Stock-In Entries</span>
+                <span className="summary-label" style={{ color: '#818cf8' }}>Manual Entries</span>
               </div>
             </div>
             <div className="summary-card" style={{ background: 'rgba(34,197,94,0.08)', borderColor: 'rgba(34,197,94,0.3)' }}>
@@ -2611,7 +2702,7 @@ export default function PurchasingPage() {
                 <span className="summary-value" style={{ color: '#22c55e', fontSize: '1rem' }}>
                   ₱{totalStockInValue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
-                <span className="summary-label" style={{ color: '#22c55e' }}>Total Stock-In Value</span>
+                <span className="summary-label" style={{ color: '#22c55e' }}>Manual Entry Value</span>
               </div>
             </div>
           </>
@@ -2627,14 +2718,14 @@ export default function PurchasingPage() {
       )}
       {activeTab === 'si' && (
         <div>
-          {/* Stock-In Toolbar */}
+          {/* Manual Entry Toolbar */}
           <div className="inventory-toolbar" style={{ marginBottom: '1rem' }}>
             <div style={{ flex: 1 }}></div>
             <button className="btn-primary" onClick={() => setShowStockIn(true)}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M12 5v14M5 12h14"/>
               </svg>
-              Stock-In
+              Add Manual Entry
             </button>
           </div>
           <StockInHistoryTab stockIns={stockIns} />
