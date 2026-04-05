@@ -1548,28 +1548,282 @@ function PODocumentPreview({ poData, vendors, materials, onClose, onConfirm }) {
         {/* Footer Actions */}
         <div className="no-print" style={{
           background: '#1a1a1a', padding: '1rem 1.8rem', display: 'flex',
-          justifyContent: 'space-between', alignItems: 'center', gap: '1rem',
+          flexDirection: 'column', gap: '0.75rem',
         }}>
-          <button onClick={onClose} style={{
-            background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
-            padding: '0.6rem 1.25rem', color: '#999', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-          }}>Cancel</button>
-          <div style={{ display: 'flex', gap: '0.65rem' }}>
-            <button onClick={handlePrint} style={{
-              background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
-              padding: '0.6rem 1.25rem', color: '#E5E2E1', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
+          {/* Send Email Checkbox — Commented out (PDF attachment requires backend) */}
+          {/* {vendor?.email && !poData.emailSent && (
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              cursor: 'pointer', fontSize: '0.8rem', color: '#E5E2E1',
+              padding: '0.5rem 0.75rem', background: 'rgba(59,130,246,0.06)',
+              borderRadius: '8px', border: '1px solid rgba(59,130,246,0.15)',
+              width: 'fit-content',
             }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-              Print
-            </button>
-            <button onClick={() => onConfirm(poData)} style={{
-              background: '#D4A843', border: 'none', borderRadius: '8px',
-              padding: '0.6rem 1.25rem', color: '#1a1a1a', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-            }}>Confirm & Save</button>
+              <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)}
+                style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+              <span>Send PO to <strong>{vendor.name}</strong> ({vendor.email})</span>
+            </label>
+          )}
+          {poData.emailSent && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: '#22c55e', padding: '0.4rem 0.75rem', background: 'rgba(34,197,94,0.06)', borderRadius: '8px', border: '1px solid rgba(34,197,94,0.15)', width: 'fit-content' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+              Already sent to {vendor?.name} on {new Date(poData.emailSentAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+            </div>
+          )} */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button onClick={onClose} style={{
+              background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
+              padding: '0.6rem 1.25rem', color: '#999', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+            }}>Cancel</button>
+            <div style={{ display: 'flex', gap: '0.65rem' }}>
+              <button onClick={handlePrint} style={{
+                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
+                padding: '0.6rem 1.25rem', color: '#E5E2E1', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+              }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                Print
+              </button>
+              <button onClick={() => onConfirm(poData)} style={{
+                background: '#D4A843', border: 'none', borderRadius: '8px',
+                padding: '0.6rem 1.25rem', color: '#1a1a1a', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+              }}>Confirm &amp; Save</button>
+            </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// EMAIL COMPOSER SIDE PANEL — Slide-out email composer for sending PO to vendor
+// ══════════════════════════════════════════════════════════════════════════════
+function EmailComposerPanel({ po, vendor, materials, onClose, onSent }) {
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    if (!po || !vendor) return;
+    const total = (po.items || []).reduce(
+      (sum, item) => sum + ((parseFloat(item.unitCost) || 0) * (parseInt(item.qty) || 0)), 0
+    );
+    const itemsList = (po.items || []).map((item, idx) => {
+      const mat = materials.find(m => m.id === item.materialId);
+      return `${idx + 1}. ${mat?.name || item.materialName} — ${item.qty} ${item.uom} @ ₱${(parseFloat(item.unitCost) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+    }).join('\n');
+    const expectedDate = po.expectedDate ? new Date(po.expectedDate).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : 'ASAP';
+
+    setBody(
+`Hi ${vendor.name},
+
+Please see the details of our Purchase Order below:
+
+PO Number: ${po.poNumber}
+Expected Delivery: ${expectedDate}
+
+Items:
+${itemsList}
+
+Grand Total: ₱${total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+
+${po.notes ? 'Notes: ' + po.notes + '\n\n' : ''}Looking forward to the delivery.
+
+Thank you,
+Personalize Me Prints`
+    );
+  }, [po, vendor, materials]);
+
+  const handleSend = () => {
+    if (!po || !vendor) return;
+    setSending(true);
+
+    const subject = encodeURIComponent(`Purchase Order ${po.poNumber} — Personalize Me Prints`);
+    const bodyEncoded = encodeURIComponent(body);
+
+    // Direct Gmail compose link (avoids Chrome mailto handler / profile picker)
+    const gmailLink = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(vendor.email)}&su=${subject}&body=${bodyEncoded}`;
+    window.open(gmailLink, '_blank');
+
+    setTimeout(() => {
+      setSending(false);
+      if (onSent) onSent();
+      onClose();
+    }, 1500);
+  };
+
+  if (!po || !vendor) return null;
+
+  const total = (po.items || []).reduce(
+    (sum, item) => sum + ((parseFloat(item.unitCost) || 0) * (parseInt(item.qty) || 0)), 0
+  );
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, right: 0, width: '480px', height: '100vh',
+      background: '#1a1a1a', borderLeft: '1px solid var(--border)',
+      zIndex: 9999, display: 'flex', flexDirection: 'column',
+      boxShadow: '-8px 0 32px rgba(0,0,0,0.5)',
+      animation: 'slideInRight 0.25s ease-out',
+    }}>
+      <style>{`
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+      `}</style>
+
+      {/* Header */}
+      <div style={{
+        padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        background: 'rgba(0,0,0,0.3)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{
+            width: '36px', height: '36px', borderRadius: '10px',
+            background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6',
+          }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#E5E2E1' }}>Send PO Email</div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{po.poNumber}</div>
+          </div>
+        </div>
+        <button onClick={onClose} style={{
+          background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)',
+          padding: '0.25rem', display: 'flex', alignItems: 'center',
+        }} onMouseEnter={e => e.currentTarget.style.color = '#E5E2E1'} onMouseLeave={e => e.currentTarget.style.color = 'var(--gray)'}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* Email Fields */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+        {/* To */}
+        <div>
+          <label style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '0.35rem', display: 'block' }}>To</label>
+          <div style={{
+            padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: '0.5rem',
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+            </svg>
+            <span style={{ fontSize: '0.85rem', color: '#E5E2E1', fontWeight: 600 }}>{vendor.name}</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--gray)', marginLeft: 'auto' }}>{vendor.email}</span>
+          </div>
+        </div>
+
+        {/* Subject */}
+        <div>
+          <label style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '0.35rem', display: 'block' }}>Subject</label>
+          <div style={{
+            padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.85rem', color: '#E5E2E1',
+          }}>
+            Purchase Order {po.poNumber} — Personalize Me Prints
+          </div>
+        </div>
+
+        {/* PO Summary Card */}
+        <div style={{
+          padding: '0.85rem 1rem', background: 'rgba(212,168,67,0.06)', borderRadius: '8px',
+          border: '1px solid rgba(212,168,67,0.15)',
+        }}>
+          <div style={{ fontSize: '0.6rem', color: '#D4A843', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '0.5rem' }}>PO Summary</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            {(po.items || []).map((item, idx) => {
+              const mat = materials.find(m => m.id === item.materialId);
+              return (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                  <span style={{ color: '#E5E2E1' }}>{mat?.name || item.materialName}</span>
+                  <span style={{ color: 'var(--gray)', fontFamily: 'monospace' }}>{item.qty} {item.uom} × ₱{(parseFloat(item.unitCost) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                </div>
+              );
+            })}
+            <div style={{ borderTop: '1px solid rgba(212,168,67,0.2)', paddingTop: '0.4rem', marginTop: '0.2rem', display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#D4A843', fontWeight: 700, fontSize: '0.8rem' }}>Total</span>
+              <span style={{ color: '#D4A843', fontWeight: 800, fontFamily: 'monospace' }}>₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+            </div>
+          </div>
+          {po.expectedDate && (
+            <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: 'var(--gray)' }}>
+              Expected Delivery: <span style={{ color: '#E5E2E1', fontWeight: 600 }}>{new Date(po.expectedDate).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Body (Editable) */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <label style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '0.35rem', display: 'flex', justifyContent: 'space-between' }}>
+            <span>Message Body</span>
+            <span style={{ textTransform: 'none', color: '#818cf8', fontWeight: 400 }}>Editable</span>
+          </label>
+          <textarea
+            value={body}
+            onChange={e => setBody(e.target.value)}
+            style={{
+              flex: 1, minHeight: '200px', resize: 'vertical',
+              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '8px', color: '#E5E2E1', padding: '0.75rem',
+              fontSize: '0.82rem', lineHeight: 1.6, fontFamily: 'inherit',
+              outline: 'none',
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Footer Actions */}
+      <div style={{
+        padding: '1rem 1.5rem', borderTop: '1px solid var(--border)',
+        display: 'flex', justifyContent: 'flex-end', gap: '0.75rem',
+        background: 'rgba(0,0,0,0.3)',
+      }}>
+        <button onClick={onClose} style={{
+          background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
+          padding: '0.6rem 1.25rem', color: '#999', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+        }}>Cancel</button>
+        <button onClick={handleSend} disabled={sending} style={{
+          background: sending ? 'rgba(34,197,94,0.3)' : '#22c55e',
+          border: 'none', borderRadius: '8px',
+          padding: '0.6rem 1.5rem', color: sending ? '#aaa' : '#fff',
+          fontSize: '0.82rem', fontWeight: 700, cursor: sending ? 'not-allowed' : 'pointer',
+          display: 'flex', alignItems: 'center', gap: '0.4rem',
+        }}>
+          {sending ? (
+            <>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }}>
+                <path d="M21 12a9 9 0 11-6.219-8.56"/>
+              </svg>
+              Opening email app...
+            </>
+          ) : (
+            <>
+              Open Email App
+            </>
+          )}
+        </button>
+      </div>
+      <div style={{
+        padding: '0.5rem 1.5rem 0.75rem', fontSize: '0.65rem', color: 'var(--gray)',
+        textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.04)',
+      }}>
+        Opens Gmail compose with pre-filled PO details. Print PO as PDF first if attachment is needed.
+      </div>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
@@ -1589,6 +1843,7 @@ function POTab({ pos, vendors, materials, onRefresh }) {
   const [statusChangeTarget, setStatusChangeTarget] = useState(null);
   const [poPreviewData, setPOPreviewData] = useState(null); // unsaved PO data for preview
   const [viewDocPO, setViewDocPO] = useState(null); // view existing PO document
+  const [emailTargetPO, setEmailTargetPO] = useState(null); // PO to send email for
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -1601,7 +1856,7 @@ function POTab({ pos, vendors, materials, onRefresh }) {
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }, [pos, search, statusFilter]);
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const handlePreviewPO = (poData) => {
     // For new POs, generate the PO number upfront so it shows in preview
     if (!poData.id || !pos.find(p => p.id === poData.id)) {
@@ -1626,7 +1881,7 @@ function POTab({ pos, vendors, materials, onRefresh }) {
       const newPO = {
         ...po,
         id:        po.id || `po-${Date.now()}`,
-        poNumber:  po.poNumber || genDocNumber('PO', all), // use pre-generated if available
+        poNumber:  po.poNumber || genDocNumber('PO', all),
         createdAt: po.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -1863,6 +2118,19 @@ function POTab({ pos, vendors, materials, onRefresh }) {
                         }} onMouseEnter={e => e.currentTarget.style.color = '#D4A843'} onMouseLeave={e => e.currentTarget.style.color = '#aaa'}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         </button>
+                        {/* Email Button */}
+                        {!['cancelled'].includes(po.status) && (
+                          <button onClick={() => setEmailTargetPO(po)} title="Send PO to Supplier via Email" style={{
+                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: '4px', padding: '0.15rem 0.35rem', cursor: 'pointer', color: '#aaa',
+                            display: 'flex', alignItems: 'center', transition: 'all 0.15s',
+                          }} onMouseEnter={e => { e.currentTarget.style.color = '#3b82f6'; e.currentTarget.style.borderColor = 'rgba(59,130,246,0.4)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#aaa'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                              <polyline points="22,6 12,13 2,6"/>
+                            </svg>
+                          </button>
+                        )}
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', padding: '0.15rem 0.5rem', borderRadius: '99px',
                           fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase',
@@ -2069,6 +2337,17 @@ function POTab({ pos, vendors, materials, onRefresh }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Email Composer Side Panel */}
+      {emailTargetPO && (
+        <EmailComposerPanel
+          po={emailTargetPO}
+          vendor={vendors.find(v => v.id === emailTargetPO.vendorId)}
+          materials={materials}
+          onClose={() => setEmailTargetPO(null)}
+          onSent={onRefresh}
+        />
       )}
     </div>
   );
