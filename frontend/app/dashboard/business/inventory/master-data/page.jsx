@@ -151,7 +151,8 @@ function generateVariantSKUs(category, productName, variantTypes, existingMateri
 
   return combos.map((combo, idx) => {
     const label = Object.values(combo).join(' / ');
-    const key = Object.entries(combo).map(([k, v]) => `${k}:${v}`).join('|');
+    // Sort entries by key name for consistent combo keys across sessions
+    const key = Object.entries(combo).sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}:${v}`).join('|');
     const sku = genComboSKU(category, productName, combo, allOptionsPerType, existingMaterials);
     return { comboKey: key, comboLabel: label, comboMap: combo, sku, variantName: Object.values(combo).join(' ') };
   });
@@ -498,21 +499,21 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
     });
   };
 
-  const handleSave = (material, children) => {
+  const handleSave = (material, children, oldChildIds = []) => {
     let updated;
     if (editMaterial) {
       // Update existing
       updated = materials.map(m => {
         if (m.id === editMaterial.id) return { ...m, ...material, updatedAt: new Date().toISOString() };
-        if (children && children.some(c => c.parentId === m.id)) {
-          // Handle children update if needed, but for now just update parent
-          return m;
-        }
         return m;
       });
       // Remove old children if updating variants
       if (editMaterial.hasVariants) {
         updated = updated.filter(m => m.parentId !== editMaterial.id);
+      }
+      // Also remove any old children that were deleted (no longer in new children list)
+      if (oldChildIds.length > 0) {
+        updated = updated.filter(m => !oldChildIds.includes(m.id));
       }
       if (children && children.length > 0) updated = [...updated, ...children];
     } else {
@@ -791,6 +792,7 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
     hasVariants: false, variantTypes: [],
   });
   const [previewSKUs, setPreviewSKUs] = useState([]);
+  const [variantCosts, setVariantCosts] = useState({});
   const [variantTypeInput, setVariantTypeInput] = useState('');
   const [variantOptionInputs, setVariantOptionInputs] = useState({});
   const [variantTypeRemoveModal, setVariantTypeRemoveModal] = useState(false);
@@ -836,6 +838,21 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
         hasVariants: editMaterial.hasVariants || false,
         variantTypes: editMaterial.variantTypes || [],
       });
+      // Populate variantCosts from existing children
+      if (editMaterial.hasVariants) {
+        const costs = {};
+        const children = materials.filter(m => m.parentId === editMaterial.id);
+        children.forEach(child => {
+          if (child.variantCombo) {
+            // Sort entries by key name to match the sorted comboKey from generateVariantSKUs
+            const key = Object.entries(child.variantCombo).sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}:${v}`).join('|');
+            costs[key] = String(child.baseCost || 0);
+          }
+        });
+        setVariantCosts(costs);
+      } else {
+        setVariantCosts({});
+      }
     } else {
       // Reset for add mode
       setForm({
@@ -845,8 +862,9 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
         preferredVendorId: '',
         hasVariants: false, variantTypes: [],
       });
+      setVariantCosts({});
     }
-  }, [editMaterial, itemCategories]);
+  }, [editMaterial, itemCategories, materials]);
 
   // Get items supplied by the selected vendor — each with {name, uom}
   const vendorItems = useMemo(() => {
@@ -908,6 +926,13 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
       return next;
     });
   };
+
+  // Reset variantCosts on fresh add, or when switching from non-variant to variant mode
+  useEffect(() => {
+    if (!editMaterial) {
+      setVariantCosts({});
+    }
+  }, [editMaterial]);
 
   const addVariantOption = (typeIdx) => {
     const option = (variantOptionInputs[typeIdx] || '').trim();
@@ -979,19 +1004,39 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
         createdAt: editMaterial ? editMaterial.createdAt : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      const children = previewSKUs.map((skuInfo, idx) => ({
-        id: editMaterial ? `mat-${Date.now()}-${idx}` : `mat-${Date.now()}-${idx}`,
-        name: `${form.name} - ${skuInfo.variantName}`,
-        sku: skuInfo.sku, category: form.category, uom: form.uom,
-        stockQty: 0, minStock, baseCost,
-        procurementType: form.procurementType,
-        allowBackorder: form.procurementType === 'stock' ? form.allowBackorder : false,
-        preferredVendorId: form.preferredVendorId,
-        hasVariants: false, variantTypes: [], parentId: parentId,
-        variantCombo: skuInfo.comboMap,
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      }));
-      onSave(parent, children);
+      // When editing, find existing children by variantCombo to preserve ID and SKU
+      const existingChildren = editMaterial && editMaterial.hasVariants
+        ? materials.filter(m => m.parentId === editMaterial.id)
+        : [];
+      const children = previewSKUs.map((skuInfo, idx) => {
+        const comboCost = variantCosts[skuInfo.comboKey];
+        const childCost = comboCost !== undefined && comboCost !== '' ? parseFloat(comboCost) || baseCost : baseCost;
+        // Find matching existing child by variantCombo
+        const existingChild = existingChildren.find(ec => {
+          if (!ec.variantCombo) return false;
+          const ecEntries = Object.entries(ec.variantCombo).sort((a, b) => a[0].localeCompare(b[0]));
+          const newEntries = Object.entries(skuInfo.comboMap).sort((a, b) => a[0].localeCompare(b[0]));
+          return ecEntries.length === newEntries.length && ecEntries.every((e, i) => e[0] === newEntries[i][0] && e[1] === newEntries[i][1]);
+        });
+        return {
+          id: existingChild ? existingChild.id : `mat-${Date.now()}-${idx}`,
+          name: `${form.name} - ${skuInfo.variantName}`,
+          sku: existingChild ? existingChild.sku : skuInfo.sku,
+          category: form.category, uom: form.uom,
+          stockQty: existingChild ? (existingChild.stockQty || 0) : 0,
+          minStock, baseCost: childCost,
+          procurementType: form.procurementType,
+          allowBackorder: form.procurementType === 'stock' ? form.allowBackorder : false,
+          preferredVendorId: form.preferredVendorId,
+          hasVariants: false, variantTypes: [], parentId: parentId,
+          variantCombo: skuInfo.comboMap,
+          createdAt: existingChild ? existingChild.createdAt : new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+      // Pass the IDs of old children to delete so handleSave can also clean up BOM and other references
+      const oldChildIds = existingChildren.map(ec => ec.id).filter(id => !children.some(c => c.id === id));
+      onSave(parent, children, oldChildIds);
     } else {
       onSave({
         id: parentId, name: form.name,
@@ -1151,10 +1196,13 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
               {/* Base Cost + Min Stock */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
-                  <label className="form-label">Base Cost (P)</label>
-                  <DecimalInput style={inputStyle} value={form.baseCost}
-                    onChange={e => setForm(p => ({ ...p, baseCost: e.target.value }))}
-                    placeholder="0.00" />
+                  <label className="form-label">
+                    Base Cost (P)
+                    {form.hasVariants && <span style={{ fontSize: '0.65rem', color: 'var(--gray)', fontWeight: 400, marginLeft: '0.5rem' }}>(Reference only — set per combination below)</span>}
+                  </label>
+                  <DecimalInput style={form.hasVariants ? { ...inputStyle, opacity: 0.4, cursor: 'not-allowed' } : inputStyle} value={form.baseCost}
+                    onChange={e => { if (!form.hasVariants) setForm(p => ({ ...p, baseCost: e.target.value })); }}
+                    placeholder="0.00" disabled={form.hasVariants} />
                 </div>
                 <div>
                   <label className="form-label">Min Stock</label>
@@ -1340,6 +1388,56 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                       <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>
                         {form.variantTypes.map(vt => `${vt.options.length} ${vt.name}`).join(' × ')}
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Per-Combination Cost Table */}
+                {form.hasVariants && previewSKUs.length > 1 && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <label className="form-label">Cost Per Combination</label>
+                    <p className="form-hint" style={{ marginBottom: '0.75rem' }}>
+                      Set individual cost for each variant combination.
+                    </p>
+                    <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '2px solid var(--border)' }}>
+                            <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', width: '30px' }}>#</th>
+                            <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>Combination</th>
+                            <th style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: 'var(--gray)', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', width: '120px' }}>Cost (₱)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previewSKUs.map((skuInfo, idx) => {
+                            const cost = variantCosts[skuInfo.comboKey] || '';
+                            return (
+                              <tr key={skuInfo.comboKey} style={{ borderBottom: idx < previewSKUs.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                                <td style={{ padding: '0.5rem 0.75rem', color: 'var(--gray)', fontSize: '0.75rem' }}>{idx + 1}</td>
+                                <td style={{ padding: '0.5rem 0.75rem', color: '#E5E2E1', fontSize: '0.8rem' }}>
+                                  <div>{skuInfo.variantName}</div>
+                                  <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.1rem' }}>{skuInfo.sku}</div>
+                                </td>
+                                <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>
+                                  <input
+                                    type="text" inputMode="decimal"
+                                    style={{ ...inputStyle, padding: '0.35rem 0.5rem', fontSize: '0.8rem', textAlign: 'right', width: '100px' }}
+                                    value={cost}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      if (val === '' || /^\d*\.?\d{0,2}$/.test(val)) {
+                                        setVariantCosts(prev => ({ ...prev, [skuInfo.comboKey]: val }));
+                                      }
+                                    }}
+                                    onKeyDown={e => ['e', 'E', '+', ' ', '-'].includes(e.key) && e.preventDefault()}
+                                    placeholder="0.00"
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 )}

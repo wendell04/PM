@@ -10,7 +10,7 @@ function IntegerInput({ value, onChange, min = 0, max, placeholder, style, disab
       const num = val === '' ? 0 : parseInt(val, 10);
       if (max !== undefined && num > max) return;
       if (num < min) return;
-      onChange({ ...e, target: { ...e.target, value: val } });
+      onChange(val);
     }
   };
   const handleKeyDown = (e) => { if (['e', 'E', '+', '-', '.'].includes(e.key)) e.preventDefault(); };
@@ -27,7 +27,7 @@ function DecimalInput({ value, onChange, placeholder, style, disabled, max = 999
     const val = e.target.value;
     if (val === '' || /^\d*\.?\d{0,2}$/.test(val)) {
       const num = parseFloat(val) || 0;
-      if (num <= max) onChange({ ...e, target: { ...e.target, value: val } });
+      if (num <= max) onChange(val);
     }
   };
   const handleKeyDown = (e) => { if (['e', 'E', '+', '-', ' '].includes(e.key)) e.preventDefault(); };
@@ -493,17 +493,17 @@ export default function ManualStockInModal({ materials, vendors, onClose, onSave
                                 <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.1rem' }}>SKU: {row.sku || '—'}</div>
                               </td>
                               <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                <IntegerInput value={row.qty} onChange={e => updateStockRow(row.materialId, idx, 'qty', e.target.value)}
+                                <IntegerInput value={row.qty} onChange={val => updateStockRow(row.materialId, idx, 'qty', val)}
                                   min={0} max={99999} placeholder="0"
                                   style={{ textAlign: 'center', width: '80px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: (parseInt(row.qty) || 0) > 0 ? '#D4A843' : 'var(--gray)', fontWeight: 700, padding: '0.5rem', fontSize: '0.9rem' }} />
                               </td>
                               <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                <IntegerInput value={row.damaged} onChange={e => updateStockRow(row.materialId, idx, 'damaged', e.target.value)}
+                                <IntegerInput value={row.damaged} onChange={val => updateStockRow(row.materialId, idx, 'damaged', val)}
                                   min={0} max={99999} placeholder="0"
                                   style={{ textAlign: 'center', width: '80px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: (parseInt(row.damaged) || 0) > 0 ? '#F87171' : 'var(--gray)', fontWeight: 600, padding: '0.5rem', fontSize: '0.9rem' }} />
                               </td>
                               <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                <DecimalInput value={row.unitCost} onChange={e => updateStockRow(row.materialId, idx, 'unitCost', e.target.value)}
+                                <DecimalInput value={row.unitCost} onChange={val => updateStockRow(row.materialId, idx, 'unitCost', val)}
                                   placeholder="0.00"
                                   style={{ textAlign: 'center', width: '90px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: (parseFloat(row.unitCost) || 0) > 0 ? '#E5E2E1' : 'var(--gray)', fontWeight: 600, padding: '0.5rem', fontSize: '0.85rem' }} />
                               </td>
