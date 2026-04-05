@@ -1391,13 +1391,19 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                 )}
 
                 {/* Per-Combination Cost Table */}
-                {form.hasVariants && previewSKUs.length > 1 && (
+                {form.hasVariants && (
                   <div style={{ marginTop: '1rem' }}>
                     <label className="form-label">Cost Per Combination <span className="required">*</span></label>
                     <p className="form-hint" style={{ marginBottom: '0.75rem' }}>
                       Set individual cost for each variant combination.
                       {errors.variantCost && <span style={{ color: 'var(--red)', marginLeft: '0.5rem', fontWeight: 600 }}>{errors.variantCost}</span>}
                     </p>
+                    {previewSKUs.length === 0 ? (
+                      <div style={{ padding: '1rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" style={{ marginBottom: '0.35rem' }}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        <p style={{ fontSize: '0.8rem', color: '#f59e0b', margin: 0 }}>Add variant types above to see cost fields for each combination.</p>
+                      </div>
+                    ) : (
                     <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                         <thead>
@@ -1411,7 +1417,7 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                           {previewSKUs.map((skuInfo, idx) => {
                             const cost = variantCosts[skuInfo.comboKey] || '';
                             return (
-                              <tr key={skuInfo.comboKey} style={{ borderBottom: idx < previewSKUs.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                              <tr key={skuInfo.sku || idx} style={{ borderBottom: idx < previewSKUs.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
                                 <td style={{ padding: '0.5rem 0.75rem', color: 'var(--gray)', fontSize: '0.75rem' }}>{idx + 1}</td>
                                 <td style={{ padding: '0.5rem 0.75rem', color: '#E5E2E1', fontSize: '0.8rem' }}>
                                   <div>{skuInfo.variantName}</div>
@@ -1438,6 +1444,7 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                         </tbody>
                       </table>
                     </div>
+                    )}
                   </div>
                 )}
 
