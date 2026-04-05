@@ -394,8 +394,8 @@ export default function ManualStockInModal({ materials, vendors, onClose, onSave
                         }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 600, color: isSelected ? '#D4A843' : 'var(--white)', fontSize: '0.85rem' }}>{m.name}</div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.1rem' }}>
-                            {m.sku || '—'} {m.hasVariants && `• ${materials.filter(c => c.parentId === m.id).length} variants`}
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', marginTop: '0.1rem' }}>
+                            {m.hasVariants && `${materials.filter(c => c.parentId === m.id).length} variants`}
                           </div>
                         </div>
                         {isSelected ? (
@@ -464,13 +464,18 @@ export default function ManualStockInModal({ materials, vendors, onClose, onSave
                 return (
                   <div key={mat.id} style={{ marginBottom: '1.5rem' }}>
                     {/* Material Header */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                      <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(212,168,67,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+                        <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(212,168,67,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{mat.category} / {mat.name}</div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{rows.length} Variant{rows.length !== 1 ? 's' : ''} {matReceived > 0 && `• ${matReceived} ${rows[0]?.uom || 'pcs'}`}</div>
+                        </div>
                       </div>
-                      <div>
-                        <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.85rem' }}>{mat.category} / {mat.name}</div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{rows.length} Variant{rows.length !== 1 ? 's' : ''} {matReceived > 0 && `• ${matReceived} ${rows[0]?.uom || 'pcs'}`}</div>
+                      <div style={{ flexShrink: 0, marginLeft: '1rem', fontSize: '0.7rem', color: 'var(--gray)', lineHeight: 1.4, maxWidth: '280px', textAlign: 'right' }}>
+                        <span style={{ color: '#D4A843' }}>Unit cost</span> is pre-filled from material base cost. Edit if actual purchase cost differs.
                       </div>
                     </div>
 
@@ -482,7 +487,9 @@ export default function ManualStockInModal({ materials, vendors, onClose, onSave
                             <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Item</th>
                             <th style={{ padding: '0.75rem 0.75rem', textAlign: 'center', fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '120px' }}>Qty Received</th>
                             <th style={{ padding: '0.75rem 0.75rem', textAlign: 'center', fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '120px' }}>Damaged</th>
-                            <th style={{ padding: '0.75rem 0.75rem', textAlign: 'center', fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '100px' }}>Unit Cost</th>
+                            <th style={{ padding: '0.75rem 0.75rem', textAlign: 'center', fontSize: '0.6rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.08em', width: '100px' }}>
+                              Unit Cost
+                            </th>
                           </tr>
                         </thead>
                         <tbody>

@@ -68,9 +68,16 @@ function getNextSequence(key) {
   return next;
 }
 
-// Get 3-letter prefix from a string
-function getPrefix(str, len = 3) {
-  return str.replace(/[^A-Za-z0-9]/g, '').substring(0, len).toUpperCase() || 'XXX';
+// Get 2-letter prefix from a string: 1st letter of each word (up to 2 words)
+// Examples: "Canvas Totebags" → "CT", "T-Shirts" → "TS", "Totebag" → "TO"
+function getPrefix(str) {
+  const words = str.replace(/[^A-Za-z0-9\s-]/g, '').split(/[\s-]+/).filter(Boolean);
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  // Single word → first 2 letters
+  const cleaned = words[0] || '';
+  return cleaned.substring(0, 2).toUpperCase() || 'XX';
 }
 
 // Get short code from variant option (e.g., "White" → "WHT", "11oz" → "11OZ")
@@ -156,40 +163,6 @@ function generateVariantSKUs(category, productName, variantTypes, existingMateri
     const sku = genComboSKU(category, productName, combo, allOptionsPerType, existingMaterials);
     return { comboKey: key, comboLabel: label, comboMap: combo, sku, variantName: Object.values(combo).join(' ') };
   });
-}
-
-// ── Status Badge ───────────────────────────────────────────────────────────────
-function StatusBadge({ stock, minStock, procurementType }) {
-  if (procurementType === 'on-demand') {
-    return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem', fontWeight: 700, color: '#818cf8', textTransform: 'uppercase' }}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-        On-Demand
-      </span>
-    );
-  }
-  if (stock === 0) {
-    return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem', fontWeight: 700, color: '#ef4444', textTransform: 'uppercase' }}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        Out of Stock
-      </span>
-    );
-  }
-  if (stock < (minStock || 10)) {
-    return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem', fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase' }}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        Low Stock
-      </span>
-    );
-  }
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem', fontWeight: 700, color: '#22c55e', textTransform: 'uppercase' }}>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/></svg>
-      Healthy
-    </span>
-  );
 }
 
 function CategoryBadge({ category }) {
@@ -339,14 +312,6 @@ function MaterialDetailsModal({ material, vendors, onClose }) {
             <div>
               <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem' }}>Unit of Measure</div>
               <div style={{ fontSize: '0.95rem', color: '#E5E2E1', fontWeight: 600 }}>{material.uom || 'pcs'}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem' }}>Current Stock</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: material.stockQty === 0 ? '#ef4444' : '#E5E2E1' }}>{material.stockQty || 0}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem' }}>Minimum Stock</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#E5E2E1' }}>{material.minStock || 10}</div>
             </div>
             <div>
               <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem' }}>Base Cost</div>
@@ -582,16 +547,14 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
               <th style={{ padding: '0.875rem 1rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', width: '40px' }}></th>
               <th style={{ padding: '0.875rem 1rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>SKU / Name</th>
               <th style={{ padding: '0.875rem 1rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Category</th>
-              <th style={{ padding: '0.875rem 1rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Current Stock</th>
               <th style={{ padding: '0.875rem 1rem', textAlign: 'right', color: 'var(--gray)', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Base Cost</th>
-              <th style={{ padding: '0.875rem 1rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Status</th>
               <th style={{ padding: '0.875rem 1rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', width: '100px' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredMaterials.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray)' }}>
+                <td colSpan={5} style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray)' }}>
                   {materials.length === 0 ? 'No materials yet. Click "Add Material" to get started.' : 'No materials match your filters.'}
                 </td>
               </tr>
@@ -600,8 +563,7 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
                 if (row.type === 'standalone') {
                   const m = row.item;
                   return (
-                    <tr key={m.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer' }}
-                      onClick={() => setViewMaterial(m)}
+                    <tr key={m.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
@@ -611,12 +573,8 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
                         <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.15rem' }}>{m.sku || '—'}</div>
                       </td>
                       <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}><CategoryBadge category={m.category} /></td>
-                      <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 700, color: m.procurementType === 'on-demand' ? '#818cf8' : m.stockQty === 0 ? '#ef4444' : m.stockQty < (m.minStock || 10) ? '#f59e0b' : '#E5E2E1' }}>
-                        {m.stockQty} {m.uom || 'pcs'}
-                      </td>
-                      <td style={{ padding: '0.875rem 1rem', textAlign: 'right', fontWeight: 600, color: '#E5E2E1' }}>P{(m.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-                      <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}><StatusBadge stock={m.stockQty} minStock={m.minStock} procurementType={m.procurementType} /></td>
-                      <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                      <td style={{ padding: '0.875rem 1rem', textAlign: 'right', fontWeight: 600, color: '#E5E2E1' }}>₱{(m.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                      <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
                           <button onClick={() => { setEditMaterial(m); setShowAddModal(true); }} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: 'var(--gray)' }} title="Edit"><EditIcon /></button>
                           <button onClick={() => setViewMaterial(m)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: 'var(--gray)' }} title="View Details"><EyeIcon /></button>
@@ -630,12 +588,11 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
                 const parent = row.item;
                 const children = row.children || [];
                 const isExpanded = expandedParents.has(parent.id);
-                const parentStock = children.reduce((s, c) => s + (c.stockQty || 0), 0);
 
                 return (
                   <React.Fragment key={parent.id}>
                     <tr style={{ borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.04)', background: 'rgba(212,168,67,0.02)', cursor: 'pointer' }}
-                      onClick={() => setViewMaterial(parent)}
+                      onClick={() => toggleExpand(parent.id)}
                       onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,168,67,0.06)'}
                       onMouseLeave={e => e.currentTarget.style.background = isExpanded ? 'rgba(212,168,67,0.02)' : 'rgba(212,168,67,0.02)'}
                     >
@@ -650,7 +607,7 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <span style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.875rem' }}>{parent.name}</span>
                           {children.length > 0 && (
-                            <span style={{ padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 700, background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}>Has Variants</span>
+                            <span style={{ padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 700, background: 'rgba(212,168,67,0.15)', color: '#D4A843', flexShrink: 0 }}>Has Variants</span>
                           )}
                         </div>
                         {parent.variantTypes && parent.variantTypes.length > 0 && (
@@ -660,11 +617,22 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
                         )}
                       </td>
                       <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}><CategoryBadge category={parent.category} /></td>
-                      <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 700, color: parent.procurementType === 'on-demand' ? '#818cf8' : parentStock === 0 ? '#ef4444' : parentStock < (parent.minStock || 10) ? '#f59e0b' : '#E5E2E1' }}>
-                        {parentStock} {parent.uom || 'pcs'}
+                      <td style={{ padding: '0.875rem 1rem', textAlign: 'right', fontWeight: 600, color: '#E5E2E1' }}>
+                        {parent.hasVariants && children.length > 0 ? (() => {
+                          const costs = children.map(c => c.baseCost || 0).filter(c => c > 0);
+                          const min = Math.min(...costs);
+                          const max = Math.max(...costs);
+                          if (min === max) return `P${min.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.1rem' }}>
+                              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#E5E2E1' }}>
+                                ₱{min.toLocaleString('en-PH', { minimumFractionDigits: 2 })} – ₱{max.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                              </span>
+                              <span style={{ fontSize: '0.6rem', color: 'var(--gray)' }}>{children.length} variants</span>
+                            </div>
+                          );
+                        })() : `P${(parent.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`}
                       </td>
-                      <td style={{ padding: '0.875rem 1rem', textAlign: 'right', fontWeight: 600, color: '#E5E2E1' }}>P{(parent.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-                      <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}><StatusBadge stock={parentStock} minStock={parent.minStock} procurementType={parent.procurementType} /></td>
                       <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
                           <button onClick={() => { setEditMaterial(parent); setShowAddModal(true); }} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: 'var(--gray)' }}><EditIcon /></button>
@@ -674,8 +642,7 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
                       </td>
                     </tr>
                     {isExpanded && children.map(child => (
-                      <tr key={child.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', background: 'rgba(0,0,0,0.15)', cursor: 'pointer' }}
-                        onClick={() => setViewMaterial(child)}
+                      <tr key={child.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', background: 'rgba(0,0,0,0.15)' }}
                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.25)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,0,0,0.15)'}
                       >
@@ -687,11 +654,7 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
                           <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.1rem' }}>{child.sku || '—'}</div>
                         </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}><CategoryBadge category={child.category} /></td>
-                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center', fontWeight: 700, color: child.stockQty === 0 ? '#ef4444' : child.stockQty < (child.minStock || 10) ? '#f59e0b' : '#E5E2E1' }}>
-                          {child.stockQty} {child.uom || 'pcs'}
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600, color: '#E5E2E1' }}>P{(child.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}><StatusBadge stock={child.stockQty} minStock={child.minStock} procurementType={child.procurementType} /></td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600, color: '#E5E2E1' }}>₱{(child.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                           <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
                             <button onClick={() => setViewMaterial(child)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: 'var(--gray)' }}><EyeIcon /></button>
@@ -796,6 +759,7 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
   const [variantTypeInput, setVariantTypeInput] = useState('');
   const [variantOptionInputs, setVariantOptionInputs] = useState({});
   const [variantTypeRemoveModal, setVariantTypeRemoveModal] = useState(false);
+  const [variantTutorialOpen, setVariantTutorialOpen] = useState(false);
   const [errors, setErrors] = useState({});
 
   // Find which variant options are locked (used by existing child materials with stock)
@@ -973,6 +937,18 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
     if (!form.preferredVendorId) newErrors.vendor = 'Please select a vendor';
     if (!form.category) newErrors.category = 'Please select a category';
     if (!form.name.trim()) newErrors.name = 'Please enter an item name';
+    // Validate variant costs when variants are enabled
+    if (form.hasVariants && previewSKUs.length > 1) {
+      const missingCost = previewSKUs.some(sku => {
+        const cost = variantCosts[sku.comboKey];
+        return cost === undefined || cost === '' || parseFloat(cost) === 0;
+      });
+      if (missingCost) newErrors.variantCost = 'All combinations must have a cost.';
+    }
+    // Validate base cost when no variants
+    if (!form.hasVariants && (!form.baseCost || parseFloat(form.baseCost) === 0)) {
+      newErrors.baseCost = 'Base cost is required.';
+    }
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
@@ -1054,10 +1030,15 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
     }
   };
 
-  // Determine which fields are locked based on vendor/category selection
+  // Determine which fields are locked
   const noVendor = !form.preferredVendorId;
   const noCategory = !form.category;
-  const fieldsLocked = noVendor || noCategory;
+  const noName = !form.name || form.name.trim() === '';
+
+  // Item Name + Category are locked until vendor is selected
+  const nameFieldsLocked = noVendor || noCategory;
+  // Base Cost, Min Stock, Variants, Unit are locked until vendor + category + name are filled
+  const fieldsLocked = noVendor || noCategory || noName;
 
   const inputStyle = {
     width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
@@ -1136,7 +1117,7 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                 </label>
                 <input type="text"
                   style={{
-                    ...(fieldsLocked ? lockedStyle : inputStyle),
+                    ...(nameFieldsLocked ? lockedStyle : inputStyle),
                     borderColor: errors.name ? '#ef4444' : undefined,
                   }}
                   value={form.name}
@@ -1144,15 +1125,15 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                     setForm(p => ({ ...p, name: e.target.value.slice(0, 100) }));
                     if (errors.name) setErrors(e2 => ({ ...e2, name: '' }));
                   }}
-                  placeholder={fieldsLocked ? 'Select vendor & category first' : 'e.g., Inner Color Mug'}
+                  placeholder={noVendor ? 'Select vendor first...' : noCategory ? 'Select category first...' : 'e.g., Inner Color Mug'}
                   required maxLength={100}
-                  disabled={fieldsLocked} />
+                  disabled={nameFieldsLocked} />
                 {errors.name && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '0.2rem', display: 'block' }}>{errors.name}</span>}
               </div>
             </div>
 
             {/* Lock message when fields are locked */}
-            {fieldsLocked && (
+            {(nameFieldsLocked || fieldsLocked) && (
               <div style={{ padding: '0.75rem', background: 'rgba(245,158,11,0.08)', borderRadius: '8px', border: '1px solid rgba(245,158,11,0.2)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5">
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
@@ -1160,7 +1141,11 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                 <span style={{ fontSize: '0.75rem', color: '#f59e0b' }}>
                   {!form.preferredVendorId
                     ? 'Select a vendor to unlock the form'
-                    : 'Select a category to unlock the remaining fields'}
+                    : !form.category
+                    ? 'Select a category to unlock the Item Name field'
+                    : !form.name || form.name.trim() === ''
+                    ? 'Enter an item name to unlock the remaining fields'
+                    : ''}
                 </span>
               </div>
             )}
@@ -1172,8 +1157,8 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
               <div style={{ marginBottom: '1rem' }}>
                 <label className="form-label">
                   Unit
-                  {editMaterial && editMaterial.stockQty > 0 && (
-                    <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>(Locked: Stock exists)</span>
+                  {editMaterial && (editMaterial.stockQty > 0 || editMaterial.hasVariants) && (
+                    <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>(Locked: Cannot change when stock or variants exist)</span>
                   )}
                 </label>
                 <CustomDropdown
@@ -1189,7 +1174,7 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                     { value: 'box', label: 'Box' },
                   ]}
                   placeholder="Select unit..."
-                  disabled={editMaterial && editMaterial.stockQty > 0}
+                  disabled={editMaterial && (editMaterial.stockQty > 0 || editMaterial.hasVariants)}
                 />
               </div>
 
@@ -1197,12 +1182,13 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label className="form-label">
-                    Base Cost (P)
-                    {form.hasVariants && <span style={{ fontSize: '0.65rem', color: 'var(--gray)', fontWeight: 400, marginLeft: '0.5rem' }}>(Reference only — set per combination below)</span>}
+                    Base Cost {!form.hasVariants && <span className="required">*</span>}
+                    {form.hasVariants && <span style={{ fontSize: '0.65rem', color: 'var(--gray)', fontWeight: 400, marginLeft: '0.5rem' }}>(Set per combination below)</span>}
                   </label>
                   <DecimalInput style={form.hasVariants ? { ...inputStyle, opacity: 0.4, cursor: 'not-allowed' } : inputStyle} value={form.baseCost}
                     onChange={e => { if (!form.hasVariants) setForm(p => ({ ...p, baseCost: e.target.value })); }}
                     placeholder="0.00" disabled={form.hasVariants} />
+                  {!form.hasVariants && errors.baseCost && <span style={{ fontSize: '0.72rem', color: 'var(--red)', marginTop: '0.2rem', display: 'block' }}>{errors.baseCost}</span>}
                 </div>
                 <div>
                   <label className="form-label">Min Stock</label>
@@ -1244,27 +1230,39 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
               {/* Has Variants */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
                 <input type="checkbox" id="hasVariants" checked={form.hasVariants}
-                  onChange={e => setForm(p => ({ ...p, hasVariants: e.target.checked, variantTypes: e.target.checked ? p.variantTypes : [] }))}
+                  onChange={e => {
+                    const checked = e.target.checked;
+                    setForm(p => ({
+                      ...p,
+                      hasVariants: checked,
+                      variantTypes: checked ? p.variantTypes : [],
+                      baseCost: checked ? '' : p.baseCost,
+                    }));
+                  }}
                   style={{ width: '16px', height: '16px', accentColor: '#D4A843' }}
-                  disabled={editMaterial && editMaterial.stockQty > 0} />
-                <label htmlFor="hasVariants" style={{ fontSize: '0.85rem', color: editMaterial && editMaterial.stockQty > 0 ? 'var(--gray)' : '#E5E2E1', cursor: editMaterial && editMaterial.stockQty > 0 ? 'not-allowed' : 'pointer', fontWeight: 600 }}>
+                  disabled={editMaterial && editMaterial.hasVariants} />
+                <label htmlFor="hasVariants" style={{ fontSize: '0.85rem', color: editMaterial && editMaterial.hasVariants ? 'var(--gray)' : '#E5E2E1', cursor: editMaterial && editMaterial.hasVariants ? 'not-allowed' : 'pointer', fontWeight: 600 }}>
                   This material has variants (e.g., Size, Color)
-                  {editMaterial && editMaterial.stockQty > 0 && (
-                    <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>(Locked: Stock exists)</span>
+                  {editMaterial && editMaterial.hasVariants && (
+                    <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>(Locked: Variant types exist)</span>
                   )}
                 </label>
               </div>
 
             {/* Variant Types — Old Inventory Style */}
             {form.hasVariants && form.name.trim() && (
-              <div style={{ opacity: editMaterial && editMaterial.stockQty > 0 ? 0.5 : 1, pointerEvents: editMaterial && editMaterial.stockQty > 0 ? 'none' : 'auto' }}>
-                <label className="form-label">
+              <div>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   Variant Types
-                  <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)', marginLeft: '0.5rem' }}>(Optional — e.g., Capacity, Color, Size)</span>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)', marginLeft: '0.25rem' }}>(Optional e.g., Capacity, Color, Size)</span>
+                  <button type="button" onClick={() => setVariantTutorialOpen(true)}
+                    style={{ background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#D4A843', fontSize: '0.65rem', fontWeight: 800, lineHeight: 1, flexShrink: 0 }}
+                    title="How to add variant types">
+                    ?
+                  </button>
                 </label>
                 <p className="form-hint" style={{ marginBottom: '1rem' }}>
-                  Define product variations. All variant types will be included in SKU generation and stock tracking.
-                  {editMaterial && editMaterial.stockQty > 0 && <span style={{ color: '#f59e0b', marginLeft: '0.5rem' }}>⚠ Locked: Stock exists</span>}
+                  {editMaterial && editMaterial.hasVariants && <span style={{ color: '#f59e0b', marginLeft: '0.5rem' }}>Cannot uncheck: variant types already exist</span>}
                 </p>
 
                 {/* Variant Types List */}
@@ -1359,7 +1357,7 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                 )}
 
                 {/* Add Variant Type Input */}
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', opacity: editMaterial && editMaterial.stockQty > 0 ? 0.5 : 1, pointerEvents: editMaterial && editMaterial.stockQty > 0 ? 'none' : 'auto' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                   <input
                     type="text"
                     style={{ ...inputStyle, flex: 1 }}
@@ -1395,9 +1393,10 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                 {/* Per-Combination Cost Table */}
                 {form.hasVariants && previewSKUs.length > 1 && (
                   <div style={{ marginTop: '1rem' }}>
-                    <label className="form-label">Cost Per Combination</label>
+                    <label className="form-label">Cost Per Combination <span className="required">*</span></label>
                     <p className="form-hint" style={{ marginBottom: '0.75rem' }}>
                       Set individual cost for each variant combination.
+                      {errors.variantCost && <span style={{ color: 'var(--red)', marginLeft: '0.5rem', fontWeight: 600 }}>{errors.variantCost}</span>}
                     </p>
                     <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
@@ -1476,6 +1475,116 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
             </div>
             <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
               <button type="button" className="btn-primary" onClick={() => setVariantTypeRemoveModal(false)}>OK</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Variant Types Tutorial Modal */}
+      {variantTutorialOpen && (
+        <div className="modal-overlay" onClick={() => setVariantTutorialOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px', width: '95%' }}>
+            <div className="modal-header">
+              <div>
+                <h2 className="modal-title" style={{ fontSize: '1.1rem' }}>How to Add Variant Types</h2>
+                <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.1rem' }}>
+                  Learn how to create materials with multiple variants such as Size, Color, Capacity
+                </p>
+              </div>
+              <button className="modal-close" onClick={() => setVariantTutorialOpen(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div style={{ padding: '1.5rem 2rem', maxHeight: '65vh', overflowY: 'auto' }}>
+
+              {/* Step 1 */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div style={{ fontSize: '0.65rem', color: '#D4A843', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem', letterSpacing: '0.08em' }}>Step 1: Add a Variant Type</div>
+                <div style={{ marginBottom: '0.5rem', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)', padding: '1rem' }}>
+                  <img src="/tutorials/Tutorial.png" alt="Add Variant Type" style={{ width: '100%', display: 'block' }}
+                    onError={e => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; }} />
+                  <div style={{ display: 'none', padding: '1rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                    Type the variant type name and click Add Variant Type
+                  </div>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5, margin: 0 }}>
+                  Type the name of the variant type (e.g., "Size", "Color", "Type") in the input field, then click the gold <strong style={{ color: '#D4A843' }}>+ Add Variant Type</strong> button.
+                </p>
+              </div>
+
+              {/* Step 2 */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div style={{ fontSize: '0.65rem', color: '#D4A843', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem', letterSpacing: '0.08em' }}>Step 2: Add Options to the Type</div>
+                <div style={{ marginBottom: '0.5rem', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)', padding: '1rem' }}>
+                  <img src="/tutorials/Tutorial2.png" alt="Add Options" style={{ width: '100%', display: 'block' }}
+                    onError={e => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; }} />
+                  <div style={{ display: 'none', padding: '1rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                    Type each option and click Add
+                  </div>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5, margin: 0 }}>
+                  Type each option value in the input field (e.g., "Small 10x12", "Medium 12x14") and click the <strong style={{ color: '#D4A843' }}>+ Add</strong> button. Each option appears as a removable chip. You can add multiple options to a single type.
+                </p>
+              </div>
+
+              {/* Step 3 */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div style={{ fontSize: '0.65rem', color: '#D4A843', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem', letterSpacing: '0.08em' }}>Step 3: Add More Types (Optional)</div>
+                <div style={{ marginBottom: '0.5rem', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)', padding: '1rem' }}>
+                  <img src="/tutorials/Tutorial3.png" alt="Multiple Types" style={{ width: '100%', display: 'block' }}
+                    onError={e => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; }} />
+                  <div style={{ display: 'none', padding: '1rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                    Add more variant types for combinations
+                  </div>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5, margin: 0 }}>
+                  Repeat Step 1 to add another variant type. In the example shown, there are two types: <strong style={{ color: '#E5E2E1' }}>Type</strong> (Plain, W Zipper and Pocket) and <strong style={{ color: '#E5E2E1' }}>Size</strong> (Small 10x12, Medium 12x14, Large 14x16). Multiple types create a cross-combination of all options.
+                </p>
+              </div>
+
+              {/* Step 4 */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div style={{ fontSize: '0.65rem', color: '#D4A843', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem', letterSpacing: '0.08em' }}>Step 4: Result - Each Combination Gets a Unique SKU</div>
+                <div style={{ marginBottom: '0.5rem', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)', padding: '1rem' }}>
+                  <img src="/tutorials/Tutorial4.png" alt="Final Result" style={{ width: '100%', display: 'block' }}
+                    onError={e => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; }} />
+                  <div style={{ display: 'none', padding: '1rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                    Each variant combination gets its own SKU
+                  </div>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5, margin: 0 }}>
+                  After saving, the parent material expands to show all variant children. Each combination gets its own unique SKU. In the example, 2 types x 3 sizes = <strong style={{ color: '#D4A843' }}>6 SKUs</strong>:
+                </p>
+              </div>
+
+              {/* SKU Example */}
+              <div style={{ marginBottom: '1.25rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--gray)', lineHeight: 1.8 }}>
+                CT-TO-PLA-SMA-0003<br/>
+                CT-TO-PLA-MED-0002<br/>
+                CT-TO-PLA-LAR-0001<br/>
+                CT-TO-WZI-SMA-0003<br/>
+                CT-TO-WZI-MED-0002<br/>
+                CT-TO-WZI-LAR-0001
+              </div>
+
+              {/* Cost per combination note */}
+              <div style={{ marginBottom: '1.25rem', padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px' }}>
+                <div style={{ fontSize: '0.75rem', color: '#D4A843', fontWeight: 700, marginBottom: '0.35rem' }}>Cost Per Combination</div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5, margin: 0 }}>
+                  Each variant combination has its own cost field. After adding types and options, a table of all combinations appears below. Click each row to set its specific unit cost.
+                </p>
+              </div>
+
+              {/* Important Note */}
+              <div style={{ padding: '0.75rem 1rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px' }}>
+                <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700, marginBottom: '0.25rem' }}>Important</div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5, margin: 0 }}>
+                  Once a variant has stock, its type and options become locked. You cannot rename or remove them without first clearing the stock from those items.
+                </p>
+              </div>
+            </div>
+            <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-primary" onClick={() => setVariantTutorialOpen(false)}>Got it</button>
             </div>
           </div>
         </div>
@@ -1830,9 +1939,9 @@ function VendorMasterTab({ materials, onVendorsChange }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <div style={{
                     width: '44px', height: '44px', borderRadius: '12px',
-                    background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.15)',
+                    background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.2)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '1.1rem', fontWeight: 800, color: '#3b82f6', flexShrink: 0,
+                    fontSize: '1.1rem', fontWeight: 800, color: '#D4A843', flexShrink: 0,
                   }}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
@@ -2395,7 +2504,7 @@ function BOMTab() {
                       <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{b.sku || '—'}</div>
                     </td>
                     <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#E5E2E1' }}>{(b.components || []).length} items</td>
-                    <td style={{ padding: '0.875rem 1rem', textAlign: 'right', fontWeight: 700, color: '#D4A843' }}>P{totalCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'right', fontWeight: 700, color: '#D4A843' }}>₱{totalCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
                     <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
                       <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
                         <button onClick={() => { setEditBOM(b); setShowAddModal(true); }} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: 'var(--gray)' }}><EditIcon /></button>

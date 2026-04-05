@@ -353,6 +353,7 @@ function StockOverviewTab({ materials, vendors, onIssueStock }) {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [expandedParents, setExpandedParents] = useState(new Set());
 
   const categories = useMemo(() => {
     const cats = new Set();
@@ -360,30 +361,73 @@ function StockOverviewTab({ materials, vendors, onIssueStock }) {
     return [...cats].sort();
   }, [materials]);
 
-  const filteredMaterials = useMemo(() => {
+  // Group materials: parents with children, or standalone
+  const groupedMaterials = useMemo(() => {
+    const parents = materials.filter(m => m.hasVariants && !m.parentId);
+    const childrenMap = new Map();
+    materials.filter(m => m.parentId).forEach(child => {
+      if (!childrenMap.has(child.parentId)) childrenMap.set(child.parentId, []);
+      childrenMap.get(child.parentId).push(child);
+    });
+    const standalone = materials.filter(m => !m.hasVariants && !m.parentId);
+    return { parents, childrenMap, standalone };
+  }, [materials]);
+
+  const toggleExpand = (id) => {
+    setExpandedParents(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  // Filter function for a single material
+  const matchesFilters = (m) => {
     const q = search.toLowerCase();
-    return materials
-      .filter(m => m.parentId) // skip parent-only entries, show variants
-      .concat(materials.filter(m => !m.hasVariants && !m.parentId)) // standalone
-      .filter(m => {
-        const matchSearch = !q || m.name.toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q);
-        const matchCat = !categoryFilter || m.category === categoryFilter;
-        const matchStatus = !statusFilter || (() => {
-          if (statusFilter === 'out-of-stock') return m.stockQty === 0 && m.procurementType !== 'on-demand';
-          if (statusFilter === 'low-stock') return m.stockQty > 0 && m.stockQty < (m.minStock || 10) && m.procurementType !== 'on-demand';
-          if (statusFilter === 'healthy') return m.stockQty >= (m.minStock || 10);
-          if (statusFilter === 'on-demand') return m.procurementType === 'on-demand';
-          return true;
-        })();
-        return matchSearch && matchCat && matchStatus;
-      })
-      .sort((a, b) => {
-        // Sort: out of stock first, then low stock, then healthy
-        const aCritical = a.stockQty === 0 && a.procurementType !== 'on-demand' ? 0 : a.stockQty < (a.minStock || 10) && a.procurementType !== 'on-demand' ? 1 : 2;
-        const bCritical = b.stockQty === 0 && b.procurementType !== 'on-demand' ? 0 : b.stockQty < (b.minStock || 10) && b.procurementType !== 'on-demand' ? 1 : 2;
-        return aCritical - bCritical || a.name.localeCompare(b.name);
-      });
-  }, [materials, search, categoryFilter, statusFilter]);
+    const matchSearch = !q || m.name.toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q);
+    const matchCat = !categoryFilter || m.category === categoryFilter;
+    const matchStatus = !statusFilter || (() => {
+      if (statusFilter === 'out-of-stock') return m.stockQty === 0 && m.procurementType !== 'on-demand';
+      if (statusFilter === 'low-stock') return m.stockQty > 0 && m.stockQty < (m.minStock || 10) && m.procurementType !== 'on-demand';
+      if (statusFilter === 'healthy') return m.stockQty >= (m.minStock || 10);
+      if (statusFilter === 'on-demand') return m.procurementType === 'on-demand';
+      return true;
+    })();
+    return matchSearch && matchCat && matchStatus;
+  };
+
+  // Build filtered rows: parent rows (with children if expanded) + standalone
+  const filteredRows = useMemo(() => {
+    const rows = [];
+    // Standalone materials
+    groupedMaterials.standalone.filter(matchesFilters).forEach(m => {
+      rows.push({ type: 'standalone', item: m });
+    });
+    // Parent materials (show if parent matches OR any child matches)
+    groupedMaterials.parents.forEach(parent => {
+      const children = groupedMaterials.childrenMap.get(parent.id) || [];
+      const parentMatches = matchesFilters(parent);
+      const matchingChildren = children.filter(matchesFilters);
+      // Show parent if parent matches search, or if any child matches
+      if (parentMatches || matchingChildren.length > 0) {
+        rows.push({
+          type: 'parent',
+          item: parent,
+          children: matchingChildren.length > 0 ? matchingChildren : children,
+          allChildrenMatch: matchingChildren.length === children.length,
+        });
+      }
+    });
+    // Sort by criticality
+    rows.sort((a, b) => {
+      const mA = a.item;
+      const mB = b.item;
+      const aCritical = mA.stockQty === 0 && mA.procurementType !== 'on-demand' ? 0 : mA.stockQty < (mA.minStock || 10) && mA.procurementType !== 'on-demand' ? 1 : 2;
+      const bCritical = mB.stockQty === 0 && mB.procurementType !== 'on-demand' ? 0 : mB.stockQty < (mB.minStock || 10) && mB.procurementType !== 'on-demand' ? 1 : 2;
+      return aCritical - bCritical || mA.name.localeCompare(mB.name);
+    });
+    return rows;
+  }, [groupedMaterials, search, categoryFilter, statusFilter]);
 
   const totalStock = materials.reduce((s, m) => s + (m.stockQty || 0), 0);
   const outOfStock = materials.filter(m => m.stockQty === 0 && m.procurementType !== 'on-demand').length;
@@ -479,42 +523,151 @@ function StockOverviewTab({ materials, vendors, onIssueStock }) {
             </tr>
           </thead>
           <tbody>
-            {filteredMaterials.length === 0 ? (
+            {filteredRows.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray)' }}>
                   {materials.length === 0 ? 'No materials yet. Add materials in Master Data first.' : 'No materials match your filters.'}
                 </td>
               </tr>
-            ) : filteredMaterials.map(m => {
-              const stockVal = (m.stockQty || 0) * (m.baseCost || 0);
+            ) : filteredRows.map((row) => {
+              if (row.type === 'standalone') {
+                const m = row.item;
+                const stockVal = (m.stockQty || 0) * (m.baseCost || 0);
+                return (
+                  <tr key={m.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <td style={{ padding: '0.875rem 1rem' }}>
+                      <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.875rem' }}>{m.name}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.15rem' }}>{m.sku || '—'}</div>
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontSize: '0.8rem', color: '#E5E2E1' }}>
+                      {m.category || '—'}
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 700, color: m.procurementType === 'on-demand' ? '#818cf8' : m.stockQty === 0 ? '#ef4444' : m.stockQty < (m.minStock || 10) ? '#f59e0b' : '#E5E2E1' }}>
+                      {m.stockQty || 0} <span style={{ color: 'var(--gray)', fontWeight: 400 }}>{m.uom || 'pcs'}</span>
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                      {m.minStock || 10}
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'right', color: '#E5E2E1', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                      ₱{(m.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'right', fontWeight: 700, color: '#D4A843', fontFamily: 'monospace' }}>
+                      ₱{stockVal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
+                      <StatusBadge stock={m.stockQty || 0} minStock={m.minStock || 10} procurementType={m.procurementType} />
+                    </td>
+                  </tr>
+                );
+              }
+
+              // Parent row with variants
+              const parent = row.item;
+              const children = row.children || [];
+              const isExpanded = expandedParents.has(parent.id);
+              const parentStockVal = children.reduce((s, c) => s + ((c.stockQty || 0) * (c.baseCost || 0)), 0);
+              const totalChildStock = children.reduce((s, c) => s + (c.stockQty || 0), 0);
+
               return (
-                <tr key={m.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <td style={{ padding: '0.875rem 1rem' }}>
-                    <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.875rem' }}>{m.name}</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.15rem' }}>{m.sku || '—'}</div>
-                  </td>
-                  <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontSize: '0.8rem', color: '#E5E2E1' }}>
-                    {m.category || '—'}
-                  </td>
-                  <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 700, color: m.procurementType === 'on-demand' ? '#818cf8' : m.stockQty === 0 ? '#ef4444' : m.stockQty < (m.minStock || 10) ? '#f59e0b' : '#E5E2E1' }}>
-                    {m.stockQty || 0} <span style={{ color: 'var(--gray)', fontWeight: 400 }}>{m.uom || 'pcs'}</span>
-                  </td>
-                  <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
-                    {m.minStock || 10}
-                  </td>
-                  <td style={{ padding: '0.875rem 1rem', textAlign: 'right', color: '#E5E2E1', fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                    ₱{(m.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td style={{ padding: '0.875rem 1rem', textAlign: 'right', fontWeight: 700, color: '#D4A843', fontFamily: 'monospace' }}>
-                    ₱{stockVal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
-                    <StatusBadge stock={m.stockQty || 0} minStock={m.minStock || 10} procurementType={m.procurementType} />
-                  </td>
-                </tr>
+                <React.Fragment key={parent.id}>
+                  <tr style={{ borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.04)', background: 'rgba(212,168,67,0.02)', cursor: 'pointer' }}
+                    onClick={() => toggleExpand(parent.id)}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,168,67,0.06)'}
+                    onMouseLeave={e => e.currentTarget.style.background = isExpanded ? 'rgba(212,168,67,0.02)' : 'rgba(212,168,67,0.02)'}
+                  >
+                    <td style={{ padding: '0.875rem 1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <button onClick={(e) => { e.stopPropagation(); toggleExpand(parent.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: isExpanded ? '#D4A843' : 'var(--gray)', padding: 0 }}>
+                          <ChevronIcon open={isExpanded} />
+                        </button>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.875rem' }}>{parent.name}</span>
+                            <span style={{ padding: '0.12rem 0.45rem', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 700, background: 'rgba(212,168,67,0.15)', color: '#D4A843' }}>
+                              {children.length} variants
+                            </span>
+                          </div>
+                          {parent.variantTypes && parent.variantTypes.length > 0 && (
+                            <div style={{ fontSize: '0.65rem', color: 'var(--gray)', marginTop: '0.15rem' }}>
+                              {parent.variantTypes.map(vt => `${vt.name}: ${vt.options.join(', ')}`).join(' · ')}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#E5E2E1' }}>{parent.category || '—'}</span>
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
+                      <div>
+                        <span style={{ fontWeight: 700, color: totalChildStock === 0 ? '#ef4444' : totalChildStock < (parent.minStock || 10) * children.length ? '#f59e0b' : '#E5E2E1' }}>
+                          {totalChildStock}
+                        </span>
+                        <span style={{ color: 'var(--gray)', fontWeight: 400 }}> pcs total</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                      {parent.minStock || 10}
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'right', color: '#E5E2E1', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                      {(() => {
+                        const costs = children.map(c => c.baseCost || 0).filter(c => c > 0);
+                        if (costs.length === 0) return '₱0.00';
+                        const min = Math.min(...costs);
+                        const max = Math.max(...costs);
+                        if (min === max) return `₱${min.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.1rem' }}>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#E5E2E1' }}>
+                              ₱{min.toLocaleString('en-PH', { minimumFractionDigits: 2 })} – ₱{max.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'right', fontWeight: 700, color: '#D4A843', fontFamily: 'monospace' }}>
+                      ₱{parentStockVal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
+                      <StatusBadge stock={totalChildStock} minStock={(parent.minStock || 10) * children.length} procurementType={parent.procurementType} />
+                    </td>
+                  </tr>
+                  {isExpanded && children.map(child => {
+                    const childStockVal = (child.stockQty || 0) * (child.baseCost || 0);
+                    return (
+                      <tr key={child.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', background: 'rgba(0,0,0,0.15)' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.25)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,0,0,0.15)'}
+                      >
+                        <td style={{ padding: '0.75rem 1rem 0.75rem 2.5rem' }}>
+                          <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.82rem' }}>{child.name}</div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.1rem' }}>{child.sku || '—'}</div>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.78rem', color: '#E5E2E1' }}>
+                          {child.category || '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center', fontWeight: 700, color: child.procurementType === 'on-demand' ? '#818cf8' : child.stockQty === 0 ? '#ef4444' : child.stockQty < (child.minStock || 10) ? '#f59e0b' : '#E5E2E1' }}>
+                          {child.stockQty || 0} <span style={{ color: 'var(--gray)', fontWeight: 400 }}>{child.uom || 'pcs'}</span>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.78rem' }}>
+                          {child.minStock || 10}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', color: '#E5E2E1', fontFamily: 'monospace', fontSize: '0.78rem' }}>
+                          ₱{(child.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 700, color: '#D4A843', fontFamily: 'monospace' }}>
+                          ₱{childStockVal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                          <StatusBadge stock={child.stockQty || 0} minStock={child.minStock || 10} procurementType={child.procurementType} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </React.Fragment>
               );
             })}
           </tbody>
