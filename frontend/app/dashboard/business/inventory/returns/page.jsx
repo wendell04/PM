@@ -579,7 +579,7 @@ function BackordersTab({ onRefresh }) {
       if (allFulfilled) {
         const allPOs = getStore(PO_KEY);
         const po = allPOs.find(p => p.id === bo.poId);
-        if (po && po.status === 'draft') {
+        if (po && po.status === 'pending') {
           setStore(PO_KEY, allPOs.map(p =>
             p.id === bo.poId ? { ...p, status: 'received', updatedAt: new Date().toISOString() } : p
           ));
@@ -595,9 +595,16 @@ function BackordersTab({ onRefresh }) {
     // Check if all RTVs and Credit Claims for this PO are resolved → complete the PO
     checkAndCompletePO(bo.poNumber);
 
-    setBackorders(getStore(BACKORDER_KEY).filter(b => b.status === 'pending'));
+    setBackorders(getStore(BACKORDER_KEY));
     setConfirmModal({ isOpen: false, item: null, newStatus: '' });
     onRefresh();
+  };
+
+  // Status config for Backorders
+  const boStatusConfig = {
+    pending: { label: 'Pending', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
+    received: { label: 'Received', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.2)' },
+    cancelled: { label: 'Cancelled', color: '#ef4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.2)' },
   };
 
   const statusOptions = [
@@ -609,27 +616,30 @@ function BackordersTab({ onRefresh }) {
     <div>
       {backorders.length === 0 ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray)', background: 'var(--dark)', borderRadius: '12px', border: '1px solid var(--border)' }}>
-          No pending backorders. All backordered items have been received.
+          No backorders yet.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {backorders.map(bo => {
-            const isResolved = false; // pending only in this list
+            const isResolved = bo.status !== 'pending';
+            const statusCfg = boStatusConfig[bo.status] || boStatusConfig.pending;
             return (
               <div key={bo.id} style={{
                 background: 'var(--dark)',
                 border: '1px solid var(--border)',
                 borderRadius: '12px',
                 overflow: 'visible',
+                opacity: isResolved ? 0.7 : 1,
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem' }}>
                   {/* Left: Icon + Material Info */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <div style={{
                       width: '40px', height: '40px', borderRadius: '10px',
-                      background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)',
+                      background: isResolved ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
+                      border: isResolved ? '1px solid rgba(34,197,94,0.2)' : '1px solid rgba(245,158,11,0.2)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: '#f59e0b',
+                      color: isResolved ? '#22c55e' : '#f59e0b',
                     }}>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                         <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
@@ -641,9 +651,9 @@ function BackordersTab({ onRefresh }) {
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', padding: '0.15rem 0.5rem', borderRadius: '99px',
                           fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase',
-                          background: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.2)',
+                          background: statusCfg.bg, color: statusCfg.color, border: `1px solid ${statusCfg.border}`,
                         }}>
-                          Pending
+                          {statusCfg.label}
                         </span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.15rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
@@ -653,7 +663,7 @@ function BackordersTab({ onRefresh }) {
                     </div>
                   </div>
 
-                  {/* Right: Reason + Status Dropdowns */}
+                  {/* Right: Reason + Status Display */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                     <div>
                       <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Reason</div>
@@ -664,16 +674,29 @@ function BackordersTab({ onRefresh }) {
                         {bo.reason || '—'}
                       </div>
                     </div>
-                    <div>
-                      <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Update Status</div>
-                      <CustomDropdown
-                        value=""
-                        onChange={(val) => { if (val) setConfirmModal({ isOpen: true, item: bo, newStatus: val }); }}
-                        options={statusOptions}
-                        placeholder="Select action..."
-                        style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px' }}
-                      />
-                    </div>
+                    {!isResolved && (
+                      <div>
+                        <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Update Status</div>
+                        <CustomDropdown
+                          value=""
+                          onChange={(val) => { if (val) setConfirmModal({ isOpen: true, item: bo, newStatus: val }); }}
+                          options={statusOptions}
+                          placeholder="Select action..."
+                          style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px' }}
+                        />
+                      </div>
+                    )}
+                    {isResolved && (
+                      <div>
+                        <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Status</div>
+                        <div style={{
+                          ...inputStyle, padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px', textAlign: 'center',
+                          background: 'rgba(255,255,255,0.03)', color: statusCfg.color, fontWeight: 700, cursor: 'default',
+                        }}>
+                          {statusCfg.label}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -762,7 +785,7 @@ function CreditClaimsTab({ onRefresh }) {
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, item: null, newStatus: '' });
 
   useEffect(() => {
-    setCredits(getStore(CREDIT_KEY).filter(c => c.status === 'pending'));
+    setCredits(getStore(CREDIT_KEY));
   }, []);
 
   const updateStatus = (cc, newStatus) => {
@@ -774,9 +797,17 @@ function CreditClaimsTab({ onRefresh }) {
     // Check if all RTVs and Credit Claims for this PO are resolved → complete the PO
     checkAndCompletePO(cc.poNumber);
 
-    setCredits(getStore(CREDIT_KEY).filter(c => c.status === 'pending'));
+    setCredits(getStore(CREDIT_KEY));
     setConfirmModal({ isOpen: false, item: null, newStatus: '' });
     onRefresh();
+  };
+
+  // Status config for Credit Claims
+  const ccStatusConfig = {
+    pending: { label: 'Pending', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
+    replacement_received: { label: 'Replacement Received', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.2)' },
+    credited: { label: 'Credited', color: '#8b5cf6', bg: 'rgba(139,92,246,0.1)', border: 'rgba(139,92,246,0.2)' },
+    cancelled: { label: 'Cancelled', color: '#ef4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.2)' },
   };
 
   const statusOptions = [
@@ -789,25 +820,30 @@ function CreditClaimsTab({ onRefresh }) {
     <div>
       {credits.length === 0 ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray)', background: 'var(--dark)', borderRadius: '12px', border: '1px solid var(--border)' }}>
-          No pending credit claims. All claims have been resolved.
+          No credit claims yet.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {credits.map(cc => (
+          {credits.map(cc => {
+            const isResolved = cc.status !== 'pending';
+            const statusCfg = ccStatusConfig[cc.status] || ccStatusConfig.pending;
+            return (
             <div key={cc.id} style={{
               background: 'var(--dark)',
               border: '1px solid var(--border)',
               borderRadius: '12px',
               overflow: 'visible',
+              opacity: isResolved ? 0.7 : 1,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem' }}>
                 {/* Left: Icon + Material Info */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                   <div style={{
                     width: '40px', height: '40px', borderRadius: '10px',
-                    background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)',
+                    background: isResolved ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
+                    border: isResolved ? '1px solid rgba(34,197,94,0.2)' : '1px solid rgba(245,158,11,0.2)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#f59e0b',
+                    color: isResolved ? '#22c55e' : '#f59e0b',
                   }}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
@@ -819,9 +855,9 @@ function CreditClaimsTab({ onRefresh }) {
                       <span style={{
                         display: 'inline-flex', alignItems: 'center', padding: '0.15rem 0.5rem', borderRadius: '99px',
                         fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase',
-                        background: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.2)',
+                        background: statusCfg.bg, color: statusCfg.color, border: `1px solid ${statusCfg.border}`,
                       }}>
-                        Pending
+                        {statusCfg.label}
                       </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.15rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
@@ -833,7 +869,7 @@ function CreditClaimsTab({ onRefresh }) {
                   </div>
                 </div>
 
-                {/* Right: Reason + Status Dropdowns */}
+                {/* Right: Reason + Status Display */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                   <div>
                     <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Reason</div>
@@ -844,16 +880,29 @@ function CreditClaimsTab({ onRefresh }) {
                       {cc.reason || '—'}
                     </div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Update Status</div>
-                    <CustomDropdown
-                      value=""
-                      onChange={(val) => { if (val) setConfirmModal({ isOpen: true, item: cc, newStatus: val }); }}
-                      options={statusOptions}
-                      placeholder="Select action..."
-                      style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px' }}
-                    />
-                  </div>
+                  {!isResolved && (
+                    <div>
+                      <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Update Status</div>
+                      <CustomDropdown
+                        value=""
+                        onChange={(val) => { if (val) setConfirmModal({ isOpen: true, item: cc, newStatus: val }); }}
+                        options={statusOptions}
+                        placeholder="Select action..."
+                        style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px' }}
+                      />
+                    </div>
+                  )}
+                  {isResolved && (
+                    <div>
+                      <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Status</div>
+                      <div style={{
+                        ...inputStyle, padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px', textAlign: 'center',
+                        background: 'rgba(255,255,255,0.03)', color: statusCfg.color, fontWeight: 700, cursor: 'default',
+                      }}>
+                        {statusCfg.label}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -880,7 +929,7 @@ function CreditClaimsTab({ onRefresh }) {
                 </div>
               </div>
             </div>
-          ))}
+          );})}
         </div>
       )}
 
