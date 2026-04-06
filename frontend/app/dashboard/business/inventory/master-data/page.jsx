@@ -434,7 +434,6 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [expandedParents, setExpandedParents] = useState(new Set());
-  const [expandedStandalone, setExpandedStandalone] = useState(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
   const [editMaterial, setEditMaterial] = useState(null);
   const [viewMaterial, setViewMaterial] = useState(null);
@@ -532,14 +531,6 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
 
   const toggleExpand = (id) => {
     setExpandedParents(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  const toggleStandaloneExpand = (id) => {
-    setExpandedStandalone(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
@@ -658,99 +649,26 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
               filteredMaterials.map((row) => {
                 if (row.type === 'standalone') {
                   const m = row.item;
-                  const isExpanded = expandedStandalone.has(m.id);
-                  const batchList = (m.batches || []).sort((a, b) => new Date(b.dateReceived) - new Date(a.dateReceived));
-                  const displayStock = getStockQty(m);
-
                   return (
-                    <React.Fragment key={m.id}>
-                      <tr style={{ borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.04)', cursor: batchList.length > 0 ? 'pointer' : 'default' }}
-                        onClick={() => batchList.length > 0 && toggleStandaloneExpand(m.id)}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
-                        onMouseLeave={e => e.currentTarget.style.background = isExpanded ? 'transparent' : 'transparent'}
-                      >
-                        <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
-                          {batchList.length > 0 && (
-                            <button onClick={(e) => { e.stopPropagation(); toggleStandaloneExpand(m.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: isExpanded ? '#D4A843' : 'var(--gray)', padding: '0' }}>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
-                                <path d="M9 18l6-6-6-6"/>
-                              </svg>
-                            </button>
-                          )}
-                        </td>
-                        <td style={{ padding: '0.875rem 1rem' }}>
-                          <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.875rem' }}>{m.name}</div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.15rem' }}>{m.sku || '—'}</div>
-                        </td>
-                        <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}><CategoryBadge category={m.category} /></td>
-                        <td style={{ padding: '0.875rem 1rem', textAlign: 'right' }}>
-                          <div style={{ fontWeight: 600, color: '#E5E2E1' }}>₱{(m.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
-                          <div style={{ fontSize: '0.65rem', color: '#22c55e', fontWeight: 600 }}>{displayStock} {m.uom || 'pcs'}</div>
-                        </td>
-                        <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
-                          <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center', alignItems: 'center' }}>
-                            {m.batches && m.batches.length > 0 && (
-                              <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}>
-                                {m.batches.length} batch{m.batches.length > 1 ? 'es' : ''}
-                              </span>
-                            )}
-                            <button onClick={(e) => { e.stopPropagation(); setEditMaterial(m); setShowAddModal(true); }} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: 'var(--gray)' }} title="Edit"><EditIcon /></button>
-                            <button onClick={(e) => { e.stopPropagation(); setViewMaterial(m); }} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: 'var(--gray)' }} title="View Details"><EyeIcon /></button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDelete(m.id); }} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: '#f87171' }} title="Delete"><TrashIcon /></button>
-                          </div>
-                        </td>
-                      </tr>
-
-                      {/* Expanded Batch Rows */}
-                      {isExpanded && batchList.length > 0 && (
-                        <tr>
-                          <td colSpan={5} style={{ padding: 0, background: 'rgba(0,0,0,0.2)' }}>
-                            <div style={{ padding: '0.75rem 1.25rem 0.75rem 3rem' }}>
-                              <div style={{ fontSize: '0.62rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.6rem', fontWeight: 700, letterSpacing: '0.08em' }}>
-                                Batch / Invoice History
-                              </div>
-                              <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
-                                <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
-                                  <thead>
-                                    <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                                      {['Batch ID', 'Vendor', 'Invoice', 'Date', 'Good Qty', 'Remaining', 'Unit Cost', 'Status'].map((h, i) => (
-                                        <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: i === 0 ? 'left' : i === 3 || i === 4 || i === 5 ? 'center' : i === 6 || i === 7 ? 'right' : 'left', color: 'var(--gray)', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {batchList.map((batch, batchIdx) => (
-                                      <tr key={batch.batchId} style={{
-                                        background: batchIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
-                                        borderBottom: batchIdx < batchList.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
-                                      }}>
-                                        <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', color: '#D4A843', fontWeight: 700, fontSize: '0.75rem' }}>{batch.batchId}</td>
-                                        <td style={{ padding: '0.5rem 0.75rem', color: '#E5E2E1' }}>{batch.vendorName || '—'}</td>
-                                        <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', color: '#E5E2E1', fontSize: '0.72rem' }}>{batch.invoiceNumber || '—'}</td>
-                                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--gray)' }}>{new Date(batch.dateReceived).toLocaleDateString('en-PH')}</td>
-                                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 600, color: '#E5E2E1' }}>{batch.qtyGood || 0} {m.uom || 'pcs'}</td>
-                                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 700, color: '#22c55e' }}>{batch.remainingQty || 0} {m.uom || 'pcs'}</td>
-                                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: '#D4A843', fontWeight: 600, fontFamily: 'monospace' }}>₱{(batch.unitCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-                                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right' }}>
-                                          <span style={{
-                                            fontSize: '0.6rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '4px',
-                                            background: batch.status === 'exhausted' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
-                                            color: batch.status === 'exhausted' ? '#ef4444' : '#22c55e',
-                                            border: `1px solid ${batch.status === 'exhausted' ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
-                                          }}>
-                                            {batch.status === 'exhausted' ? 'Exhausted' : 'Active'}
-                                          </span>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
+                    <tr key={m.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <td style={{ padding: '0.875rem 1rem' }}></td>
+                      <td style={{ padding: '0.875rem 1rem' }}>
+                        <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.875rem' }}>{m.name}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.15rem' }}>{m.sku || '—'}</div>
+                      </td>
+                      <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}><CategoryBadge category={m.category} /></td>
+                      <td style={{ padding: '0.875rem 1rem', textAlign: 'right', fontWeight: 600, color: '#E5E2E1' }}>₱{(m.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                      <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
+                          <button onClick={() => { setEditMaterial(m); setShowAddModal(true); }} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: 'var(--gray)' }} title="Edit"><EditIcon /></button>
+                          <button onClick={() => setViewMaterial(m)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: 'var(--gray)' }} title="View Details"><EyeIcon /></button>
+                          <button onClick={() => handleDelete(m.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: '#f87171' }} title="Delete"><TrashIcon /></button>
+                        </div>
+                      </td>
+                    </tr>
                   );
                 }
 
@@ -810,90 +728,28 @@ function MaterialMasterTab({ itemCategories, materials, onMaterialsChange, onVen
                         </div>
                       </td>
                     </tr>
-                    {isExpanded && children.map(child => {
-                      const childIsExpanded = expandedStandalone.has(child.id);
-                      const childBatchList = (child.batches || []).sort((a, b) => new Date(b.dateReceived) - new Date(a.dateReceived));
-                      const childStock = getStockQty(child);
-
-                      return (
-                        <React.Fragment key={child.id}>
-                          <tr style={{ borderBottom: childIsExpanded ? 'none' : '1px solid rgba(255,255,255,0.03)', background: 'rgba(0,0,0,0.15)', cursor: childBatchList.length > 0 ? 'pointer' : 'default' }}
-                            onClick={() => childBatchList.length > 0 && toggleStandaloneExpand(child.id)}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.25)'}
-                            onMouseLeave={e => e.currentTarget.style.background = childIsExpanded ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.15)'}
-                          >
-                            <td style={{ padding: '0.75rem 1rem 0.75rem 2.5rem', textAlign: 'center' }}>
-                              {childBatchList.length > 0 && (
-                                <button onClick={(e) => { e.stopPropagation(); toggleStandaloneExpand(child.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: childIsExpanded ? '#D4A843' : 'var(--gray)', padding: '0' }}>
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transition: 'transform 0.2s', transform: childIsExpanded ? 'rotate(90deg)' : 'none' }}>
-                                    <path d="M9 18l6-6-6-6"/>
-                                  </svg>
-                                </button>
-                              )}
-                            </td>
-                            <td style={{ padding: '0.75rem 1rem 0.75rem 2.5rem' }}>
-                              <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.825rem' }}>{child.name}</div>
-                              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.1rem' }}>{child.sku || '—'}</div>
-                            </td>
-                            <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}><CategoryBadge category={child.category} /></td>
-                            <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                              <div style={{ fontWeight: 600, color: '#E5E2E1' }}>₱{(child.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
-                              <div style={{ fontSize: '0.65rem', color: '#22c55e', fontWeight: 600 }}>{childStock} {child.uom || 'pcs'}</div>
-                            </td>
-                            <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                              <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
-                                {child.batches && child.batches.length > 0 && (
-                                  <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)' }}>
-                                    {child.batches.length} batch{child.batches.length > 1 ? 'es' : ''}
-                                  </span>
-                                )}
-                                <button onClick={(e) => { e.stopPropagation(); setViewMaterial(child); }} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: 'var(--gray)' }}><EyeIcon /></button>
-                                <button onClick={(e) => { e.stopPropagation(); handleDelete(child.id); }} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: '#f87171' }}><TrashIcon /></button>
-                              </div>
-                            </td>
-                          </tr>
-
-                          {/* Child Batch Rows */}
-                          {childIsExpanded && childBatchList.length > 0 && (
-                            <tr>
-                              <td colSpan={5} style={{ padding: 0, background: 'rgba(0,0,0,0.25)' }}>
-                                <div style={{ padding: '0.75rem 1.25rem 0.75rem 4rem' }}>
-                                  <div style={{ border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', overflow: 'hidden' }}>
-                                    <table style={{ width: '100%', fontSize: '0.75rem', borderCollapse: 'collapse' }}>
-                                      <thead>
-                                        <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                          {['Batch ID', 'Vendor', 'Invoice', 'Date', 'Good Qty', 'Remaining', 'Unit Cost', 'Status'].map((h, i) => (
-                                            <th key={h} style={{ padding: '0.4rem 0.6rem', textAlign: i === 0 ? 'left' : i >= 3 && i <= 5 ? 'center' : i >= 6 ? 'right' : 'left', color: 'var(--gray)', fontWeight: 700, fontSize: '0.58rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</th>
-                                          ))}
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {childBatchList.map((batch, batchIdx) => (
-                                          <tr key={batch.batchId} style={{ background: batchIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}>
-                                            <td style={{ padding: '0.4rem 0.6rem', fontFamily: 'monospace', color: '#D4A843', fontWeight: 700, fontSize: '0.72rem' }}>{batch.batchId}</td>
-                                            <td style={{ padding: '0.4rem 0.6rem', color: '#E5E2E1', fontSize: '0.72rem' }}>{batch.vendorName || '—'}</td>
-                                            <td style={{ padding: '0.4rem 0.6rem', fontFamily: 'monospace', color: '#E5E2E1', fontSize: '0.7rem' }}>{batch.invoiceNumber || '—'}</td>
-                                            <td style={{ padding: '0.4rem 0.6rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.72rem' }}>{new Date(batch.dateReceived).toLocaleDateString('en-PH')}</td>
-                                            <td style={{ padding: '0.4rem 0.6rem', textAlign: 'center', fontWeight: 600, color: '#E5E2E1', fontSize: '0.75rem' }}>{batch.qtyGood || 0}</td>
-                                            <td style={{ padding: '0.4rem 0.6rem', textAlign: 'center', fontWeight: 700, color: '#22c55e', fontSize: '0.75rem' }}>{batch.remainingQty || 0}</td>
-                                            <td style={{ padding: '0.4rem 0.6rem', textAlign: 'right', color: '#D4A843', fontWeight: 600, fontFamily: 'monospace' }}>₱{(batch.unitCost || 0).toFixed(2)}</td>
-                                            <td style={{ padding: '0.4rem 0.6rem', textAlign: 'right' }}>
-                                              <span style={{ fontSize: '0.58rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '3px', background: batch.status === 'exhausted' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)', color: batch.status === 'exhausted' ? '#ef4444' : '#22c55e' }}>
-                                                {batch.status === 'exhausted' ? 'Exhausted' : 'Active'}
-                                              </span>
-                                            </td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
+                    {isExpanded && children.map(child => (
+                      <tr key={child.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', background: 'rgba(0,0,0,0.15)' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.25)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,0,0,0.15)'}
+                      >
+                        <td style={{ padding: '0.75rem 1rem 0.75rem 2.5rem' }}>
+                          <div style={{ width: '16px', height: '1px', background: 'rgba(212,168,67,0.3)', marginBottom: '4px' }}></div>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem 0.75rem 2.5rem' }}>
+                          <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.825rem' }}>{child.name}</div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace', marginTop: '0.1rem' }}>{child.sku || '—'}</div>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}><CategoryBadge category={child.category} /></td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600, color: '#E5E2E1' }}>₱{(child.baseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
+                            <button onClick={() => setViewMaterial(child)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: 'var(--gray)' }}><EyeIcon /></button>
+                            <button onClick={() => handleDelete(child.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', color: '#f87171' }}><TrashIcon /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
                   </React.Fragment>
                 );
               })

@@ -33,6 +33,38 @@ function setStore(key, data) {
   localStorage.setItem(key, JSON.stringify(data));
 }
 
+// ── Helper: Check if all RTVs and Credit Claims for a PO are resolved ──────────
+// Resolved statuses: replacement_received, credited, cancelled
+const RESOLVED_STATUSES = ['replacement_received', 'credited', 'cancelled'];
+
+function checkAndCompletePO(poNumber) {
+  if (!poNumber || poNumber === 'Manual') return;
+  
+  const allRTVs = getStore(RTV_KEY);
+  const allCredits = getStore(CREDIT_KEY);
+  const allPOs = getStore(PO_KEY);
+  
+  // Get all RTVs for this PO
+  const poRTVs = allRTVs.filter(r => r.poNumber === poNumber);
+  // Get all Credit Claims for this PO
+  const poCredits = allCredits.filter(c => c.poNumber === poNumber);
+  
+  // Check if all are resolved
+  const allRTVsResolved = poRTVs.length === 0 || poRTVs.every(r => RESOLVED_STATUSES.includes(r.status));
+  const allCreditsResolved = poCredits.length === 0 || poCredits.every(c => RESOLVED_STATUSES.includes(c.status));
+  
+  // If all resolved and PO is still pending, mark as received
+  if (allRTVsResolved && allCreditsResolved) {
+    const po = allPOs.find(p => p.poNumber === poNumber);
+    if (po && (po.status === 'pending' || po.status === 'draft')) {
+      const updatedPOs = allPOs.map(p =>
+        p.poNumber === poNumber ? { ...p, status: 'received', updatedAt: new Date().toISOString() } : p
+      );
+      setStore(PO_KEY, updatedPOs);
+    }
+  }
+}
+
 // ── Status Config ──────────────────────────────────────────────────────────────
 const RTV_STATUS = {
   pending:              { label: 'Pending',              color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',   border: 'rgba(245,158,11,0.2)' },
@@ -256,6 +288,10 @@ function RTVListTab({ rtvs, onRefresh }) {
         ));
       }
     }
+
+    // Check if all RTVs and Credit Claims for this PO are resolved → complete the PO
+    checkAndCompletePO(rtv.poNumber);
+
     setConfirmModal({ isOpen: false, rtv: null, newStatus: '' });
     onRefresh();
   };
@@ -519,7 +555,7 @@ function BackordersTab({ onRefresh }) {
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, item: null, newStatus: '' });
 
   useEffect(() => {
-    setBackorders(getStore(BACKORDER_KEY).filter(b => b.status === 'pending'));
+    setBackorders(getStore(BACKORDER_KEY));
   }, []);
 
   const updateStatus = (bo, newStatus) => {
@@ -543,7 +579,7 @@ function BackordersTab({ onRefresh }) {
       if (allFulfilled) {
         const allPOs = getStore(PO_KEY);
         const po = allPOs.find(p => p.id === bo.poId);
-        if (po && po.status === 'partial') {
+        if (po && po.status === 'draft') {
           setStore(PO_KEY, allPOs.map(p =>
             p.id === bo.poId ? { ...p, status: 'received', updatedAt: new Date().toISOString() } : p
           ));
@@ -555,6 +591,9 @@ function BackordersTab({ onRefresh }) {
     setStore(BACKORDER_KEY, allBO.map(b =>
       b.id === bo.id ? { ...b, status: newStatus, updatedAt: new Date().toISOString() } : b
     ));
+
+    // Check if all RTVs and Credit Claims for this PO are resolved → complete the PO
+    checkAndCompletePO(bo.poNumber);
 
     setBackorders(getStore(BACKORDER_KEY).filter(b => b.status === 'pending'));
     setConfirmModal({ isOpen: false, item: null, newStatus: '' });
@@ -731,6 +770,10 @@ function CreditClaimsTab({ onRefresh }) {
     setStore(CREDIT_KEY, allCC.map(c =>
       c.id === cc.id ? { ...c, status: newStatus, updatedAt: new Date().toISOString() } : c
     ));
+
+    // Check if all RTVs and Credit Claims for this PO are resolved → complete the PO
+    checkAndCompletePO(cc.poNumber);
+
     setCredits(getStore(CREDIT_KEY).filter(c => c.status === 'pending'));
     setConfirmModal({ isOpen: false, item: null, newStatus: '' });
     onRefresh();
