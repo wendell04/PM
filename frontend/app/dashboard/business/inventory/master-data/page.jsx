@@ -937,8 +937,17 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
     if (!form.preferredVendorId) newErrors.vendor = 'Please select a vendor';
     if (!form.category) newErrors.category = 'Please select a category';
     if (!form.name.trim()) newErrors.name = 'Please enter an item name';
+    // Validate variant types when variants are enabled
+    if (form.hasVariants) {
+      if (form.variantTypes.length === 0) {
+        newErrors.variantTypes = 'At least one variant type is required.';
+      } else {
+        const emptyType = form.variantTypes.find(vt => vt.options.length === 0);
+        if (emptyType) newErrors.variantTypes = `"${emptyType.name}" must have at least one option.`;
+      }
+    }
     // Validate variant costs when variants are enabled
-    if (form.hasVariants && previewSKUs.length > 1) {
+    if (form.hasVariants && previewSKUs.length > 0) {
       const missingCost = previewSKUs.some(sku => {
         const cost = variantCosts[sku.comboKey];
         return cost === undefined || cost === '' || parseFloat(cost) === 0;
@@ -1253,8 +1262,8 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
             {form.hasVariants && form.name.trim() && (
               <div>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  Variant Types
-                  <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)', marginLeft: '0.25rem' }}>(Optional e.g., Capacity, Color, Size)</span>
+                  Variant Types <span className="required">*</span>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)', marginLeft: '0.25rem' }}>(e.g., Capacity, Color, Size)</span>
                   <button type="button" onClick={() => setVariantTutorialOpen(true)}
                     style={{ background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#D4A843', fontSize: '0.65rem', fontWeight: 800, lineHeight: 1, flexShrink: 0 }}
                     title="How to add variant types">
@@ -1372,6 +1381,7 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
                     + Add Variant Type
                   </button>
                 </div>
+                {errors.variantTypes && <span style={{ fontSize: '0.72rem', color: 'var(--red)', marginTop: '0.2rem', display: 'block', marginBottom: '0.75rem' }}>{errors.variantTypes}</span>}
 
                 {/* Combination Preview */}
                 {form.variantTypes.length > 0 && getTotalCombinations() > 0 && (
@@ -1784,20 +1794,32 @@ function VendorDetailsModal({ vendor, materials, onClose }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.5rem' }}>
             {vendor.contact && (
               <div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem' }}>Contact Person</div>
-                <div style={{ fontSize: '0.95rem', color: '#E5E2E1', fontWeight: 600 }}>{vendor.contact}</div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem' }}>Contact Person{(Array.isArray(vendor.contact) ? vendor.contact : [vendor.contact]).length > 1 ? 's' : ''}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  {(Array.isArray(vendor.contact) ? vendor.contact : [vendor.contact]).map((c, i) => (
+                    <div key={i} style={{ fontSize: '0.95rem', color: '#E5E2E1', fontWeight: 600 }}>{c}</div>
+                  ))}
+                </div>
               </div>
             )}
             {vendor.email && (
               <div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem' }}>Email</div>
-                <div style={{ fontSize: '0.95rem', color: '#3b82f6', fontWeight: 600 }}>{vendor.email}</div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem' }}>Email{(Array.isArray(vendor.email) ? vendor.email : [vendor.email]).length > 1 ? 's' : ''}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  {(Array.isArray(vendor.email) ? vendor.email : [vendor.email]).map((em, i) => (
+                    <div key={i} style={{ fontSize: '0.95rem', color: '#3b82f6', fontWeight: 600 }}>{em}</div>
+                  ))}
+                </div>
               </div>
             )}
             {vendor.phone && (
               <div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem' }}>Phone</div>
-                <div style={{ fontSize: '0.95rem', color: '#E5E2E1', fontWeight: 600 }}>{vendor.phone}</div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem' }}>Phone{(Array.isArray(vendor.phone) ? vendor.phone : [vendor.phone]).length > 1 ? 's' : ''}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  {(Array.isArray(vendor.phone) ? vendor.phone : [vendor.phone]).map((ph, i) => (
+                    <div key={i} style={{ fontSize: '0.95rem', color: '#E5E2E1', fontWeight: 600 }}>{ph}</div>
+                  ))}
+                </div>
               </div>
             )}
             {vendor.address && (
@@ -1982,18 +2004,27 @@ function VendorMasterTab({ materials, onVendorsChange }) {
 
               {/* Contact Info */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.825rem' }}>
-                {v.phone && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#E5E2E1' }}>
+                {/* Contact Persons */}
+                {(Array.isArray(v.contact) ? v.contact : v.contact ? [v.contact] : []).map((c, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#E5E2E1' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    {c}
+                  </div>
+                ))}
+                {/* Phones */}
+                {(Array.isArray(v.phone) ? v.phone : v.phone ? [v.phone] : []).map((ph, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#E5E2E1' }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-                    {v.phone}
+                    {ph}
                   </div>
-                )}
-                {v.email && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--gray)' }}>
+                ))}
+                {/* Emails */}
+                {(Array.isArray(v.email) ? v.email : v.email ? [v.email] : []).map((em, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--gray)' }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                    {v.email}
+                    {em}
                   </div>
-                )}
+                ))}
               </div>
 
               {/* Items Supplied — individual boxes */}
@@ -2114,11 +2145,14 @@ function VendorMasterTab({ materials, onVendorsChange }) {
 }
 
 function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
-  const [form, setForm] = useState({ name: '', contact: '', itemsSupplied: [], email: '', phone: '', address: '' });
+  const [form, setForm] = useState({ name: '', contact: [], itemsSupplied: [], email: [], phone: [], address: '' });
   const [itemNameInput, setItemNameInput] = useState('');
   const [itemUomInput, setItemUomInput] = useState('pcs');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [errors, setErrors] = useState({});
+  const [newContact, setNewContact] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPhone, setNewPhone] = useState('');
 
   // Check if this vendor has linked materials
   const linkedMaterials = useMemo(() => {
@@ -2168,11 +2202,22 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
     });
   };
 
+  // Normalize single values to arrays for backwards compatibility
+  const normalizeToArray = (val) => {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string' && val.trim()) return [val.trim()];
+    return [];
+  };
+
   useEffect(() => {
     if (vendor) {
       setForm({
-        name: vendor.name || '', contact: vendor.contact || '', itemsSupplied: normalizeItems(vendor.itemsSupplied),
-        email: vendor.email || '', phone: vendor.phone || '', address: vendor.address || '',
+        name: vendor.name || '',
+        contact: normalizeToArray(vendor.contact),
+        itemsSupplied: normalizeItems(vendor.itemsSupplied),
+        email: normalizeToArray(vendor.email),
+        phone: normalizeToArray(vendor.phone),
+        address: vendor.address || '',
       });
     }
   }, [vendor]);
@@ -2203,19 +2248,56 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
     }
   };
 
-  const handlePhoneChange = (e) => {
-    let val = e.target.value.replace(/[^0-9+]/g, '');
-    if (val.startsWith('+63')) {
-      val = '+63' + val.slice(3).replace(/[^0-9]/g, '').slice(0, 10);
-    } else if (val.startsWith('0')) {
-      val = '0' + val.slice(1).replace(/[^0-9]/g, '').slice(0, 10);
-    } else if (val.startsWith('63')) {
-      val = '+63' + val.slice(2).replace(/[^0-9]/g, '').slice(0, 10);
+  const handlePhoneInputChange = (val) => {
+    let cleaned = val.replace(/[^0-9+]/g, '');
+    if (cleaned.startsWith('+63')) {
+      cleaned = '+63' + cleaned.slice(3).replace(/[^0-9]/g, '').slice(0, 10);
+    } else if (cleaned.startsWith('0')) {
+      cleaned = '0' + cleaned.slice(1).replace(/[^0-9]/g, '').slice(0, 10);
+    } else if (cleaned.startsWith('63')) {
+      cleaned = '+63' + cleaned.slice(2).replace(/[^0-9]/g, '').slice(0, 10);
     } else {
-      val = val.replace(/[^0-9]/g, '').slice(0, 11);
-      if (val.length > 0 && !val.startsWith('0')) val = '0' + val;
+      cleaned = cleaned.replace(/[^0-9]/g, '').slice(0, 11);
+      if (cleaned.length > 0 && !cleaned.startsWith('0')) cleaned = '0' + cleaned;
     }
-    setForm(p => ({ ...p, phone: val }));
+    setNewPhone(cleaned);
+  };
+
+  const addContact = () => {
+    const trimmed = newContact.trim();
+    if (!trimmed) return;
+    if (form.contact.includes(trimmed)) return;
+    setForm(p => ({ ...p, contact: [...p.contact, trimmed] }));
+    setNewContact('');
+  };
+
+  const removeContact = (idx) => {
+    setForm(p => ({ ...p, contact: p.contact.filter((_, i) => i !== idx) }));
+  };
+
+  const addEmail = () => {
+    const trimmed = newEmail.trim();
+    if (!trimmed) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return;
+    if (form.email.includes(trimmed)) return;
+    setForm(p => ({ ...p, email: [...p.email, trimmed] }));
+    setNewEmail('');
+  };
+
+  const removeEmail = (idx) => {
+    setForm(p => ({ ...p, email: p.email.filter((_, i) => i !== idx) }));
+  };
+
+  const addPhone = () => {
+    const trimmed = newPhone.trim();
+    if (!trimmed) return;
+    if (form.phone.includes(trimmed)) return;
+    setForm(p => ({ ...p, phone: [...p.phone, trimmed] }));
+    setNewPhone('');
+  };
+
+  const removePhone = (idx) => {
+    setForm(p => ({ ...p, phone: p.phone.filter((_, i) => i !== idx) }));
   };
 
   const handleSubmit = (e) => {
@@ -2223,6 +2305,10 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
     const newErrors = {};
     if (!form.name.trim()) newErrors.name = 'Company name is required';
     if (form.itemsSupplied.length === 0) newErrors.items = 'Add at least one item';
+    if (form.contact.length === 0) newErrors.contact = 'Add at least one contact person';
+    if (form.email.length === 0) newErrors.email = 'Add at least one email';
+    if (form.phone.length === 0) newErrors.phone = 'Add at least one phone number';
+    if (!form.address.trim()) newErrors.address = 'Address is required';
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
@@ -2376,25 +2462,106 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label className="form-label">Contact Person</label>
-                <input type="text" style={inputStyle} value={form.contact} onChange={e => setForm(p => ({ ...p, contact: e.target.value.slice(0, 80) }))} placeholder="Juan Dela Cruz" maxLength={80} />
-              </div>
-              <div>
-                <label className="form-label">Email</label>
-                <input type="email" style={inputStyle} value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value.slice(0, 100) }))} placeholder="vendor@email.com" maxLength={100} />
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label className="form-label">Phone</label>
-                <input type="text" style={inputStyle} value={form.phone} onChange={handlePhoneChange} placeholder="09xx-xxx-xxxx" maxLength={15} inputMode="tel" />
-              </div>
-            </div>
+            {/* Contact Persons */}
             <div>
-              <label className="form-label">Address</label>
+              <label className="form-label">Contact Person <span className="required">*</span></label>
+              {form.contact.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                  {form.contact.map((c, idx) => (
+                    <span key={idx} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                      padding: '0.25rem 0.5rem', background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.75rem',
+                    }}>
+                      {c}
+                      <button type="button" onClick={() => removeContact(idx)} style={{
+                        background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', padding: 0, display: 'flex',
+                      }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input type="text" style={inputStyle} value={newContact} onChange={e => setNewContact(e.target.value.slice(0, 80))} placeholder="Juan Dela Cruz" maxLength={80}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addContact(); } }} />
+                <button type="button" onClick={addContact} style={{
+                  background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '6px',
+                  padding: '0.5rem 0.75rem', color: '#D4A843', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}>+ Add</button>
+              </div>
+              {errors.contact && <p style={{ fontSize: '0.72rem', color: 'var(--red)', marginTop: '0.25rem' }}>{errors.contact}</p>}
+            </div>
+
+            {/* Emails */}
+            <div>
+              <label className="form-label">Email <span className="required">*</span></label>
+              {form.email.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                  {form.email.map((em, idx) => (
+                    <span key={idx} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                      padding: '0.25rem 0.5rem', background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.75rem',
+                    }}>
+                      {em}
+                      <button type="button" onClick={() => removeEmail(idx)} style={{
+                        background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', padding: 0, display: 'flex',
+                      }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input type="email" style={inputStyle} value={newEmail} onChange={e => setNewEmail(e.target.value.slice(0, 100))} placeholder="vendor@email.com" maxLength={100}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }} />
+                <button type="button" onClick={addEmail} style={{
+                  background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '6px',
+                  padding: '0.5rem 0.75rem', color: '#D4A843', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}>+ Add</button>
+              </div>
+              {errors.email && <p style={{ fontSize: '0.72rem', color: 'var(--red)', marginTop: '0.25rem' }}>{errors.email}</p>}
+            </div>
+
+            {/* Phone Numbers */}
+            <div>
+              <label className="form-label">Phone <span className="required">*</span></label>
+              {form.phone.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                  {form.phone.map((ph, idx) => (
+                    <span key={idx} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                      padding: '0.25rem 0.5rem', background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.75rem',
+                    }}>
+                      {ph}
+                      <button type="button" onClick={() => removePhone(idx)} style={{
+                        background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', padding: 0, display: 'flex',
+                      }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input type="text" style={inputStyle} value={newPhone} onChange={e => handlePhoneInputChange(e.target.value)} placeholder="09xx-xxx-xxxx" maxLength={15} inputMode="tel"
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPhone(); } }} />
+                <button type="button" onClick={addPhone} style={{
+                  background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '6px',
+                  padding: '0.5rem 0.75rem', color: '#D4A843', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}>+ Add</button>
+              </div>
+              {errors.phone && <p style={{ fontSize: '0.72rem', color: 'var(--red)', marginTop: '0.25rem' }}>{errors.phone}</p>}
+            </div>
+
+            <div>
+              <label className="form-label">Address <span className="required">*</span></label>
               <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: '60px' }} value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value.slice(0, 200) }))} placeholder="Full address" maxLength={200} />
+              {errors.address && <p style={{ fontSize: '0.72rem', color: 'var(--red)', marginTop: '0.25rem' }}>{errors.address}</p>}
             </div>
           </div>
           <div className="modal-actions">
@@ -2650,11 +2817,15 @@ export default function MasterDataPage() {
     setMaterials(getMaterials());
   }, []);
 
-  // Collect all unique items from all vendors' itemsSupplied
+  // Collect all unique item names from all vendors' itemsSupplied
   const itemCategories = useMemo(() => {
     const items = new Set();
     vendors.forEach(v => {
-      (v.itemsSupplied || []).forEach(item => items.add(item));
+      (v.itemsSupplied || []).forEach(item => {
+        // itemsSupplied contains objects { name, uom }, extract the name
+        const itemName = typeof item === 'string' ? item : item.name;
+        if (itemName) items.add(itemName);
+      });
     });
     return [...items].sort();
   }, [vendors]);

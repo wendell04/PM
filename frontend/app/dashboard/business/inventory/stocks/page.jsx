@@ -828,10 +828,172 @@ function StockOutHistoryTab({ stockOuts }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ACTUAL STOCK TAB (Physical Count with Damage Reconciliation)
+// ══════════════════════════════════════════════════════════════════════════════
+function ActualStockTab({ materials }) {
+  const [counts, setCounts] = useState({});
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+
+  // Load saved counts from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('pmp_actual_stock') || '{}');
+      setCounts(saved);
+    } catch {
+      setCounts({});
+    }
+  }, []);
+
+  // Handler for inputs
+  const handleCountChange = (id, field, val) => {
+    const num = parseInt(val) || 0;
+    const newCounts = { ...counts, [id]: { ...counts[id], [field]: num } };
+    setCounts(newCounts);
+    localStorage.setItem('pmp_actual_stock', JSON.stringify(newCounts));
+  };
+
+  // Stats
+  const totalDamagedDetected = Object.values(counts).reduce((acc, c) => acc + (c.damaged || 0), 0);
+  const totalShortage = Object.entries(counts).reduce((acc, [id, c]) => {
+    const mat = materials.find(m => m.id === id);
+    const diff = (c.good || 0) - (mat?.stockQty || 0);
+    return acc + (diff < 0 ? Math.abs(diff) : 0);
+  }, 0);
+
+  // Filter materials (Parents only)
+  const categories = [...new Set(materials.filter(m => !m.parentId).map(m => m.category).filter(Boolean))];
+  const filtered = materials.filter(m => {
+    if (m.parentId) return false; 
+    if (categoryFilter && m.category !== categoryFilter) return false;
+    if (search && !m.name.toLowerCase().includes(search.toLowerCase()) && !(m.sku||'').toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const inputStyle = {
+    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: '6px', color: '#E5E2E1', padding: '0.4rem', width: '60px',
+    textAlign: 'center', fontSize: '0.85rem', outline: 'none'
+  };
+
+  return (
+    <div>
+      {/* Summary Cards for Damage */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div style={{ padding: '1rem', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: '10px' }}>
+          <div style={{ fontSize: '0.7rem', color: '#F87171', textTransform: 'uppercase', fontWeight: 700 }}>Detected Damaged</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#F87171' }}>{totalDamagedDetected} units</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>Found during physical count</div>
+        </div>
+        <div style={{ padding: '1rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px' }}>
+          <div style={{ fontSize: '0.7rem', color: '#F59E0B', textTransform: 'uppercase', fontWeight: 700 }}>Shortage (Missing)</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#F59E0B' }}>{totalShortage} units</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>System vs Actual difference</div>
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search materials..."
+            style={{ width: '100%', padding: '0.6rem 1rem 0.6rem 2.5rem', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: '8px', color: '#E5E2E1', outline: 'none' }} />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--gray)', pointerEvents: 'none' }}>
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+          </svg>
+        </div>
+        <CustomDropdown value={categoryFilter} onChange={setCategoryFilter}
+          options={[{ value: '', label: 'All Categories' }, ...categories.map(c => ({ value: c, label: c }))]}
+          placeholder="All Categories" style={{ minWidth: '150px' }} />
+      </div>
+
+      {/* Table */}
+      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--dark)' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+          <thead>
+            <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '2px solid var(--border)' }}>
+              <th style={{ padding: '0.875rem 1rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase' }}>SKU / Name</th>
+              <th style={{ padding: '0.875rem 1rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', width: '100px' }}>Sys Good</th>
+              <th style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#22c55e', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', width: '110px' }}>Actual Good</th>
+              <th style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#ef4444', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', width: '110px' }}>Actual Dmg</th>
+              <th style={{ padding: '0.875rem 1rem', textAlign: 'center', color: 'var(--gold)', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', width: '100px' }}>Total</th>
+              <th style={{ padding: '0.875rem 1rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', width: '100px' }}>Variance</th>
+              <th style={{ padding: '0.875rem 1rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', width: '100px' }}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((mat) => {
+              const sysGood = mat.stockQty || 0;
+              const recGood = counts[mat.id]?.good ?? '';
+              const recDmg = counts[mat.id]?.damaged ?? '';
+              const totalAct = (parseInt(recGood) || 0) + (parseInt(recDmg) || 0);
+              
+              // Variance logic: Actual Good vs System Good
+              const diff = (parseInt(recGood) || 0) - sysGood;
+              const varianceDisplay = recGood === '' ? '—' : (diff > 0 ? `+${diff}` : `${diff}`);
+              
+              // Status Logic
+              let status = 'Pending';
+              let statusColor = 'var(--gray)';
+              
+              if (recGood !== '' || recDmg !== '') {
+                if (recDmg > 0 && diff === 0) { status = 'Damaged Found'; statusColor = '#F87171'; }
+                else if (recDmg > 0 && diff < 0) { status = 'Damaged + Short'; statusColor = '#EF4444'; }
+                else if (diff < 0) { status = 'Shortage'; statusColor = '#F59E0B'; }
+                else if (diff > 0) { status = 'Overage'; statusColor = '#3B82F6'; }
+                else { status = 'Matched'; statusColor = '#22C55E'; }
+              }
+
+              return (
+                <tr key={mat.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td style={{ padding: '0.875rem 1rem' }}>
+                    <div style={{ fontWeight: 600, color: '#E5E2E1' }}>{mat.name}</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{mat.sku}</div>
+                  </td>
+                  <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#E5E2E1', fontWeight: 600 }}>
+                    {sysGood}
+                  </td>
+                  <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
+                    <input type="number" value={recGood} onChange={e => handleCountChange(mat.id, 'good', e.target.value)}
+                      placeholder={sysGood} min="0" style={inputStyle} />
+                  </td>
+                  <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
+                    <input type="number" value={recDmg} onChange={e => handleCountChange(mat.id, 'damaged', e.target.value)}
+                      placeholder="0" min="0" style={{...inputStyle, borderColor: recDmg > 0 ? '#ef4444' : 'rgba(255,255,255,0.1)'}} />
+                  </td>
+                  <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 700, color: '#D4A843' }}>
+                    {recGood !== '' || recDmg !== '' ? totalAct : '—'}
+                  </td>
+                  <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 700, color: statusColor }}>
+                    {varianceDisplay}
+                  </td>
+                  <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: statusColor, textTransform: 'uppercase' }}>
+                      {status}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      
+      <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', fontSize: '0.8rem', color: '#f59e0b' }}>
+        <strong>Guide:</strong> 
+        1. Count good items & put in "Actual Good". 
+        2. Count faulty items & put in "Actual Dmg". 
+        3. "Variance" compares Actual Good vs System Good.
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function StocksPage() {
-  const [activeTab,     setActiveTab]     = useState('overview');
+  const [activeTab,     setActiveTab]     = useState('goods');
   const [materials,     setMaterials]     = useState([]);
   const [stockOuts,     setStockOuts]     = useState([]);
   const [showIssueForm, setShowIssueForm] = useState(false);
@@ -897,17 +1059,21 @@ export default function StocksPage() {
 
         {/* Tab Switcher */}
         <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '0.25rem', width: 'fit-content' }}>
-          <button style={tabStyle('overview')} onClick={() => setActiveTab('overview')}>Stock Overview</button>
+          <button style={tabStyle('goods')} onClick={() => setActiveTab('goods')}>Goods Stock</button>
+          <button style={tabStyle('actual')} onClick={() => setActiveTab('actual')}>Actual Stock</button>
           <button style={tabStyle('history')} onClick={() => setActiveTab('history')}>Stock-Out History</button>
         </div>
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'overview' && (
+      {activeTab === 'goods' && (
         <StockOverviewTab
           materials={materials}
           onIssueStock={() => setShowIssueForm(true)}
         />
+      )}
+      {activeTab === 'actual' && (
+        <ActualStockTab materials={materials} />
       )}
       {activeTab === 'history' && (
         <StockOutHistoryTab stockOuts={stockOuts} />

@@ -16,8 +16,11 @@ import CustomDropdown from '@/app/components/CustomDropdown';
 
 // ── Storage Keys ───────────────────────────────────────────────────────────────
 const RTV_KEY        = 'pmp_returns_to_vendor';
+const BACKORDER_KEY  = 'pmp_backorders';
+const CREDIT_KEY     = 'pmp_credit_claims';
 const MATERIALS_KEY  = 'pmp_materials';
 const VENDORS_KEY    = 'pmp_vendors';
+const PO_KEY         = 'pmp_purchase_orders';
 
 // ── Storage Helpers ────────────────────────────────────────────────────────────
 function getStore(key) {
@@ -509,9 +512,406 @@ function RTVListTab({ rtvs, onRefresh }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// BACKORDERS TAB
+// ══════════════════════════════════════════════════════════════════════════════
+function BackordersTab({ onRefresh }) {
+  const [backorders, setBackorders] = useState([]);
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, item: null, newStatus: '' });
+
+  useEffect(() => {
+    setBackorders(getStore(BACKORDER_KEY).filter(b => b.status === 'pending'));
+  }, []);
+
+  const updateStatus = (bo, newStatus) => {
+    if (newStatus === 'received') {
+      // Restore stock when backorder received
+      const mats = getStore(MATERIALS_KEY);
+      const mat = mats.find(m => m.id === bo.materialId);
+      if (mat) {
+        const oldStock = parseInt(mat.stockQty) || 0;
+        const newStock = oldStock + bo.qty;
+        setStore(MATERIALS_KEY, mats.map(m =>
+          m.id === bo.materialId ? { ...m, stockQty: newStock, updatedAt: new Date().toISOString() } : m
+        ));
+      }
+
+      // Update PO status if all backorders fulfilled
+      const allBO = getStore(BACKORDER_KEY);
+      const poBackorders = allBO.filter(b => b.poId === bo.poId);
+      const allFulfilled = poBackorders.every(b => b.id === bo.id || b.status === 'fulfilled');
+
+      if (allFulfilled) {
+        const allPOs = getStore(PO_KEY);
+        const po = allPOs.find(p => p.id === bo.poId);
+        if (po && po.status === 'partial') {
+          setStore(PO_KEY, allPOs.map(p =>
+            p.id === bo.poId ? { ...p, status: 'received', updatedAt: new Date().toISOString() } : p
+          ));
+        }
+      }
+    }
+
+    const allBO = getStore(BACKORDER_KEY);
+    setStore(BACKORDER_KEY, allBO.map(b =>
+      b.id === bo.id ? { ...b, status: newStatus, updatedAt: new Date().toISOString() } : b
+    ));
+
+    setBackorders(getStore(BACKORDER_KEY).filter(b => b.status === 'pending'));
+    setConfirmModal({ isOpen: false, item: null, newStatus: '' });
+    onRefresh();
+  };
+
+  const statusOptions = [
+    { value: 'received', label: 'Received', color: '#22c55e' },
+    { value: 'cancelled', label: 'Cancelled', color: '#ef4444' },
+  ];
+
+  return (
+    <div>
+      {backorders.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray)', background: 'var(--dark)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+          No pending backorders. All backordered items have been received.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {backorders.map(bo => {
+            const isResolved = false; // pending only in this list
+            return (
+              <div key={bo.id} style={{
+                background: 'var(--dark)',
+                border: '1px solid var(--border)',
+                borderRadius: '12px',
+                overflow: 'visible',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem' }}>
+                  {/* Left: Icon + Material Info */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{
+                      width: '40px', height: '40px', borderRadius: '10px',
+                      background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#f59e0b',
+                    }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.95rem' }}>{bo.materialName}</span>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', padding: '0.15rem 0.5rem', borderRadius: '99px',
+                          fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase',
+                          background: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.2)',
+                        }}>
+                          Pending
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.15rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
+                        <span>{bo.vendorName || '—'}</span>
+                        <span style={{ fontWeight: 600, color: '#E5E2E1' }}>Qty: {bo.qty}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right: Reason + Status Dropdowns */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Reason</div>
+                      <div style={{
+                        ...inputStyle, padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '160px', textAlign: 'center',
+                        background: 'rgba(255,255,255,0.03)', color: '#E5E2E1', cursor: 'default',
+                      }}>
+                        {bo.reason || '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Update Status</div>
+                      <CustomDropdown
+                        value=""
+                        onChange={(val) => { if (val) setConfirmModal({ isOpen: true, item: bo, newStatus: val }); }}
+                        options={statusOptions}
+                        placeholder="Select action..."
+                        style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer: PO Link + Date */}
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '0.6rem 1.5rem',
+                  borderTop: '1px solid rgba(255,255,255,0.04)',
+                  background: 'rgba(0,0,0,0.1)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.7rem', color: 'var(--gray)' }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    LINKED TO PO: {bo.poNumber || '—'}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>
+                    {new Date(bo.createdAt).toLocaleDateString('en-PH')}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmModal.isOpen && confirmModal.item && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h2 className="modal-title">Confirm Status Update</h2>
+              <button className="modal-close" onClick={() => setConfirmModal({ isOpen: false, item: null, newStatus: '' })}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div style={{ padding: '1.5rem 2rem' }}>
+              <p style={{ fontSize: '0.875rem', color: '#E5E2E1', lineHeight: 1.6, marginBottom: '0.75rem' }}>
+                Update <strong>{confirmModal.item.materialName}</strong> ({confirmModal.item.qty} {confirmModal.item.uom}) status to:
+              </p>
+              <div style={{
+                padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px',
+                border: '1px solid var(--border)', textAlign: 'center', marginBottom: '1rem',
+              }}>
+                <span style={{
+                  fontWeight: 700, fontSize: '0.9rem',
+                  color: statusOptions.find(s => s.value === confirmModal.newStatus)?.color || '#E5E2E1',
+                }}>
+                  {statusOptions.find(s => s.value === confirmModal.newStatus)?.label || confirmModal.newStatus}
+                </span>
+              </div>
+              {confirmModal.newStatus === 'received' && (
+                <div style={{
+                  padding: '0.6rem 0.75rem', background: 'rgba(34,197,94,0.06)', borderRadius: '6px',
+                  border: '1px solid rgba(34,197,94,0.15)', fontSize: '0.8rem', color: '#86efac',
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/>
+                  </svg>
+                  This will restore {confirmModal.item.qty} {confirmModal.item.uom} to stock.
+                </div>
+              )}
+              <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.75rem' }}>
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setConfirmModal({ isOpen: false, item: null, newStatus: '' })}>Cancel</button>
+              <button type="button" className="btn-primary" onClick={() => updateStatus(confirmModal.item, confirmModal.newStatus)}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CREDIT CLAIMS TAB
+// ══════════════════════════════════════════════════════════════════════════════
+function CreditClaimsTab({ onRefresh }) {
+  const [credits, setCredits] = useState([]);
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, item: null, newStatus: '' });
+
+  useEffect(() => {
+    setCredits(getStore(CREDIT_KEY).filter(c => c.status === 'pending'));
+  }, []);
+
+  const updateStatus = (cc, newStatus) => {
+    const allCC = getStore(CREDIT_KEY);
+    setStore(CREDIT_KEY, allCC.map(c =>
+      c.id === cc.id ? { ...c, status: newStatus, updatedAt: new Date().toISOString() } : c
+    ));
+    setCredits(getStore(CREDIT_KEY).filter(c => c.status === 'pending'));
+    setConfirmModal({ isOpen: false, item: null, newStatus: '' });
+    onRefresh();
+  };
+
+  const statusOptions = [
+    { value: 'replacement_received', label: 'Replacement Received', color: '#22c55e' },
+    { value: 'credited', label: 'Credited', color: '#8b5cf6' },
+    { value: 'cancelled', label: 'Cancelled', color: '#ef4444' },
+  ];
+
+  return (
+    <div>
+      {credits.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray)', background: 'var(--dark)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+          No pending credit claims. All claims have been resolved.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {credits.map(cc => (
+            <div key={cc.id} style={{
+              background: 'var(--dark)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              overflow: 'visible',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem' }}>
+                {/* Left: Icon + Material Info */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <div style={{
+                    width: '40px', height: '40px', borderRadius: '10px',
+                    background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#f59e0b',
+                  }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.95rem' }}>{cc.materialName}</span>
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', padding: '0.15rem 0.5rem', borderRadius: '99px',
+                        fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase',
+                        background: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.2)',
+                      }}>
+                        Pending
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.15rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
+                      <span>{cc.vendorName || '—'}</span>
+                      <span style={{ fontWeight: 600, color: '#E5E2E1' }}>
+                        {cc.qty} {cc.uom} × ₱{cc.unitCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Reason + Status Dropdowns */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Reason</div>
+                    <div style={{
+                      ...inputStyle, padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '160px', textAlign: 'center',
+                      background: 'rgba(255,255,255,0.03)', color: '#E5E2E1', cursor: 'default',
+                    }}>
+                      {cc.reason || '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'center' }}>Update Status</div>
+                    <CustomDropdown
+                      value=""
+                      onChange={(val) => { if (val) setConfirmModal({ isOpen: true, item: cc, newStatus: val }); }}
+                      options={statusOptions}
+                      placeholder="Select action..."
+                      style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', minWidth: '170px' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer: PO Link + Date + Credit Amount */}
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '0.6rem 1.5rem',
+                borderTop: '1px solid rgba(255,255,255,0.04)',
+                background: 'rgba(0,0,0,0.1)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.7rem', color: 'var(--gray)' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  LINKED TO PO: {cc.poNumber || '—'}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>
+                    {new Date(cc.createdAt).toLocaleDateString('en-PH')}
+                  </span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f59e0b', fontFamily: 'monospace' }}>
+                    ₱{cc.totalCredit.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmModal.isOpen && confirmModal.item && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h2 className="modal-title">Confirm Status Update</h2>
+              <button className="modal-close" onClick={() => setConfirmModal({ isOpen: false, item: null, newStatus: '' })}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div style={{ padding: '1.5rem 2rem' }}>
+              <p style={{ fontSize: '0.875rem', color: '#E5E2E1', lineHeight: 1.6, marginBottom: '0.75rem' }}>
+                Update credit claim of <strong>₱{confirmModal.item.totalCredit.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong> for <strong>{confirmModal.item.materialName}</strong> to:
+              </p>
+              <div style={{
+                padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px',
+                border: '1px solid var(--border)', textAlign: 'center', marginBottom: '1rem',
+              }}>
+                <span style={{
+                  fontWeight: 700, fontSize: '0.9rem',
+                  color: statusOptions.find(s => s.value === confirmModal.newStatus)?.color || '#E5E2E1',
+                }}>
+                  {statusOptions.find(s => s.value === confirmModal.newStatus)?.label || confirmModal.newStatus}
+                </span>
+              </div>
+              {confirmModal.newStatus === 'replacement_received' && (
+                <div style={{
+                  padding: '0.6rem 0.75rem', background: 'rgba(34,197,94,0.06)', borderRadius: '6px',
+                  border: '1px solid rgba(34,197,94,0.15)', fontSize: '0.8rem', color: '#86efac',
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/>
+                  </svg>
+                  Vendor will send {confirmModal.item.qty} {confirmModal.item.uom} as replacement.
+                </div>
+              )}
+              {confirmModal.newStatus === 'credited' && (
+                <div style={{
+                  padding: '0.6rem 0.75rem', background: 'rgba(139,92,246,0.06)', borderRadius: '6px',
+                  border: '1px solid rgba(139,92,246,0.15)', fontSize: '0.8rem', color: '#c4b5fd',
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/>
+                  </svg>
+                  ₱{confirmModal.item.totalCredit.toLocaleString('en-PH', { minimumFractionDigits: 2 })} will be credited to your account.
+                </div>
+              )}
+              <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.75rem' }}>
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-secondary" onClick={() => setConfirmModal({ isOpen: false, item: null, newStatus: '' })}>Cancel</button>
+              <button type="button" className="btn-primary" onClick={() => updateStatus(confirmModal.item, confirmModal.newStatus)}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function ReturnsPage() {
+  const [activeTab, setActiveTab] = useState('returns');
   const [rtvs, setRtvs] = useState([]);
 
   const refresh = useCallback(() => {
@@ -519,6 +919,14 @@ export default function ReturnsPage() {
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  const tabStyle = (tab) => ({
+    padding: '0.625rem 1.25rem', fontSize: '0.825rem', fontWeight: 700,
+    cursor: 'pointer', borderRadius: '8px', border: 'none',
+    background: activeTab === tab ? 'var(--gold)' : 'transparent',
+    color: activeTab === tab ? '#000' : 'var(--gray)',
+    transition: 'all 0.15s',
+  });
 
   return (
     <div className="page-content-wrapper">
@@ -528,14 +936,23 @@ export default function ReturnsPage() {
           <div>
             <h1 className="page-title">Returns to Vendor</h1>
             <p className="page-subtitle">
-              Manage damaged goods and track the return workflow with your suppliers.
+              Manage returns, backorders, and credit claims with your suppliers.
             </p>
           </div>
         </div>
+
+        {/* Tab Switcher */}
+        <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '0.25rem', width: 'fit-content' }}>
+          <button style={tabStyle('returns')} onClick={() => setActiveTab('returns')}>Returns to Vendor</button>
+          <button style={tabStyle('backorders')} onClick={() => setActiveTab('backorders')}>Backorders</button>
+          <button style={tabStyle('credits')} onClick={() => setActiveTab('credits')}>Credit Claims</button>
+        </div>
       </div>
 
-      {/* RTV List */}
-      <RTVListTab rtvs={rtvs} onRefresh={refresh} />
+      {/* Tab Content */}
+      {activeTab === 'returns' && <RTVListTab rtvs={rtvs} onRefresh={refresh} />}
+      {activeTab === 'backorders' && <BackordersTab onRefresh={refresh} />}
+      {activeTab === 'credits' && <CreditClaimsTab onRefresh={refresh} />}
     </div>
   );
 }

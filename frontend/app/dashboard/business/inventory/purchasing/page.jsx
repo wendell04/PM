@@ -23,6 +23,8 @@ const PO_KEY         = 'pmp_purchase_orders';
 const GR_KEY         = 'pmp_goods_receipts';
 const RTV_KEY        = 'pmp_returns_to_vendor';
 const PENDING_RTV_KEY = 'pmp_pending_rtvs';
+const BACKORDER_KEY  = 'pmp_backorders';
+const CREDIT_KEY     = 'pmp_credit_claims';
 const STOCK_IN_KEY   = 'pmp_stock_in_log';
 const STOCK_OUT_KEY  = 'pmp_stock_out_log';
 const MATERIALS_KEY  = 'pmp_materials';
@@ -50,8 +52,8 @@ function genDocNumber(prefix, list) {
 
 // ── PO Status Config ───────────────────────────────────────────────────────────
 const PO_STATUS = {
-  pending:   { label: 'Pending',   color: '#3b82f6', bg: 'rgba(59,130,246,0.1)',   border: 'rgba(59,130,246,0.2)' },
-  draft:     { label: 'Pending',   color: '#3b82f6', bg: 'rgba(59,130,246,0.1)',   border: 'rgba(59,130,246,0.2)' },
+  pending:   { label: 'Pending',   color: 'rgb(212, 168, 67)', bg: 'rgba(212,168,67,0.1)',   border: 'rgba(212,168,67,0.2)' },
+  draft:     { label: 'Pending',   color: 'rgb(212, 168, 67)', bg: 'rgba(212,168,67,0.1)',   border: 'rgba(212,168,67,0.2)' },
   received:  { label: 'Completed', color: '#22c55e', bg: 'rgba(34,197,94,0.1)',    border: 'rgba(34,197,94,0.2)'  },
   cancelled: { label: 'Cancelled', color: '#ef4444', bg: 'rgba(239,68,68,0.1)',    border: 'rgba(239,68,68,0.2)'  },
 };
@@ -64,7 +66,6 @@ const RETURN_REASONS = [
   'Damaged in Transit',
   'Defective Product',
   'Wrong Item Shipped',
-  'Quantity Shortage',
   'Other',
 ];
 
@@ -270,21 +271,34 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
       typeof item === 'string' ? item : item.name
     );
     if (vendorItemNames.length === 0) return [];
+    
+    // Get IDs of already selected materials (exclude current item's materialId)
+    const selectedIds = new Set(
+      form.items
+        .filter((item, idx, arr) => arr.findIndex(i => i.materialId === item.materialId) === idx) // unique
+        .map(item => item.materialId)
+        .filter(id => id) // exclude empty selections
+    );
+    
     const filtered = materials.filter(m =>
       vendorItemNames.includes(m.category) &&
       (!m.hasVariants || m.parentId) // standalone OR variant children, not parents
     );
+    
+    // Filter out already-selected materials
+    const available = filtered.filter(m => !selectedIds.has(m.id));
+    
     // Deduplicate by normalized name — keep the one with the longest/newest SKU
     const normalizeName = (n) => n.replace(/[—–\-]/g, ' ').replace(/[,]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
     const seen = new Map();
-    filtered.forEach(m => {
+    available.forEach(m => {
       const key = normalizeName(m.name);
       if (!seen.has(key) || (m.sku || '').length > (seen.get(key).sku || '').length) {
         seen.set(key, m);
       }
     });
     return [...seen.values()];
-  }, [materials, form.vendorId, vendors]);
+  }, [materials, form.vendorId, form.items, vendors]);
 
   return (
     <div className="modal-overlay">
@@ -388,15 +402,23 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
                     ))}
                   </div>
 
-                  {form.items.map((item, idx) => (
+                  {form.items.map((item, idx) => {
+                    // Include current item's material in options (so it stays visible)
+                    const currentMaterial = item.materialId ? materials.find(m => m.id === item.materialId) : null;
+                    const dropdownOptions = [
+                      { value: '', label: 'Select material...' },
+                      ...selectableMaterials.map(m => ({ value: m.id, label: `${m.name}${m.sku ? ` (${m.sku})` : ''}` })),
+                      // Add current material if it's not in selectableMaterials (because it's already selected elsewhere)
+                      ...(currentMaterial && !selectableMaterials.find(m => m.id === currentMaterial.id)
+                        ? [{ value: currentMaterial.id, label: `${currentMaterial.name} (${currentMaterial.sku || ''})` }]
+                        : []),
+                    ];
+                    return (
                     <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 80px 130px 32px', gap: '0.5rem', alignItems: 'center' }}>
                       <CustomDropdown
                         value={item.materialId}
                         onChange={(val) => { updateItem(idx, 'materialId', val); setErrors(p => ({ ...p, items: null })); }}
-                        options={[
-                          { value: '', label: 'Select material...' },
-                          ...selectableMaterials.map(m => ({ value: m.id, label: `${m.name}${m.sku ? ` (${m.sku})` : ''}` })),
-                        ]}
+                        options={dropdownOptions}
                         placeholder="Select material..."
                         style={{ padding: '0.5rem 0.65rem', fontSize: '0.8rem' }}
                       />
@@ -441,7 +463,8 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
                         </svg>
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
 
                   {/* Total row */}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1rem', paddingRight: '40px', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
@@ -514,7 +537,7 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // INVOICE ENTRY MODAL (appears after Confirm Receipt)
 // ══════════════════════════════════════════════════════════════════════════════
-function InvoiceEntryModal({ grData, po, onClose, onFinalize }) {
+function InvoiceEntryModal({ grData, po, onClose, onFinalize, approvedDiscrepancies = [] }) {
   const [invoiceNo, setInvoiceNo] = useState('');
   const [costs, setCosts] = useState({});
   const [error, setError] = useState('');
@@ -546,10 +569,24 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize }) {
     onFinalize({ ...grData, invoiceNo: invoiceNo.trim(), actualCosts: costs, totalAmount });
   };
 
+  // Get disposition for each item
+  const getDisposition = (item) => {
+    const disc = (approvedDiscrepancies || []).find(d => d.materialId === item.materialId);
+    return disc?.disposition || '';
+  };
+
+  const dispositionLabels = {
+    backorder: { label: 'Backorder', color: 'rgb(245, 158, 11)', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
+    request_credit: { label: 'Credit Claim', color: 'rgb(245, 158, 11)', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
+    accept_partial: { label: 'Accepted', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
+    rtv: { label: 'RTV', color: 'rgb(245, 158, 11)', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
+    write_off: { label: 'Write Off', color: '#ef4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.2)' },
+  };
+
   return (
     <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()}
-        style={{ maxWidth: '560px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        style={{ maxWidth: '640px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
 
         <div className="modal-header" style={{ flexShrink: 0 }}>
           <div>
@@ -583,39 +620,113 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize }) {
               {error && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{error}</p>}
             </div>
 
-            {/* Unit Costs per Item */}
+            {/* Unit Costs per Item with Full Breakdown */}
             <div>
               <label className="form-label">Actual Unit Cost per Item</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {(grData.items || []).map(item => {
-                  const goodQty = item.receivedQty - (item.damagedQty || 0);
+                  const damagedQty = parseInt(item.damagedQty) || 0;
+                  const shortageQty = parseInt(item.shortageQty) || 0;
+                  const goodQty = item.receivedQty - damagedQty;
+
                   const cost = parseFloat(costs[item.materialId]) || 0;
-                  const lineTotal = goodQty * cost;
+                  const goodTotal = goodQty * cost;
+                  const damagedTotal = damagedQty * cost;
+                  const shortageTotal = shortageQty * cost;
+
+                  // Find dispositions from approved discrepancies
+                  const damageDisc = (approvedDiscrepancies || []).find(d => d.materialId === item.materialId && (d.discrepancyType === 'damage' || d.qty === damagedQty));
+                  const shortageDisc = (approvedDiscrepancies || []).find(d => d.materialId === item.materialId && (d.discrepancyType === 'shortage' || d.qty === shortageQty));
+                  
+                  const damageDispConfig = damageDisc ? dispositionLabels[damageDisc.disposition] : null;
+                  const shortageDispConfig = shortageDisc ? dispositionLabels[shortageDisc.disposition] : null;
+
                   return (
                     <div key={item.materialId} style={{
-                      display: 'grid', gridTemplateColumns: '1fr 100px 100px', gap: '0.5rem',
-                      alignItems: 'center', padding: '0.625rem 0.75rem',
-                      background: 'rgba(255,255,255,0.02)', borderRadius: '8px',
+                      padding: '0.75rem',
+                      background: 'rgba(255,255,255,0.02)', borderRadius: '10px',
                       border: '1px solid rgba(255,255,255,0.05)',
                     }}>
-                      <div>
+                      {/* Header: Material + Quantities */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                         <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.825rem' }}>{item.materialName}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>
-                          Good qty: {goodQty} {item.uom}
-                          {item.damagedQty > 0 && (
-                            <span style={{ color: '#f59e0b' }}> · {item.damagedQty} {item.returnReason || 'damaged'}</span>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--gray)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <span>Ordered: <strong style={{ color: '#E5E2E1' }}>{item.orderedQty || 0}</strong></span>
+                          <span>·</span>
+                          <span>Received: <strong style={{ color: (damagedQty + shortageQty) > 0 ? '#f59e0b' : '#22c55e' }}>{item.receivedQty}</strong></span>
+                          {(damagedQty > 0 || shortageQty > 0) && (
+                            <>
+                              <span>·</span>
+                              <span style={{ color: '#ef4444' }}>
+                                Discrepancy: <strong>{damagedQty + shortageQty}</strong>
+                              </span>
+                            </>
                           )}
                         </div>
                       </div>
-                      <input
-                        type="text" inputMode="decimal"
-                        style={{ ...inputStyle, padding: '0.4rem 0.5rem', fontSize: '0.825rem', textAlign: 'right' }}
-                        value={costs[item.materialId] || '0'}
-                        onChange={e => updateCost(item.materialId, e.target.value)}
-                        placeholder="0.00"
-                      />
-                      <div style={{ textAlign: 'right', fontWeight: 700, color: '#D4A843', fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                        ₱{lineTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+
+                      {/* Unit Cost Input + Breakdown */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'start' }}>
+                        <div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)', marginBottom: '0.25rem', textTransform: 'uppercase', fontWeight: 600 }}>Unit Cost</div>
+                          <input
+                            type="text" inputMode="decimal"
+                            style={{ ...inputStyle, padding: '0.4rem 0.5rem', fontSize: '0.825rem', textAlign: 'right', width: '100px' }}
+                            value={costs[item.materialId] || '0'}
+                            onChange={e => updateCost(item.materialId, e.target.value)}
+                            placeholder="0.00"
+                          />
+                        </div>
+
+                        {/* Breakdown */}
+                        <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-end' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+                            <span style={{ color: 'var(--gray)' }}>Good to Stock: {goodQty} {item.uom} × ₱{cost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                            <span style={{ fontWeight: 700, color: '#E5E2E1', fontFamily: 'monospace' }}>₱{goodTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          
+                          {/* Damaged Line */}
+                          {damagedQty > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center' }}>
+                              <span style={{ color: 'rgb(245, 158, 11)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgb(245, 158, 11)" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                Damaged: {damagedQty} {item.uom} × ₱{cost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                              </span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <span style={{ fontWeight: 600, color: 'rgb(245, 158, 11)', fontFamily: 'monospace' }}>₱{damagedTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                                {damageDispConfig && (
+                                  <span style={{
+                                    fontSize: '0.6rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '4px',
+                                    background: damageDispConfig.bg, color: damageDispConfig.color, border: `1px solid ${damageDispConfig.border}`,
+                                  }}>
+                                    {damageDispConfig.label}
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Shortage Line */}
+                          {shortageQty > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center' }}>
+                              <span style={{ color: 'var(--gray)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                Shortage: {shortageQty} {item.uom} × ₱{cost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                              </span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <span style={{ fontWeight: 600, color: '#ef4444', fontFamily: 'monospace' }}>₱{shortageTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                                {shortageDispConfig && (
+                                  <span style={{
+                                    fontSize: '0.6rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '4px',
+                                    background: shortageDispConfig.bg, color: shortageDispConfig.color, border: `1px solid ${shortageDispConfig.border}`,
+                                  }}>
+                                    {shortageDispConfig.label}
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -629,7 +740,7 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize }) {
               borderRadius: '8px', border: '1px solid rgba(212,168,67,0.2)',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--gray)', fontWeight: 600 }}>Total Invoice Amount</span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--gray)', fontWeight: 600 }}>Total Invoice Amount (Good Items Only)</span>
               <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#D4A843', fontFamily: 'monospace' }}>
                 ₱{totalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
               </span>
@@ -669,7 +780,8 @@ function GRFormModal({ po, onClose, onSave }) {
         remaining: (parseInt(item.qty) || 0) - (parseInt(item.receivedQty) || 0),
       }))
       .filter(i => i.remaining > 0)
-      .map(i => ({ ...i, toReceive: String(i.remaining), damagedQty: '0', returnReason: '' }));
+      // Initialize with empty strings for inputs
+      .map(i => ({ ...i, toReceive: String(i.remaining), damagedQty: '', shortageQty: '', returnReason: '' }));
     setItems(pending);
     setCustomReasons({});
   }, [po]);
@@ -688,9 +800,28 @@ function GRFormModal({ po, onClose, onSave }) {
     setItems(prev => prev.map((item, i) => {
       if (i !== idx) return item;
       const parsed = parseInt(val) || 0;
-      const received = parseInt(item.toReceive) || 0;
-      const clamped = parsed > received ? received : parsed;
+      const physicalCount = parseInt(item.toReceive) || 0;
+      const clamped = parsed > physicalCount ? physicalCount : parsed;
       return { ...item, damagedQty: val === '' ? '' : String(clamped) };
+    }));
+    setError('');
+  };
+
+  const updateShortage = (idx, val) => {
+    setItems(prev => prev.map((item, i) => {
+      if (i !== idx) return item;
+      const parsed = parseInt(val) || 0;
+      const maxShortage = parseInt(item.remaining) || 0;
+      const clamped = parsed > maxShortage ? maxShortage : parsed;
+      
+      // If Shortage increases, Physical Count (toReceive) decreases
+      const newPhysicalCount = Math.max(0, maxShortage - clamped);
+      
+      return { 
+        ...item, 
+        shortageQty: val === '' ? '' : String(clamped),
+        toReceive: String(newPhysicalCount) // Auto-calculate Physical Count
+      };
     }));
     setError('');
   };
@@ -743,6 +874,7 @@ function GRFormModal({ po, onClose, onSave }) {
         previouslyReceived: parseInt(item.receivedQty) || 0,
         receivedQty:       parseInt(item.toReceive) || 0,
         damagedQty:        parseInt(item.damagedQty) || 0,
+        shortageQty:       parseInt(item.shortageQty) || 0,
         returnReason:      item.returnReason === 'Other' ? (customReasons[idx] || 'Other') : (item.returnReason || ''),
         unitCost:          parseFloat(item.unitCost) || 0,
       }));
@@ -760,8 +892,8 @@ function GRFormModal({ po, onClose, onSave }) {
     const grPayload = { poId: po.id, poNumber: po.poNumber, vendorId: po.vendorId, vendorName: po.vendorName, items: grItems, notes, receivedDate: new Date().toISOString() };
     const updatedPO = { ...po, items: updatedItems, status: newStatus };
 
-    // Check if there are discrepancies (damaged/shortage items)
-    const discrepancies = grItems.filter(i => i.damagedQty > 0);
+    // Check if there are discrepancies (damaged or shortage items)
+    const discrepancies = grItems.filter(i => i.damagedQty > 0 || i.shortageQty > 0);
     if (discrepancies.length > 0) {
       // Show Pending RTV Review first
       setPendingGRData(grPayload);
@@ -829,9 +961,10 @@ function GRFormModal({ po, onClose, onSave }) {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {items.map((item, idx) => {
-                  const received = parseInt(item.toReceive) || 0;
+                  const physicalCount = parseInt(item.toReceive) || 0;
                   const damaged = parseInt(item.damagedQty) || 0;
-                  const good = Math.max(0, received - damaged);
+                  const shortage = parseInt(item.shortageQty) || 0;
+                  const good = Math.max(0, physicalCount - damaged);
                   return (
                     <div key={idx} style={{
                       padding: '1rem 1.25rem',
@@ -844,30 +977,40 @@ function GRFormModal({ po, onClose, onSave }) {
                           {item.sku && <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{item.sku}</div>}
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600 }}>
-                          Ordered: {item.qty} {item.uom}
+                          Expected: {item.remaining} {item.uom}
                         </div>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: damaged > 0 ? '0.75rem' : '0' }}>
+                      {/* Inputs Grid: Expected | Damaged | Shortage */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: (damaged > 0 || shortage > 0) ? '0.75rem' : '0' }}>
                         <div>
-                          <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>Quantity Received</label>
-                          <IntInput
-                            style={{ ...inputStyle, padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
-                            value={item.toReceive}
-                            onChange={v => updateToReceive(idx, v)}
-                            min={0}
-                            max={item.remaining}
-                            placeholder="0"
+                          <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>Expected Qty (from PO)</label>
+                          <input
+                            type="text"
+                            readOnly
+                            value={item.remaining}
+                            style={{ ...inputStyle, padding: '0.5rem 0.75rem', fontSize: '0.85rem', background: 'rgba(255,255,255,0.04)', color: 'var(--gray)', cursor: 'not-allowed', fontWeight: 600 }}
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: '0.65rem', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>Damaged / Shortage / Others</label>
+                          <label style={{ fontSize: '0.65rem', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>Damaged / Others</label>
                           <IntInput
                             style={{ ...inputStyle, padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderColor: damaged > 0 ? 'rgba(245,158,11,0.4)' : undefined }}
                             value={item.damagedQty}
                             onChange={v => updateDamaged(idx, v)}
                             min={0}
-                            max={received}
+                            max={physicalCount}
+                            placeholder="0"
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '0.65rem', color: '#ef4444', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>Shortage</label>
+                          <IntInput
+                            style={{ ...inputStyle, padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderColor: shortage > 0 ? 'rgba(239,68,68,0.4)' : undefined }}
+                            value={item.shortageQty}
+                            onChange={v => updateShortage(idx, v)}
+                            min={0}
+                            max={item.remaining}
                             placeholder="0"
                           />
                         </div>
@@ -876,7 +1019,7 @@ function GRFormModal({ po, onClose, onSave }) {
                       {damaged > 0 && (
                         <div style={{ marginTop: '0.5rem' }}>
                           <label style={{ fontSize: '0.65rem', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>
-                            Return Reason <span style={{ color: '#ef4444' }}>*</span>
+                            Reason <span style={{ color: '#ef4444' }}>*</span>
                           </label>
                           <CustomDropdown
                               value={item.returnReason}
@@ -904,8 +1047,8 @@ function GRFormModal({ po, onClose, onSave }) {
                         </div>
                       )}
 
-                      {received > 0 && (
-                        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      {physicalCount > 0 && (
+                        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>Good qty to stock:</span>
                           <span style={{ fontSize: '0.85rem', fontWeight: 700, color: good > 0 ? '#22c55e' : '#ef4444' }}>
                             {good} {item.uom}
@@ -914,7 +1057,15 @@ function GRFormModal({ po, onClose, onSave }) {
                             <>
                               <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>·</span>
                               <span style={{ fontSize: '0.75rem', color: '#f59e0b' }}>
-                                {damaged} {item.uom} → RTV
+                                {damaged} {item.uom} → {item.returnReason === 'Other' ? (customReasons[idx] || 'Other') : (item.returnReason || 'damaged')}
+                              </span>
+                            </>
+                          )}
+                          {shortage > 0 && (
+                            <>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>·</span>
+                              <span style={{ fontSize: '0.75rem', color: '#ef4444' }}>
+                                {shortage} {item.uom} → Missing
                               </span>
                             </>
                           )}
@@ -957,6 +1108,7 @@ function GRFormModal({ po, onClose, onSave }) {
         <InvoiceEntryModal
           grData={pendingGRData}
           po={po}
+          approvedDiscrepancies={approvedDiscrepancies}
           onClose={() => { setShowInvoice(false); setPendingGRData(null); setPendingUpdatedPO(null); setPendingDiscrepancyItems([]); setApprovedDiscrepancies([]); }}
           onFinalize={handleInvoiceFinalize}
         />
@@ -966,31 +1118,24 @@ function GRFormModal({ po, onClose, onSave }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// PENDING RTV REVIEW MODAL (Staging — damaged items from GR before formal RTV)
+// PENDING RTV REVIEW MODAL (Staging — damaged/shortage items from GR before formal RTV)
 // ══════════════════════════════════════════════════════════════════════════════
 function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
   const [dispositions, setDispositions] = useState({});
 
-  // Check if this discrepancy is from shortage (not returnable)
-  const isShortage = (reason) => {
-    return reason && (reason.toLowerCase().includes('shortage') || reason.toLowerCase().includes('partial'));
-  };
-
   // Disposition options — different for shortage vs. damaged/defective
-  const dispOptionsForItem = (reason) => {
-    if (isShortage(reason)) {
-      // For shortage: can't return what was never received
+  const getOptionsForType = (type) => {
+    if (type === 'shortage') {
       return [
-        { value: 'bill_adj', label: 'Bill Adjustment', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.2)' },
-        { value: 'backorder', label: 'Backorder Remaining', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
-        { value: 'cancel', label: 'Accept Partial', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
+        { value: 'request_credit', label: 'Request Credit/Refund', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)', hint: 'Vendor returns money or gives credit for missing items' },
+        { value: 'backorder', label: 'Backorder Remaining', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)', hint: 'Vendor sends missing items on next delivery' },
+        { value: 'accept_partial', label: 'Accept Partial', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)', hint: 'Close order as-is, accept the loss' },
       ];
     }
     // For damaged/defective: return or write off
     return [
       { value: 'rtv', label: 'Return to Vendor', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
       { value: 'write_off', label: 'Write Off (Loss)', color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)' },
-      { value: 'cancel', label: 'Cancel (Keep in Stock)', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
     ];
   };
 
@@ -998,16 +1143,20 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
   const allDispOptions = useMemo(() => {
     const all = new Set();
     grItems.forEach(item => {
-      const opts = dispOptionsForItem(item.returnReason);
-      opts.forEach(o => all.add(o.value));
+      if (item.damagedQty > 0) {
+        getOptionsForType('damage').forEach(o => all.add(o.value));
+      }
+      if (item.shortageQty > 0) {
+        getOptionsForType('shortage').forEach(o => all.add(o.value));
+      }
     });
-    const masterOrder = ['bill_adj', 'backorder', 'rtv', 'write_off', 'cancel'];
+    const masterOrder = ['request_credit', 'backorder', 'rtv', 'write_off', 'accept_partial'];
     const masterLabels = {
-      bill_adj: { label: 'Bill Adjustment', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.2)' },
+      request_credit: { label: 'Request Credit/Refund', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
       backorder: { label: 'Backorder Remaining', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
       rtv: { label: 'Return to Vendor', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
       write_off: { label: 'Write Off (Loss)', color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)' },
-      cancel: { label: 'Accept / Keep', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
+      accept_partial: { label: 'Accept Partial', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
     };
     return masterOrder.filter(v => all.has(v)).map(v => ({ value: v, ...masterLabels[v] }));
   }, [grItems]);
@@ -1015,29 +1164,44 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
   useEffect(() => {
     const init = {};
     grItems.forEach(item => {
-      // For shortage, default to bill_adj; for damaged, default to rtv
-      init[item.materialId] = isShortage(item.returnReason) ? 'bill_adj' : 'rtv';
+      if (item.damagedQty > 0) {
+        init[`${item.materialId}-damage`] = 'rtv';
+      }
+      if (item.shortageQty > 0) {
+        init[`${item.materialId}-shortage`] = 'request_credit';
+      }
     });
     setDispositions(init);
   }, [grItems]);
 
-  const updateDisposition = (materialId, val) => {
-    setDispositions(p => ({ ...p, [materialId]: val }));
+  const updateDisposition = (key, val) => {
+    setDispositions(p => ({ ...p, [key]: val }));
   };
 
-  const approvedItems = grItems.filter(item => {
-    const disp = dispositions[item.materialId] || (isShortage(item.returnReason) ? 'bill_adj' : 'rtv');
-    return disp !== 'cancel';
-  }).map(item => ({
-    ...item,
-    disposition: dispositions[item.materialId] || (isShortage(item.returnReason) ? 'bill_adj' : 'rtv'),
-  }));
+  // Build approved items list — split damaged and shortage into separate entries
+  const approvedItems = [];
+  grItems.forEach(item => {
+    if (item.damagedQty > 0) {
+      const dispKey = `${item.materialId}-damage`;
+      const disp = dispositions[dispKey] || 'rtv';
+      // Include all damage dispositions so handleSaveGR can process them (RTV, Write Off)
+      approvedItems.push({ ...item, discrepancyType: 'damage', qty: item.damagedQty, disposition: disp });
+    }
+    if (item.shortageQty > 0) {
+      const dispKey = `${item.materialId}-shortage`;
+      const disp = dispositions[dispKey] || 'request_credit';
+      // Exclude 'accept_partial' as it requires no further action
+      if (disp !== 'accept_partial') {
+        approvedItems.push({ ...item, discrepancyType: 'shortage', qty: item.shortageQty, disposition: disp });
+      }
+    }
+  });
 
-  const billAdjCount = approvedItems.filter(i => i.disposition === 'bill_adj').length;
+  const requestCreditCount = approvedItems.filter(i => i.disposition === 'request_credit').length;
   const backorderCount = approvedItems.filter(i => i.disposition === 'backorder').length;
   const rtyCount = approvedItems.filter(i => i.disposition === 'rtv').length;
-  const writeOffCount = approvedItems.filter(i => i.disposition === 'write_off').length;
-  const cancelCount = grItems.length - approvedItems.length;
+  const writeOffCount = grItems.filter(i => (dispositions[`${i.materialId}-damage`] || 'rtv') === 'write_off').length;
+  const acceptPartialCount = grItems.filter(i => (dispositions[`${i.materialId}-shortage`] || 'request_credit') === 'accept_partial').length;
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -1078,76 +1242,102 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
               ))}
             </div>
 
-            {grItems.map((item, idx) => {
-              const disp = dispositions[item.materialId] || (isShortage(item.returnReason) ? 'bill_adj' : 'rtv');
-              const itemOptions = dispOptionsForItem(item.returnReason);
-              return (
-                <div key={idx} style={{
-                  padding: '1rem 1.25rem',
-                  background: 'rgba(255,255,255,0.02)', borderRadius: '10px',
-                  border: `1px solid ${itemOptions.find(o => o.value === disp)?.border || 'rgba(255,255,255,0.06)'}`,
-                }}>
-                  {/* Material Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.95rem' }}>{item.materialName}</div>
-                      {item.sku && <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{item.sku}</div>}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700 }}>
-                      {item.damagedQty} {item.uom} discrepancy
-                    </div>
-                  </div>
-
-                  {/* Reason Display */}
-                  {item.returnReason && (
-                    <div style={{ fontSize: '0.75rem', color: '#f59e0b', marginBottom: '0.75rem' }}>
-                      <span style={{ textTransform: 'uppercase', fontSize: '0.6rem', fontWeight: 700, marginRight: '0.25rem' }}>Reason:</span>
-                      {item.returnReason}
-                    </div>
-                  )}
-
-                  {/* Disposition Selector */}
+            {grItems.map((item, idx) => (
+              <div key={idx} style={{
+                padding: '1rem 1.25rem',
+                background: 'rgba(255,255,255,0.02)', borderRadius: '10px',
+                border: '1px solid rgba(255,255,255,0.06)',
+                display: 'flex', flexDirection: 'column', gap: '1rem',
+              }}>
+                {/* Material Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>
-                      Disposition
-                    </label>
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      {itemOptions.map(opt => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => updateDisposition(item.materialId, opt.value)}
-                          style={{
-                            padding: '0.45rem 0.85rem',
-                            borderRadius: '8px',
-                            border: disp === opt.value ? `2px solid ${opt.color}` : '1px solid rgba(255,255,255,0.1)',
-                            background: disp === opt.value ? opt.bg : 'rgba(255,255,255,0.02)',
-                            color: disp === opt.value ? opt.color : 'var(--gray)',
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            transition: 'all 0.15s',
-                          }}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
+                    <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.95rem' }}>{item.materialName}</div>
+                    {item.sku && <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{item.sku}</div>}
                   </div>
-
-                  {/* Summary Line */}
-                  <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
-                    {disp === 'bill_adj' && `→ Invoice will be adjusted — pay only for received items`}
-                    {disp === 'backorder' && `→ Vendor to send remaining ${item.damagedQty} ${item.uom} later`}
-                    {disp === 'rtv' && `→ ${item.damagedQty} ${item.uom} will be sent to RTV (Return to Vendor)`}
-                    {disp === 'write_off' && `→ ${item.damagedQty} ${item.uom} will be written off as loss (recorded in Goods Issue)`}
-                    {disp === 'cancel' && (isShortage(item.returnReason)
-                      ? `→ Accept partial delivery — no further action needed`
-                      : `→ ${item.damagedQty} ${item.uom} will be kept in stock (no action)`)}
+                  <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700 }}>
+                    {(item.damagedQty || 0) + (item.shortageQty || 0)} {item.uom} discrepancy
                   </div>
                 </div>
-              );
-            })}
+
+                {/* Damaged Section */}
+                {item.damagedQty > 0 && (
+                  <div style={{ padding: '0.75rem', background: 'rgba(245,158,11,0.04)', borderRadius: '8px', border: '1px solid rgba(245,158,11,0.1)' }}>
+                    <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 700, marginBottom: '0.5rem' }}>
+                      Damaged: {item.damagedQty} {item.uom}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {getOptionsForType('damage').map(opt => {
+                        const key = `${item.materialId}-damage`;
+                        const disp = dispositions[key] || 'rtv';
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => updateDisposition(key, opt.value)}
+                            style={{
+                              padding: '0.45rem 0.85rem',
+                              borderRadius: '8px',
+                              border: disp === opt.value ? `2px solid ${opt.color}` : '1px solid rgba(255,255,255,0.1)',
+                              background: disp === opt.value ? opt.bg : 'rgba(255,255,255,0.02)',
+                              color: disp === opt.value ? opt.color : 'var(--gray)',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
+                      {(dispositions[`${item.materialId}-damage`] || 'rtv') === 'rtv' && `→ ${item.damagedQty} ${item.uom} will be sent to RTV (Return to Vendor)`}
+                      {(dispositions[`${item.materialId}-damage`] || 'rtv') === 'write_off' && `→ ${item.damagedQty} ${item.uom} will be written off as loss (recorded in Goods Issue)`}
+                    </div>
+                  </div>
+                )}
+
+                {/* Shortage Section */}
+                {item.shortageQty > 0 && (
+                  <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.04)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.1)' }}>
+                    <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 700, marginBottom: '0.5rem' }}>
+                      Shortage: {item.shortageQty} {item.uom}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {getOptionsForType('shortage').map(opt => {
+                        const key = `${item.materialId}-shortage`;
+                        const disp = dispositions[key] || 'request_credit';
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => updateDisposition(key, opt.value)}
+                            style={{
+                              padding: '0.45rem 0.85rem',
+                              borderRadius: '8px',
+                              border: disp === opt.value ? `2px solid ${opt.color}` : '1px solid rgba(255,255,255,0.1)',
+                              background: disp === opt.value ? opt.bg : 'rgba(255,255,255,0.02)',
+                              color: disp === opt.value ? opt.color : 'var(--gray)',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
+                      {(dispositions[`${item.materialId}-shortage`] || 'request_credit') === 'request_credit' && `→ Vendor returns money for missing items`}
+                      {(dispositions[`${item.materialId}-shortage`] || 'request_credit') === 'backorder' && `→ Vendor to send remaining ${item.shortageQty} ${item.uom} later`}
+                      {(dispositions[`${item.materialId}-shortage`] || 'request_credit') === 'accept_partial' && `→ Accept partial delivery — close order as-is, no further action`}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
 
             {/* Footer Summary */}
             <div style={{
@@ -1156,16 +1346,16 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
               <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
-                {billAdjCount > 0 && `${billAdjCount} Bill Adj`}
-                {billAdjCount > 0 && backorderCount > 0 && ` · `}
+                {requestCreditCount > 0 && `${requestCreditCount} Credit/Refund`}
+                {requestCreditCount > 0 && backorderCount > 0 && ` · `}
                 {backorderCount > 0 && `${backorderCount} Backorder`}
-                {(billAdjCount > 0 || backorderCount > 0) && (rtyCount > 0 || writeOffCount > 0) && ` · `}
+                {(requestCreditCount > 0 || backorderCount > 0) && (rtyCount > 0 || writeOffCount > 0) && ` · `}
                 {rtyCount > 0 && `${rtyCount} RTV`}
                 {rtyCount > 0 && writeOffCount > 0 && ` · `}
                 {writeOffCount > 0 && `${writeOffCount} Write Off`}
-                {(rtyCount > 0 || writeOffCount > 0 || billAdjCount > 0 || backorderCount > 0) && cancelCount > 0 && ` · `}
-                {cancelCount > 0 && `${cancelCount} Accepted`}
-                {billAdjCount === 0 && backorderCount === 0 && rtyCount === 0 && writeOffCount === 0 && cancelCount === 0 && '—'}
+                {(rtyCount > 0 || writeOffCount > 0 || requestCreditCount > 0 || backorderCount > 0) && acceptPartialCount > 0 && ` · `}
+                {acceptPartialCount > 0 && `${acceptPartialCount} Accepted`}
+                {requestCreditCount === 0 && backorderCount === 0 && rtyCount === 0 && writeOffCount === 0 && acceptPartialCount === 0 && '—'}
               </span>
             </div>
           </div>
@@ -1916,12 +2106,6 @@ function POTab({ pos, vendors, materials, onRefresh }) {
   };
 
   const handleSaveGR = (grData, updatedPO, approvedDiscrepancies = []) => {
-    // Build a disposition map: materialId → disposition
-    const dispMap = {};
-    (approvedDiscrepancies || []).forEach(item => {
-      dispMap[item.materialId] = item.disposition || 'rtv';
-    });
-
     // 1. Persist GR record with invoice data
     const grs   = getStore(GR_KEY);
     const newGR = {
@@ -1940,23 +2124,26 @@ function POTab({ pos, vendors, materials, onRefresh }) {
     setStore(PO_KEY, allPOs.map(p => p.id === updatedPO.id ? { ...updatedPO, updatedAt: new Date().toISOString() } : p));
 
     // 3. Update material stock quantities + Moving Average Cost
-    //    - disposition 'rtv' or 'write_off': damaged qty NOT added to stock
-    //    - disposition 'cancel': damaged qty IS added to stock (kept)
+    //    Logic: Stock Added = Physical Count (receivedQty) - Damaged Qty
+    //    Shortage Qty is already excluded from receivedQty, so it doesn't affect stock directly here.
     const mats = getStore(MATERIALS_KEY);
     setStore(MATERIALS_KEY, mats.map(mat => {
       const rcv = grData.items.find(i => i.materialId === mat.id);
       if (!rcv || !rcv.receivedQty) return mat;
       const oldStock = parseInt(mat.stockQty) || 0;
       const oldCost  = parseFloat(mat.baseCost) || 0;
-      const disp = dispMap[mat.id] || 'rtv';
-      // If cancelled, damaged qty stays in stock; otherwise it doesn't
-      const effectiveDamaged = disp === 'cancel' ? 0 : (rcv.damagedQty || 0);
-      const goodQty  = rcv.receivedQty - effectiveDamaged;
+      
+      // Good Qty = Received (Physical) - Damaged
+      const damaged = parseInt(rcv.damagedQty) || 0;
+      const goodQty = rcv.receivedQty - damaged;
+      
       if (goodQty <= 0) return mat;
+      
       // Use actual cost from invoice if available, otherwise fall back to GR unit cost
       const unitCost = grData.actualCosts && grData.actualCosts[mat.id]
         ? parseFloat(grData.actualCosts[mat.id]) || oldCost
         : parseFloat(rcv.unitCost) || oldCost;
+      
       const newStock = oldStock + goodQty;
       let newCost = oldCost;
       if (oldStock === 0) {
@@ -1973,54 +2160,105 @@ function POTab({ pos, vendors, materials, onRefresh }) {
     }));
 
     // 4. Process discrepancies based on disposition
+    //    approvedDiscrepancies now contains split entries with 'discrepancyType' ('damage' or 'shortage')
     const rtvs = getStore(RTV_KEY);
     const stockOuts = getStore(STOCK_OUT_KEY);
+    const backorders = getStore(BACKORDER_KEY);
+    const credits = getStore(CREDIT_KEY);
     const newRTVs = [];
     const newStockOuts = [];
+    const newBackorders = [];
+    const newCredits = [];
 
     (approvedDiscrepancies || []).forEach(item => {
-      if (item.disposition === 'rtv') {
-        // Create formal RTV record
-        newRTVs.push({
-          id: `rtv-${Date.now()}-${item.materialId}`,
-          rtvNumber: genDocNumber('RTV', rtvs),
-          poId: grData.poId,
-          poNumber: grData.poNumber,
-          vendorId: grData.vendorId || '',
-          vendorName: grData.vendorName,
-          materialId: item.materialId,
-          materialName: item.materialName,
-          sku: item.sku || '',
-          uom: item.uom || 'pcs',
-          qty: item.damagedQty,
-          unitCost: item.unitCost,
-          reason: item.returnReason || 'Damaged in Transit',
-          source: 'goods_receipt',
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-      } else if (item.disposition === 'write_off') {
-        // Record as Goods Issue (loss)
-        newStockOuts.push({
-          id: `so-${Date.now()}-${item.materialId}`,
-          docNumber: genDocNumber('SO', stockOuts),
-          materialId: item.materialId,
-          materialName: item.materialName,
-          sku: item.sku || '',
-          uom: item.uom || 'pcs',
-          issueType: 'damage',
-          quantity: item.damagedQty,
-          previousStock: 0,
-          newStock: 0,
-          unitCost: item.unitCost,
-          totalLoss: item.damagedQty * item.unitCost,
-          referenceNo: grData.poNumber,
-          notes: `Write-off from ${grData.poNumber} — ${item.returnReason || 'No reason given'}`,
-          dateIssued: new Date().toISOString(),
-        });
+      const qty = item.qty || 0; // Use the split quantity
+      const type = item.discrepancyType || 'damage'; // Default to damage for backward compatibility
+      
+      if (type === 'damage') {
+        if (item.disposition === 'rtv') {
+          newRTVs.push({
+            id: `rtv-${Date.now()}-${item.materialId}`,
+            rtvNumber: genDocNumber('RTV', rtvs),
+            poId: grData.poId,
+            poNumber: grData.poNumber,
+            vendorId: grData.vendorId || '',
+            vendorName: grData.vendorName,
+            materialId: item.materialId,
+            materialName: item.materialName,
+            sku: item.sku || '',
+            uom: item.uom || 'pcs',
+            qty: qty,
+            unitCost: item.unitCost,
+            reason: item.returnReason || 'Damaged in Transit',
+            source: 'goods_receipt',
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        } else if (item.disposition === 'write_off') {
+          newStockOuts.push({
+            id: `so-${Date.now()}-${item.materialId}`,
+            docNumber: genDocNumber('SO', stockOuts),
+            materialId: item.materialId,
+            materialName: item.materialName,
+            sku: item.sku || '',
+            uom: item.uom || 'pcs',
+            issueType: 'damage',
+            quantity: qty,
+            previousStock: 0,
+            newStock: 0,
+            unitCost: item.unitCost,
+            totalLoss: qty * item.unitCost,
+            referenceNo: grData.poNumber,
+            notes: `Write-off from ${grData.poNumber} — ${item.returnReason || 'No reason given'}`,
+            dateIssued: new Date().toISOString(),
+          });
+        }
+      } else if (type === 'shortage') {
+        if (item.disposition === 'backorder') {
+          newBackorders.push({
+            id: `bo-${Date.now()}-${item.materialId}`,
+            boNumber: genDocNumber('BO', backorders),
+            poId: grData.poId,
+            poNumber: grData.poNumber,
+            vendorId: grData.vendorId || '',
+            vendorName: grData.vendorName,
+            materialId: item.materialId,
+            materialName: item.materialName,
+            sku: item.sku || '',
+            uom: item.uom || 'pcs',
+            qty: qty,
+            unitCost: item.unitCost,
+            reason: item.returnReason || 'Quantity Shortage',
+            source: 'goods_receipt',
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        } else if (item.disposition === 'request_credit') {
+          newCredits.push({
+            id: `cc-${Date.now()}-${item.materialId}`,
+            ccNumber: genDocNumber('CC', credits),
+            poId: grData.poId,
+            poNumber: grData.poNumber,
+            vendorId: grData.vendorId || '',
+            vendorName: grData.vendorName,
+            materialId: item.materialId,
+            materialName: item.materialName,
+            sku: item.sku || '',
+            uom: item.uom || 'pcs',
+            qty: qty,
+            unitCost: item.unitCost,
+            totalCredit: qty * item.unitCost,
+            reason: item.returnReason || 'Quantity Shortage',
+            source: 'goods_receipt',
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        // 'accept_partial' for shortage → no action needed
       }
-      // disposition 'cancel' → no action needed
     });
 
     if (newRTVs.length > 0) {
@@ -2028,6 +2266,12 @@ function POTab({ pos, vendors, materials, onRefresh }) {
     }
     if (newStockOuts.length > 0) {
       setStore(STOCK_OUT_KEY, [...stockOuts, ...newStockOuts]);
+    }
+    if (newBackorders.length > 0) {
+      setStore(BACKORDER_KEY, [...backorders, ...newBackorders]);
+    }
+    if (newCredits.length > 0) {
+      setStore(CREDIT_KEY, [...credits, ...newCredits]);
     }
 
     setShowGRForm(false);
@@ -2058,7 +2302,14 @@ function POTab({ pos, vendors, materials, onRefresh }) {
             onChange={setStatusFilter}
             options={[
               { value: '', label: 'All Status' },
-              ...Object.entries(PO_STATUS).map(([k, v]) => ({ value: k, label: v.label })),
+              // Deduplicate by label (pending and draft both show as "Pending")
+              ...Object.values(
+                Object.entries(PO_STATUS)
+                  .reduce((acc, [k, v]) => {
+                    if (!acc[v.label]) acc[v.label] = { value: k, label: v.label };
+                    return acc;
+                  }, {})
+              ),
             ]}
             placeholder="All Status"
             style={{ minWidth: '130px' }}
@@ -2490,13 +2741,13 @@ function GRHistoryTab({ grs }) {
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function PurchasingPage() {
-  const [activeTab,   setActiveTab]   = useState('po');
-  const [pos,         setPOs]         = useState([]);
-  const [grs,         setGRs]         = useState([]);
-  const [stockIns,    setStockIns]    = useState([]);
-  const [vendors,     setVendors]     = useState([]);
-  const [materials,   setMaterials]   = useState([]);
-  const [showStockIn, setShowStockIn] = useState(false);
+  const [activeTab,     setActiveTab]     = useState('po');
+  const [pos,           setPOs]           = useState([]);
+  const [grs,           setGRs]           = useState([]);
+  const [stockIns,      setStockIns]      = useState([]);
+  const [vendors,       setVendors]       = useState([]);
+  const [materials,     setMaterials]     = useState([]);
+  const [showStockIn,   setShowStockIn]   = useState(false);
 
   const refresh = useCallback(() => {
     setPOs(getStore(PO_KEY));
@@ -2601,21 +2852,21 @@ export default function PurchasingPage() {
             <span className="summary-label">Total POs</span>
           </div>
         </div>
-        <div className="summary-card summary-card-warning">
+        <div className="summary-card">
           <div className="summary-content">
             <span className="summary-value">{openPOs}</span>
             <span className="summary-label">Pending</span>
           </div>
         </div>
-        <div className="summary-card" style={{ background: 'rgba(34,197,94,0.08)', borderColor: 'rgba(34,197,94,0.3)' }}>
+        <div className="summary-card">
           <div className="summary-content">
-            <span className="summary-value" style={{ color: '#22c55e' }}>{receivedPOs}</span>
-            <span className="summary-label" style={{ color: '#22c55e' }}>Completed</span>
+            <span className="summary-value">{receivedPOs}</span>
+            <span className="summary-label">Completed</span>
           </div>
         </div>
-        <div className="summary-card" style={{ background: 'rgba(212,168,67,0.08)', borderColor: 'rgba(212,168,67,0.3)' }}>
+        <div className="summary-card">
           <div className="summary-content">
-            <span className="summary-value" style={{ color: '#D4A843', fontSize: '1rem' }}>
+            <span className="summary-value" style={{ fontSize: '1rem' }}>
               ₱{totalPOValue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             <span className="summary-label">Total PO Value</span>

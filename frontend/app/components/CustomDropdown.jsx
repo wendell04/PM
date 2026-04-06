@@ -29,13 +29,26 @@ export default function CustomDropdown({ value, onChange, options, placeholder =
   }, []);
 
   // Deduplicate options by value, keep first occurrence
+  // Also ensure all values are strings (not objects) to prevent [object Object] key errors
   const uniqueOptions = useMemo(() => {
     const seen = new Set();
-    return options.filter(o => {
-      if (seen.has(o.value)) return false;
-      seen.add(o.value);
-      return true;
-    });
+    return options
+      .filter(o => {
+        // Convert object values to strings if needed (defensive)
+        const value = typeof o.value === 'object' && o.value !== null 
+          ? JSON.stringify(o.value) 
+          : String(o.value ?? '');
+        
+        if (seen.has(value)) return false;
+        seen.add(value);
+        return true;
+      })
+      .map(o => ({
+        ...o,
+        value: typeof o.value === 'object' && o.value !== null 
+          ? JSON.stringify(o.value) 
+          : String(o.value ?? '')
+      }));
   }, [options]);
 
   const selectedOption = uniqueOptions.find(o => o.value === value);
@@ -47,6 +60,7 @@ export default function CustomDropdown({ value, onChange, options, placeholder =
   }, [uniqueOptions, value]);
 
   const handleSelect = (optionValue) => {
+    // Normalize value back if it was stringified
     onChange(optionValue);
     setIsOpen(false);
   };
