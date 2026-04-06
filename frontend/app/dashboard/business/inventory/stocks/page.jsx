@@ -1005,25 +1005,129 @@ export default function StocksPage() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // ── Goods Issue Handler ──────────────────────────────────────────────────────
+  // ── Batch Helper Functions ────────────────────────────────────────────────
+  const computeStockFromBatches = (batches) => {
+    if (!batches || !Array.isArray(batches) || batches.length === 0) return 0;
+    return batches.reduce((sum, b) => sum + ((b.remainingQty || b.goodQty || b.qtyGood || 0)), 0);
+  };
+
+  const computeAveCostFromBatches = (batches) => {
+    if (!batches || !Array.isArray(batches) || batches.length === 0) return 0;
+    let totalCost = 0, totalQty = 0;
+    batches.forEach(b => {
+      const qty = b.remainingQty || b.goodQty || b.qtyGood || 0;
+      const cost = b.unitCost || 0;
+      totalCost += qty * cost;
+      totalQty += qty;
+    });
+    return totalQty > 0 ? Math.round((totalCost / totalQty) * 100) / 100 : 0;
+  };
+
+  // ── FIFO Deduction Logic ──────────────────────────────────────────────────
+  // Deducts qty from oldest batches first, returns { updatedBatches, consumptionLog }
+  const deductFIFO = (batches, qtyToDeduct, reason) => {
+    if (!batches || !Array.isArray(batches) || batches.length === 0) {
+      return { success: false, error: 'No batches available for deduction', updatedBatches: [], consumptionLog: [] };
+    }
+
+    // Sort batches by dateReceived (oldest first)
+    const sorted = [...batches].sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
+    let remaining = qtyToDeduct;
+    const consumptionLog = [];
+    const updatedBatches = sorted.map(batch => {
+      if (remaining <= 0) return batch; // Already fully deducted
+
+      const available = batch.remainingQty || 0;
+      if (available <= 0) return batch; // This batch is already empty
+
+      const take = Math.min(remaining, available);
+      const newRemaining = available - take;
+
+      consumptionLog.push({
+        batchId: batch.batchId,
+        vendorName: batch.vendorName || 'Unknown',
+        dateReceived: batch.dateReceived,
+        qtyTaken: take,
+        unitCost: batch.unitCost || 0,
+        costValue: take * (batch.unitCost || 0),
+        remainingAfter: newRemaining,
+      });
+
+      remaining -= take;
+
+      return {
+        ...batch,
+        remainingQty: newRemaining,
+        movements: [
+          ...(batch.movements || []),
+          {
+            type: reason,
+            qty: -take,
+            remainingAfter: newRemaining,
+            reason: reason,
+            date: new Date().toISOString()
+          }
+        ],
+        status: newRemaining === 0 ? 'exhausted' : 'active'
+      };
+    });
+
+    if (remaining > 0) {
+      return { success: false, error: `Insufficient stock. Shortage: ${remaining} pcs`, updatedBatches, consumptionLog };
+    }
+
+    return { success: true, updatedBatches, consumptionLog };
+  };
+
+  // ── Goods Issue Handler (WITH FIFO) ────────────────────────────────────────
   const handleGoodsIssue = (soData) => {
     const mats = getStore(MATERIALS_KEY);
+    const issueQty = soData.quantity || 0;
+    const issueType = soData.issueType || 'damage';
+
     const updatedMats = mats.map(m => {
       if (m.id !== soData.materialId) return m;
+
+      // If material has batches, use FIFO deduction
+      if (m.batches && Array.isArray(m.batches) && m.batches.length > 0) {
+        const fifoResult = deductFIFO(m.batches, issueQty, issueType);
+
+        if (!fifoResult.success) {
+          alert(`FIFO Error: ${fifoResult.error}`);
+          return m; // Don't update this material
+        }
+
+        // Compute new stock and cost from updated batches
+        const newStock = computeStockFromBatches(fifoResult.updatedBatches);
+        const newCost = computeAveCostFromBatches(fifoResult.updatedBatches);
+
+        return {
+          ...m,
+          stockQty: newStock,
+          baseCost: newCost,
+          batches: fifoResult.updatedBatches,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      // Fallback: No batches (legacy materials), use flat deduction
+      const oldStock = parseInt(m.stockQty) || 0;
       return {
         ...m,
-        stockQty:  soData.newStock,
+        stockQty: Math.max(0, oldStock - issueQty),
         updatedAt: new Date().toISOString(),
       };
     });
     setStore(MATERIALS_KEY, updatedMats);
 
-    // Save to stock-out log
+    // Save to stock-out log (enhanced with FIFO consumption details)
     const log = getStore(STOCK_OUT_KEY);
+    const mat = mats.find(m => m.id === soData.materialId);
     const newEntry = {
       ...soData,
       id: `so-${Date.now()}`,
       soNumber: genDocNumber('SO', log),
+      consumptionLog: mat?.batches ? deductFIFO(mat.batches, issueQty, issueType).consumptionLog || [] : [],
       createdAt: new Date().toISOString(),
     };
     setStore(STOCK_OUT_KEY, [...log, newEntry]);

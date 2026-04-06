@@ -2105,6 +2105,32 @@ function POTab({ pos, vendors, materials, onRefresh }) {
     onRefresh();
   };
 
+  // ── Batch Helper Functions ────────────────────────────────────────────────
+  const generateBatchId = () => {
+    const d = new Date();
+    const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    const timestamp = Date.now().toString(36).slice(-4).toUpperCase();
+    const seq = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `${dateStr}-${timestamp}-${seq}`;
+  };
+
+  const computeStockFromBatches = (batches) => {
+    if (!batches || !Array.isArray(batches) || batches.length === 0) return 0;
+    return batches.reduce((sum, b) => sum + ((b.remainingQty || b.goodQty || b.qtyGood || 0)), 0);
+  };
+
+  const computeAveCostFromBatches = (batches) => {
+    if (!batches || !Array.isArray(batches) || batches.length === 0) return 0;
+    let totalCost = 0, totalQty = 0;
+    batches.forEach(b => {
+      const qty = b.remainingQty || b.goodQty || b.qtyGood || 0;
+      const cost = b.unitCost || 0;
+      totalCost += qty * cost;
+      totalQty += qty;
+    });
+    return totalQty > 0 ? Math.round((totalCost / totalQty) * 100) / 100 : 0;
+  };
+
   const handleSaveGR = (grData, updatedPO, approvedDiscrepancies = []) => {
     // 1. Persist GR record with invoice data
     const grs   = getStore(GR_KEY);
@@ -2123,38 +2149,63 @@ function POTab({ pos, vendors, materials, onRefresh }) {
     const allPOs = getStore(PO_KEY);
     setStore(PO_KEY, allPOs.map(p => p.id === updatedPO.id ? { ...updatedPO, updatedAt: new Date().toISOString() } : p));
 
-    // 3. Update material stock quantities + Moving Average Cost
-    //    Logic: Stock Added = Physical Count (receivedQty) - Damaged Qty
-    //    Shortage Qty is already excluded from receivedQty, so it doesn't affect stock directly here.
+    // 3. Update materials: CREATE BATCH ENTRIES + compute stock/cost from batches
     const mats = getStore(MATERIALS_KEY);
     setStore(MATERIALS_KEY, mats.map(mat => {
       const rcv = grData.items.find(i => i.materialId === mat.id);
       if (!rcv || !rcv.receivedQty) return mat;
-      const oldStock = parseInt(mat.stockQty) || 0;
-      const oldCost  = parseFloat(mat.baseCost) || 0;
-      
-      // Good Qty = Received (Physical) - Damaged
+
       const damaged = parseInt(rcv.damagedQty) || 0;
       const goodQty = rcv.receivedQty - damaged;
-      
       if (goodQty <= 0) return mat;
-      
+
       // Use actual cost from invoice if available, otherwise fall back to GR unit cost
       const unitCost = grData.actualCosts && grData.actualCosts[mat.id]
-        ? parseFloat(grData.actualCosts[mat.id]) || oldCost
-        : parseFloat(rcv.unitCost) || oldCost;
-      
-      const newStock = oldStock + goodQty;
-      let newCost = oldCost;
-      if (oldStock === 0) {
-        newCost = unitCost;
-      } else if (unitCost > 0) {
-        newCost = ((oldStock * oldCost) + (goodQty * unitCost)) / newStock;
-      }
+        ? parseFloat(grData.actualCosts[mat.id]) || 0
+        : parseFloat(rcv.unitCost) || 0;
+
+      if (unitCost <= 0) return mat;
+
+      // Create new batch entry
+      const newBatch = {
+        batchId: generateBatchId(),
+        vendorId: grData.vendorId || null,
+        vendorName: grData.vendorName || 'Unknown Vendor',
+        poNumber: grData.poNumber || '',
+        grNumber: newGR.grNumber || '',
+        invoiceNumber: grData.invoiceNo || '',
+        dateReceived: grData.receivedDate || new Date().toISOString(),
+        qtyReceived: rcv.receivedQty,
+        qtyGood: goodQty,
+        qtyDamaged: damaged,
+        remainingQty: goodQty,  // Starts at goodQty, decreases as used
+        unitCost: unitCost,
+        totalCost: goodQty * unitCost,
+        movements: [
+          {
+            type: 'received',
+            qty: goodQty,
+            remainingAfter: goodQty,
+            reason: `Goods Receipt ${newGR.grNumber} from PO ${grData.poNumber}`,
+            date: new Date().toISOString()
+          }
+        ],
+        status: 'active'
+      };
+
+      // Append new batch to existing batches (or initialize array)
+      const existingBatches = mat.batches || [];
+      const updatedBatches = [...existingBatches, newBatch];
+
+      // Compute stock and cost from batches
+      const newStock = computeStockFromBatches(updatedBatches);
+      const newCost = computeAveCostFromBatches(updatedBatches);
+
       return {
         ...mat,
-        stockQty:  newStock,
-        baseCost:  Math.round(newCost * 100) / 100,
+        stockQty: newStock,
+        baseCost: newCost,
+        batches: updatedBatches,
         updatedAt: new Date().toISOString(),
       };
     }));
@@ -2780,22 +2831,55 @@ export default function PurchasingPage() {
       const mat = mats.find(m => m.id === siData.materialId);
       if (!mat) return;
 
-      const oldStock = parseInt(mat.stockQty) || 0;
-      const oldCost  = parseFloat(mat.baseCost) || 0;
       const effectiveDamaged = disposition === 'cancel' ? 0 : siData.damagedQty;
       const goodQty  = siData.receivedQty - effectiveDamaged;
-      const newCost  = siData.effectiveUnitCost;
+      const unitCost = siData.unitCost || 0;
 
-      let updatedBaseCost;
-      if (oldStock === 0) {
-        updatedBaseCost = newCost;
-      } else {
-        updatedBaseCost = ((oldStock * oldCost) + (goodQty * newCost)) / (oldStock + goodQty);
+      if (goodQty <= 0 || unitCost <= 0) {
+        // Still log the entry even if no good stock
+        const log = getStore(STOCK_IN_KEY);
+        setStore(STOCK_IN_KEY, [...log, { ...siData, id: `si-${Date.now()}-${siData.materialId}`, siNumber: genDocNumber('SI', log), disposition, createdAt: new Date().toISOString() }]);
+        return;
       }
+
+      // Create new batch entry for manual stock-in
+      const newBatch = {
+        batchId: generateBatchId(),
+        vendorId: siData.vendorId || null,
+        vendorName: siData.vendorName || 'Unknown Vendor',
+        poNumber: '',  // Manual stock-in has no PO
+        grNumber: '',
+        invoiceNumber: siData.referenceNo || '',
+        dateReceived: siData.dateReceived || new Date().toISOString(),
+        qtyReceived: siData.receivedQty,
+        qtyGood: goodQty,
+        qtyDamaged: effectiveDamaged,
+        remainingQty: goodQty,
+        unitCost: unitCost,
+        totalCost: goodQty * unitCost,
+        movements: [
+          {
+            type: 'received',
+            qty: goodQty,
+            remainingAfter: goodQty,
+            reason: `Manual Stock-In ${siData.referenceNo || ''}`,
+            date: new Date().toISOString()
+          }
+        ],
+        status: 'active'
+      };
+
+      // Append new batch to existing batches (or initialize array)
+      const existingBatches = mat.batches || [];
+      const updatedBatches = [...existingBatches, newBatch];
+
+      // Compute stock and cost from batches
+      const newStock = computeStockFromBatches(updatedBatches);
+      const newCost = computeAveCostFromBatches(updatedBatches);
 
       const updatedMats = mats.map(m => {
         if (m.id !== siData.materialId) return m;
-        return { ...m, stockQty: oldStock + goodQty, baseCost: Math.round(updatedBaseCost * 100) / 100, updatedAt: new Date().toISOString() };
+        return { ...m, stockQty: newStock, baseCost: newCost, batches: updatedBatches, updatedAt: new Date().toISOString() };
       });
       setStore(MATERIALS_KEY, updatedMats);
 
@@ -2807,7 +2891,7 @@ export default function PurchasingPage() {
         setStore(RTV_KEY, [...rtvs, { id: `rtv-${Date.now()}-${siData.materialId}`, rtvNumber: genDocNumber('RTV', rtvs), poId: '', poNumber: siData.referenceNo || 'Manual Stock-In', vendorId: siData.vendorId || '', vendorName: siData.vendorName, materialId: siData.materialId, materialName: siData.materialName, sku: siData.sku || '', uom: siData.uom || 'pcs', qty: siData.damagedQty, unitCost: siData.unitCost, reason: siData.returnReason || 'Damaged', source: 'stock_in', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]);
       } else if (disposition === 'write_off' && siData.damagedQty > 0) {
         const stockOuts = getStore(STOCK_OUT_KEY);
-        setStore(STOCK_OUT_KEY, [...stockOuts, { id: `so-${Date.now()}-${siData.materialId}`, docNumber: genDocNumber('SO', stockOuts), materialId: siData.materialId, materialName: siData.materialName, sku: siData.sku || '', uom: siData.uom || 'pcs', issueType: 'damage', quantity: siData.damagedQty, previousStock: oldStock, newStock: oldStock + goodQty, unitCost: siData.unitCost, totalLoss: siData.damagedQty * siData.unitCost, referenceNo: siData.referenceNo || 'Manual Stock-In', notes: `Write-off from stock-in`, dateIssued: new Date().toISOString() }]);
+        setStore(STOCK_OUT_KEY, [...stockOuts, { id: `so-${Date.now()}-${siData.materialId}`, docNumber: genDocNumber('SO', stockOuts), materialId: siData.materialId, materialName: siData.materialName, sku: siData.sku || '', uom: siData.uom || 'pcs', issueType: 'damage', quantity: siData.damagedQty, previousStock: newStock, newStock: newStock - siData.damagedQty, unitCost: siData.unitCost, totalLoss: siData.damagedQty * siData.unitCost, referenceNo: siData.referenceNo || 'Manual Stock-In', notes: `Write-off from stock-in`, dateIssued: new Date().toISOString() }]);
       }
     });
 
