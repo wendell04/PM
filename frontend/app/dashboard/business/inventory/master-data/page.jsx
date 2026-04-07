@@ -60,17 +60,13 @@ function computeStockFromBatches(batches) {
   return batches.reduce((sum, b) => sum + ((b.remainingQty || b.goodQty || b.qtyGood || 0)), 0);
 }
 
-// Compute weighted average cost from batches
+// Compute FIFO cost = unit cost of the OLDEST active batch (next batch to be issued)
 function computeAveCostFromBatches(batches) {
   if (!batches || !Array.isArray(batches) || batches.length === 0) return 0;
-  let totalCost = 0, totalQty = 0;
-  batches.forEach(b => {
-    const qty = b.remainingQty || b.goodQty || b.qtyGood || 0;
-    const cost = b.unitCost || 0;
-    totalCost += qty * cost;
-    totalQty += qty;
-  });
-  return totalQty > 0 ? Math.round((totalCost / totalQty) * 100) / 100 : 0;
+  const oldest = [...batches]
+    .filter(b => (b.remainingQty || 0) > 0)
+    .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived))[0];
+  return oldest ? (oldest.unitCost || 0) : 0;
 }
 
 // ── SKU Generation ────────────────────────────────────────────────────────────
@@ -195,12 +191,6 @@ function generateVariantSKUs(category, productName, variantTypes, existingMateri
 }
 
 function CategoryBadge({ category }) {
-  const colors = {
-    'RAW MATERIAL': { bg: 'rgba(99,102,241,0.1)', color: '#818cf8', border: 'rgba(99,102,241,0.2)' },
-    'CONSUMABLE': { bg: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: 'rgba(245,158,11,0.2)' },
-    'FINISHED GOODS': { bg: 'rgba(34,197,94,0.1)', color: '#22c55e', border: 'rgba(34,197,94,0.2)' },
-    'PACKAGING': { bg: 'rgba(168,85,247,0.1)', color: '#a855f7', border: 'rgba(168,85,247,0.2)' },
-  };
   const key = (category || '').toUpperCase();
   const c = colors[key] || { bg: 'rgba(255,255,255,0.05)', color: '#9ca3af', border: 'rgba(255,255,255,0.1)' };
   return (
@@ -1704,152 +1694,273 @@ function MaterialFormModal({ itemCategories, vendors, materials, editMaterial, o
   );
 }
 
-// ── Vendor Catalog Modal ───────────────────────────────────────────────────────
+// ── Vendor Catalog Modal — matches screenshot design ──────────────────────
 function VendorCatalogModal({ vendor, materials, onClose }) {
-  // Get price history from Goods Receipt records — must be called before early return
+  const [expandedItems, setExpandedItems] = useState(new Set());
+
+  useEffect(() => {
+    if (vendor) setExpandedItems(new Set());
+  }, [vendor]);
+
+  // Load purchase data
   const grs = useMemo(() => {
     if (typeof window === 'undefined') return [];
-    try { return JSON.parse(localStorage.getItem('pmp_goods_receipts') || '[]'); }
-    catch { return []; }
+    try { return JSON.parse(localStorage.getItem('pmp_goods_receipts') || '[]'); } catch { return []; }
   }, []);
 
   const pos = useMemo(() => {
     if (typeof window === 'undefined') return [];
-    try { return JSON.parse(localStorage.getItem('pmp_purchase_orders') || '[]'); }
-    catch { return []; }
+    try { return JSON.parse(localStorage.getItem('pmp_purchase_orders') || '[]'); } catch { return []; }
+  }, []);
+
+  const stockIns = useMemo(() => {
+    if (typeof window === 'undefined') return [];
+    try { return JSON.parse(localStorage.getItem('pmp_stock_in_log') || '[]'); } catch { return []; }
   }, []);
 
   if (!vendor) return null;
 
-  // Find all materials linked to this vendor
-  const catalogItems = materials.filter(m => m.preferredVendorId === vendor.id && !m.parentId);
-
-  // Get POs from this vendor
+  // Build vendor's PO IDs
   const vendorPOs = pos.filter(p => p.vendorId === vendor.id);
   const vendorPOIds = new Set(vendorPOs.map(p => p.id));
 
-  // Build price history per material
-  const getPriceHistory = (materialId) => {
-    const history = [];
+  // Collect all purchase batches from this vendor (GR + manual stock-in)
+  const allBatches = useMemo(() => {
+    const batches = [];
+    // From Goods Receipts (PO-based)
     grs.forEach(gr => {
-      if (!vendorPOIds.has(gr.poId)) return;
-      const grItem = (gr.items || []).find(i => i.materialId === materialId);
-      if (!grItem) return;
-      history.push({
-        date: gr.receivedDate || gr.createdAt,
-        unitCost: grItem.unitCost || 0,
-        qty: grItem.receivedQty || 0,
-        poNumber: gr.poNumber || '',
-      });
+      if (vendorPOIds.has(gr.poId)) {
+        (gr.items || []).forEach(item => {
+          batches.push({
+            materialId: item.materialId,
+            materialName: item.materialName,
+            sku: item.sku || '',
+            uom: item.uom || 'pcs',
+            unitCost: item.unitCost || 0,
+            qty: item.receivedQty || 0,
+            totalCost: (item.receivedQty || 0) * (item.unitCost || 0),
+            dateReceived: gr.receivedDate || gr.createdAt,
+            poNumber: gr.poNumber || '',
+            grNumber: gr.grNumber || '',
+            invoiceNumber: gr.invoiceNo || '',
+          });
+        });
+      }
     });
-    return history.sort((a, b) => new Date(b.date) - new Date(a.date));
+    // From manual stock-in
+    stockIns.forEach(si => {
+      if (si.vendorId === vendor.id || si.vendorName === vendor.name) {
+        batches.push({
+          materialId: si.materialId,
+          materialName: si.materialName,
+          sku: si.sku || '',
+          uom: si.uom || 'pcs',
+          unitCost: si.unitCost || 0,
+          qty: si.receivedQty || si.goodQty || 0,
+          totalCost: si.totalCost || (si.receivedQty || 0) * (si.unitCost || 0),
+          dateReceived: si.dateReceived,
+          poNumber: si.poNumber || '',
+          grNumber: si.grNumber || '',
+          invoiceNumber: si.referenceNo || '',
+        });
+      }
+    });
+    return batches;
+  }, [grs, pos, stockIns, vendorPOIds, vendor]);
+
+  // Group batches by material
+  const groupedByMaterial = useMemo(() => {
+    const map = new Map();
+    allBatches.forEach(b => {
+      if (!map.has(b.materialId)) {
+        map.set(b.materialId, {
+          materialId: b.materialId,
+          materialName: b.materialName,
+          sku: b.sku || '',
+          uom: b.uom || 'pcs',
+          priceHistory: [],
+          totalSpent: 0,
+          totalQty: 0,
+        });
+      }
+      const item = map.get(b.materialId);
+      item.priceHistory.push(b);
+      item.totalSpent += b.totalCost;
+      item.totalQty += b.qty;
+    });
+    // Sort each material's history by date (oldest first for trend calc)
+    map.forEach(item => {
+      item.priceHistory.sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
+    });
+    return [...map.values()].sort((a, b) => a.materialName.localeCompare(b.materialName));
+  }, [allBatches]);
+
+  // Summary stats
+  const totalSpent = allBatches.reduce((s, b) => s + b.totalCost, 0);
+  const totalBatches = allBatches.length;
+  const totalItems = allBatches.reduce((s, b) => s + b.qty, 0);
+
+  const toggleExpand = (materialId) => {
+    setExpandedItems(prev => {
+      const next = new Set(prev);
+      next.has(materialId) ? next.delete(materialId) : next.add(materialId);
+      return next;
+    });
   };
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '560px' }}>
-        <div className="modal-header">
+      <div className="modal-content" onClick={e => e.stopPropagation()}
+        style={{ maxWidth: '700px', width: '95%', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+
+        <div className="modal-header" style={{ flexShrink: 0 }}>
           <div>
-            <h2 className="modal-title" style={{ fontSize: '1.1rem' }}>{vendor.name} — Catalog</h2>
-            <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.1rem' }}>
-              Available raw materials from this vendor.
+            <h2 className="modal-title">{vendor.name} — Catalog</h2>
+            <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.2rem' }}>
+              Purchase history & per-batch pricing from this supplier.
             </p>
           </div>
           <button className="modal-close" onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
           </button>
         </div>
-        <div style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '450px', overflowY: 'auto' }}>
-          {catalogItems.length === 0 ? (
-            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.85rem' }}>
-              No materials linked to this vendor yet.
+
+        <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
+
+          {/* Summary Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
+            <div style={{ padding: '0.875rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.68rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Total Spent</div>
+              <div style={{ fontSize: '1rem', fontWeight: 700, color: '#facc15' }}>₱{totalSpent.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+            </div>
+            <div style={{ padding: '0.875rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.68rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Purchases</div>
+              <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gold)' }}>{totalBatches} batch{totalBatches !== 1 ? 'es' : ''}</div>
+            </div>
+            <div style={{ padding: '0.875rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.68rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Items Received</div>
+              <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>{totalItems} pcs</div>
+            </div>
+          </div>
+
+          {groupedByMaterial.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)', fontStyle: 'italic' }}>
+              No purchase history yet from this supplier.
             </div>
           ) : (
-            catalogItems.map(mat => {
-              const priceHistory = getPriceHistory(mat.id);
-              const avgCost = mat.baseCost || 0;
-              return (
-                <div key={mat.id} style={{
-                  padding: '1rem 1.25rem',
-                  background: 'rgba(255,255,255,0.02)',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                  borderRadius: '10px',
-                }}>
-                  {/* Material Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.95rem' }}>{mat.name}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.3rem' }}>
-                        <span style={{
-                          fontSize: '0.7rem', color: 'var(--gray)',
-                          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-                          padding: '0.15rem 0.5rem', borderRadius: '4px',
-                        }}>
-                          {mat.category}
-                        </span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-                          Unit: {mat.uom || 'pcs'}
-                        </span>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 700, color: '#D4A843', fontSize: '1rem', fontFamily: 'monospace' }}>
-                        ₱{avgCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                      </div>
-                      <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>
-                        Avg. Cost
-                      </div>
-                    </div>
-                  </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {groupedByMaterial.map(item => {
+                const isExpanded = expandedItems.has(item.materialId);
+                const latest = item.priceHistory[item.priceHistory.length - 1];
+                const prev = item.priceHistory.length >= 2 ? item.priceHistory[item.priceHistory.length - 2] : null;
+                const priceChange = prev ? latest.unitCost - prev.unitCost : 0;
+                const isUp = priceChange > 0;
 
-                  {/* Price History */}
-                  {priceHistory.length > 0 && (
-                    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                      <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
-                        Price History
+                return (
+                  <div key={item.materialId} style={{
+                    background: 'rgba(255,255,255,0.02)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: '10px',
+                    overflow: 'hidden',
+                    cursor: 'pointer',
+                  }} onClick={() => toggleExpand(item.materialId)}>
+
+                    {/* Header Row */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.95rem' }}>{item.materialName}</div>
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.2rem', fontSize: '0.72rem', color: 'var(--gray)' }}>
+                          {item.sku && <span style={{ fontFamily: 'monospace' }}>{item.sku}</span>}
+                          <span>{item.priceHistory.length} purchase{item.priceHistory.length !== 1 ? 's' : ''}</span>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                        {priceHistory.slice(0, 5).map((ph, idx) => (
-                          <div key={idx} style={{
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            padding: '0.35rem 0.5rem',
-                            background: 'rgba(255,255,255,0.02)',
-                            borderRadius: '6px',
-                            fontSize: '0.75rem',
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        {priceChange !== 0 && (
+                          <span style={{
+                            fontSize: '0.65rem', fontWeight: 700,
+                            color: isUp ? '#f87171' : '#4ade80',
+                            display: 'flex', alignItems: 'center', gap: '0.2rem',
                           }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                              <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>
-                                {new Date(ph.date).toLocaleDateString('en-PH')}
-                              </span>
-                              <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>
-                                {ph.qty} {mat.uom || 'pcs'}
-                              </span>
-                              {ph.poNumber && (
-                                <span style={{ color: 'var(--gray)', fontSize: '0.65rem', fontFamily: 'monospace' }}>
-                                  {ph.poNumber}
-                                </span>
-                              )}
-                            </div>
-                            <span style={{ fontWeight: 600, color: '#E5E2E1', fontFamily: 'monospace' }}>
-                              ₱{ph.unitCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                            </span>
-                          </div>
-                        ))}
-                        {priceHistory.length > 5 && (
-                          <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textAlign: 'center', paddingTop: '0.25rem' }}>
-                            +{priceHistory.length - 5} more orders
-                          </div>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                              {isUp
+                                ? <path d="M18 15l-6-6-6 6"/>
+                                : <path d="M6 9l6 6 6-6"/>
+                              }
+                            </svg>
+                            ₱{Math.abs(priceChange).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                          </span>
                         )}
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#D4A843', fontFamily: 'monospace' }}>
+                            ₱{(latest?.unitCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                          </div>
+                          <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase' }}>Latest Price</div>
+                        </div>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                          style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', color: 'var(--gray)' }}>
+                          <path d="M9 18l6-6-6-6"/>
+                        </svg>
                       </div>
                     </div>
-                  )}
-                </div>
-              );
-            })
+
+                    {/* Expanded: Price History Table */}
+                    {isExpanded && (
+                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.04)', background: 'rgba(0,0,0,0.15)' }}>
+                        <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                              <th style={{ padding: '0.5rem 1rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase' }}>Date</th>
+                              <th style={{ padding: '0.5rem 1rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase' }}>Qty</th>
+                              <th style={{ padding: '0.5rem 1rem', textAlign: 'right', color: 'var(--gray)', fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase' }}>Unit Cost</th>
+                              <th style={{ padding: '0.5rem 1rem', textAlign: 'right', color: 'var(--gray)', fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase' }}>Total</th>
+                              <th style={{ padding: '0.5rem 1rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase' }}>Ref</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[...item.priceHistory].reverse().map((ph, idx) => {
+                              const prevEntry = idx < item.priceHistory.length - 1 ? item.priceHistory[item.priceHistory.length - 1 - idx - 1] : null;
+                              const change = prevEntry ? ph.unitCost - prevEntry.unitCost : 0;
+                              const isUp = change > 0;
+                              return (
+                                <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                  <td style={{ padding: '0.5rem 1rem', color: '#E5E2E1', fontSize: '0.78rem' }}>
+                                    {new Date(ph.dateReceived).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  </td>
+                                  <td style={{ padding: '0.5rem 1rem', textAlign: 'center', color: '#D4A843', fontWeight: 600 }}>{ph.qty}</td>
+                                  <td style={{ padding: '0.5rem 1rem', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: '#E5E2E1' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
+                                      ₱{ph.unitCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                                      {change !== 0 && (
+                                        <span style={{ fontSize: '0.65rem', fontWeight: 700, color: isUp ? '#f87171' : '#4ade80' }}>
+                                          {isUp ? '↑' : '↓'}₱{Math.abs(change).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '0.5rem 1rem', textAlign: 'right', color: '#facc15', fontWeight: 600, fontFamily: 'monospace' }}>
+                                    ₱{(ph.qty * ph.unitCost).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                                  </td>
+                                  <td style={{ padding: '0.5rem 1rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.72rem', fontFamily: 'monospace' }}>
+                                    {ph.poNumber || ph.grNumber || ph.invoiceNumber || '—'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
-        <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
-          <button type="button" className="btn-secondary" onClick={onClose}>Close Catalog</button>
+
+        <div className="modal-actions" style={{ flexShrink: 0, justifyContent: 'flex-end' }}>
+          <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
         </div>
       </div>
     </div>

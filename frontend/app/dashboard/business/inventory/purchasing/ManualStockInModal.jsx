@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 // ── Supplier Combobox ─────────────────────────────────────────────────────────
 // Shows vendors who supply AT LEAST ONE of the selected material categories.
 // General/no-category vendors always appear.
-function SupplierCombobox({ value, vendorName, onChange, vendors, selectedCategories, onAddNew }) {
+function SupplierCombobox({ value, vendorName, onChange, vendors, selectedCategories, onAddNew, onViewCatalog }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -15,14 +15,28 @@ function SupplierCombobox({ value, vendorName, onChange, vendors, selectedCatego
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  // A vendor is eligible only if they supply ALL of the selected material categories
-  const eligibleVendors = vendors.filter(v => {
-    const rawItems = v.itemsSupplied || v.categories || [];
-    const vItems = rawItems.map(item => typeof item === 'string' ? item : (item.name || ''));
-    if (vItems.length === 0) return true;
-    if (!selectedCategories || selectedCategories.length === 0) return true;
-    return selectedCategories.every(cat => vItems.includes(cat));
-  });
+  // Deduplicate vendors by ID — prevent duplicate entries
+  const uniqueVendors = useMemo(() => {
+    const seen = new Map();
+    vendors.forEach(v => {
+      if (!seen.has(v.id)) seen.set(v.id, v);
+    });
+    return [...seen.values()];
+  }, [vendors]);
+
+  // A vendor is eligible if they supply ALL of the selected material categories
+  // (deduplicate itemsSupplied first to avoid false matches from duplicates)
+  const eligibleVendors = useMemo(() => {
+    return uniqueVendors.filter(v => {
+      const rawItems = v.itemsSupplied || v.categories || [];
+      // Deduplicate items by name
+      const vItems = [...new Set(rawItems.map(item => typeof item === 'string' ? item : (item.name || '')))];
+      if (vItems.length === 0) return true; // General supplier — always show
+      if (!selectedCategories || selectedCategories.length === 0) return true;
+      // Vendor must supply ALL selected categories
+      return selectedCategories.every(cat => vItems.includes(cat));
+    });
+  }, [uniqueVendors, selectedCategories]);
 
   const display = !value ? 'General Merchandise' : (vendorName || 'General Merchandise');
 
@@ -52,19 +66,33 @@ function SupplierCombobox({ value, vendorName, onChange, vendors, selectedCatego
 
           {/* Eligible vendors */}
           {eligibleVendors.map(v => (
-            <button key={v.id} type="button"
-              onClick={() => { onChange(v.id, v.name); setOpen(false); }}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 0.875rem', background: value === v.id ? 'rgba(212,168,67,0.12)' : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-              <div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: value === v.id ? '#D4A843' : '#E5E2E1' }}>{v.name}</div>
-                <div style={{ fontSize: '0.62rem', color: 'var(--gray)', marginTop: '0.1rem' }}>
-                  {v.itemsSupplied?.length > 0
-                    ? v.itemsSupplied.map(item => typeof item === 'string' ? item : (item.name || '')).join(' • ')
-                    : 'General supplier'}
+            <div key={v.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+              <button type="button"
+                onClick={() => { onChange(v.id, v.name); setOpen(false); }}
+                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 0.875rem', background: value === v.id ? 'rgba(212,168,67,0.12)' : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                <div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 600, color: value === v.id ? '#D4A843' : '#E5E2E1' }}>{v.name}</div>
+                  <div style={{ fontSize: '0.62rem', color: 'var(--gray)', marginTop: '0.1rem' }}>
+                    {v.itemsSupplied?.length > 0
+                      ? v.itemsSupplied.map(item => typeof item === 'string' ? item : (item.name || '')).join(' • ')
+                      : 'General supplier'}
+                  </div>
                 </div>
-              </div>
-              {value === v.id && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
-            </button>
+                {value === v.id && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+              </button>
+              <button type="button"
+                onClick={(e) => { e.stopPropagation(); setOpen(false); onViewCatalog?.(v); }}
+                title="View price history"
+                style={{ padding: '0.65rem 0.6rem', background: 'transparent', border: 'none', borderLeft: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer', color: '#D4A843', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.68rem', fontWeight: 600, whiteSpace: 'nowrap' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,168,67,0.08)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                  <polyline points="15 3 21 3 21 9"/>
+                  <line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+              </button>
+            </div>
           ))}
 
           {eligibleVendors.length === 0 && selectedCategories.length > 0 && (
@@ -178,6 +206,286 @@ function AddVendorQuickModal({ isOpen, onClose, onAdd, existingVendors, selected
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Supplier Catalog Modal (per-batch price history, like old supplier management) ──
+function SupplierCatalogModal({ isOpen, onClose, supplier, batches, materials }) {
+  const [expandedItems, setExpandedItems] = useState(new Set());
+
+  useEffect(() => {
+    if (isOpen) setExpandedItems(new Set());
+  }, [isOpen]);
+
+  // Get all batches from this supplier
+  const supplierBatches = useMemo(() => {
+    if (!supplier || !batches) return [];
+    return batches.filter(b => b.vendorId === supplier.id || b.vendorName === supplier.name);
+  }, [supplier, batches]);
+
+  // Build vendor's supplied category list (deduplicated)
+  const vendorCategories = useMemo(() => {
+    if (!supplier) return [];
+    const raw = supplier.itemsSupplied || supplier.categories || [];
+    return [...new Set(raw.map(item => typeof item === 'string' ? item : (item.name || '')))];
+  }, [supplier]);
+
+  // Find materials that match this vendor's categories
+  const vendorMaterials = useMemo(() => {
+    if (!materials || vendorCategories.length === 0) return [];
+    return materials.filter(m => {
+      // Include standalone materials and variant children
+      if (m.hasVariants && !m.parentId) return false; // skip parent containers
+      return m.category && vendorCategories.includes(m.category);
+    });
+  }, [materials, vendorCategories]);
+
+  // Group by material name — merge purchase history with current baseCost
+  const groupedByMaterial = useMemo(() => {
+    const map = new Map();
+
+    // First, add all vendor materials with their current baseCost
+    vendorMaterials.forEach(m => {
+      const key = m.id;
+      map.set(key, {
+        materialId: m.id,
+        materialName: m.name,
+        sku: m.sku || '',
+        uom: m.uom || 'pcs',
+        currentBaseCost: m.baseCost || 0,
+        priceHistory: [],
+      });
+    });
+
+    // Then, add purchase history on top
+    supplierBatches.forEach(b => {
+      const key = b.materialId;
+      if (!map.has(key)) {
+        // Material not in current master data — add from batch
+        map.set(key, {
+          materialId: b.materialId,
+          materialName: b.materialName,
+          sku: b.sku || '',
+          uom: b.uom || 'pcs',
+          currentBaseCost: b.unitCost || 0,
+          priceHistory: [],
+        });
+      }
+      map.get(key).priceHistory.push({
+        dateReceived: b.dateReceived,
+        unitCost: b.unitCost || 0,
+        qty: b.receivedQty || b.qtyGood || 0,
+        invoiceNumber: b.invoiceNumber || b.referenceNo || '—',
+        poNumber: b.poNumber || '',
+        grNumber: b.grNumber || '',
+      });
+    });
+
+    // Sort each material's history by date (oldest first)
+    map.forEach(item => {
+      item.priceHistory.sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
+    });
+
+    return [...map.values()].sort((a, b) => a.materialName.localeCompare(b.materialName));
+  }, [supplierBatches, vendorMaterials]);
+
+  const totalSpent = supplierBatches.reduce((s, b) => s + (b.totalCost || (b.receivedQty || 0) * (b.unitCost || 0)), 0);
+  const totalBatches = supplierBatches.length;
+  const totalItems = supplierBatches.reduce((s, b) => s + (b.receivedQty || b.qtyGood || 0), 0);
+
+  if (!isOpen || !supplier) return null;
+
+  const toggleExpand = (materialId) => {
+    setExpandedItems(prev => {
+      const next = new Set(prev);
+      next.has(materialId) ? next.delete(materialId) : next.add(materialId);
+      return next;
+    });
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" onClick={e => e.stopPropagation()}
+        style={{ maxWidth: '700px', width: '95%', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+
+        <div className="modal-header" style={{ flexShrink: 0 }}>
+          <div>
+            <h2 className="modal-title">{supplier.name} — Catalog</h2>
+            <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.2rem' }}>
+              Purchase history & per-batch pricing from this supplier.
+            </p>
+          </div>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
+
+          {/* Summary Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1.25rem' }}>
+            <div style={{ padding: '0.875rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.68rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Total Spent</div>
+              <div style={{ fontSize: '1rem', fontWeight: 700, color: '#facc15' }}>₱{totalSpent.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+            </div>
+            <div style={{ padding: '0.875rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.68rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Purchases</div>
+              <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gold)' }}>{totalBatches} batch{totalBatches !== 1 ? 'es' : ''}</div>
+            </div>
+            <div style={{ padding: '0.875rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.68rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Items Received</div>
+              <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>{totalItems} pcs</div>
+            </div>
+          </div>
+
+          {groupedByMaterial.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)', fontStyle: 'italic' }}>
+              No materials found for this supplier's categories.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {groupedByMaterial.map(item => {
+                const isExpanded = expandedItems.has(item.materialId);
+                const latest = item.priceHistory[item.priceHistory.length - 1];
+                const priceChanges = [];
+                for (let i = 1; i < item.priceHistory.length; i++) {
+                  const prev = item.priceHistory[i - 1].unitCost;
+                  const curr = item.priceHistory[i].unitCost;
+                  if (prev !== curr) {
+                    priceChanges.push({
+                      from: prev,
+                      to: curr,
+                      change: curr - prev,
+                      date: item.priceHistory[i].dateReceived,
+                    });
+                  }
+                }
+
+                return (
+                  <div key={item.materialId} style={{
+                    background: 'rgba(255,255,255,0.02)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: '10px',
+                    overflow: 'hidden',
+                  }}>
+                    {/* Header Row */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', cursor: 'pointer' }}
+                      onClick={() => toggleExpand(item.materialId)}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.95rem' }}>{item.materialName}</div>
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.2rem', fontSize: '0.72rem', color: 'var(--gray)' }}>
+                          {item.sku && <span style={{ fontFamily: 'monospace' }}>{item.sku}</span>}
+                          <span>{item.priceHistory.length} purchase{item.priceHistory.length !== 1 ? 's' : ''}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        {priceChanges.length > 0 && (() => {
+                          const lastChange = priceChanges[priceChanges.length - 1];
+                          const isUp = lastChange.change > 0;
+                          return (
+                            <span style={{
+                              fontSize: '0.65rem', fontWeight: 700,
+                              color: isUp ? '#f87171' : '#4ade80',
+                              display: 'flex', alignItems: 'center', gap: '0.2rem',
+                            }}>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                {isUp
+                                  ? <path d="M18 15l-6-6-6 6"/>
+                                  : <path d="M6 9l6 6 6-6"/>
+                                }
+                              </svg>
+                              ₱{Math.abs(lastChange.change).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                            </span>
+                          );
+                        })()}
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#D4A843', fontFamily: 'monospace' }}>
+                            ₱{(latest?.unitCost || item.currentBaseCost || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                          </div>
+                          <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase' }}>
+                            {item.priceHistory.length > 0 ? 'Latest Price' : 'Current Cost'}
+                          </div>
+                        </div>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                          style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', color: 'var(--gray)' }}>
+                          <path d="M9 18l6-6-6-6"/>
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* Expanded: Price History Table */}
+                    {isExpanded && (
+                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.04)', background: 'rgba(0,0,0,0.15)' }}>
+                        {item.priceHistory.length === 0 ? (
+                          <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
+                            <div style={{ marginBottom: '0.5rem' }}>No purchase history yet from this supplier.</div>
+                            <div style={{ color: '#D4A843', fontWeight: 600 }}>
+                              Current master cost: ₱{item.currentBaseCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                            </div>
+                          </div>
+                        ) : (
+                        <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                              <th style={{ padding: '0.5rem 1rem', textAlign: 'left', color: 'var(--gray)', fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase' }}>Date</th>
+                              <th style={{ padding: '0.5rem 1rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase' }}>Qty</th>
+                              <th style={{ padding: '0.5rem 1rem', textAlign: 'right', color: 'var(--gray)', fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase' }}>Unit Cost</th>
+                              <th style={{ padding: '0.5rem 1rem', textAlign: 'right', color: 'var(--gray)', fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase' }}>Total</th>
+                              <th style={{ padding: '0.5rem 1rem', textAlign: 'center', color: 'var(--gray)', fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase' }}>Ref</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[...item.priceHistory].reverse().map((ph, idx) => {
+                              const prev = idx < item.priceHistory.length - 1 ? item.priceHistory[item.priceHistory.length - 1 - idx - 1] : null;
+                              const change = prev ? ph.unitCost - prev.unitCost : 0;
+                              const isUp = change > 0;
+                              const isDown = change < 0;
+                              return (
+                                <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                  <td style={{ padding: '0.5rem 1rem', color: '#E5E2E1', fontSize: '0.78rem' }}>
+                                    {new Date(ph.dateReceived).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  </td>
+                                  <td style={{ padding: '0.5rem 1rem', textAlign: 'center', color: '#D4A843', fontWeight: 600 }}>
+                                    {ph.qty}
+                                  </td>
+                                  <td style={{ padding: '0.5rem 1rem', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: '#E5E2E1' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
+                                      ₱{ph.unitCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                                      {change !== 0 && (
+                                        <span style={{ fontSize: '0.65rem', fontWeight: 700, color: isUp ? '#f87171' : '#4ade80' }}>
+                                          {isUp ? '↑' : '↓'}₱{Math.abs(change).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '0.5rem 1rem', textAlign: 'right', color: '#facc15', fontWeight: 600, fontFamily: 'monospace' }}>
+                                    ₱{(ph.qty * ph.unitCost).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                                  </td>
+                                  <td style={{ padding: '0.5rem 1rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.72rem', fontFamily: 'monospace' }}>
+                                    {ph.poNumber || ph.grNumber || ph.invoiceNumber || '—'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="modal-actions" style={{ flexShrink: 0, justifyContent: 'flex-end' }}>
+          <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -307,6 +615,60 @@ export default function ManualStockInModal({ materials, vendors, onClose, onSave
   const [errors, setErrors] = useState({});
   const [infoModal, setInfoModal] = useState(null);
   const [showAddVendor, setShowAddVendor] = useState(false);
+  const [catalogSupplier, setCatalogSupplier] = useState(null);
+  // Collect all stock-in batches for catalog price history
+  const allBatches = useMemo(() => {
+    const batches = [];
+    // From stock_in_log
+    try {
+      const stockIns = JSON.parse(localStorage.getItem('pmp_stock_in_log') || '[]');
+      stockIns.forEach(si => {
+        batches.push({
+          materialId: si.materialId,
+          materialName: si.materialName,
+          sku: si.sku || '',
+          uom: si.uom || 'pcs',
+          vendorId: si.vendorId,
+          vendorName: si.vendorName,
+          unitCost: si.unitCost || 0,
+          receivedQty: si.receivedQty || si.goodQty || 0,
+          qtyGood: si.goodQty || 0,
+          totalCost: si.totalCost || (si.receivedQty || 0) * (si.unitCost || 0),
+          dateReceived: si.dateReceived,
+          invoiceNumber: si.referenceNo || '',
+          poNumber: si.poNumber || '',
+          grNumber: si.grNumber || '',
+        });
+      });
+    } catch {}
+    // From goods_receipts
+    try {
+      const grs = JSON.parse(localStorage.getItem('pmp_goods_receipts') || '[]');
+      grs.forEach(gr => {
+        (gr.items || []).forEach(item => {
+          if (item.receivedQty > 0) {
+            batches.push({
+              materialId: item.materialId,
+              materialName: item.materialName,
+              sku: item.sku || '',
+              uom: item.uom || 'pcs',
+              vendorId: gr.vendorId,
+              vendorName: gr.vendorName,
+              unitCost: item.unitCost || 0,
+              receivedQty: item.receivedQty,
+              qtyGood: item.receivedQty - (item.damagedQty || 0),
+              totalCost: (item.receivedQty - (item.damagedQty || 0)) * (item.unitCost || 0),
+              dateReceived: gr.receivedDate || gr.createdAt,
+              invoiceNumber: gr.invoiceNo || '',
+              poNumber: gr.poNumber || '',
+              grNumber: gr.grNumber || '',
+            });
+          }
+        });
+      });
+    } catch {}
+    return batches;
+  }, [catalogSupplier]); // recompute when catalog opens
 
   // Categories of ALL currently selected materials (used to filter supplier dropdown)
   const selectedCategories = useMemo(() => {
@@ -550,7 +912,7 @@ export default function ManualStockInModal({ materials, vendors, onClose, onSave
       }
     }
 
-    onSave(siEntries, 'cancel');
+    onSave(siEntries, 'write_off');
     onClose();
   };
 
@@ -971,6 +1333,7 @@ export default function ManualStockInModal({ materials, vendors, onClose, onSave
                     vendors={vendors}
                     selectedCategories={categoriesWithQty}
                     onAddNew={() => setShowAddVendor(true)}
+                    onViewCatalog={(vendor) => setCatalogSupplier(vendor)}
                   />
                   {categoriesWithQty.length > 0 && (
                     <div style={{ fontSize: '0.62rem', color: 'var(--gray)', marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -1312,6 +1675,13 @@ export default function ManualStockInModal({ materials, vendors, onClose, onSave
         }}
         existingVendors={vendors}
         selectedCategories={selectedCategories}
+      />
+      <SupplierCatalogModal
+        isOpen={!!catalogSupplier}
+        onClose={() => setCatalogSupplier(null)}
+        supplier={catalogSupplier}
+        batches={allBatches}
+        materials={materials}
       />
     </div>
   );

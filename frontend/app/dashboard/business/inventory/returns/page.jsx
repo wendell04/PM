@@ -14,6 +14,141 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import CustomDropdown from '@/app/components/CustomDropdown';
 
+// ── PO Print Preview Component (from Purchasing page) ──────────────────────────
+function PODocumentPreview({ poData, vendors, materials, onClose }) {
+  const total = (poData.items || []).reduce(
+    (sum, item) => sum + ((parseFloat(item.unitCost) || 0) * (parseInt(item.qty) || 0)), 0
+  );
+  const vendor = vendors.find(v => v.id === poData.vendorId);
+  const expectedDate = poData.expectedDate ? new Date(poData.expectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+  const today = poData.createdAt ? new Date(poData.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  const business = {
+    name: 'PERSONALIZE ME PRINTING SERVICES',
+    owner: 'Jerlyn Barrameda',
+    title: 'Business Owner',
+    phone1: '+63 945972 6272',
+    phone2: '+63 962436 2161',
+    address: '5 Ford St., Fil.2, Batasan Hills, Quezon City',
+    email: 'personalizemeprinting@gmail.com',
+    logo: '/logos/NEW logo no BG.png',
+  };
+
+  return (
+    <div className="modal-overlay" style={{ overflowY: 'auto', paddingTop: '1rem', paddingBottom: '1rem' }}>
+      <style>{`
+        @media print {
+          @page { size: letter portrait; margin: 0.5in; }
+          html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; }
+          body * { visibility: hidden !important; }
+          #po-print-area, #po-print-area * { visibility: visible !important; }
+          #po-print-area { position: absolute; left: 0; top: 0; width: 7.5in; max-width: 100%; box-shadow: none !important; border-radius: 0 !important; margin: 0 !important; }
+          .no-print { display: none !important; }
+          .po-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+      `}</style>
+      <div id="po-print-area" style={{ background: '#fff', color: '#1a1a1a', width: '7.5in', margin: '0 auto', fontFamily: "'DM Sans', sans-serif", boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+        <div className="po-header" style={{ background: '#1a1a1a', color: '#fff', padding: '1.2rem 1.8rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8rem' }}>
+              <img src={business.logo} alt="Logo" style={{ width: '48px', height: '48px', objectFit: 'contain', marginTop: '0.1rem' }} />
+              <div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, letterSpacing: '0.03em', color: '#D4A843', lineHeight: 1.2 }}>{business.name}</div>
+                <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.45)', marginTop: '0.15rem' }}>
+                  {poData.status === 'pending' ? 'Order Request' : (poData.status || 'Order Request').charAt(0).toUpperCase() + (poData.status || 'Order Request').slice(1)}
+                </div>
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 800, fontFamily: 'monospace', color: '#D4A843' }}>{poData.poNumber}</div>
+              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.45)', marginTop: '0.15rem' }}>{today}</div>
+            </div>
+          </div>
+          <div style={{ marginTop: '1rem', paddingTop: '0.8rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.6rem', color: 'rgba(255,255,255,0.55)', flex: 1 }}>
+              <div>
+                <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.7)', marginBottom: '0.15rem' }}>From:</div>
+                <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.7rem' }}>{business.owner}</div>
+                <div style={{ color: 'rgba(255,255,255,0.5)' }}>{business.title}</div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.7)', marginBottom: '0.15rem' }}>Contact:</div>
+                <div>{business.phone1}</div>
+                <div>{business.phone2}</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.7)', marginBottom: '0.15rem' }}>Address:</div>
+                <div>{business.address}</div>
+              </div>
+            </div>
+            <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.1rem' }}>{business.email}</div>
+          </div>
+        </div>
+        <div style={{ padding: '0.8rem 1.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e5e5e5' }}>
+          <div>
+            <div style={{ fontSize: '0.55rem', color: '#999', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.15rem', letterSpacing: '0.05em' }}>Vendor</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1a1a1a' }}>{vendor?.name || 'General Merchandise'}</div>
+            {vendor?.phone && <div style={{ fontSize: '0.7rem', color: '#888', marginTop: '0.1rem' }}>{vendor.phone}</div>}
+            {vendor?.email && <div style={{ fontSize: '0.7rem', color: '#888', marginTop: '0.05rem' }}>{vendor.email}</div>}
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.55rem', color: '#999', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.15rem', letterSpacing: '0.05em' }}>Expected Delivery</div>
+            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1a1a1a' }}>{expectedDate}</div>
+          </div>
+        </div>
+        <div style={{ padding: '0.8rem 1.8rem 1.2rem' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #1a1a1a' }}>
+                <th style={{ padding: '0.45rem 0.4rem', textAlign: 'left', color: '#999', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', width: '25px' }}>#</th>
+                <th style={{ padding: '0.45rem 0.4rem', textAlign: 'left', color: '#999', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>Material</th>
+                <th style={{ padding: '0.45rem 0.4rem', textAlign: 'center', color: '#999', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', width: '50px' }}>Qty</th>
+                <th style={{ padding: '0.45rem 0.4rem', textAlign: 'center', color: '#999', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', width: '50px' }}>Unit</th>
+                <th style={{ padding: '0.45rem 0.4rem', textAlign: 'right', color: '#999', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', width: '80px' }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(poData.items || []).map((item, idx) => {
+                const mat = materials.find(m => m.id === item.materialId);
+                const lineTotal = (parseFloat(item.unitCost) || 0) * (parseInt(item.qty) || 0);
+                return (
+                  <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '0.5rem 0.4rem', color: '#aaa', fontSize: '0.75rem' }}>{idx + 1}</td>
+                    <td style={{ padding: '0.5rem 0.4rem' }}>
+                      <div style={{ fontWeight: 600, color: '#1a1a1a', fontSize: '0.8rem' }}>{mat?.name || item.materialName || '—'}</div>
+                      {mat?.sku && <div style={{ fontSize: '0.65rem', color: '#aaa', fontFamily: 'monospace', marginTop: '0.05rem' }}>{mat.sku}</div>}
+                    </td>
+                    <td style={{ padding: '0.5rem 0.4rem', textAlign: 'center', color: '#1a1a1a', fontWeight: 600, fontSize: '0.8rem' }}>{item.qty}</td>
+                    <td style={{ padding: '0.5rem 0.4rem', textAlign: 'center', color: '#888', fontSize: '0.75rem' }}>{mat?.uom || item.uom || 'pcs'}</td>
+                    <td style={{ padding: '0.5rem 0.4rem', textAlign: 'right', fontWeight: 700, color: '#1a1a1a', fontFamily: 'monospace', fontSize: '0.8rem' }}>₱{lineTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1rem', marginTop: '0.8rem', paddingTop: '0.6rem', borderTop: '2px solid #1a1a1a' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#888', textTransform: 'uppercase' }}>Grand Total</span>
+            <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#D4A843', fontFamily: 'monospace' }}>₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '2rem', marginTop: '2rem' }}>
+            <div style={{ textAlign: 'center', width: '180px' }}>
+              <div style={{ borderBottom: '1px solid #ccc', height: '35px', marginBottom: '0.3rem' }}></div>
+              <div style={{ fontSize: '0.6rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Prepared By</div>
+            </div>
+          </div>
+        </div>
+        <div className="no-print" style={{ background: '#1a1a1a', padding: '1rem 1.8rem', display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
+          <button onClick={onClose} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '0.6rem 1.25rem', color: '#999', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+          <button onClick={() => window.print()} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '0.6rem 1.25rem', color: '#E5E2E1', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Print
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Storage Keys ───────────────────────────────────────────────────────────────
 const RTV_KEY        = 'pmp_returns_to_vendor';
 const BACKORDER_KEY  = 'pmp_backorders';
@@ -53,10 +188,10 @@ function checkAndCompletePO(poNumber) {
   const allRTVsResolved = poRTVs.length === 0 || poRTVs.every(r => RESOLVED_STATUSES.includes(r.status));
   const allCreditsResolved = poCredits.length === 0 || poCredits.every(c => RESOLVED_STATUSES.includes(c.status));
   
-  // If all resolved and PO is still pending, mark as received
+  // If all resolved and PO is still pending/partial, mark as received
   if (allRTVsResolved && allCreditsResolved) {
     const po = allPOs.find(p => p.poNumber === poNumber);
-    if (po && (po.status === 'pending' || po.status === 'draft')) {
+    if (po && (po.status === 'pending' || po.status === 'partial' || po.status === 'draft')) {
       const updatedPOs = allPOs.map(p =>
         p.poNumber === poNumber ? { ...p, status: 'received', updatedAt: new Date().toISOString() } : p
       );
@@ -245,6 +380,7 @@ function RTVListTab({ rtvs, onRefresh }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, rtv: null, newStatus: '' });
+  const [poPreview, setPOPreview] = useState(null);
 
   const materials = useMemo(() => getStore(MATERIALS_KEY), []);
   const vendors = useMemo(() => getStore(VENDORS_KEY), []);
@@ -276,7 +412,7 @@ function RTVListTab({ rtvs, onRefresh }) {
     const updated = all.map(r => r.id === rtv.id ? { ...r, status: newStatus, updatedAt: new Date().toISOString() } : r);
     setStore(RTV_KEY, updated);
 
-    // If replacement received → restore stock
+    // If replacement received → restore stock AND update PO receivedQty AND update batch
     if (newStatus === 'replacement_received') {
       const mats = getStore(MATERIALS_KEY);
       const mat = mats.find(m => m.id === rtv.materialId);
@@ -287,6 +423,48 @@ function RTVListTab({ rtvs, onRefresh }) {
           m.id === rtv.materialId ? { ...m, stockQty: restored, updatedAt: new Date().toISOString() } : m
         ));
       }
+
+      // Update batch: move damaged to good stock (replacement replaces damaged items)
+      if (mat && mat.batches) {
+        const updatedBatches = mat.batches.map(batch => {
+          // Find matching batch by PO number (most recent batch with damage for this PO)
+          if (batch.poNumber === rtv.poNumber && (batch.qtyDamaged || 0) > 0) {
+            const damaged = batch.qtyDamaged || 0;
+            const good = batch.qtyGood || 0;
+            // Move damaged to good (replacement received)
+            return {
+              ...batch,
+              qtyGood: good + damaged,
+              qtyDamaged: 0,
+              remainingQty: good + damaged, // remaining = good (no damage now)
+              updatedAt: new Date().toISOString()
+            };
+          }
+          return batch;
+        });
+        setStore(MATERIALS_KEY, mats.map(m =>
+          m.id === rtv.materialId ? { ...m, batches: updatedBatches, updatedAt: new Date().toISOString() } : m
+        ));
+      }
+
+      // Update PO items receivedQty to include the replacement
+      const allPOs = getStore(PO_KEY);
+      const po = allPOs.find(p => p.id === rtv.poId || p.poNumber === rtv.poNumber);
+      if (po) {
+        const updatedItems = (po.items || []).map(item => {
+          if (item.materialId === rtv.materialId) {
+            const currentReceived = parseInt(item.receivedQty) || 0;
+            const newReceived = currentReceived + (parseInt(rtv.qty) || 0);
+            return { ...item, receivedQty: newReceived };
+          }
+          return item;
+        });
+        setStore(PO_KEY, allPOs.map(p =>
+          (p.id === rtv.poId || p.poNumber === rtv.poNumber)
+            ? { ...p, items: updatedItems, updatedAt: new Date().toISOString() }
+            : p
+        ));
+      }
     }
 
     // Check if all RTVs and Credit Claims for this PO are resolved → complete the PO
@@ -294,6 +472,9 @@ function RTVListTab({ rtvs, onRefresh }) {
 
     setConfirmModal({ isOpen: false, rtv: null, newStatus: '' });
     onRefresh();
+
+    // Dispatch custom event to notify procurement page
+    window.dispatchEvent(new CustomEvent('inventoryRefresh'));
   };
 
   const handleManualRTV = (data) => {
@@ -458,10 +639,23 @@ function RTVListTab({ rtvs, onRefresh }) {
                   background: 'rgba(0,0,0,0.1)',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.7rem', color: 'var(--gray)' }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-                    </svg>
-                    LINKED TO PO: {rtv.poNumber || '—'}
+                    <span
+                      onClick={() => {
+                        if (rtv.poNumber && rtv.poNumber !== 'Manual') {
+                          const allPOs = getStore(PO_KEY);
+                          const po = allPOs.find(p => p.poNumber === rtv.poNumber);
+                          if (po) setPOPreview(po);
+                        }
+                      }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', cursor: rtv.poNumber && rtv.poNumber !== 'Manual' ? 'pointer' : 'default' }}
+                      onMouseEnter={e => { e.currentTarget.style.color = 'var(--gray)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.color = 'var(--gray)'; }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                      </svg>
+                      LINKED TO PO: {rtv.poNumber || '—'}
+                    </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>
@@ -543,6 +737,16 @@ function RTVListTab({ rtvs, onRefresh }) {
           </div>
         </div>
       )}
+
+      {/* PO Preview Modal */}
+      {poPreview && (
+        <PODocumentPreview
+          poData={poPreview}
+          vendors={vendors}
+          materials={materials}
+          onClose={() => setPOPreview(null)}
+        />
+      )}
     </div>
   );
 }
@@ -550,13 +754,22 @@ function RTVListTab({ rtvs, onRefresh }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // BACKORDERS TAB
 // ══════════════════════════════════════════════════════════════════════════════
-function BackordersTab({ onRefresh }) {
+function BackordersTab({ onRefresh, refreshKey }) {
   const [backorders, setBackorders] = useState([]);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, item: null, newStatus: '' });
 
+  // Reload backorders when component mounts, refreshKey changes, or storage event fires
   useEffect(() => {
     setBackorders(getStore(BACKORDER_KEY));
-  }, []);
+    
+    // Listen for storage changes (in case backorders are created in another tab/window)
+    const handleStorageChange = () => {
+      setBackorders(getStore(BACKORDER_KEY));
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [refreshKey]);
 
   const updateStatus = (bo, newStatus) => {
     if (newStatus === 'received') {
@@ -571,16 +784,36 @@ function BackordersTab({ onRefresh }) {
         ));
       }
 
+      // Update PO items receivedQty to include the backorder
+      const allPOs = getStore(PO_KEY);
+      const po = allPOs.find(p => p.id === bo.poId || p.poNumber === bo.poNumber);
+      if (po) {
+        const updatedItems = (po.items || []).map(item => {
+          if (item.materialId === bo.materialId) {
+            const currentReceived = parseInt(item.receivedQty) || 0;
+            const newReceived = currentReceived + (parseInt(bo.qty) || 0);
+            return { ...item, receivedQty: newReceived };
+          }
+          return item;
+        });
+        setStore(PO_KEY, allPOs.map(p =>
+          (p.id === bo.poId || p.poNumber === bo.poNumber)
+            ? { ...p, items: updatedItems, updatedAt: new Date().toISOString() }
+            : p
+        ));
+      }
+
       // Update PO status if all backorders fulfilled
       const allBO = getStore(BACKORDER_KEY);
       const poBackorders = allBO.filter(b => b.poId === bo.poId);
       const allFulfilled = poBackorders.every(b => b.id === bo.id || b.status === 'fulfilled');
 
       if (allFulfilled) {
-        const allPOs = getStore(PO_KEY);
-        const po = allPOs.find(p => p.id === bo.poId);
-        if (po && po.status === 'pending') {
-          setStore(PO_KEY, allPOs.map(p =>
+        const allPOs2 = getStore(PO_KEY);
+        const po2 = allPOs2.find(p => p.id === bo.poId);
+        // Update PO status if it's pending or partial (meaning it had shortages)
+        if (po2 && (po2.status === 'pending' || po2.status === 'partial')) {
+          setStore(PO_KEY, allPOs2.map(p =>
             p.id === bo.poId ? { ...p, status: 'received', updatedAt: new Date().toISOString() } : p
           ));
         }
@@ -598,6 +831,9 @@ function BackordersTab({ onRefresh }) {
     setBackorders(getStore(BACKORDER_KEY));
     setConfirmModal({ isOpen: false, item: null, newStatus: '' });
     onRefresh();
+
+    // Dispatch custom event to notify procurement page
+    window.dispatchEvent(new CustomEvent('inventoryRefresh'));
   };
 
   // Status config for Backorders
@@ -614,6 +850,20 @@ function BackordersTab({ onRefresh }) {
 
   return (
     <div>
+      {/* Refresh Button */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+        <button onClick={onRefresh} style={{
+          padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)',
+          borderRadius: '8px', color: '#E5E2E1', fontSize: '0.8rem', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: '0.5rem',
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16"/>
+          </svg>
+          Refresh
+        </button>
+      </div>
+
       {backorders.length === 0 ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray)', background: 'var(--dark)', borderRadius: '12px', border: '1px solid var(--border)' }}>
           No backorders yet.
@@ -789,6 +1039,27 @@ function CreditClaimsTab({ onRefresh }) {
   }, []);
 
   const updateStatus = (cc, newStatus) => {
+    // If replacement received, update PO items receivedQty
+    if (newStatus === 'replacement_received') {
+      const allPOs = getStore(PO_KEY);
+      const po = allPOs.find(p => p.id === cc.poId || p.poNumber === cc.poNumber);
+      if (po) {
+        const updatedItems = (po.items || []).map(item => {
+          if (item.materialId === cc.materialId) {
+            const currentReceived = parseInt(item.receivedQty) || 0;
+            const newReceived = currentReceived + (parseInt(cc.qty) || 0);
+            return { ...item, receivedQty: newReceived };
+          }
+          return item;
+        });
+        setStore(PO_KEY, allPOs.map(p =>
+          (p.id === cc.poId || p.poNumber === cc.poNumber)
+            ? { ...p, items: updatedItems, updatedAt: new Date().toISOString() }
+            : p
+        ));
+      }
+    }
+
     const allCC = getStore(CREDIT_KEY);
     setStore(CREDIT_KEY, allCC.map(c =>
       c.id === cc.id ? { ...c, status: newStatus, updatedAt: new Date().toISOString() } : c
@@ -800,6 +1071,9 @@ function CreditClaimsTab({ onRefresh }) {
     setCredits(getStore(CREDIT_KEY));
     setConfirmModal({ isOpen: false, item: null, newStatus: '' });
     onRefresh();
+
+    // Dispatch custom event to notify procurement page
+    window.dispatchEvent(new CustomEvent('inventoryRefresh'));
   };
 
   // Status config for Credit Claims
@@ -1005,9 +1279,12 @@ function CreditClaimsTab({ onRefresh }) {
 export default function ReturnsPage() {
   const [activeTab, setActiveTab] = useState('returns');
   const [rtvs, setRtvs] = useState([]);
+  const [backorderRefreshKey, setBackorderRefreshKey] = useState(0);
 
   const refresh = useCallback(() => {
     setRtvs(getStore(RTV_KEY));
+    // Trigger backorder reload when switching to backorders tab
+    setBackorderRefreshKey(prev => prev + 1);
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -1043,7 +1320,7 @@ export default function ReturnsPage() {
 
       {/* Tab Content */}
       {activeTab === 'returns' && <RTVListTab rtvs={rtvs} onRefresh={refresh} />}
-      {activeTab === 'backorders' && <BackordersTab onRefresh={refresh} />}
+      {activeTab === 'backorders' && <BackordersTab onRefresh={refresh} refreshKey={backorderRefreshKey} />}
       {activeTab === 'credits' && <CreditClaimsTab onRefresh={refresh} />}
     </div>
   );

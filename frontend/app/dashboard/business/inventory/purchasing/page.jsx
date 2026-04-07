@@ -42,8 +42,6 @@ function setStore(key, data) {
 }
 
 // ── Number Generation ──────────────────────────────────────────────────────────
-// Reads current list length to compute sequence; not globally unique but
-// sufficient for single-tenant localStorage. Replace with server-side seq in prod.
 function genDocNumber(prefix, list) {
   const year = new Date().getFullYear();
   const seq  = String((list.length || 0) + 1).padStart(4, '0');
@@ -100,10 +98,7 @@ function IntInput({ value, onChange, min = 0, max, placeholder, style, disabled 
       onChange={e => {
         const v = e.target.value;
         if (v === '' || /^\d+$/.test(v)) {
-          if (v === '') {
-            onChange(v);
-            return;
-          }
+          if (v === '') { onChange(v); return; }
           const n = parseInt(v, 10);
           if (max !== undefined && n > max) return;
           if (n < min) return;
@@ -176,23 +171,14 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
         items:        po.items ? po.items.map(i => ({ ...i })) : [],
       });
     } else {
-      // Reset form for new PO
-      setForm({
-        vendorId: '', vendorName: '', expectedDate: '', notes: '', status: 'pending', items: [],
-      });
+      setForm({ vendorId: '', vendorName: '', expectedDate: '', notes: '', status: 'pending', items: [] });
       setErrors({});
     }
   }, [po]);
 
   const selectVendor = (vendorId) => {
     const vendor = vendors.find(v => v.id === vendorId);
-    setForm(p => ({
-      ...p,
-      vendorId,
-      vendorName: vendor?.name || '',
-      // Clear all items when vendor changes — materials are vendor-specific
-      items: [],
-    }));
+    setForm(p => ({ ...p, vendorId, vendorName: vendor?.name || '', items: [] }));
     setErrors(p => ({ ...p, items: null }));
   };
 
@@ -246,7 +232,7 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
     });
   };
 
-  const [showPriceHistory, setShowPriceHistory] = useState(null); // { materialId, materialName }
+  const [showPriceHistory, setShowPriceHistory] = useState(null);
   const priceHistory = useMemo(() => {
     if (!showPriceHistory) return [];
     const stockIns = getStore(STOCK_IN_KEY) || [];
@@ -262,33 +248,26 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
         refNo: si.referenceNo || si.siNumber || '—',
       }));
   }, [showPriceHistory]);
+
   const selectableMaterials = useMemo(() => {
     if (!form.vendorId) return [];
     const vendor = vendors.find(v => v.id === form.vendorId);
     if (!vendor) return [];
-    // Extract item names — handle both old string format and new {name, uom} format
     const vendorItemNames = (vendor.itemsSupplied || []).map(item =>
       typeof item === 'string' ? item : item.name
     );
     if (vendorItemNames.length === 0) return [];
-    
-    // Get IDs of already selected materials (exclude current item's materialId)
     const selectedIds = new Set(
       form.items
-        .filter((item, idx, arr) => arr.findIndex(i => i.materialId === item.materialId) === idx) // unique
+        .filter((item, idx, arr) => arr.findIndex(i => i.materialId === item.materialId) === idx)
         .map(item => item.materialId)
-        .filter(id => id) // exclude empty selections
+        .filter(id => id)
     );
-    
     const filtered = materials.filter(m =>
       vendorItemNames.includes(m.category) &&
-      (!m.hasVariants || m.parentId) // standalone OR variant children, not parents
+      (!m.hasVariants || m.parentId)
     );
-    
-    // Filter out already-selected materials
     const available = filtered.filter(m => !selectedIds.has(m.id));
-    
-    // Deduplicate by normalized name — keep the one with the longest/newest SKU
     const normalizeName = (n) => n.replace(/[—–\-]/g, ' ').replace(/[,]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
     const seen = new Map();
     available.forEach(m => {
@@ -317,7 +296,6 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
         <form onSubmit={handleSubmit} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div className="modal-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
-            {/* Vendor + Date */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label className="form-label">Vendor <span className="required">*</span></label>
@@ -346,7 +324,6 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
               </div>
             </div>
 
-            {/* Line Items */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <label className="form-label" style={{ margin: 0 }}>Line Items <span className="required">*</span></label>
@@ -378,9 +355,6 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
                   background: 'rgba(255,255,255,0.02)', borderRadius: '8px',
                   border: '1px dashed rgba(255,255,255,0.1)',
                 }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ margin: '0 auto 0.5rem', opacity: 0.4 }}>
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-                  </svg>
                   Select a vendor first to see available materials.
                 </div>
               ) : form.items.length === 0 ? (
@@ -393,7 +367,6 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {/* Column Headers */}
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 80px 130px 32px', gap: '0.5rem', padding: '0 0.25rem' }}>
                     {['Material', 'Qty', 'Unit Cost (₱)', ''].map((h, i) => (
                       <span key={i} style={{ fontSize: '0.65rem', color: 'var(--gray)', fontWeight: 700, textTransform: 'uppercase', textAlign: i === 2 ? 'right' : i === 1 ? 'center' : 'left' }}>
@@ -403,70 +376,61 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
                   </div>
 
                   {form.items.map((item, idx) => {
-                    // Include current item's material in options (so it stays visible)
                     const currentMaterial = item.materialId ? materials.find(m => m.id === item.materialId) : null;
                     const dropdownOptions = [
                       { value: '', label: 'Select material...' },
                       ...selectableMaterials.map(m => ({ value: m.id, label: `${m.name}${m.sku ? ` (${m.sku})` : ''}` })),
-                      // Add current material if it's not in selectableMaterials (because it's already selected elsewhere)
                       ...(currentMaterial && !selectableMaterials.find(m => m.id === currentMaterial.id)
                         ? [{ value: currentMaterial.id, label: `${currentMaterial.name} (${currentMaterial.sku || ''})` }]
                         : []),
                     ];
                     return (
-                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 80px 130px 32px', gap: '0.5rem', alignItems: 'center' }}>
-                      <CustomDropdown
-                        value={item.materialId}
-                        onChange={(val) => { updateItem(idx, 'materialId', val); setErrors(p => ({ ...p, items: null })); }}
-                        options={dropdownOptions}
-                        placeholder="Select material..."
-                        style={{ padding: '0.5rem 0.65rem', fontSize: '0.8rem' }}
-                      />
-
-                      <IntInput
-                        style={{ ...inputStyle, padding: '0.5rem', fontSize: '0.8rem', textAlign: 'center' }}
-                        value={item.qty}
-                        onChange={v => { updateItem(idx, 'qty', v); setErrors(p => ({ ...p, items: null })); }}
-                        min={1}
-                        max={999999}
-                        placeholder="0"
-                      />
-
-                      <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                        <DecInput
-                          style={{ ...inputStyle, padding: '0.5rem 0.65rem', fontSize: '0.8rem', textAlign: 'right', flex: 1 }}
-                          value={item.unitCost}
-                          onChange={v => updateItem(idx, 'unitCost', v)}
-                          placeholder="0.00"
-                          max={9999999.99}
+                      <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 80px 130px 32px', gap: '0.5rem', alignItems: 'center' }}>
+                        <CustomDropdown
+                          value={item.materialId}
+                          onChange={(val) => { updateItem(idx, 'materialId', val); setErrors(p => ({ ...p, items: null })); }}
+                          options={dropdownOptions}
+                          placeholder="Select material..."
+                          style={{ padding: '0.5rem 0.65rem', fontSize: '0.8rem' }}
                         />
-                        {item.materialId && (
-                          <button type="button" onClick={() => {
-                            const mat = materials.find(m => m.id === item.materialId);
-                            setShowPriceHistory({ materialId: item.materialId, materialName: mat?.name || '' });
-                          }} title="View Price History" style={{
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px',
-                            padding: '0.45rem 0.55rem', cursor: 'pointer', color: 'var(--gray)', flexShrink: 0,
-                            display: 'flex', alignItems: 'center',
-                          }}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                          </button>
-                        )}
+                        <IntInput
+                          style={{ ...inputStyle, padding: '0.5rem', fontSize: '0.8rem', textAlign: 'center' }}
+                          value={item.qty}
+                          onChange={v => { updateItem(idx, 'qty', v); setErrors(p => ({ ...p, items: null })); }}
+                          min={1} max={999999} placeholder="0"
+                        />
+                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                          <DecInput
+                            style={{ ...inputStyle, padding: '0.5rem 0.65rem', fontSize: '0.8rem', textAlign: 'right', flex: 1 }}
+                            value={item.unitCost}
+                            onChange={v => updateItem(idx, 'unitCost', v)}
+                            placeholder="0.00"
+                          />
+                          {item.materialId && (
+                            <button type="button" onClick={() => {
+                              const mat = materials.find(m => m.id === item.materialId);
+                              setShowPriceHistory({ materialId: item.materialId, materialName: mat?.name || '' });
+                            }} title="View Price History" style={{
+                              background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px',
+                              padding: '0.45rem 0.55rem', cursor: 'pointer', color: 'var(--gray)', flexShrink: 0,
+                              display: 'flex', alignItems: 'center',
+                            }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            </button>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => removeItem(idx)} style={{
+                          background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: '6px',
+                          padding: '0.5rem', cursor: 'pointer', color: '#f87171',
+                        }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6L6 18M6 6l12 12"/>
+                          </svg>
+                        </button>
                       </div>
-
-                      <button type="button" onClick={() => removeItem(idx)} style={{
-                        background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: '6px',
-                        padding: '0.5rem', cursor: 'pointer', color: '#f87171',
-                      }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M18 6L6 18M6 6l12 12"/>
-                        </svg>
-                      </button>
-                    </div>
                     );
                   })}
 
-                  {/* Total row */}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1rem', paddingRight: '40px', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>PO Total</span>
                     <span style={{ fontSize: '1rem', fontWeight: 800, color: '#D4A843', fontFamily: 'monospace' }}>
@@ -485,7 +449,6 @@ function POFormModal({ po, vendors, materials, onClose, onSave }) {
         </form>
       </div>
 
-      {/* Price History Modal */}
       {showPriceHistory && (
         <div className="modal-overlay" onClick={() => setShowPriceHistory(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
@@ -543,7 +506,6 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize, approvedDiscrepanc
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // Initialize costs from GR items
     const initial = {};
     (grData.items || []).forEach(item => {
       initial[item.materialId] = String(item.unitCost || 0);
@@ -557,6 +519,8 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize, approvedDiscrepanc
     }
   };
 
+  // Total is based on good qty only (receivedQty - damagedQty)
+  // shortageQty is already excluded from receivedQty (auto-calculated in GR form)
   const totalAmount = (grData.items || []).reduce((sum, item) => {
     const goodQty = item.receivedQty - (item.damagedQty || 0);
     const cost = parseFloat(costs[item.materialId]) || 0;
@@ -569,18 +533,12 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize, approvedDiscrepanc
     onFinalize({ ...grData, invoiceNo: invoiceNo.trim(), actualCosts: costs, totalAmount });
   };
 
-  // Get disposition for each item
-  const getDisposition = (item) => {
-    const disc = (approvedDiscrepancies || []).find(d => d.materialId === item.materialId);
-    return disc?.disposition || '';
-  };
-
   const dispositionLabels = {
-    backorder: { label: 'Backorder', color: 'rgb(245, 158, 11)', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
-    request_credit: { label: 'Credit Claim', color: 'rgb(245, 158, 11)', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
-    accept_partial: { label: 'Accepted', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
-    rtv: { label: 'RTV', color: 'rgb(245, 158, 11)', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
-    write_off: { label: 'Write Off', color: '#ef4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.2)' },
+    backorder:      { label: 'Backorder',      color: 'rgb(245, 158, 11)', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
+    request_credit: { label: 'Credit Claim',   color: 'rgb(245, 158, 11)', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
+    accept_partial: { label: 'Accepted',       color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
+    rtv:            { label: 'RTV',            color: 'rgb(245, 158, 11)', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
+    write_off:      { label: 'Write Off',      color: '#ef4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.2)' },
   };
 
   return (
@@ -605,7 +563,6 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize, approvedDiscrepanc
         <form onSubmit={handleSubmit} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div className="modal-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
-            {/* Invoice Number */}
             <div>
               <label className="form-label">Invoice / Reference Number <span className="required">*</span></label>
               <input
@@ -620,25 +577,25 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize, approvedDiscrepanc
               {error && <p style={{ fontSize: '0.72rem', color: '#f87171', marginTop: '0.25rem' }}>{error}</p>}
             </div>
 
-            {/* Unit Costs per Item with Full Breakdown */}
             <div>
               <label className="form-label">Actual Unit Cost per Item</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {(grData.items || []).map(item => {
-                  const damagedQty = parseInt(item.damagedQty) || 0;
+                  const damagedQty  = parseInt(item.damagedQty)  || 0;
                   const shortageQty = parseInt(item.shortageQty) || 0;
-                  const goodQty = item.receivedQty - damagedQty;
+                  const goodQty     = item.receivedQty - damagedQty;
+                  // shortageQty is already excluded from receivedQty (toReceive was auto-adjusted)
 
                   const cost = parseFloat(costs[item.materialId]) || 0;
-                  const goodTotal = goodQty * cost;
+                  const goodTotal    = goodQty    * cost;
                   const damagedTotal = damagedQty * cost;
                   const shortageTotal = shortageQty * cost;
 
-                  // Find dispositions from approved discrepancies
-                  const damageDisc = (approvedDiscrepancies || []).find(d => d.materialId === item.materialId && (d.discrepancyType === 'damage' || d.qty === damagedQty));
-                  const shortageDisc = (approvedDiscrepancies || []).find(d => d.materialId === item.materialId && (d.discrepancyType === 'shortage' || d.qty === shortageQty));
-                  
-                  const damageDispConfig = damageDisc ? dispositionLabels[damageDisc.disposition] : null;
+                  // Find dispositions — match by materialId AND discrepancyType
+                  const damageDisc   = (approvedDiscrepancies || []).find(d => d.materialId === item.materialId && d.discrepancyType === 'damage');
+                  const shortageDisc = (approvedDiscrepancies || []).find(d => d.materialId === item.materialId && d.discrepancyType === 'shortage');
+
+                  const damageDispConfig   = damageDisc   ? dispositionLabels[damageDisc.disposition]   : null;
                   const shortageDispConfig = shortageDisc ? dispositionLabels[shortageDisc.disposition] : null;
 
                   return (
@@ -647,25 +604,27 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize, approvedDiscrepanc
                       background: 'rgba(255,255,255,0.02)', borderRadius: '10px',
                       border: '1px solid rgba(255,255,255,0.05)',
                     }}>
-                      {/* Header: Material + Quantities */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                         <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.825rem' }}>{item.materialName}</div>
                         <div style={{ fontSize: '0.7rem', color: 'var(--gray)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                           <span>Ordered: <strong style={{ color: '#E5E2E1' }}>{item.orderedQty || 0}</strong></span>
                           <span>·</span>
                           <span>Received: <strong style={{ color: (damagedQty + shortageQty) > 0 ? '#f59e0b' : '#22c55e' }}>{item.receivedQty}</strong></span>
-                          {(damagedQty > 0 || shortageQty > 0) && (
+                          {damagedQty > 0 && (
                             <>
                               <span>·</span>
-                              <span style={{ color: '#ef4444' }}>
-                                Discrepancy: <strong>{damagedQty + shortageQty}</strong>
-                              </span>
+                              <span style={{ color: '#f59e0b' }}>Damaged: <strong>{damagedQty}</strong></span>
+                            </>
+                          )}
+                          {shortageQty > 0 && (
+                            <>
+                              <span>·</span>
+                              <span style={{ color: '#ef4444' }}>Shortage: <strong>{shortageQty}</strong></span>
                             </>
                           )}
                         </div>
                       </div>
 
-                      {/* Unit Cost Input + Breakdown */}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'start' }}>
                         <div>
                           <div style={{ fontSize: '0.65rem', color: 'var(--gray)', marginBottom: '0.25rem', textTransform: 'uppercase', fontWeight: 600 }}>Unit Cost</div>
@@ -678,14 +637,14 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize, approvedDiscrepanc
                           />
                         </div>
 
-                        {/* Breakdown */}
                         <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-end' }}>
+                          {/* Good stock line */}
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
                             <span style={{ color: 'var(--gray)' }}>Good to Stock: {goodQty} {item.uom} × ₱{cost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
                             <span style={{ fontWeight: 700, color: '#E5E2E1', fontFamily: 'monospace' }}>₱{goodTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
                           </div>
-                          
-                          {/* Damaged Line */}
+
+                          {/* Damaged line — only shows if damagedQty > 0 */}
                           {damagedQty > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center' }}>
                               <span style={{ color: 'rgb(245, 158, 11)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
@@ -706,10 +665,10 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize, approvedDiscrepanc
                             </div>
                           )}
 
-                          {/* Shortage Line */}
+                          {/* Shortage line — only shows if shortageQty > 0 */}
                           {shortageQty > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center' }}>
-                              <span style={{ color: 'var(--gray)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                              <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                                 Shortage: {shortageQty} {item.uom} × ₱{cost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                               </span>
@@ -734,7 +693,6 @@ function InvoiceEntryModal({ grData, po, onClose, onFinalize, approvedDiscrepanc
               </div>
             </div>
 
-            {/* Total */}
             <div style={{
               padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.06)',
               borderRadius: '8px', border: '1px solid rgba(212,168,67,0.2)',
@@ -780,7 +738,6 @@ function GRFormModal({ po, onClose, onSave }) {
         remaining: (parseInt(item.qty) || 0) - (parseInt(item.receivedQty) || 0),
       }))
       .filter(i => i.remaining > 0)
-      // Initialize with empty strings for inputs
       .map(i => ({ ...i, toReceive: String(i.remaining), damagedQty: '', shortageQty: '', returnReason: '' }));
     setItems(pending);
     setCustomReasons({});
@@ -813,14 +770,12 @@ function GRFormModal({ po, onClose, onSave }) {
       const parsed = parseInt(val) || 0;
       const maxShortage = parseInt(item.remaining) || 0;
       const clamped = parsed > maxShortage ? maxShortage : parsed;
-      
-      // If Shortage increases, Physical Count (toReceive) decreases
+      // Auto-adjust physical count: shortage means fewer arrived
       const newPhysicalCount = Math.max(0, maxShortage - clamped);
-      
-      return { 
-        ...item, 
+      return {
+        ...item,
         shortageQty: val === '' ? '' : String(clamped),
-        toReceive: String(newPhysicalCount) // Auto-calculate Physical Count
+        toReceive: String(newPhysicalCount),
       };
     }));
     setError('');
@@ -842,7 +797,7 @@ function GRFormModal({ po, onClose, onSave }) {
     const invalidDamaged = items.find(i => (parseInt(i.damagedQty) || 0) > (parseInt(i.toReceive) || 0));
     if (invalidDamaged) { setError(`Damaged qty cannot exceed received qty for ${invalidDamaged.materialName}.`); return; }
 
-    // Validate: damaged items must have a return reason
+    // Damaged items require a reason
     const damagedNoReason = items.findIndex((i, idx) => {
       const damaged = parseInt(i.damagedQty) || 0;
       if (damaged === 0) return false;
@@ -853,32 +808,34 @@ function GRFormModal({ po, onClose, onSave }) {
     });
     if (damagedNoReason !== -1) {
       const itemName = items[damagedNoReason].materialName;
-      const hasDamaged = parseInt(items[damagedNoReason].damagedQty) || 0;
       const isOther = items[damagedNoReason].returnReason === 'Other';
       if (isOther) {
-        setError(`${itemName}: Please specify a reason for ${hasDamaged} damaged unit(s).`);
+        setError(`${itemName}: Please specify a reason for the damaged unit(s).`);
       } else {
-        setError(`${itemName}: Please select a return reason for ${hasDamaged} damaged unit(s).`);
+        setError(`${itemName}: Please select a return reason for the damaged unit(s).`);
       }
       return;
     }
 
+    // Build GR items — receivedQty = physical count (shortage already excluded via updateShortage)
+    // shortageQty is tracked separately
     const grItems = items
-      .filter(i => parseInt(i.toReceive) > 0)
+      .filter(i => parseInt(i.toReceive) > 0 || parseInt(i.shortageQty) > 0)
       .map((item, idx) => ({
-        materialId:        item.materialId,
-        materialName:      item.materialName,
-        sku:               item.sku,
-        uom:               item.uom || 'pcs',
-        orderedQty:        parseInt(item.qty) || 0,
+        materialId:         item.materialId,
+        materialName:       item.materialName,
+        sku:                item.sku,
+        uom:                item.uom || 'pcs',
+        orderedQty:         parseInt(item.qty) || 0,
         previouslyReceived: parseInt(item.receivedQty) || 0,
-        receivedQty:       parseInt(item.toReceive) || 0,
-        damagedQty:        parseInt(item.damagedQty) || 0,
-        shortageQty:       parseInt(item.shortageQty) || 0,
-        returnReason:      item.returnReason === 'Other' ? (customReasons[idx] || 'Other') : (item.returnReason || ''),
-        unitCost:          parseFloat(item.unitCost) || 0,
+        receivedQty:        parseInt(item.toReceive) || 0,    // physical count (not including shortage)
+        damagedQty:         parseInt(item.damagedQty) || 0,   // subset of receivedQty
+        shortageQty:        parseInt(item.shortageQty) || 0,  // separate — not in stock, not in received
+        returnReason:       item.returnReason === 'Other' ? (customReasons[idx] || 'Other') : (item.returnReason || ''),
+        unitCost:           parseFloat(item.unitCost) || 0,
       }));
 
+    // Update PO item received quantities (only count physical received, not shortage)
     const updatedItems = (po.items || []).map(poItem => {
       const gr = grItems.find(g => g.materialId === poItem.materialId);
       if (!gr) return poItem;
@@ -889,19 +846,17 @@ function GRFormModal({ po, onClose, onSave }) {
     const anyReceived  = updatedItems.some(i => (parseInt(i.receivedQty) || 0) > 0);
     const newStatus    = allFulfilled ? 'received' : anyReceived ? 'partial' : po.status;
 
-    const grPayload = { poId: po.id, poNumber: po.poNumber, vendorId: po.vendorId, vendorName: po.vendorName, items: grItems, notes, receivedDate: new Date().toISOString() };
-    const updatedPO = { ...po, items: updatedItems, status: newStatus };
+    const grPayload  = { poId: po.id, poNumber: po.poNumber, vendorId: po.vendorId, vendorName: po.vendorName, items: grItems, notes, receivedDate: new Date().toISOString() };
+    const updatedPO  = { ...po, items: updatedItems, status: newStatus };
 
-    // Check if there are discrepancies (damaged or shortage items)
+    // Discrepancies = items with damage OR shortage
     const discrepancies = grItems.filter(i => i.damagedQty > 0 || i.shortageQty > 0);
     if (discrepancies.length > 0) {
-      // Show Pending RTV Review first
       setPendingGRData(grPayload);
       setPendingUpdatedPO(updatedPO);
       setPendingDiscrepancyItems(discrepancies);
       setShowPendingRTV(true);
     } else {
-      // No discrepancies → go straight to Invoice
       setPendingGRData(grPayload);
       setPendingUpdatedPO(updatedPO);
       setShowInvoice(true);
@@ -909,7 +864,6 @@ function GRFormModal({ po, onClose, onSave }) {
   };
 
   const handlePendingRTVApprove = (approvedItems) => {
-    // approvedItems includes disposition per item
     setApprovedDiscrepancies(approvedItems);
     setShowPendingRTV(false);
     setShowInvoice(true);
@@ -935,7 +889,7 @@ function GRFormModal({ po, onClose, onSave }) {
           <div>
             <h2 className="modal-title">Receive Stock & Quality Check</h2>
             <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.1rem' }}>
-              Verify quantities and report any damages for Return to Vendor (RTV).
+              Verify quantities and report any damages or shortages.
             </p>
           </div>
           <button className="modal-close" onClick={onClose}>
@@ -962,9 +916,9 @@ function GRFormModal({ po, onClose, onSave }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {items.map((item, idx) => {
                   const physicalCount = parseInt(item.toReceive) || 0;
-                  const damaged = parseInt(item.damagedQty) || 0;
-                  const shortage = parseInt(item.shortageQty) || 0;
-                  const good = Math.max(0, physicalCount - damaged);
+                  const damaged       = parseInt(item.damagedQty) || 0;
+                  const shortage      = parseInt(item.shortageQty) || 0;
+                  const good          = Math.max(0, physicalCount - damaged);
                   return (
                     <div key={idx} style={{
                       padding: '1rem 1.25rem',
@@ -981,10 +935,12 @@ function GRFormModal({ po, onClose, onSave }) {
                         </div>
                       </div>
 
-                      {/* Inputs Grid: Expected | Damaged | Shortage */}
+                      {/* Inputs: Expected | Damaged | Shortage */}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: (damaged > 0 || shortage > 0) ? '0.75rem' : '0' }}>
                         <div>
-                          <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>Expected Qty (from PO)</label>
+                          <label style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>
+                            Expected Qty (from PO)
+                          </label>
                           <input
                             type="text"
                             readOnly
@@ -993,41 +949,42 @@ function GRFormModal({ po, onClose, onSave }) {
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: '0.65rem', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>Damaged / Others</label>
+                          <label style={{ fontSize: '0.65rem', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>
+                            Damaged / Others
+                          </label>
                           <IntInput
                             style={{ ...inputStyle, padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderColor: damaged > 0 ? 'rgba(245,158,11,0.4)' : undefined }}
                             value={item.damagedQty}
                             onChange={v => updateDamaged(idx, v)}
-                            min={0}
-                            max={physicalCount}
-                            placeholder="0"
+                            min={0} max={physicalCount} placeholder="0"
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: '0.65rem', color: '#ef4444', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>Shortage</label>
+                          <label style={{ fontSize: '0.65rem', color: '#ef4444', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>
+                            Shortage
+                          </label>
                           <IntInput
                             style={{ ...inputStyle, padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderColor: shortage > 0 ? 'rgba(239,68,68,0.4)' : undefined }}
                             value={item.shortageQty}
                             onChange={v => updateShortage(idx, v)}
-                            min={0}
-                            max={item.remaining}
-                            placeholder="0"
+                            min={0} max={item.remaining} placeholder="0"
                           />
                         </div>
                       </div>
 
+                      {/* Return reason — only for damaged items */}
                       {damaged > 0 && (
                         <div style={{ marginTop: '0.5rem' }}>
                           <label style={{ fontSize: '0.65rem', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.3rem', display: 'block' }}>
-                            Reason <span style={{ color: '#ef4444' }}>*</span>
+                            Damage Reason <span style={{ color: '#ef4444' }}>*</span>
                           </label>
                           <CustomDropdown
-                              value={item.returnReason}
-                              onChange={(val) => updateReturnReason(idx, val)}
-                              options={RETURN_REASONS.map(r => ({ value: r, label: r }))}
-                              placeholder="Select reason..."
-                              style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
-                            />
+                            value={item.returnReason}
+                            onChange={(val) => updateReturnReason(idx, val)}
+                            options={RETURN_REASONS.map(r => ({ value: r, label: r }))}
+                            placeholder="Select reason..."
+                            style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
+                          />
                           {item.returnReason === 'Other' && (
                             <div style={{ marginTop: '0.5rem' }}>
                               <input
@@ -1037,7 +994,6 @@ function GRFormModal({ po, onClose, onSave }) {
                                 onChange={e => updateCustomReason(idx, e.target.value)}
                                 placeholder="Specify reason..."
                                 maxLength={100}
-                                required
                               />
                               <div style={{ fontSize: '0.65rem', color: 'var(--gray)', marginTop: '0.2rem', textAlign: 'right' }}>
                                 {(customReasons[idx] || '').length}/100
@@ -1047,17 +1003,22 @@ function GRFormModal({ po, onClose, onSave }) {
                         </div>
                       )}
 
-                      {physicalCount > 0 && (
+                      {/* Summary row */}
+                      {(physicalCount > 0 || shortage > 0) && (
                         <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>Good qty to stock:</span>
-                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: good > 0 ? '#22c55e' : '#ef4444' }}>
-                            {good} {item.uom}
-                          </span>
+                          {physicalCount > 0 && (
+                            <>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>Good qty to stock:</span>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: good > 0 ? '#22c55e' : '#ef4444' }}>
+                                {good} {item.uom}
+                              </span>
+                            </>
+                          )}
                           {damaged > 0 && (
                             <>
                               <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>·</span>
                               <span style={{ fontSize: '0.75rem', color: '#f59e0b' }}>
-                                {damaged} {item.uom} → {item.returnReason === 'Other' ? (customReasons[idx] || 'Other') : (item.returnReason || 'damaged')}
+                                {damaged} {item.uom} → {item.returnReason === 'Other' ? (customReasons[idx] || 'Other') : (item.returnReason || 'damaged')} (Damaged)
                               </span>
                             </>
                           )}
@@ -1065,7 +1026,7 @@ function GRFormModal({ po, onClose, onSave }) {
                             <>
                               <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>·</span>
                               <span style={{ fontSize: '0.75rem', color: '#ef4444' }}>
-                                {shortage} {item.uom} → Missing
+                                {shortage} {item.uom} → Missing (Shortage)
                               </span>
                             </>
                           )}
@@ -1076,7 +1037,6 @@ function GRFormModal({ po, onClose, onSave }) {
                 })}
               </div>
             )}
-
           </div>
 
           <div className="modal-actions" style={{ flexShrink: 0 }}>
@@ -1093,7 +1053,6 @@ function GRFormModal({ po, onClose, onSave }) {
         </form>
       </div>
 
-      {/* Pending RTV Review Modal (shown after Confirm Receipt, before Invoice) */}
       {showPendingRTV && pendingDiscrepancyItems.length > 0 && (
         <PendingRTVReviewModal
           grItems={pendingDiscrepancyItems}
@@ -1103,7 +1062,6 @@ function GRFormModal({ po, onClose, onSave }) {
         />
       )}
 
-      {/* Invoice Entry Modal (shown after Confirm Receipt) */}
       {showInvoice && pendingGRData && (
         <InvoiceEntryModal
           grData={pendingGRData}
@@ -1118,45 +1076,38 @@ function GRFormModal({ po, onClose, onSave }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// PENDING RTV REVIEW MODAL (Staging — damaged/shortage items from GR before formal RTV)
+// PENDING RTV REVIEW MODAL
 // ══════════════════════════════════════════════════════════════════════════════
 function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
   const [dispositions, setDispositions] = useState({});
 
-  // Disposition options — different for shortage vs. damaged/defective
   const getOptionsForType = (type) => {
     if (type === 'shortage') {
       return [
         { value: 'request_credit', label: 'Request Credit/Refund', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)', hint: 'Vendor returns money or gives credit for missing items' },
-        { value: 'backorder', label: 'Backorder Remaining', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)', hint: 'Vendor sends missing items on next delivery' },
-        { value: 'accept_partial', label: 'Accept Partial', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)', hint: 'Close order as-is, accept the loss' },
+        { value: 'backorder',      label: 'Backorder Remaining',   color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)', hint: 'Vendor sends missing items on next delivery' },
+        { value: 'accept_partial', label: 'Accept Partial',        color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)', hint: 'Close order as-is, accept the loss' },
       ];
     }
-    // For damaged/defective: return or write off
     return [
-      { value: 'rtv', label: 'Return to Vendor', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
-      { value: 'write_off', label: 'Write Off (Loss)', color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)' },
+      { value: 'rtv',       label: 'Return to Vendor', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
+      { value: 'write_off', label: 'Write Off (Loss)',  color: '#ef4444', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.2)' },
     ];
   };
 
-  // Get all unique disposition options across all items for the legend
   const allDispOptions = useMemo(() => {
     const all = new Set();
     grItems.forEach(item => {
-      if (item.damagedQty > 0) {
-        getOptionsForType('damage').forEach(o => all.add(o.value));
-      }
-      if (item.shortageQty > 0) {
-        getOptionsForType('shortage').forEach(o => all.add(o.value));
-      }
+      if (item.damagedQty > 0)  getOptionsForType('damage').forEach(o => all.add(o.value));
+      if (item.shortageQty > 0) getOptionsForType('shortage').forEach(o => all.add(o.value));
     });
     const masterOrder = ['request_credit', 'backorder', 'rtv', 'write_off', 'accept_partial'];
     const masterLabels = {
       request_credit: { label: 'Request Credit/Refund', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
-      backorder: { label: 'Backorder Remaining', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
-      rtv: { label: 'Return to Vendor', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
-      write_off: { label: 'Write Off (Loss)', color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)' },
-      accept_partial: { label: 'Accept Partial', color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
+      backorder:      { label: 'Backorder Remaining',   color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
+      rtv:            { label: 'Return to Vendor',      color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
+      write_off:      { label: 'Write Off (Loss)',       color: '#ef4444', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.2)' },
+      accept_partial: { label: 'Accept Partial',         color: '#9ca3af', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)' },
     };
     return masterOrder.filter(v => all.has(v)).map(v => ({ value: v, ...masterLabels[v] }));
   }, [grItems]);
@@ -1164,12 +1115,8 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
   useEffect(() => {
     const init = {};
     grItems.forEach(item => {
-      if (item.damagedQty > 0) {
-        init[`${item.materialId}-damage`] = 'rtv';
-      }
-      if (item.shortageQty > 0) {
-        init[`${item.materialId}-shortage`] = 'request_credit';
-      }
+      if (item.damagedQty > 0)  init[`${item.materialId}-damage`]   = 'rtv';
+      if (item.shortageQty > 0) init[`${item.materialId}-shortage`] = 'request_credit';
     });
     setDispositions(init);
   }, [grItems]);
@@ -1178,29 +1125,37 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
     setDispositions(p => ({ ...p, [key]: val }));
   };
 
-  // Build approved items list — split damaged and shortage into separate entries
+  // Build approved items list — damage and shortage are SEPARATE entries
   const approvedItems = [];
   grItems.forEach(item => {
     if (item.damagedQty > 0) {
       const dispKey = `${item.materialId}-damage`;
       const disp = dispositions[dispKey] || 'rtv';
-      // Include all damage dispositions so handleSaveGR can process them (RTV, Write Off)
-      approvedItems.push({ ...item, discrepancyType: 'damage', qty: item.damagedQty, disposition: disp });
+      approvedItems.push({
+        ...item,
+        discrepancyType: 'damage',
+        qty: item.damagedQty,
+        disposition: disp,
+      });
     }
     if (item.shortageQty > 0) {
       const dispKey = `${item.materialId}-shortage`;
       const disp = dispositions[dispKey] || 'request_credit';
-      // Exclude 'accept_partial' as it requires no further action
       if (disp !== 'accept_partial') {
-        approvedItems.push({ ...item, discrepancyType: 'shortage', qty: item.shortageQty, disposition: disp });
+        approvedItems.push({
+          ...item,
+          discrepancyType: 'shortage',
+          qty: item.shortageQty,
+          disposition: disp,
+        });
       }
     }
   });
 
   const requestCreditCount = approvedItems.filter(i => i.disposition === 'request_credit').length;
-  const backorderCount = approvedItems.filter(i => i.disposition === 'backorder').length;
-  const rtyCount = approvedItems.filter(i => i.disposition === 'rtv').length;
-  const writeOffCount = grItems.filter(i => (dispositions[`${i.materialId}-damage`] || 'rtv') === 'write_off').length;
+  const backorderCount     = approvedItems.filter(i => i.disposition === 'backorder').length;
+  const rtvCount           = approvedItems.filter(i => i.disposition === 'rtv').length;
+  const writeOffCount      = grItems.filter(i => (dispositions[`${i.materialId}-damage`] || 'rtv') === 'write_off').length;
   const acceptPartialCount = grItems.filter(i => (dispositions[`${i.materialId}-shortage`] || 'request_credit') === 'accept_partial').length;
 
   const handleSubmit = (e) => {
@@ -1230,7 +1185,6 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
         <form onSubmit={handleSubmit} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div className="modal-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
 
-            {/* Disposition Options Legend */}
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', paddingBottom: '0.25rem' }}>
               {allDispOptions.map(opt => (
                 <span key={opt.value} style={{
@@ -1249,14 +1203,23 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
                 border: '1px solid rgba(255,255,255,0.06)',
                 display: 'flex', flexDirection: 'column', gap: '1rem',
               }}>
-                {/* Material Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontWeight: 700, color: '#E5E2E1', fontSize: '0.95rem' }}>{item.materialName}</div>
                     {item.sku && <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{item.sku}</div>}
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700 }}>
-                    {(item.damagedQty || 0) + (item.shortageQty || 0)} {item.uom} discrepancy
+                  {/* Show damage and shortage counts separately */}
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    {item.damagedQty > 0 && (
+                      <span style={{ fontSize: '0.72rem', color: '#f59e0b', fontWeight: 700, padding: '0.15rem 0.45rem', borderRadius: '6px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                        {item.damagedQty} {item.uom} damaged
+                      </span>
+                    )}
+                    {item.shortageQty > 0 && (
+                      <span style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: 700, padding: '0.15rem 0.45rem', borderRadius: '6px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                        {item.shortageQty} {item.uom} shortage
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1265,10 +1228,15 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
                   <div style={{ padding: '0.75rem', background: 'rgba(245,158,11,0.04)', borderRadius: '8px', border: '1px solid rgba(245,158,11,0.1)' }}>
                     <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 700, marginBottom: '0.5rem' }}>
                       Damaged: {item.damagedQty} {item.uom}
+                      {item.returnReason && (
+                        <span style={{ fontWeight: 400, color: 'rgba(245,158,11,0.7)', marginLeft: '0.5rem' }}>
+                          — {item.returnReason}
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                       {getOptionsForType('damage').map(opt => {
-                        const key = `${item.materialId}-damage`;
+                        const key  = `${item.materialId}-damage`;
                         const disp = dispositions[key] || 'rtv';
                         return (
                           <button
@@ -1276,14 +1244,11 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
                             type="button"
                             onClick={() => updateDisposition(key, opt.value)}
                             style={{
-                              padding: '0.45rem 0.85rem',
-                              borderRadius: '8px',
+                              padding: '0.45rem 0.85rem', borderRadius: '8px',
                               border: disp === opt.value ? `2px solid ${opt.color}` : '1px solid rgba(255,255,255,0.1)',
                               background: disp === opt.value ? opt.bg : 'rgba(255,255,255,0.02)',
                               color: disp === opt.value ? opt.color : 'var(--gray)',
-                              fontSize: '0.72rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
+                              fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
                             }}
                           >
                             {opt.label}
@@ -1292,21 +1257,24 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
                       })}
                     </div>
                     <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
-                      {(dispositions[`${item.materialId}-damage`] || 'rtv') === 'rtv' && `→ ${item.damagedQty} ${item.uom} will be sent to RTV (Return to Vendor)`}
-                      {(dispositions[`${item.materialId}-damage`] || 'rtv') === 'write_off' && `→ ${item.damagedQty} ${item.uom} will be written off as loss (recorded in Goods Issue)`}
+                      {(dispositions[`${item.materialId}-damage`] || 'rtv') === 'rtv'       && `→ ${item.damagedQty} ${item.uom} will be sent to RTV (Return to Vendor)`}
+                      {(dispositions[`${item.materialId}-damage`] || 'rtv') === 'write_off' && `→ ${item.damagedQty} ${item.uom} will be written off as loss`}
                     </div>
                   </div>
                 )}
 
-                {/* Shortage Section */}
+                {/* Shortage Section — visually distinct from Damaged */}
                 {item.shortageQty > 0 && (
                   <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.04)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.1)' }}>
                     <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 700, marginBottom: '0.5rem' }}>
                       Shortage: {item.shortageQty} {item.uom}
+                      <span style={{ fontWeight: 400, color: 'rgba(239,68,68,0.7)', marginLeft: '0.5rem' }}>
+                        — items were not delivered
+                      </span>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                       {getOptionsForType('shortage').map(opt => {
-                        const key = `${item.materialId}-shortage`;
+                        const key  = `${item.materialId}-shortage`;
                         const disp = dispositions[key] || 'request_credit';
                         return (
                           <button
@@ -1314,14 +1282,11 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
                             type="button"
                             onClick={() => updateDisposition(key, opt.value)}
                             style={{
-                              padding: '0.45rem 0.85rem',
-                              borderRadius: '8px',
+                              padding: '0.45rem 0.85rem', borderRadius: '8px',
                               border: disp === opt.value ? `2px solid ${opt.color}` : '1px solid rgba(255,255,255,0.1)',
                               background: disp === opt.value ? opt.bg : 'rgba(255,255,255,0.02)',
                               color: disp === opt.value ? opt.color : 'var(--gray)',
-                              fontSize: '0.72rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
+                              fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
                             }}
                           >
                             {opt.label}
@@ -1330,8 +1295,8 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
                       })}
                     </div>
                     <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
-                      {(dispositions[`${item.materialId}-shortage`] || 'request_credit') === 'request_credit' && `→ Vendor returns money for missing items`}
-                      {(dispositions[`${item.materialId}-shortage`] || 'request_credit') === 'backorder' && `→ Vendor to send remaining ${item.shortageQty} ${item.uom} later`}
+                      {(dispositions[`${item.materialId}-shortage`] || 'request_credit') === 'request_credit' && `→ Vendor returns money for ${item.shortageQty} missing ${item.uom}`}
+                      {(dispositions[`${item.materialId}-shortage`] || 'request_credit') === 'backorder'      && `→ Vendor to send remaining ${item.shortageQty} ${item.uom} later`}
                       {(dispositions[`${item.materialId}-shortage`] || 'request_credit') === 'accept_partial' && `→ Accept partial delivery — close order as-is, no further action`}
                     </div>
                   </div>
@@ -1349,22 +1314,20 @@ function PendingRTVReviewModal({ grItems, po, onClose, onApprove }) {
                 {requestCreditCount > 0 && `${requestCreditCount} Credit/Refund`}
                 {requestCreditCount > 0 && backorderCount > 0 && ` · `}
                 {backorderCount > 0 && `${backorderCount} Backorder`}
-                {(requestCreditCount > 0 || backorderCount > 0) && (rtyCount > 0 || writeOffCount > 0) && ` · `}
-                {rtyCount > 0 && `${rtyCount} RTV`}
-                {rtyCount > 0 && writeOffCount > 0 && ` · `}
+                {(requestCreditCount > 0 || backorderCount > 0) && (rtvCount > 0 || writeOffCount > 0) && ` · `}
+                {rtvCount > 0 && `${rtvCount} RTV`}
+                {rtvCount > 0 && writeOffCount > 0 && ` · `}
                 {writeOffCount > 0 && `${writeOffCount} Write Off`}
-                {(rtyCount > 0 || writeOffCount > 0 || requestCreditCount > 0 || backorderCount > 0) && acceptPartialCount > 0 && ` · `}
+                {(rtvCount > 0 || writeOffCount > 0 || requestCreditCount > 0 || backorderCount > 0) && acceptPartialCount > 0 && ` · `}
                 {acceptPartialCount > 0 && `${acceptPartialCount} Accepted`}
-                {requestCreditCount === 0 && backorderCount === 0 && rtyCount === 0 && writeOffCount === 0 && acceptPartialCount === 0 && '—'}
+                {requestCreditCount === 0 && backorderCount === 0 && rtvCount === 0 && writeOffCount === 0 && acceptPartialCount === 0 && '—'}
               </span>
             </div>
           </div>
 
           <div className="modal-actions" style={{ flexShrink: 0 }}>
             <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn-primary">
-              Confirm &amp; Proceed
-            </button>
+            <button type="submit" className="btn-primary">Confirm &amp; Proceed</button>
           </div>
         </form>
       </div>
@@ -1444,32 +1407,22 @@ function StockInHistoryTab({ stockIns }) {
                       </button>
                     </td>
                     <td style={{ padding: '0.875rem 1rem' }}>
-                      <div style={{ fontSize: '0.8rem', color: '#E5E2E1' }}>
-                        {new Date(si.dateReceived).toLocaleDateString('en-PH')}
-                      </div>
-                      <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>
-                        {new Date(si.dateReceived).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#E5E2E1' }}>{new Date(si.dateReceived).toLocaleDateString('en-PH')}</div>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>{new Date(si.dateReceived).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}</div>
                     </td>
                     <td style={{ padding: '0.875rem 1rem' }}>
                       <div style={{ fontWeight: 600, color: '#E5E2E1', fontSize: '0.825rem' }}>{si.materialName}</div>
                       {si.sku && <div style={{ fontSize: '0.65rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{si.sku}</div>}
                     </td>
-                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#E5E2E1', fontSize: '0.8rem' }}>
-                      {si.vendorName || '—'}
-                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#E5E2E1', fontSize: '0.8rem' }}>{si.vendorName || '—'}</td>
                     <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 700, color: '#E5E2E1' }}>
                       {si.receivedQty} <span style={{ color: 'var(--gray)', fontWeight: 400 }}>{si.uom}</span>
                     </td>
-                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 700, color: '#22c55e' }}>
-                      {si.goodQty}
-                    </td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 700, color: '#22c55e' }}>{si.goodQty}</td>
                     <td style={{ padding: '0.875rem 1rem', textAlign: 'center' }}>
-                      {si.damagedQty > 0 ? (
-                        <span style={{ fontWeight: 700, color: '#ef4444' }}>{si.damagedQty}</span>
-                      ) : (
-                        <span style={{ color: 'var(--gray)' }}>—</span>
-                      )}
+                      {si.damagedQty > 0
+                        ? <span style={{ fontWeight: 700, color: '#ef4444' }}>{si.damagedQty}</span>
+                        : <span style={{ color: 'var(--gray)' }}>—</span>}
                     </td>
                     <td style={{ padding: '0.875rem 1rem', textAlign: 'right', color: '#E5E2E1', fontFamily: 'monospace', fontSize: '0.8rem' }}>
                       ₱{si.unitCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
@@ -1481,7 +1434,6 @@ function StockInHistoryTab({ stockIns }) {
                       {si.referenceNo || '—'}
                     </td>
                   </tr>
-
                   {isExpanded && (
                     <tr style={{ background: 'rgba(0,0,0,0.12)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                       <td colSpan={10} style={{ padding: '1rem 1rem 1rem 3.5rem' }}>
@@ -1500,9 +1452,7 @@ function StockInHistoryTab({ stockIns }) {
                           </div>
                           <div>
                             <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.25rem' }}>Stock Added</div>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#22c55e' }}>
-                              +{si.goodQty} {si.uom}
-                            </div>
+                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#22c55e' }}>+{si.goodQty} {si.uom}</div>
                           </div>
                         </div>
                         {si.notes && (
@@ -1524,109 +1474,59 @@ function StockInHistoryTab({ stockIns }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// PO DOCUMENT PREVIEW — Printable Purchase Order (Letter Size)
+// PO DOCUMENT PREVIEW
 // ══════════════════════════════════════════════════════════════════════════════
 function PODocumentPreview({ poData, vendors, materials, onClose, onConfirm }) {
   const total = (poData.items || []).reduce(
     (sum, item) => sum + ((parseFloat(item.unitCost) || 0) * (parseInt(item.qty) || 0)), 0
   );
-  const vendor = vendors.find(v => v.id === poData.vendorId);
+  const vendor       = vendors.find(v => v.id === poData.vendorId);
   const expectedDate = poData.expectedDate ? new Date(poData.expectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-  const today = poData.createdAt ? new Date(poData.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-
-  // Show the actual PO number (for new POs, it was pre-generated by handlePreviewPO)
+  const today        = poData.createdAt ? new Date(poData.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   const displayPONum = poData.poNumber || `PO-${new Date().getFullYear()}-NEW`;
 
-  // Business details from business card
   const business = {
-    name: 'PERSONALIZE ME PRINTING SERVICES',
-    owner: 'Jerlyn Barrameda',
-    title: 'Business Owner',
-    phone1: '+63 945972 6272',
-    phone2: '+63 962436 2161',
+    name:    'PERSONALIZE ME PRINTING SERVICES',
+    owner:   'Jerlyn Barrameda',
+    title:   'Business Owner',
+    phone1:  '+63 945972 6272',
+    phone2:  '+63 962436 2161',
     address: '5 Ford St., Fil.2, Batasan Hills, Quezon City',
-    email: 'personalizemeprinting@gmail.com',
-    logo: '/logos/NEW logo no BG.png',
-  };
-
-  const handlePrint = () => {
-    window.print();
+    email:   'personalizemeprinting@gmail.com',
+    logo:    '/logos/NEW logo no BG.png',
   };
 
   return (
     <div className="modal-overlay" style={{ overflowY: 'auto', paddingTop: '1rem', paddingBottom: '1rem' }}>
       <style>{`
         @media print {
-          @page {
-            size: letter portrait;
-            margin: 0.5in;
-          }
-          html, body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #fff !important;
-            overflow: visible !important;
-          }
+          @page { size: letter portrait; margin: 0.5in; }
+          html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; }
           body * { visibility: hidden !important; }
           #po-print-area, #po-print-area * { visibility: visible !important; }
-          #po-print-area {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 7.5in;
-            max-width: 100%;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-            margin: 0 !important;
-          }
+          #po-print-area { position: absolute; left: 0; top: 0; width: 7.5in; max-width: 100%; box-shadow: none !important; border-radius: 0 !important; margin: 0 !important; }
           .no-print { display: none !important; }
           .po-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .po-logo { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
       `}</style>
-      <div id="po-print-area" style={{
-        background: '#fff', color: '#1a1a1a', width: '7.5in', margin: '0 auto',
-        fontFamily: "'DM Sans', sans-serif",
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-      }}>
-        {/* Header */}
-        <div className="po-header" style={{
-          background: '#1a1a1a',
-          color: '#fff', padding: '1.2rem 1.8rem',
-        }}>
-          {/* Top: Logo + Company Name + PO Info */}
+      <div id="po-print-area" style={{ background: '#fff', color: '#1a1a1a', width: '7.5in', margin: '0 auto', fontFamily: "'DM Sans', sans-serif", boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+        <div className="po-header" style={{ background: '#1a1a1a', color: '#fff', padding: '1.2rem 1.8rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8rem' }}>
-              <img
-                className="po-logo"
-                src={business.logo}
-                alt="Logo"
-                style={{ width: '48px', height: '48px', objectFit: 'contain', marginTop: '0.1rem' }}
-              />
+              <img src={business.logo} alt="Logo" style={{ width: '48px', height: '48px', objectFit: 'contain', marginTop: '0.1rem' }} />
               <div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 800, letterSpacing: '0.03em', color: '#D4A843', lineHeight: 1.2 }}>
-                  {business.name}
-                </div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, letterSpacing: '0.03em', color: '#D4A843', lineHeight: 1.2 }}>{business.name}</div>
                 <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.45)', marginTop: '0.15rem' }}>
                   {poData.status === 'pending' ? 'Order Request' : (poData.status || 'Order Request').charAt(0).toUpperCase() + (poData.status || 'Order Request').slice(1)}
                 </div>
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 800, fontFamily: 'monospace', color: '#D4A843' }}>
-                {displayPONum}
-              </div>
-              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.45)', marginTop: '0.15rem' }}>
-                {today}
-              </div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 800, fontFamily: 'monospace', color: '#D4A843' }}>{displayPONum}</div>
+              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.45)', marginTop: '0.15rem' }}>{today}</div>
             </div>
           </div>
-
-          {/* Bottom: Owner + Contact Info */}
-          <div style={{
-            marginTop: '1rem', paddingTop: '0.8rem', borderTop: '1px solid rgba(255,255,255,0.1)',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          }}>
+          <div style={{ marginTop: '1rem', paddingTop: '0.8rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.6rem', color: 'rgba(255,255,255,0.55)', flex: 1 }}>
               <div>
                 <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.7)', marginBottom: '0.15rem' }}>From:</div>
@@ -1643,17 +1543,11 @@ function PODocumentPreview({ poData, vendors, materials, onClose, onConfirm }) {
                 <div>{business.address}</div>
               </div>
             </div>
-            <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.1rem' }}>
-              {business.email}
-            </div>
+            <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.1rem' }}>{business.email}</div>
           </div>
         </div>
 
-        {/* Vendor + Expected Delivery */}
-        <div style={{
-          padding: '0.8rem 1.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          borderBottom: '1px solid #e5e5e5',
-        }}>
+        <div style={{ padding: '0.8rem 1.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e5e5e5' }}>
           <div>
             <div style={{ fontSize: '0.55rem', color: '#999', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.15rem', letterSpacing: '0.05em' }}>Vendor</div>
             <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1a1a1a' }}>{vendor?.name || 'General Merchandise'}</div>
@@ -1666,7 +1560,6 @@ function PODocumentPreview({ poData, vendors, materials, onClose, onConfirm }) {
           </div>
         </div>
 
-        {/* Items Table */}
         <div style={{ padding: '0.8rem 1.8rem 1.2rem' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
             <thead>
@@ -1680,15 +1573,13 @@ function PODocumentPreview({ poData, vendors, materials, onClose, onConfirm }) {
             </thead>
             <tbody>
               {(poData.items || []).map((item, idx) => {
-                const mat = materials.find(m => m.id === item.materialId);
+                const mat       = materials.find(m => m.id === item.materialId);
                 const lineTotal = (parseFloat(item.unitCost) || 0) * (parseInt(item.qty) || 0);
                 return (
                   <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
                     <td style={{ padding: '0.5rem 0.4rem', color: '#aaa', fontSize: '0.75rem' }}>{idx + 1}</td>
                     <td style={{ padding: '0.5rem 0.4rem' }}>
-                      <div style={{ fontWeight: 600, color: '#1a1a1a', fontSize: '0.8rem' }}>
-                        {mat?.name || item.materialName || '—'}
-                      </div>
+                      <div style={{ fontWeight: 600, color: '#1a1a1a', fontSize: '0.8rem' }}>{mat?.name || item.materialName || '—'}</div>
                       {mat?.sku && <div style={{ fontSize: '0.65rem', color: '#aaa', fontFamily: 'monospace', marginTop: '0.05rem' }}>{mat.sku}</div>}
                     </td>
                     <td style={{ padding: '0.5rem 0.4rem', textAlign: 'center', color: '#1a1a1a', fontWeight: 600, fontSize: '0.8rem' }}>{item.qty}</td>
@@ -1701,33 +1592,19 @@ function PODocumentPreview({ poData, vendors, materials, onClose, onConfirm }) {
               })}
             </tbody>
           </table>
-
-          {/* Grand Total */}
-          <div style={{
-            display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1rem',
-            marginTop: '0.8rem', paddingTop: '0.6rem', borderTop: '2px solid #1a1a1a',
-          }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1rem', marginTop: '0.8rem', paddingTop: '0.6rem', borderTop: '2px solid #1a1a1a' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#888', textTransform: 'uppercase' }}>Grand Total</span>
             <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#D4A843', fontFamily: 'monospace' }}>
               ₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
             </span>
           </div>
-
-          {/* Notes */}
           {poData.notes && (
-            <div style={{
-              marginTop: '1rem', padding: '0.5rem 0.75rem', background: '#f8f8f8',
-              borderRadius: '6px', borderLeft: '3px solid #D4A843',
-            }}>
+            <div style={{ marginTop: '1rem', padding: '0.5rem 0.75rem', background: '#f8f8f8', borderRadius: '6px', borderLeft: '3px solid #D4A843' }}>
               <div style={{ fontSize: '0.55rem', color: '#999', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.1rem' }}>Notes</div>
               <div style={{ fontSize: '0.72rem', color: '#555', lineHeight: 1.4 }}>{poData.notes}</div>
             </div>
           )}
-
-          {/* Signature — Prepared By only */}
-          <div style={{
-            display: 'flex', justifyContent: 'flex-start', gap: '2rem', marginTop: '2rem',
-          }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '2rem', marginTop: '2rem' }}>
             <div style={{ textAlign: 'center', width: '180px' }}>
               <div style={{ borderBottom: '1px solid #ccc', height: '35px', marginBottom: '0.3rem' }}></div>
               <div style={{ fontSize: '0.6rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Prepared By</div>
@@ -1735,53 +1612,15 @@ function PODocumentPreview({ poData, vendors, materials, onClose, onConfirm }) {
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="no-print" style={{
-          background: '#1a1a1a', padding: '1rem 1.8rem', display: 'flex',
-          flexDirection: 'column', gap: '0.75rem',
-        }}>
-          {/* Send Email Checkbox — Commented out (PDF attachment requires backend) */}
-          {/* {vendor?.email && !poData.emailSent && (
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: '0.5rem',
-              cursor: 'pointer', fontSize: '0.8rem', color: '#E5E2E1',
-              padding: '0.5rem 0.75rem', background: 'rgba(59,130,246,0.06)',
-              borderRadius: '8px', border: '1px solid rgba(59,130,246,0.15)',
-              width: 'fit-content',
-            }}>
-              <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)}
-                style={{ width: '16px', height: '16px', accentColor: '#3b82f6', cursor: 'pointer' }} />
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                <polyline points="22,6 12,13 2,6"/>
-              </svg>
-              <span>Send PO to <strong>{vendor.name}</strong> ({vendor.email})</span>
-            </label>
-          )}
-          {poData.emailSent && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: '#22c55e', padding: '0.4rem 0.75rem', background: 'rgba(34,197,94,0.06)', borderRadius: '8px', border: '1px solid rgba(34,197,94,0.15)', width: 'fit-content' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
-              Already sent to {vendor?.name} on {new Date(poData.emailSentAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
-            </div>
-          )} */}
+        <div className="no-print" style={{ background: '#1a1a1a', padding: '1rem 1.8rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <button onClick={onClose} style={{
-              background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
-              padding: '0.6rem 1.25rem', color: '#999', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-            }}>Cancel</button>
+            <button onClick={onClose} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '0.6rem 1.25rem', color: '#999', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
             <div style={{ display: 'flex', gap: '0.65rem' }}>
-              <button onClick={handlePrint} style={{
-                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
-                padding: '0.6rem 1.25rem', color: '#E5E2E1', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '0.4rem',
-              }}>
+              <button onClick={() => window.print()} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '0.6rem 1.25rem', color: '#E5E2E1', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                 Print
               </button>
-              <button onClick={() => onConfirm(poData)} style={{
-                background: '#D4A843', border: 'none', borderRadius: '8px',
-                padding: '0.6rem 1.25rem', color: '#1a1a1a', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-              }}>Confirm &amp; Save</button>
+              <button onClick={() => onConfirm(poData)} style={{ background: '#D4A843', border: 'none', borderRadius: '8px', padding: '0.6rem 1.25rem', color: '#1a1a1a', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>Confirm &amp; Save</button>
             </div>
           </div>
         </div>
@@ -1791,7 +1630,7 @@ function PODocumentPreview({ poData, vendors, materials, onClose, onConfirm }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// EMAIL COMPOSER SIDE PANEL — Slide-out email composer for sending PO to vendor
+// EMAIL COMPOSER SIDE PANEL
 // ══════════════════════════════════════════════════════════════════════════════
 function EmailComposerPanel({ po, vendor, materials, onClose, onSent }) {
   const [body, setBody] = useState('');
@@ -1799,140 +1638,60 @@ function EmailComposerPanel({ po, vendor, materials, onClose, onSent }) {
 
   useEffect(() => {
     if (!po || !vendor) return;
-    const total = (po.items || []).reduce(
-      (sum, item) => sum + ((parseFloat(item.unitCost) || 0) * (parseInt(item.qty) || 0)), 0
-    );
+    const total = (po.items || []).reduce((sum, item) => sum + ((parseFloat(item.unitCost) || 0) * (parseInt(item.qty) || 0)), 0);
     const itemsList = (po.items || []).map((item, idx) => {
       const mat = materials.find(m => m.id === item.materialId);
       return `${idx + 1}. ${mat?.name || item.materialName} — ${item.qty} ${item.uom} @ ₱${(parseFloat(item.unitCost) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
     }).join('\n');
     const expectedDate = po.expectedDate ? new Date(po.expectedDate).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : 'ASAP';
-
-    setBody(
-`Hi ${vendor.name},
-
-Please see the details of our Purchase Order below:
-
-PO Number: ${po.poNumber}
-Expected Delivery: ${expectedDate}
-
-Items:
-${itemsList}
-
-Grand Total: ₱${total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-
-${po.notes ? 'Notes: ' + po.notes + '\n\n' : ''}Looking forward to the delivery.
-
-Thank you,
-Personalize Me Prints`
-    );
+    setBody(`Hi ${vendor.name},\n\nPlease see the details of our Purchase Order below:\n\nPO Number: ${po.poNumber}\nExpected Delivery: ${expectedDate}\n\nItems:\n${itemsList}\n\nGrand Total: ₱${total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}\n\n${po.notes ? 'Notes: ' + po.notes + '\n\n' : ''}Looking forward to the delivery.\n\nThank you,\nPersonalize Me Prints`);
   }, [po, vendor, materials]);
 
   const handleSend = () => {
     if (!po || !vendor) return;
     setSending(true);
-
-    const subject = encodeURIComponent(`Purchase Order ${po.poNumber} — Personalize Me Prints`);
-    const bodyEncoded = encodeURIComponent(body);
-
-    // Direct Gmail compose link (avoids Chrome mailto handler / profile picker)
-    const gmailLink = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(vendor.email)}&su=${subject}&body=${bodyEncoded}`;
-    window.open(gmailLink, '_blank');
-
-    setTimeout(() => {
-      setSending(false);
-      if (onSent) onSent();
-      onClose();
-    }, 1500);
+    const subject      = encodeURIComponent(`Purchase Order ${po.poNumber} — Personalize Me Prints`);
+    const bodyEncoded  = encodeURIComponent(body);
+    window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(vendor.email)}&su=${subject}&body=${bodyEncoded}`, '_blank');
+    setTimeout(() => { setSending(false); if (onSent) onSent(); onClose(); }, 1500);
   };
 
   if (!po || !vendor) return null;
-
-  const total = (po.items || []).reduce(
-    (sum, item) => sum + ((parseFloat(item.unitCost) || 0) * (parseInt(item.qty) || 0)), 0
-  );
+  const total = (po.items || []).reduce((sum, item) => sum + ((parseFloat(item.unitCost) || 0) * (parseInt(item.qty) || 0)), 0);
 
   return (
-    <div style={{
-      position: 'fixed', top: 0, right: 0, width: '480px', height: '100vh',
-      background: '#1a1a1a', borderLeft: '1px solid var(--border)',
-      zIndex: 9999, display: 'flex', flexDirection: 'column',
-      boxShadow: '-8px 0 32px rgba(0,0,0,0.5)',
-      animation: 'slideInRight 0.25s ease-out',
-    }}>
-      <style>{`
-        @keyframes slideInRight {
-          from { transform: translateX(100%); }
-          to { transform: translateX(0); }
-        }
-      `}</style>
-
-      {/* Header */}
-      <div style={{
-        padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        background: 'rgba(0,0,0,0.3)',
-      }}>
+    <div style={{ position: 'fixed', top: 0, right: 0, width: '480px', height: '100vh', background: '#1a1a1a', borderLeft: '1px solid var(--border)', zIndex: 9999, display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 32px rgba(0,0,0,0.5)', animation: 'slideInRight 0.25s ease-out' }}>
+      <style>{`@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+      <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.3)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{
-            width: '36px', height: '36px', borderRadius: '10px',
-            background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6',
-          }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-              <polyline points="22,6 12,13 2,6"/>
-            </svg>
+          <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
           </div>
           <div>
             <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#E5E2E1' }}>Send PO Email</div>
             <div style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{po.poNumber}</div>
           </div>
         </div>
-        <button onClick={onClose} style={{
-          background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)',
-          padding: '0.25rem', display: 'flex', alignItems: 'center',
-        }} onMouseEnter={e => e.currentTarget.style.color = '#E5E2E1'} onMouseLeave={e => e.currentTarget.style.color = 'var(--gray)'}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 6L6 18M6 6l12 12"/>
-          </svg>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', padding: '0.25rem', display: 'flex', alignItems: 'center' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </div>
 
-      {/* Email Fields */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-
-        {/* To */}
         <div>
           <label style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '0.35rem', display: 'block' }}>To</label>
-          <div style={{
-            padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px',
-            border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: '0.5rem',
-          }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-            </svg>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ fontSize: '0.85rem', color: '#E5E2E1', fontWeight: 600 }}>{vendor.name}</span>
             <span style={{ fontSize: '0.8rem', color: 'var(--gray)', marginLeft: 'auto' }}>{vendor.email}</span>
           </div>
         </div>
-
-        {/* Subject */}
         <div>
           <label style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '0.35rem', display: 'block' }}>Subject</label>
-          <div style={{
-            padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px',
-            border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.85rem', color: '#E5E2E1',
-          }}>
+          <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.85rem', color: '#E5E2E1' }}>
             Purchase Order {po.poNumber} — Personalize Me Prints
           </div>
         </div>
-
-        {/* PO Summary Card */}
-        <div style={{
-          padding: '0.85rem 1rem', background: 'rgba(212,168,67,0.06)', borderRadius: '8px',
-          border: '1px solid rgba(212,168,67,0.15)',
-        }}>
+        <div style={{ padding: '0.85rem 1rem', background: 'rgba(212,168,67,0.06)', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.15)' }}>
           <div style={{ fontSize: '0.6rem', color: '#D4A843', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '0.5rem' }}>PO Summary</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             {(po.items || []).map((item, idx) => {
@@ -1949,71 +1708,25 @@ Personalize Me Prints`
               <span style={{ color: '#D4A843', fontWeight: 800, fontFamily: 'monospace' }}>₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
             </div>
           </div>
-          {po.expectedDate && (
-            <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: 'var(--gray)' }}>
-              Expected Delivery: <span style={{ color: '#E5E2E1', fontWeight: 600 }}>{new Date(po.expectedDate).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
-            </div>
-          )}
         </div>
-
-        {/* Body (Editable) */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <label style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '0.35rem', display: 'flex', justifyContent: 'space-between' }}>
             <span>Message Body</span>
             <span style={{ textTransform: 'none', color: '#818cf8', fontWeight: 400 }}>Editable</span>
           </label>
-          <textarea
-            value={body}
-            onChange={e => setBody(e.target.value)}
-            style={{
-              flex: 1, minHeight: '200px', resize: 'vertical',
-              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '8px', color: '#E5E2E1', padding: '0.75rem',
-              fontSize: '0.82rem', lineHeight: 1.6, fontFamily: 'inherit',
-              outline: 'none',
-            }}
-          />
+          <textarea value={body} onChange={e => setBody(e.target.value)} style={{ flex: 1, minHeight: '200px', resize: 'vertical', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: '#E5E2E1', padding: '0.75rem', fontSize: '0.82rem', lineHeight: 1.6, fontFamily: 'inherit', outline: 'none' }} />
         </div>
       </div>
 
-      {/* Footer Actions */}
-      <div style={{
-        padding: '1rem 1.5rem', borderTop: '1px solid var(--border)',
-        display: 'flex', justifyContent: 'flex-end', gap: '0.75rem',
-        background: 'rgba(0,0,0,0.3)',
-      }}>
-        <button onClick={onClose} style={{
-          background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px',
-          padding: '0.6rem 1.25rem', color: '#999', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-        }}>Cancel</button>
-        <button onClick={handleSend} disabled={sending} style={{
-          background: sending ? 'rgba(34,197,94,0.3)' : '#22c55e',
-          border: 'none', borderRadius: '8px',
-          padding: '0.6rem 1.5rem', color: sending ? '#aaa' : '#fff',
-          fontSize: '0.82rem', fontWeight: 700, cursor: sending ? 'not-allowed' : 'pointer',
-          display: 'flex', alignItems: 'center', gap: '0.4rem',
-        }}>
-          {sending ? (
-            <>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }}>
-                <path d="M21 12a9 9 0 11-6.219-8.56"/>
-              </svg>
-              Opening email app...
-            </>
-          ) : (
-            <>
-              Open Email App
-            </>
-          )}
+      <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', background: 'rgba(0,0,0,0.3)' }}>
+        <button onClick={onClose} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '0.6rem 1.25rem', color: '#999', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+        <button onClick={handleSend} disabled={sending} style={{ background: sending ? 'rgba(34,197,94,0.3)' : '#22c55e', border: 'none', borderRadius: '8px', padding: '0.6rem 1.5rem', color: sending ? '#aaa' : '#fff', fontSize: '0.82rem', fontWeight: 700, cursor: sending ? 'not-allowed' : 'pointer' }}>
+          {sending ? 'Opening email app...' : 'Open Email App'}
         </button>
       </div>
-      <div style={{
-        padding: '0.5rem 1.5rem 0.75rem', fontSize: '0.65rem', color: 'var(--gray)',
-        textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.04)',
-      }}>
-        Opens Gmail compose with pre-filled PO details. Print PO as PDF first if attachment is needed.
+      <div style={{ padding: '0.5rem 1.5rem 0.75rem', fontSize: '0.65rem', color: 'var(--gray)', textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+        Opens Gmail compose with pre-filled PO details.
       </div>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
@@ -2022,18 +1735,18 @@ Personalize Me Prints`
 // PURCHASE ORDERS TAB
 // ══════════════════════════════════════════════════════════════════════════════
 function POTab({ pos, vendors, materials, onRefresh }) {
-  const [search,       setSearch]       = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [showForm,     setShowForm]     = useState(false);
-  const [editPO,       setEditPO]       = useState(null);
-  const [showGRForm,   setShowGRForm]   = useState(false);
-  const [grTargetPO,   setGRTargetPO]   = useState(null);
-  const [expandedPO,   setExpandedPO]   = useState(null);
-  const [cancelTarget, setCancelTarget] = useState(null);
+  const [search,          setSearch]          = useState('');
+  const [statusFilter,    setStatusFilter]    = useState('');
+  const [showForm,        setShowForm]        = useState(false);
+  const [editPO,          setEditPO]          = useState(null);
+  const [showGRForm,      setShowGRForm]      = useState(false);
+  const [grTargetPO,      setGRTargetPO]      = useState(null);
+  const [expandedPO,      setExpandedPO]      = useState(null);
+  const [cancelTarget,    setCancelTarget]    = useState(null);
   const [statusChangeTarget, setStatusChangeTarget] = useState(null);
-  const [poPreviewData, setPOPreviewData] = useState(null); // unsaved PO data for preview
-  const [viewDocPO, setViewDocPO] = useState(null); // view existing PO document
-  const [emailTargetPO, setEmailTargetPO] = useState(null); // PO to send email for
+  const [poPreviewData,   setPOPreviewData]   = useState(null);
+  const [viewDocPO,       setViewDocPO]       = useState(null);
+  const [emailTargetPO,   setEmailTargetPO]   = useState(null);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -2046,15 +1759,12 @@ function POTab({ pos, vendors, materials, onRefresh }) {
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }, [pos, search, statusFilter]);
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
   const handlePreviewPO = (poData) => {
-    // For new POs, generate the PO number upfront so it shows in preview
     if (!poData.id || !pos.find(p => p.id === poData.id)) {
-      const all = getStore(PO_KEY);
+      const all      = getStore(PO_KEY);
       const poNumber = genDocNumber('PO', all);
       setPOPreviewData({ ...poData, poNumber });
     } else {
-      // For edits, save directly
       handleSavePO(poData);
       return;
     }
@@ -2084,9 +1794,7 @@ function POTab({ pos, vendors, materials, onRefresh }) {
     onRefresh();
   };
 
-  const handleStatusChange = (po, newStatus) => {
-    setStatusChangeTarget({ po, newStatus });
-  };
+  const handleStatusChange = (po, newStatus) => { setStatusChangeTarget({ po, newStatus }); };
 
   const handleStatusConfirm = () => {
     if (!statusChangeTarget) return;
@@ -2105,12 +1813,11 @@ function POTab({ pos, vendors, materials, onRefresh }) {
     onRefresh();
   };
 
-  // ── Batch Helper Functions ────────────────────────────────────────────────
   const generateBatchId = () => {
     const d = new Date();
-    const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    const dateStr   = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
     const timestamp = Date.now().toString(36).slice(-4).toUpperCase();
-    const seq = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    const seq       = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
     return `${dateStr}-${timestamp}-${seq}`;
   };
 
@@ -2119,37 +1826,35 @@ function POTab({ pos, vendors, materials, onRefresh }) {
     return batches.reduce((sum, b) => sum + ((b.remainingQty || b.goodQty || b.qtyGood || 0)), 0);
   };
 
+  // FIFO cost = unit cost of the OLDEST active batch (next batch to be issued)
+  // This reflects the actual cost that will be used for the next stock-out
   const computeAveCostFromBatches = (batches) => {
     if (!batches || !Array.isArray(batches) || batches.length === 0) return 0;
-    let totalCost = 0, totalQty = 0;
-    batches.forEach(b => {
-      const qty = b.remainingQty || b.goodQty || b.qtyGood || 0;
-      const cost = b.unitCost || 0;
-      totalCost += qty * cost;
-      totalQty += qty;
-    });
-    return totalQty > 0 ? Math.round((totalCost / totalQty) * 100) / 100 : 0;
+    const oldest = [...batches]
+      .filter(b => (b.remainingQty || 0) > 0)
+      .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived))[0];
+    return oldest ? (oldest.unitCost || 0) : 0;
   };
 
   const handleSaveGR = (grData, updatedPO, approvedDiscrepancies = []) => {
-    // 1. Persist GR record with invoice data
+    // 1. Persist GR record
     const grs   = getStore(GR_KEY);
     const newGR = {
       ...grData,
-      id: `gr-${Date.now()}`,
-      grNumber: genDocNumber('GR', grs),
-      invoiceNo: grData.invoiceNo || '',
-      totalAmount: grData.totalAmount || 0,
+      id:                    `gr-${Date.now()}`,
+      grNumber:              genDocNumber('GR', grs),
+      invoiceNo:             grData.invoiceNo || '',
+      totalAmount:           grData.totalAmount || 0,
       approvedDiscrepancies: approvedDiscrepancies || [],
-      createdAt: new Date().toISOString(),
+      createdAt:             new Date().toISOString(),
     };
     setStore(GR_KEY, [...grs, newGR]);
 
-    // 2. Update PO
-    const allPOs = getStore(PO_KEY);
-    setStore(PO_KEY, allPOs.map(p => p.id === updatedPO.id ? { ...updatedPO, updatedAt: new Date().toISOString() } : p));
+    // 2. PO will be updated later with final status based on discrepancies disposition
+    // (See Step 6 below)
 
-    // 3. Update materials: CREATE BATCH ENTRIES + compute stock/cost from batches
+    // 3. Update materials with batch entries
+    //    goodQty = receivedQty - damagedQty  (shortageQty already excluded from receivedQty)
     const mats = getStore(MATERIALS_KEY);
     setStore(MATERIALS_KEY, mats.map(mat => {
       const rcv = grData.items.find(i => i.materialId === mat.id);
@@ -2159,171 +1864,172 @@ function POTab({ pos, vendors, materials, onRefresh }) {
       const goodQty = rcv.receivedQty - damaged;
       if (goodQty <= 0) return mat;
 
-      // Use actual cost from invoice if available, otherwise fall back to GR unit cost
       const unitCost = grData.actualCosts && grData.actualCosts[mat.id]
         ? parseFloat(grData.actualCosts[mat.id]) || 0
         : parseFloat(rcv.unitCost) || 0;
-
       if (unitCost <= 0) return mat;
 
-      // Create new batch entry
       const newBatch = {
-        batchId: generateBatchId(),
-        vendorId: grData.vendorId || null,
-        vendorName: grData.vendorName || 'Unknown Vendor',
-        poNumber: grData.poNumber || '',
-        grNumber: newGR.grNumber || '',
+        batchId:       generateBatchId(),
+        vendorId:      grData.vendorId || null,
+        vendorName:    grData.vendorName || 'Unknown Vendor',
+        poNumber:      grData.poNumber || '',
+        grNumber:      newGR.grNumber || '',
         invoiceNumber: grData.invoiceNo || '',
-        dateReceived: grData.receivedDate || new Date().toISOString(),
-        qtyReceived: rcv.receivedQty,
-        qtyGood: goodQty,
-        qtyDamaged: damaged,
-        remainingQty: goodQty,  // Starts at goodQty, decreases as used
-        unitCost: unitCost,
-        totalCost: goodQty * unitCost,
-        movements: [
-          {
-            type: 'received',
-            qty: goodQty,
-            remainingAfter: goodQty,
-            reason: `Goods Receipt ${newGR.grNumber} from PO ${grData.poNumber}`,
-            date: new Date().toISOString()
-          }
-        ],
-        status: 'active'
+        dateReceived:  grData.receivedDate || new Date().toISOString(),
+        qtyReceived:   rcv.receivedQty,
+        qtyGood:       goodQty,
+        qtyDamaged:    damaged,
+        remainingQty:  goodQty,
+        unitCost,
+        totalCost:     goodQty * unitCost,
+        movements: [{
+          type: 'received', qty: goodQty, remainingAfter: goodQty,
+          reason: `Goods Receipt ${newGR.grNumber} from PO ${grData.poNumber}`,
+          date: new Date().toISOString(),
+        }],
+        status: 'active',
       };
 
-      // Append new batch to existing batches (or initialize array)
       const existingBatches = mat.batches || [];
-      const updatedBatches = [...existingBatches, newBatch];
+      const updatedBatches  = [...existingBatches, newBatch];
+      const newStock        = computeStockFromBatches(updatedBatches);
+      const newCost         = computeAveCostFromBatches(updatedBatches);
 
-      // Compute stock and cost from batches
-      const newStock = computeStockFromBatches(updatedBatches);
-      const newCost = computeAveCostFromBatches(updatedBatches);
-
-      return {
-        ...mat,
-        stockQty: newStock,
-        baseCost: newCost,
-        batches: updatedBatches,
-        updatedAt: new Date().toISOString(),
-      };
+      return { ...mat, stockQty: newStock, baseCost: newCost, batches: updatedBatches, updatedAt: new Date().toISOString() };
     }));
 
-    // 4. Process discrepancies based on disposition
-    //    approvedDiscrepancies now contains split entries with 'discrepancyType' ('damage' or 'shortage')
-    const rtvs = getStore(RTV_KEY);
+    // 4. Process discrepancies — damage and shortage are already split into separate entries
+    const rtvs      = getStore(RTV_KEY);
     const stockOuts = getStore(STOCK_OUT_KEY);
     const backorders = getStore(BACKORDER_KEY);
-    const credits = getStore(CREDIT_KEY);
-    const newRTVs = [];
+    const credits   = getStore(CREDIT_KEY);
+    const newRTVs      = [];
     const newStockOuts = [];
     const newBackorders = [];
-    const newCredits = [];
+    const newCredits   = [];
+
+    // Track if any shortage has backorder disposition
+    let hasBackorder = false;
 
     (approvedDiscrepancies || []).forEach(item => {
-      const qty = item.qty || 0; // Use the split quantity
-      const type = item.discrepancyType || 'damage'; // Default to damage for backward compatibility
-      
+      const qty  = item.qty || 0;
+      const type = item.discrepancyType; // 'damage' or 'shortage'
+
       if (type === 'damage') {
         if (item.disposition === 'rtv') {
           newRTVs.push({
-            id: `rtv-${Date.now()}-${item.materialId}`,
-            rtvNumber: genDocNumber('RTV', rtvs),
-            poId: grData.poId,
-            poNumber: grData.poNumber,
-            vendorId: grData.vendorId || '',
-            vendorName: grData.vendorName,
-            materialId: item.materialId,
+            id:           `rtv-${Date.now()}-${item.materialId}`,
+            rtvNumber:    genDocNumber('RTV', rtvs),
+            poId:         grData.poId,
+            poNumber:     grData.poNumber,
+            vendorId:     grData.vendorId || '',
+            vendorName:   grData.vendorName,
+            materialId:   item.materialId,
             materialName: item.materialName,
-            sku: item.sku || '',
-            uom: item.uom || 'pcs',
-            qty: qty,
-            unitCost: item.unitCost,
-            reason: item.returnReason || 'Damaged in Transit',
-            source: 'goods_receipt',
-            status: 'pending',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            sku:          item.sku || '',
+            uom:          item.uom || 'pcs',
+            qty,
+            unitCost:     item.unitCost,
+            reason:       item.returnReason || 'Damaged in Transit',
+            source:       'goods_receipt',
+            status:       'pending',
+            createdAt:    new Date().toISOString(),
+            updatedAt:    new Date().toISOString(),
           });
         } else if (item.disposition === 'write_off') {
+          // Damaged items were NEVER added to stock (only goodQty was), so the stock-out log
+          // reflects the loss at time of receipt — previousStock = stock AFTER goodQty was added
+          const mat = mats.find(m => m.id === item.materialId);
+          const currentStock = mat ? computeStockFromBatches(mat.batches || []) : 0;
           newStockOuts.push({
-            id: `so-${Date.now()}-${item.materialId}`,
-            docNumber: genDocNumber('SO', stockOuts),
-            materialId: item.materialId,
+            id:           `so-${Date.now()}-${item.materialId}`,
+            docNumber:    genDocNumber('SO', stockOuts),
+            materialId:   item.materialId,
             materialName: item.materialName,
-            sku: item.sku || '',
-            uom: item.uom || 'pcs',
-            issueType: 'damage',
-            quantity: qty,
-            previousStock: 0,
-            newStock: 0,
-            unitCost: item.unitCost,
-            totalLoss: qty * item.unitCost,
-            referenceNo: grData.poNumber,
-            notes: `Write-off from ${grData.poNumber} — ${item.returnReason || 'No reason given'}`,
-            dateIssued: new Date().toISOString(),
+            sku:          item.sku || '',
+            uom:          item.uom || 'pcs',
+            issueType:    'damage',
+            quantity:     qty,
+            previousStock: currentStock,
+            newStock:     currentStock, // already excluded from batch — no double deduction
+            unitCost:     item.unitCost,
+            totalLoss:    qty * item.unitCost,
+            referenceNo:  grData.poNumber,
+            notes:        `Write-off from ${grData.poNumber} — ${item.returnReason || 'No reason given'}`,
+            dateIssued:   new Date().toISOString(),
           });
         }
       } else if (type === 'shortage') {
+        // Shortage is NOT damage — it goes to backorder or credit claim
         if (item.disposition === 'backorder') {
+          hasBackorder = true;
           newBackorders.push({
-            id: `bo-${Date.now()}-${item.materialId}`,
-            boNumber: genDocNumber('BO', backorders),
-            poId: grData.poId,
-            poNumber: grData.poNumber,
-            vendorId: grData.vendorId || '',
-            vendorName: grData.vendorName,
-            materialId: item.materialId,
+            id:           `bo-${Date.now()}-${item.materialId}`,
+            boNumber:     genDocNumber('BO', backorders),
+            poId:         grData.poId,
+            poNumber:     grData.poNumber,
+            vendorId:     grData.vendorId || '',
+            vendorName:   grData.vendorName,
+            materialId:   item.materialId,
             materialName: item.materialName,
-            sku: item.sku || '',
-            uom: item.uom || 'pcs',
-            qty: qty,
-            unitCost: item.unitCost,
-            reason: item.returnReason || 'Quantity Shortage',
-            source: 'goods_receipt',
-            status: 'pending',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            sku:          item.sku || '',
+            uom:          item.uom || 'pcs',
+            qty,
+            unitCost:     item.unitCost,
+            reason:       'Quantity Shortage',
+            source:       'goods_receipt',
+            status:       'pending',
+            createdAt:    new Date().toISOString(),
+            updatedAt:    new Date().toISOString(),
           });
         } else if (item.disposition === 'request_credit') {
           newCredits.push({
-            id: `cc-${Date.now()}-${item.materialId}`,
-            ccNumber: genDocNumber('CC', credits),
-            poId: grData.poId,
-            poNumber: grData.poNumber,
-            vendorId: grData.vendorId || '',
-            vendorName: grData.vendorName,
-            materialId: item.materialId,
+            id:           `cc-${Date.now()}-${item.materialId}`,
+            ccNumber:     genDocNumber('CC', credits),
+            poId:         grData.poId,
+            poNumber:     grData.poNumber,
+            vendorId:     grData.vendorId || '',
+            vendorName:   grData.vendorName,
+            materialId:   item.materialId,
             materialName: item.materialName,
-            sku: item.sku || '',
-            uom: item.uom || 'pcs',
-            qty: qty,
-            unitCost: item.unitCost,
-            totalCredit: qty * item.unitCost,
-            reason: item.returnReason || 'Quantity Shortage',
-            source: 'goods_receipt',
-            status: 'pending',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            sku:          item.sku || '',
+            uom:          item.uom || 'pcs',
+            qty,
+            unitCost:     item.unitCost,
+            totalCredit:  qty * item.unitCost,
+            reason:       'Quantity Shortage',
+            source:       'goods_receipt',
+            status:       'pending',
+            createdAt:    new Date().toISOString(),
+            updatedAt:    new Date().toISOString(),
           });
         }
-        // 'accept_partial' for shortage → no action needed
+        // 'accept_partial' → no action needed, PO will be marked as received
       }
     });
 
-    if (newRTVs.length > 0) {
-      setStore(RTV_KEY, [...rtvs, ...newRTVs]);
+    // 5. Update PO status based on discrepancies disposition
+    // - If ANY shortage has backorder → PO stays 'partial' (waiting for backorder)
+    // - If ALL shortages are credit/accept_partial/write_off/rtv → PO becomes 'received'
+    let finalPOStatus = updatedPO.status;
+    if (approvedDiscrepancies && approvedDiscrepancies.length > 0) {
+      const hasAnyShortage = approvedDiscrepancies.some(i => i.discrepancyType === 'shortage');
+      if (hasAnyShortage) {
+        // If there's at least one backorder, keep it partial
+        // Otherwise, mark as received (credit/accept_partial closes the order)
+        finalPOStatus = hasBackorder ? 'partial' : 'received';
+      }
     }
-    if (newStockOuts.length > 0) {
-      setStore(STOCK_OUT_KEY, [...stockOuts, ...newStockOuts]);
-    }
-    if (newBackorders.length > 0) {
-      setStore(BACKORDER_KEY, [...backorders, ...newBackorders]);
-    }
-    if (newCredits.length > 0) {
-      setStore(CREDIT_KEY, [...credits, ...newCredits]);
-    }
+
+    if (newRTVs.length > 0)       setStore(RTV_KEY,       [...rtvs,      ...newRTVs]);
+    if (newStockOuts.length > 0)  setStore(STOCK_OUT_KEY, [...stockOuts, ...newStockOuts]);
+    if (newBackorders.length > 0) setStore(BACKORDER_KEY, [...backorders, ...newBackorders]);
+    if (newCredits.length > 0)    setStore(CREDIT_KEY,    [...credits,   ...newCredits]);
+
+    // 6. Update PO with final status based on disposition
+    const allPOs = getStore(PO_KEY);
+    setStore(PO_KEY, allPOs.map(p => p.id === updatedPO.id ? { ...updatedPO, status: finalPOStatus, updatedAt: new Date().toISOString() } : p));
 
     setShowGRForm(false);
     setGRTargetPO(null);
@@ -2347,26 +2053,22 @@ function POTab({ pos, vendors, materials, onRefresh }) {
             <input className="search-input" placeholder="Search materials, POs, or vendors..." value={search} onChange={e => setSearch(e.target.value)} />
             {search && <button className="search-clear" onClick={() => setSearch('')}>×</button>}
           </div>
-
           <CustomDropdown
             value={statusFilter}
             onChange={setStatusFilter}
             options={[
               { value: '', label: 'All Status' },
-              // Deduplicate by label (pending and draft both show as "Pending")
               ...Object.values(
-                Object.entries(PO_STATUS)
-                  .reduce((acc, [k, v]) => {
-                    if (!acc[v.label]) acc[v.label] = { value: k, label: v.label };
-                    return acc;
-                  }, {})
+                Object.entries(PO_STATUS).reduce((acc, [k, v]) => {
+                  if (!acc[v.label]) acc[v.label] = { value: k, label: v.label };
+                  return acc;
+                }, {})
               ),
             ]}
             placeholder="All Status"
             style={{ minWidth: '130px' }}
           />
         </div>
-
         <button className="btn-primary" onClick={() => { setEditPO(null); setShowForm(true); }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M12 5v14M5 12h14"/>
@@ -2385,27 +2087,17 @@ function POTab({ pos, vendors, materials, onRefresh }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {filtered.map(po => {
-            const total = computeTotal(po);
+            const total      = computeTotal(po);
             const canReceive = RECEIVE_STATUSES.includes(po.status);
-            const canCancel = !['received', 'cancelled'].includes(po.status);
-            const cfg = PO_STATUS[po.status] || PO_STATUS.pending;
+            const canCancel  = !['received', 'cancelled'].includes(po.status);
+            const cfg        = PO_STATUS[po.status] || PO_STATUS.pending;
 
             return (
-              <div key={po.id} style={{
-                background: 'var(--dark)',
-                border: '1px solid var(--border)',
-                borderRadius: '12px',
-                overflow: 'visible',
-              }}>
+              <div key={po.id} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'visible' }}>
                 {/* Card Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{
-                      width: '40px', height: '40px', borderRadius: '10px',
-                      background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: 'var(--gray)',
-                    }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)' }}>
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
                       </svg>
@@ -2413,31 +2105,17 @@ function POTab({ pos, vendors, materials, onRefresh }) {
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <span style={{ fontWeight: 700, color: '#E5E2E1', fontFamily: 'monospace', fontSize: '0.95rem' }}>PO #{po.poNumber}</span>
-                        <button onClick={() => setViewDocPO(po)} title="View Document" style={{
-                          background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                          borderRadius: '4px', padding: '0.15rem 0.35rem', cursor: 'pointer', color: '#aaa',
-                          display: 'flex', alignItems: 'center', transition: 'color 0.15s',
-                        }} onMouseEnter={e => e.currentTarget.style.color = '#D4A843'} onMouseLeave={e => e.currentTarget.style.color = '#aaa'}>
+                        <button onClick={() => setViewDocPO(po)} title="View Document" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '0.15rem 0.35rem', cursor: 'pointer', color: '#aaa', display: 'flex', alignItems: 'center' }}
+                          onMouseEnter={e => e.currentTarget.style.color = '#D4A843'} onMouseLeave={e => e.currentTarget.style.color = '#aaa'}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         </button>
-                        {/* Email Button */}
                         {!['cancelled'].includes(po.status) && (
-                          <button onClick={() => setEmailTargetPO(po)} title="Send PO to Supplier via Email" style={{
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                            borderRadius: '4px', padding: '0.15rem 0.35rem', cursor: 'pointer', color: '#aaa',
-                            display: 'flex', alignItems: 'center', transition: 'all 0.15s',
-                          }} onMouseEnter={e => { e.currentTarget.style.color = '#3b82f6'; e.currentTarget.style.borderColor = 'rgba(59,130,246,0.4)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#aaa'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                              <polyline points="22,6 12,13 2,6"/>
-                            </svg>
+                          <button onClick={() => setEmailTargetPO(po)} title="Send PO to Supplier via Email" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '0.15rem 0.35rem', cursor: 'pointer', color: '#aaa', display: 'flex', alignItems: 'center' }}
+                            onMouseEnter={e => { e.currentTarget.style.color = '#3b82f6'; e.currentTarget.style.borderColor = 'rgba(59,130,246,0.4)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#aaa'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                           </button>
                         )}
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', padding: '0.15rem 0.5rem', borderRadius: '99px',
-                          fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase',
-                          background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`,
-                        }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '0.15rem 0.5rem', borderRadius: '99px', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
                           {cfg.label}
                         </span>
                       </div>
@@ -2454,30 +2132,14 @@ function POTab({ pos, vendors, materials, onRefresh }) {
                         ₱{total.toLocaleString('en-PH', { minimumFractionDigits: 0 })}
                       </div>
                     </div>
-                    {/* Action Buttons: Cancel + Receive Stock */}
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       {canCancel && (
-                        <button
-                          onClick={() => setCancelTarget(po)}
-                          style={{
-                            background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-                            borderRadius: '8px', padding: '0.5rem 0.85rem', cursor: 'pointer',
-                            color: '#f87171', fontSize: '0.75rem', fontWeight: 700,
-                          }}
-                        >
+                        <button onClick={() => setCancelTarget(po)} style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '0.5rem 0.85rem', cursor: 'pointer', color: '#f87171', fontSize: '0.75rem', fontWeight: 700 }}>
                           Cancel
                         </button>
                       )}
                       {canReceive && (
-                        <button
-                          onClick={() => { setGRTargetPO(po); setShowGRForm(true); }}
-                          style={{
-                            background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)',
-                            borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer',
-                            color: '#22c55e', fontSize: '0.8rem', fontWeight: 700,
-                            display: 'flex', alignItems: 'center', gap: '0.4rem',
-                          }}
-                        >
+                        <button onClick={() => { setGRTargetPO(po); setShowGRForm(true); }} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', color: '#22c55e', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                           Receive Stock
                         </button>
                       )}
@@ -2485,42 +2147,50 @@ function POTab({ pos, vendors, materials, onRefresh }) {
                   </div>
                 </div>
 
-                {/* Items Summary */}
+                {/* Items Summary — shows damage and shortage separately */}
                 {(po.items || []).length > 0 && (
-                  <div style={{
-                    padding: '0 1.5rem 1.25rem',
-                    borderTop: '1px solid rgba(255,255,255,0.04)',
-                  }}>
+                  <div style={{ padding: '0 1.5rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                     <div style={{ fontSize: '0.6rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.5rem', paddingTop: '0.75rem' }}>
                       Items Summary
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                       {(po.items || []).map((item, idx) => {
                         const received = parseInt(item.receivedQty) || 0;
-                        const ordered = parseInt(item.qty) || 0;
+                        const ordered  = parseInt(item.qty) || 0;
                         const hasReceived = received > 0;
-                        // Find damaged from GR records
-                        const grs = getStore(GR_KEY);
+
+                        // Pull damage and shortage from GR records separately
+                        const grs     = getStore(GR_KEY);
                         const grItems = grs.filter(g => g.poId === po.id).flatMap(g => g.items || []);
-                        const grItem = grItems.find(g => g.materialId === item.materialId);
-                        const damaged = grItem ? (parseInt(grItem.damagedQty) || 0) : 0;
-                        const reason = grItem?.returnReason || '';
+                        const grItem  = grItems.find(g => g.materialId === item.materialId);
+                        const damaged  = grItem ? (parseInt(grItem.damagedQty)  || 0) : 0;
+                        const shortage = grItem ? (parseInt(grItem.shortageQty) || 0) : 0;
+                        const reason   = grItem?.returnReason || '';
+
+                        // Calculate display values:
+                        // - receivedDisplay: Cap at ordered qty (can't receive more than ordered)
+                        // - outstandingShortage: Only show when partially received
+                        const receivedDisplay = Math.min(received, ordered);
+                        const outstandingShortage = hasReceived ? Math.max(0, ordered - receivedDisplay) : 0;
+
                         return (
-                          <div key={idx} style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
-                            padding: '0.35rem 0.75rem', borderRadius: '8px',
-                            background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
-                            fontSize: '0.78rem',
-                          }}>
+                          <div key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 0.75rem', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', fontSize: '0.78rem' }}>
                             <span style={{ fontWeight: 700, color: '#E5E2E1' }}>{ordered} {item.uom}</span>
                             <span style={{ color: 'var(--gray)' }}>{item.materialName}</span>
                             {hasReceived && (
-                              <>
-                                <span style={{ fontWeight: 700, color: '#22c55e' }}>Received: {received}</span>
-                                {damaged > 0 && (
-                                  <span style={{ fontWeight: 700, color: '#ef4444' }}>{reason ? reason : 'Damaged'}: {damaged}</span>
-                                )}
-                              </>
+                              <span style={{ fontWeight: 700, color: '#22c55e' }}>Received: {receivedDisplay}</span>
+                            )}
+                            {/* Damage shown separately - always show if there was damage */}
+                            {damaged > 0 && (
+                              <span style={{ fontWeight: 700, color: '#f59e0b' }}>
+                                {reason ? reason : 'Damaged'}: {damaged}
+                              </span>
+                            )}
+                            {/* Only show shortage if not yet fully received */}
+                            {outstandingShortage > 0 && (
+                              <span style={{ fontWeight: 700, color: '#ef4444' }}>
+                                Shortage: {outstandingShortage}
+                              </span>
                             )}
                           </div>
                         );
@@ -2537,27 +2207,21 @@ function POTab({ pos, vendors, materials, onRefresh }) {
       {/* Modals */}
       {showForm && (
         <POFormModal
-          po={editPO}
-          vendors={vendors}
-          materials={materials}
+          po={editPO} vendors={vendors} materials={materials}
           onClose={() => { setShowForm(false); setEditPO(null); }}
           onSave={handlePreviewPO}
         />
       )}
       {poPreviewData && (
         <PODocumentPreview
-          poData={poPreviewData}
-          vendors={vendors}
-          materials={materials}
+          poData={poPreviewData} vendors={vendors} materials={materials}
           onClose={() => setPOPreviewData(null)}
           onConfirm={handleSavePO}
         />
       )}
       {viewDocPO && (
         <PODocumentPreview
-          poData={viewDocPO}
-          vendors={vendors}
-          materials={materials}
+          poData={viewDocPO} vendors={vendors} materials={materials}
           onClose={() => setViewDocPO(null)}
           onConfirm={handleSavePO}
         />
@@ -2570,7 +2234,6 @@ function POTab({ pos, vendors, materials, onRefresh }) {
         />
       )}
 
-      {/* Cancel Confirmation Modal */}
       {cancelTarget && (
         <div className="modal-overlay">
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
@@ -2588,14 +2251,8 @@ function POTab({ pos, vendors, materials, onRefresh }) {
                 Vendor: {cancelTarget.vendorName}<br/>
                 Total: <strong style={{ color: '#D4A843', fontFamily: 'monospace' }}>₱{(cancelTarget.items || []).reduce((s, i) => s + ((parseFloat(i.unitCost) || 0) * (parseInt(i.qty) || 0)), 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong>
               </p>
-              <div style={{
-                marginTop: '1rem', padding: '0.6rem 0.75rem', background: 'rgba(239,68,68,0.06)',
-                borderRadius: '6px', border: '1px solid rgba(239,68,68,0.15)',
-                display: 'flex', alignItems: 'center', gap: '0.4rem',
-              }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5">
-                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
+              <div style={{ marginTop: '1rem', padding: '0.6rem 0.75rem', background: 'rgba(239,68,68,0.06)', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                 <span style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: 600 }}>This action cannot be undone.</span>
               </div>
             </div>
@@ -2607,7 +2264,6 @@ function POTab({ pos, vendors, materials, onRefresh }) {
         </div>
       )}
 
-      {/* Status Change Confirmation Modal */}
       {statusChangeTarget && (
         <div className="modal-overlay">
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
@@ -2621,14 +2277,8 @@ function POTab({ pos, vendors, materials, onRefresh }) {
               <p style={{ fontSize: '0.875rem', color: '#E5E2E1', lineHeight: 1.6, marginBottom: '0.75rem' }}>
                 Change <strong style={{ fontFamily: 'monospace' }}>{statusChangeTarget.po.poNumber}</strong> status to:
               </p>
-              <div style={{
-                padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px',
-                border: '1px solid var(--border)', textAlign: 'center', marginBottom: '1rem',
-              }}>
-                <span style={{
-                  fontWeight: 700, fontSize: '0.9rem',
-                  color: PO_STATUS[statusChangeTarget.newStatus]?.color || '#E5E2E1',
-                }}>
+              <div style={{ padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', border: '1px solid var(--border)', textAlign: 'center', marginBottom: '1rem' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: PO_STATUS[statusChangeTarget.newStatus]?.color || '#E5E2E1' }}>
                   {PO_STATUS[statusChangeTarget.newStatus]?.label || statusChangeTarget.newStatus}
                 </span>
               </div>
@@ -2641,7 +2291,6 @@ function POTab({ pos, vendors, materials, onRefresh }) {
         </div>
       )}
 
-      {/* Email Composer Side Panel */}
       {emailTargetPO && (
         <EmailComposerPanel
           po={emailTargetPO}
@@ -2692,9 +2341,9 @@ function GRHistoryTab({ grs }) {
           <thead>
             <tr style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '2px solid var(--border)' }}>
               <th style={{ ...thStyle, width: '40px' }}></th>
-              <th style={thStyle}>GR Number</th>
+              <th style={thStyle}>Invoice Number</th>
               <th style={thStyle}>PO Reference</th>
-              <th style={thStyle}>Vendor</th>
+              <th style={{ ...thStyle, textAlign: 'center'}}>Supplier Name</th>
               <th style={{ ...thStyle, textAlign: 'center' }}>Items</th>
               <th style={{ ...thStyle, textAlign: 'center' }}>Total Received</th>
               <th style={{ ...thStyle, textAlign: 'center' }}>Date</th>
@@ -2710,38 +2359,30 @@ function GRHistoryTab({ grs }) {
                 </td>
               </tr>
             ) : filtered.map(gr => {
-              const isExpanded   = expandedGR === gr.id;
+              const isExpanded    = expandedGR === gr.id;
               const totalReceived = (gr.items || []).reduce((s, i) => s + (parseInt(i.receivedQty) || 0), 0);
 
               return (
                 <React.Fragment key={gr.id}>
                   <tr style={{ borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.04)' }}>
                     <td style={{ padding: '0.875rem 0.5rem 0.875rem 1rem' }}>
-                      <button
-                        onClick={() => setExpandedGR(isExpanded ? null : gr.id)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: isExpanded ? '#D4A843' : 'var(--gray)', padding: 0 }}
-                      >
+                      <button onClick={() => setExpandedGR(isExpanded ? null : gr.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: isExpanded ? '#D4A843' : 'var(--gray)', padding: 0 }}>
                         <ChevronIcon open={isExpanded} />
                       </button>
                     </td>
                     <td style={{ padding: '0.875rem 1rem' }}>
-                      <div style={{ fontWeight: 700, color: '#22c55e', fontFamily: 'monospace' }}>{gr.grNumber}</div>
+                      <div style={{ fontWeight: 700, color: 'rgb(212, 168, 67)', fontFamily: 'monospace' }}>
+                        {gr.invoiceNo || <span style={{ color: 'var(--gray)', fontStyle: 'italic' }}>—</span>}
+                      </div>
                     </td>
-                    <td style={{ padding: '0.875rem 1rem', color: '#E5E2E1', fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                      {gr.poNumber}
-                    </td>
-                    <td style={{ padding: '0.875rem 1rem', color: '#E5E2E1' }}>{gr.vendorName}</td>
-                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#E5E2E1' }}>
-                      {(gr.items || []).length}
-                    </td>
-                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 700, color: '#22c55e' }}>
-                      {totalReceived} pcs
-                    </td>
+                    <td style={{ padding: '0.875rem 1rem', color: '#E5E2E1', fontFamily: 'monospace', fontSize: '0.8rem' }}>{gr.poNumber}</td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#E5E2E1' }}>{gr.vendorName}</td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#E5E2E1' }}>{(gr.items || []).length}</td>
+                    <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 700, color: '#22c55e' }}>{totalReceived} pcs</td>
                     <td style={{ padding: '0.875rem 1rem', textAlign: 'center', color: '#E5E2E1', fontSize: '0.8rem' }}>
                       {gr.receivedDate ? new Date(gr.receivedDate).toLocaleDateString('en-PH') : '—'}
                     </td>
                   </tr>
-
                   {isExpanded && (
                     <tr style={{ background: 'rgba(0,0,0,0.12)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                       <td colSpan={7} style={{ padding: '0 1rem 1rem 3.5rem' }}>
@@ -2749,26 +2390,32 @@ function GRHistoryTab({ grs }) {
                           Received Items
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                          {(gr.items || []).map((item, idx) => (
-                            <div key={idx} style={{
-                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                              padding: '0.4rem 0.75rem', background: 'rgba(34,197,94,0.04)',
-                              borderRadius: '6px', border: '1px solid rgba(34,197,94,0.1)', fontSize: '0.8rem',
-                            }}>
-                              <div>
-                                <span style={{ color: '#E5E2E1', fontWeight: 600 }}>{item.materialName}</span>
-                                {item.sku && <span style={{ color: 'var(--gray)', fontFamily: 'monospace', fontSize: '0.65rem', marginLeft: '0.5rem' }}>{item.sku}</span>}
+                          {(gr.items || []).map((item, idx) => {
+                            const damaged  = parseInt(item.damagedQty)  || 0;
+                            const shortage = parseInt(item.shortageQty) || 0;
+                            return (
+                              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.75rem', background: 'rgba(34,197,94,0.04)', borderRadius: '6px', border: '1px solid rgba(34,197,94,0.1)', fontSize: '0.8rem' }}>
+                                <div>
+                                  <span style={{ color: '#E5E2E1', fontWeight: 600 }}>{item.materialName}</span>
+                                  {item.sku && <span style={{ color: 'var(--gray)', fontFamily: 'monospace', fontSize: '0.65rem', marginLeft: '0.5rem' }}>{item.sku}</span>}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                  <span style={{ color: '#22c55e', fontWeight: 700 }}>+{item.receivedQty} {item.uom} received</span>
+                                  {/* Damage and shortage inline */}
+                                  {damaged > 0 && (
+                                    <span style={{ color: '#f59e0b', fontWeight: 700, fontSize: '0.75rem' }}>
+                                      {damaged} damaged
+                                    </span>
+                                  )}
+                                  {shortage > 0 && (
+                                    <span style={{ color: '#ef4444', fontWeight: 700, fontSize: '0.75rem' }}>
+                                      {shortage} shortage
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                <span style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>
-                                  Previously received: {item.previouslyReceived}
-                                </span>
-                                <span style={{ color: '#22c55e', fontWeight: 700 }}>
-                                  +{item.receivedQty} {item.uom}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                         {gr.notes && (
                           <div style={{ marginTop: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', fontSize: '0.8rem', color: 'var(--gray)', borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
@@ -2792,13 +2439,13 @@ function GRHistoryTab({ grs }) {
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function PurchasingPage() {
-  const [activeTab,     setActiveTab]     = useState('po');
-  const [pos,           setPOs]           = useState([]);
-  const [grs,           setGRs]           = useState([]);
-  const [stockIns,      setStockIns]      = useState([]);
-  const [vendors,       setVendors]       = useState([]);
-  const [materials,     setMaterials]     = useState([]);
-  const [showStockIn,   setShowStockIn]   = useState(false);
+  const [activeTab,   setActiveTab]   = useState('po');
+  const [pos,         setPOs]         = useState([]);
+  const [grs,         setGRs]         = useState([]);
+  const [stockIns,    setStockIns]    = useState([]);
+  const [vendors,     setVendors]     = useState([]);
+  const [materials,   setMaterials]   = useState([]);
+  const [showStockIn, setShowStockIn] = useState(false);
 
   const refresh = useCallback(() => {
     setPOs(getStore(PO_KEY));
@@ -2810,72 +2457,108 @@ export default function PurchasingPage() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // ── Summary Stats ────────────────────────────────────────────────────────────
-  const totalPOs      = pos.length;
-  const openPOs       = pos.filter(p => OPEN_STATUSES.includes(p.status)).length;
-  const receivedPOs   = pos.filter(p => p.status === 'received').length;
-  const totalPOValue  = pos
+  // Auto-refresh when data changes from other tabs/windows
+  useEffect(() => {
+    const handleStorageChange = () => {
+      refresh();
+    };
+    
+    // Listen for storage events (other tabs)
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Listen for custom events (same tab changes from Returns page)
+    const handleCustomRefresh = () => {
+      refresh();
+    };
+    window.addEventListener('inventoryRefresh', handleCustomRefresh);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('inventoryRefresh', handleCustomRefresh);
+    };
+  }, [refresh]);
+
+  const totalPOs     = pos.length;
+  const openPOs      = pos.filter(p => OPEN_STATUSES.includes(p.status)).length;
+  const receivedPOs  = pos.filter(p => p.status === 'received').length;
+  const totalPOValue = pos
     .filter(p => p.status !== 'cancelled')
     .reduce((sum, po) => sum + (po.items || []).reduce((s, i) => s + ((parseFloat(i.unitCost) || 0) * (parseInt(i.qty) || 0)), 0), 0);
-  const totalStockIn  = stockIns.length;
+  
+  // Calculate Total Goods Stock from stockIns (good quantity only)
+  const totalGoodsStock = stockIns.reduce((sum, si) => sum + (parseInt(si.goodQty) || 0), 0);
+  
+  const totalStockIn      = stockIns.length;
   const totalStockInValue = stockIns.reduce((s, si) => s + si.totalPaid, 0);
 
-  // ── Stock-In Handler ─────────────────────────────────────────────────────────
-  // disposition: 'rtv' | 'write_off' | 'cancel'
-  const handleStockIn = (siEntries, disposition = 'cancel') => {
-    // siEntries can be a single entry or an array
+  const generateBatchId = () => {
+    const d       = new Date();
+    const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    const timestamp = Date.now().toString(36).slice(-4).toUpperCase();
+    const seq     = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `${dateStr}-${timestamp}-${seq}`;
+  };
+
+  const computeStockFromBatches = (batches) => {
+    if (!batches || !Array.isArray(batches) || batches.length === 0) return 0;
+    return batches.reduce((sum, b) => sum + ((b.remainingQty || b.goodQty || b.qtyGood || 0)), 0);
+  };
+
+  // FIFO cost = unit cost of the OLDEST active batch (next batch to be issued)
+  // This reflects the actual cost that will be used for the next stock-out
+  const computeAveCostFromBatches = (batches) => {
+    if (!batches || !Array.isArray(batches) || batches.length === 0) return 0;
+    const oldest = [...batches]
+      .filter(b => (b.remainingQty || 0) > 0)
+      .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived))[0];
+    return oldest ? (oldest.unitCost || 0) : 0;
+  };
+
+  const handleStockIn = (siEntries, disposition = 'write_off') => {
     const entries = Array.isArray(siEntries) ? siEntries : [siEntries];
 
     entries.forEach(siData => {
       const mats = getStore(MATERIALS_KEY);
-      const mat = mats.find(m => m.id === siData.materialId);
+      const mat  = mats.find(m => m.id === siData.materialId);
       if (!mat) return;
 
-      const effectiveDamaged = disposition === 'cancel' ? 0 : siData.damagedQty;
-      const goodQty  = siData.receivedQty - effectiveDamaged;
+      // ALWAYS exclude damaged from stock — goods received ≠ goods stocked
+      const damaged  = siData.damagedQty || 0;
+      const goodQty  = siData.receivedQty - damaged;
       const unitCost = siData.unitCost || 0;
 
       if (goodQty <= 0 || unitCost <= 0) {
-        // Still log the entry even if no good stock
         const log = getStore(STOCK_IN_KEY);
         setStore(STOCK_IN_KEY, [...log, { ...siData, id: `si-${Date.now()}-${siData.materialId}`, siNumber: genDocNumber('SI', log), disposition, createdAt: new Date().toISOString() }]);
         return;
       }
 
-      // Create new batch entry for manual stock-in
       const newBatch = {
-        batchId: generateBatchId(),
-        vendorId: siData.vendorId || null,
-        vendorName: siData.vendorName || 'Unknown Vendor',
-        poNumber: '',  // Manual stock-in has no PO
-        grNumber: '',
+        batchId:       generateBatchId(),
+        vendorId:      siData.vendorId || null,
+        vendorName:    siData.vendorName || 'Unknown Vendor',
+        poNumber:      '',
+        grNumber:      '',
         invoiceNumber: siData.referenceNo || '',
-        dateReceived: siData.dateReceived || new Date().toISOString(),
-        qtyReceived: siData.receivedQty,
-        qtyGood: goodQty,
-        qtyDamaged: effectiveDamaged,
-        remainingQty: goodQty,
-        unitCost: unitCost,
-        totalCost: goodQty * unitCost,
-        movements: [
-          {
-            type: 'received',
-            qty: goodQty,
-            remainingAfter: goodQty,
-            reason: `Manual Stock-In ${siData.referenceNo || ''}`,
-            date: new Date().toISOString()
-          }
-        ],
-        status: 'active'
+        dateReceived:  siData.dateReceived || new Date().toISOString(),
+        qtyReceived:   siData.receivedQty,
+        qtyGood:       goodQty,
+        qtyDamaged:    damaged,
+        remainingQty:  goodQty,
+        unitCost,
+        totalCost:     goodQty * unitCost,
+        movements: [{
+          type: 'received', qty: goodQty, remainingAfter: goodQty,
+          reason: `Manual Stock-In ${siData.referenceNo || ''}`,
+          date: new Date().toISOString(),
+        }],
+        status: 'active',
       };
 
-      // Append new batch to existing batches (or initialize array)
       const existingBatches = mat.batches || [];
-      const updatedBatches = [...existingBatches, newBatch];
-
-      // Compute stock and cost from batches
-      const newStock = computeStockFromBatches(updatedBatches);
-      const newCost = computeAveCostFromBatches(updatedBatches);
+      const updatedBatches  = [...existingBatches, newBatch];
+      const newStock        = computeStockFromBatches(updatedBatches);
+      const newCost         = computeAveCostFromBatches(updatedBatches);
 
       const updatedMats = mats.map(m => {
         if (m.id !== siData.materialId) return m;
@@ -2886,12 +2569,53 @@ export default function PurchasingPage() {
       const log = getStore(STOCK_IN_KEY);
       setStore(STOCK_IN_KEY, [...log, { ...siData, id: `si-${Date.now()}-${siData.materialId}`, siNumber: genDocNumber('SI', log), disposition, createdAt: new Date().toISOString() }]);
 
-      if (disposition === 'rtv' && siData.damagedQty > 0) {
-        const rtvs = getStore(RTV_KEY);
-        setStore(RTV_KEY, [...rtvs, { id: `rtv-${Date.now()}-${siData.materialId}`, rtvNumber: genDocNumber('RTV', rtvs), poId: '', poNumber: siData.referenceNo || 'Manual Stock-In', vendorId: siData.vendorId || '', vendorName: siData.vendorName, materialId: siData.materialId, materialName: siData.materialName, sku: siData.sku || '', uom: siData.uom || 'pcs', qty: siData.damagedQty, unitCost: siData.unitCost, reason: siData.returnReason || 'Damaged', source: 'stock_in', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]);
-      } else if (disposition === 'write_off' && siData.damagedQty > 0) {
+      // Damaged items: log as stock-out (they were physically received but unusable)
+      if (damaged > 0) {
         const stockOuts = getStore(STOCK_OUT_KEY);
-        setStore(STOCK_OUT_KEY, [...stockOuts, { id: `so-${Date.now()}-${siData.materialId}`, docNumber: genDocNumber('SO', stockOuts), materialId: siData.materialId, materialName: siData.materialName, sku: siData.sku || '', uom: siData.uom || 'pcs', issueType: 'damage', quantity: siData.damagedQty, previousStock: newStock, newStock: newStock - siData.damagedQty, unitCost: siData.unitCost, totalLoss: siData.damagedQty * siData.unitCost, referenceNo: siData.referenceNo || 'Manual Stock-In', notes: `Write-off from stock-in`, dateIssued: new Date().toISOString() }]);
+        const issueType = disposition === 'rtv' ? 'return' : 'damage';
+        setStore(STOCK_OUT_KEY, [...stockOuts, {
+          id:            `so-${Date.now()}-${siData.materialId}`,
+          docNumber:     genDocNumber('SO', stockOuts),
+          materialId:    siData.materialId,
+          materialName:  siData.materialName,
+          sku:           siData.sku || '',
+          uom:           siData.uom || 'pcs',
+          issueType:     issueType,
+          quantity:      damaged,
+          previousStock: newStock,
+          newStock:      newStock, // already excluded from batch — no double deduction
+          unitCost:      siData.unitCost,
+          totalLoss:     damaged * siData.unitCost,
+          referenceNo:   siData.referenceNo || 'Manual Stock-In',
+          notes:         disposition === 'rtv'
+            ? `Damaged items sent to RTV (${siData.returnReason || 'Damaged'})`
+            : `Damaged upon arrival — written off`,
+          dateIssued:    new Date().toISOString(),
+        }]);
+
+        // If RTV, also create RTV record
+        if (disposition === 'rtv') {
+          const rtvs = getStore(RTV_KEY);
+          setStore(RTV_KEY, [...rtvs, {
+            id:           `rtv-${Date.now()}-${siData.materialId}`,
+            rtvNumber:    genDocNumber('RTV', rtvs),
+            poId:         '',
+            poNumber:     siData.referenceNo || 'Manual Stock-In',
+            vendorId:     siData.vendorId || '',
+            vendorName:   siData.vendorName,
+            materialId:   siData.materialId,
+            materialName: siData.materialName,
+            sku:          siData.sku || '',
+            uom:          siData.uom || 'pcs',
+            qty:          damaged,
+            unitCost:     siData.unitCost,
+            reason:       siData.returnReason || 'Damaged',
+            source:       'stock_in',
+            status:       'pending',
+            createdAt:    new Date().toISOString(),
+            updatedAt:    new Date().toISOString(),
+          }]);
+        }
       }
     });
 
@@ -2909,18 +2633,13 @@ export default function PurchasingPage() {
 
   return (
     <div className="page-content-wrapper">
-      {/* Page Header */}
       <div className="page-header">
         <div className="page-header-content">
           <div>
             <h1 className="page-title">Procurement and Sourcing</h1>
-            <p className="page-subtitle">
-              Track purchase orders, incoming stock, and direct purchases.
-            </p>
+            <p className="page-subtitle">Track purchase orders, incoming stock, and direct purchases.</p>
           </div>
         </div>
-
-        {/* Tab Switcher */}
         <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '0.25rem', width: 'fit-content' }}>
           <button style={tabStyle('po')} onClick={() => setActiveTab('po')}>Purchase Orders</button>
           <button style={tabStyle('gr')} onClick={() => setActiveTab('gr')}>Goods Receipts</button>
@@ -2928,27 +2647,20 @@ export default function PurchasingPage() {
         </div>
       </div>
 
-      {/* Summary Cards */}
       <div className="inventory-summary" style={{ marginBottom: '1.5rem' }}>
-        <div className="summary-card">
+        <div className="summary-card" style={{ background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)' }}>
           <div className="summary-content">
             <span className="summary-value">{totalPOs}</span>
             <span className="summary-label">Total POs</span>
           </div>
         </div>
-        <div className="summary-card">
+        <div className="summary-card" style={{ background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)' }}>
           <div className="summary-content">
-            <span className="summary-value">{openPOs}</span>
-            <span className="summary-label">Pending</span>
+            <span className="summary-value">{totalGoodsStock}</span>
+            <span className="summary-label">Total Goods Stock</span>
           </div>
         </div>
-        <div className="summary-card">
-          <div className="summary-content">
-            <span className="summary-value">{receivedPOs}</span>
-            <span className="summary-label">Completed</span>
-          </div>
-        </div>
-        <div className="summary-card">
+        <div className="summary-card" style={{ background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)' }}>
           <div className="summary-content">
             <span className="summary-value" style={{ fontSize: '1rem' }}>
               ₱{totalPOValue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -2976,22 +2688,14 @@ export default function PurchasingPage() {
         )}
       </div>
 
-      {/* Tab Content */}
-      {activeTab === 'po' && (
-        <POTab pos={pos} vendors={vendors} materials={materials} onRefresh={refresh} />
-      )}
-      {activeTab === 'gr' && (
-        <GRHistoryTab grs={grs} />
-      )}
+      {activeTab === 'po' && <POTab pos={pos} vendors={vendors} materials={materials} onRefresh={refresh} />}
+      {activeTab === 'gr' && <GRHistoryTab grs={grs} />}
       {activeTab === 'si' && (
         <div>
-          {/* Manual Entry Toolbar */}
           <div className="inventory-toolbar" style={{ marginBottom: '1rem' }}>
             <div style={{ flex: 1 }}></div>
             <button className="btn-primary" onClick={() => setShowStockIn(true)}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M12 5v14M5 12h14"/>
-              </svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
               Add Manual Entry
             </button>
           </div>
@@ -2999,11 +2703,9 @@ export default function PurchasingPage() {
         </div>
       )}
 
-      {/* Stock-In Modal */}
       {showStockIn && (
         <ManualStockInModal
-          materials={materials}
-          vendors={vendors}
+          materials={materials} vendors={vendors}
           onClose={() => setShowStockIn(false)}
           onSave={handleStockIn}
         />
