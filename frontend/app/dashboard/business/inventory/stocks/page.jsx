@@ -211,14 +211,22 @@ function StockOverviewTab({ materials, onIssueStock }) {
     });
   };
 
+  const getStock = (m) => {
+    if (m.batches && Array.isArray(m.batches) && m.batches.length > 0) {
+      return m.batches.reduce((s, b) => s + ((b.remainingQty || b.goodQty || b.qtyGood || 0)), 0);
+    }
+    return m.stockQty || 0;
+  };
+
   const matchesFilters = (m) => {
     const q = search.toLowerCase();
     const matchSearch = !q || m.name.toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q);
     const matchCat = !categoryFilter || m.category === categoryFilter;
+    const stock = getStock(m);
     const matchStatus = !statusFilter || (() => {
-      if (statusFilter === 'out-of-stock') return m.stockQty === 0 && m.procurementType !== 'on-demand';
-      if (statusFilter === 'low-stock')    return m.stockQty > 0 && m.stockQty < (m.minStock || 10) && m.procurementType !== 'on-demand';
-      if (statusFilter === 'healthy')      return m.stockQty >= (m.minStock || 10);
+      if (statusFilter === 'out-of-stock') return stock === 0 && m.procurementType !== 'on-demand';
+      if (statusFilter === 'low-stock')    return stock > 0 && stock < (m.minStock || 10) && m.procurementType !== 'on-demand';
+      if (statusFilter === 'healthy')      return stock >= (m.minStock || 10);
       if (statusFilter === 'on-demand')    return m.procurementType === 'on-demand';
       return true;
     })();
@@ -228,14 +236,15 @@ function StockOverviewTab({ materials, onIssueStock }) {
   const filteredRows = useMemo(() => {
     const rows = [];
     groupedMaterials.standalone.filter(matchesFilters).forEach(m => {
-      rows.push({ type: 'standalone', item: m });
+      rows.push({ type: 'standalone', item: { ...m, stockQty: getStock(m) } });
     });
     groupedMaterials.parents.forEach(parent => {
       const children = groupedMaterials.childrenMap.get(parent.id) || [];
       const parentMatches = matchesFilters(parent);
-      const matchingChildren = children.filter(matchesFilters);
+      const displayChildren = children.map(c => ({ ...c, stockQty: getStock(c) }));
+      const matchingChildren = displayChildren.filter(matchesFilters);
       if (parentMatches || matchingChildren.length > 0) {
-        rows.push({ type: 'parent', item: parent, children: matchingChildren.length > 0 ? matchingChildren : children });
+        rows.push({ type: 'parent', item: parent, children: matchingChildren.length > 0 ? matchingChildren : displayChildren });
       }
     });
     rows.sort((a, b) => {

@@ -953,7 +953,7 @@ function GRFormModal({ po, onClose, onSave }) {
                             Damaged / Others
                           </label>
                           <IntInput
-                            style={{ ...inputStyle, padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderColor: damaged > 0 ? 'rgba(245,158,11,0.4)' : undefined }}
+                            style={{ ...inputStyle, padding: '0.5rem 0.75rem', fontSize: '0.85rem'}}
                             value={item.damagedQty}
                             onChange={v => updateDamaged(idx, v)}
                             min={0} max={physicalCount} placeholder="0"
@@ -964,7 +964,7 @@ function GRFormModal({ po, onClose, onSave }) {
                             Shortage
                           </label>
                           <IntInput
-                            style={{ ...inputStyle, padding: '0.5rem 0.75rem', fontSize: '0.85rem', borderColor: shortage > 0 ? 'rgba(239,68,68,0.4)' : undefined }}
+                            style={{ ...inputStyle, padding: '0.5rem 0.75rem'}}
                             value={item.shortageQty}
                             onChange={v => updateShortage(idx, v)}
                             min={0} max={item.remaining} placeholder="0"

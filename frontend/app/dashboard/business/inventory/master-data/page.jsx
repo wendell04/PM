@@ -191,10 +191,8 @@ function generateVariantSKUs(category, productName, variantTypes, existingMateri
 }
 
 function CategoryBadge({ category }) {
-  const key = (category || '').toUpperCase();
-  const c = colors[key] || { bg: 'rgba(255,255,255,0.05)', color: '#9ca3af', border: 'rgba(255,255,255,0.1)' };
   return (
-    <span style={{ padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 700, background: c.bg, color: c.color, border: `1px solid ${c.border}`, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+    <span style={{ padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
       {category}
     </span>
   );
