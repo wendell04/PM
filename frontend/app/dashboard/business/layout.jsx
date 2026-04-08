@@ -141,9 +141,9 @@ export default function BusinessDashboardLayout({ children }) {
       name: 'Inventory',
       children: [
         { name: 'Master Data', href: '/dashboard/business/inventory/master-data' },
-        { name: 'Procurement (PO)', href: '/dashboard/business/inventory/purchasing' },
+        { name: 'Stock In', href: '/dashboard/business/inventory/stock-in' },
         { name: 'Stocks', href: '/dashboard/business/inventory/stocks' },
-        { name: 'Returns to Vendor', href: '/dashboard/business/inventory/returns' },
+        { name: 'Returns', href: '/dashboard/business/inventory/returns' },
       ],
     },
     { name: 'Sales', href: '/dashboard/business/sales' },
