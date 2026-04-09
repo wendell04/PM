@@ -12,6 +12,28 @@
   box-sizing: border-box;
 }
 
+/* ── Shared: Back to Shop button ── */
+.back-to-shop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--gray, #888);
+  text-decoration: none;
+  font-size: 0.875rem;
+  cursor: pointer;
+  padding: 6px 0;
+  transition: color 0.2s ease;
+}
+.back-to-shop-btn svg {
+  flex-shrink: 0;
+  display: block;
+}
+.back-to-shop-btn:hover {
+  color: var(--white, #fff);
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;

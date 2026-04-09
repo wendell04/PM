@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { fetchCart, syncCart, mergeCart, clearCart as clearCartApi } from '@/lib/cartApi';
+import { useAuth } from '@/contexts/AuthContext';
 
 export const CartContext = createContext(null);
 
@@ -11,28 +12,42 @@ export function CartProvider({ children }) {
   const [cartItems, setCartItems] = useState([]);
   const [isCartLoading, setIsCartLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const { token, currentUser } = useAuth();
 
-  /**
-   * Check if user is logged in (SSR-safe)
-   */
   const isLoggedIn = useCallback(() => {
-    if (typeof window === 'undefined') return false;
-    return !!(
-      localStorage.getItem('auth_token') || 
-      sessionStorage.getItem('auth_token')
-    );
-  }, []);
+    return !!token;
+  }, [token]);
 
   /**
    * Load cart on mount or when login status changes
    */
   useEffect(() => {
     async function loadCart() {
+      // Admin/owner users don't use cart — skip entirely
+      if (currentUser && ['admin', 'owner'].includes(currentUser?.role)) {
+        setIsCartLoading(false);
+        return;
+      }
+
       setIsCartLoading(true);
       try {
-        if (isLoggedIn()) {
-          // Logged in user - fetch from backend
-          const cart = await fetchCart();
+        if (token) {
+          // Check if guest cart exists — merge before fetching
+          const guestCart = localStorage.getItem(GUEST_CART_KEY);
+          if (guestCart) {
+            try {
+              const guestItems = JSON.parse(guestCart);
+              if (guestItems?.length > 0) {
+                const merged = await mergeCart(guestItems, token);
+                setCartItems(merged?.items || []);
+                localStorage.removeItem(GUEST_CART_KEY);
+                return;
+              }
+            } catch {
+              // merge failed — fall through to normal fetch
+            }
+          }
+          const cart = await fetchCart(token);
           setCartItems(cart?.items || []);
         } else {
           // Guest user - load from localStorage
@@ -49,7 +64,7 @@ export function CartProvider({ children }) {
     }
 
     loadCart();
-  }, [isLoggedIn]);
+  }, [token?.slice(0, 10), currentUser?.email]);
 
   /**
    * Save cart to appropriate storage based on login status
@@ -58,7 +73,7 @@ export function CartProvider({ children }) {
     try {
       if (isLoggedIn()) {
         // Sync to backend for logged in users
-        await syncCart(items);
+        await syncCart(items, token);
       } else {
         // Save to localStorage for guests
         localStorage.setItem(GUEST_CART_KEY, JSON.stringify(items));
@@ -68,7 +83,7 @@ export function CartProvider({ children }) {
       console.error('Failed to save cart:', error);
       throw error;
     }
-  }, [isLoggedIn]);
+  }, [token]);
 
   /**
    * Add item to cart
@@ -166,7 +181,7 @@ export function CartProvider({ children }) {
     try {
       if (isLoggedIn()) {
         // Clear backend cart
-        await clearCartApi();
+        await clearCartApi(token);
       } else {
         // Clear localStorage
         localStorage.removeItem(GUEST_CART_KEY);
@@ -178,31 +193,7 @@ export function CartProvider({ children }) {
     } finally {
       setIsCartLoading(false);
     }
-  }, [isLoggedIn]);
-
-  /**
-   * Merge guest cart with user cart (call on login)
-   */
-  const mergeGuestCart = useCallback(async () => {
-    try {
-      const guestCart = localStorage.getItem(GUEST_CART_KEY);
-      if (!guestCart) return;
-
-      const guestItems = JSON.parse(guestCart);
-      if (!guestItems || guestItems.length === 0) return;
-
-      // Merge with backend cart
-      const mergedCart = await mergeCart(guestItems);
-      
-      // Update cart state with merged items
-      setCartItems(mergedCart?.items || []);
-
-      // Clear guest cart from localStorage
-      localStorage.removeItem(GUEST_CART_KEY);
-    } catch (error) {
-      console.error('Failed to merge guest cart:', error);
-    }
-  }, []);
+  }, [token]);
 
   /**
    * Get total items count
@@ -230,7 +221,6 @@ export function CartProvider({ children }) {
     removeFromCart,
     updateQty,
     clearCart,
-    mergeGuestCart,
     cartCount,
     cartTotal,
     isLoggedIn,

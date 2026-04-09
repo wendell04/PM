@@ -9,21 +9,13 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 import { fetchWithTimeout } from './fetchWithTimeout';
 
 /**
- * Get authentication token from storage
- */
-function getAuthToken() {
-  return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-}
-
-/**
  * Fetch all sales records from MongoDB
  * @param {Object} filters - Optional filters { source, status, startDate, endDate, inventoryId }
+ * @param {string} token - Authentication token
  * @returns {Promise<Array>} List of sales records
  */
-export async function fetchSales(filters = {}) {
+export async function fetchSales(filters = {}, token) {
   try {
-    const token = getAuthToken();
-    
     // Build query string from filters
     const queryParams = new URLSearchParams();
     if (filters.source) queryParams.append('source', filters.source);
@@ -31,9 +23,9 @@ export async function fetchSales(filters = {}) {
     if (filters.startDate) queryParams.append('startDate', filters.startDate);
     if (filters.endDate) queryParams.append('endDate', filters.endDate);
     if (filters.inventoryId) queryParams.append('inventoryId', filters.inventoryId);
-    
+
     const url = `${API_URL}/api/admin/sales${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    
+
     const response = await fetchWithTimeout(url, {
       method: 'GET',
       headers: {
@@ -53,7 +45,7 @@ export async function fetchSales(filters = {}) {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error fetching sales:', error);
     throw error;
@@ -63,19 +55,18 @@ export async function fetchSales(filters = {}) {
 /**
  * Fetch sales summary/statistics
  * @param {Object} filters - Optional filters { startDate, endDate }
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Sales summary object
  */
-export async function fetchSalesSummary(filters = {}) {
+export async function fetchSalesSummary(filters = {}, token) {
   try {
-    const token = getAuthToken();
-    
     // Build query string from filters
     const queryParams = new URLSearchParams();
     if (filters.startDate) queryParams.append('startDate', filters.startDate);
     if (filters.endDate) queryParams.append('endDate', filters.endDate);
-    
+
     const url = `${API_URL}/api/admin/sales/summary${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    
+
     const response = await fetchWithTimeout(url, {
       method: 'GET',
       headers: {
@@ -95,7 +86,7 @@ export async function fetchSalesSummary(filters = {}) {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error fetching sales summary:', error);
     throw error;
@@ -105,11 +96,11 @@ export async function fetchSalesSummary(filters = {}) {
 /**
  * Fetch a single sale by ID
  * @param {string} saleId - MongoDB sale ID
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Sale object
  */
-export async function fetchSale(saleId) {
+export async function fetchSale(saleId, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/sales/${saleId}`, {
       method: 'GET',
       headers: {
@@ -132,7 +123,7 @@ export async function fetchSale(saleId) {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error fetching sale:', error);
     throw error;
@@ -142,11 +133,11 @@ export async function fetchSale(saleId) {
 /**
  * Create a new sale record
  * @param {Object} saleData - Sale data to create
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Created sale object
  */
-export async function createSale(saleData) {
+export async function createSale(saleData, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/sales`, {
       method: 'POST',
       headers: {
@@ -171,7 +162,7 @@ export async function createSale(saleData) {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error creating sale:', error);
     throw error;
@@ -182,11 +173,11 @@ export async function createSale(saleData) {
  * Update an existing sale record
  * @param {string} saleId - MongoDB sale ID
  * @param {Object} saleData - Updated sale data
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Updated sale object
  */
-export async function updateSale(saleId, saleData) {
+export async function updateSale(saleId, saleData, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/sales/${saleId}`, {
       method: 'PUT',
       headers: {
@@ -214,7 +205,7 @@ export async function updateSale(saleId, saleData) {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error updating sale:', error);
     throw error;

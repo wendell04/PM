@@ -43,4 +43,11 @@ return [
         'upload_preset' => env('CLOUDINARY_UPLOAD_PRESET'),
     ],
 
+    // PayMongo for payment processing
+    'paymongo' => [
+        'secret_key'     => env('PAYMONGO_SECRET_KEY', ''),
+        'public_key'     => env('PAYMONGO_PUBLIC_KEY', ''),
+        'webhook_secret' => env('PAYMONGO_WEBHOOK_SECRET', ''),
+    ],
+
 ];

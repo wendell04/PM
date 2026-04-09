@@ -40,8 +40,9 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { createProduct, fetchProducts } from '@/lib/productApi';
+import { createProduct, fetchProducts, uploadImage } from '@/lib/productApi';
 import { fetchInventory } from '@/lib/inventoryApi';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ── Reusable Number Input Component ───────────────────────────────────────────
 // Prevents negative values, e, E, -, +, and disables scroll wheel
@@ -166,7 +167,8 @@ function Combobox({ value, onChange, options, placeholder, label, required }) {
 // ─── Inventory Combobox (for Material/Blank Item) ─────────────────────────────
 // NEW: Only shows active inventory items (isActive: true)
 // EXCLUDES items already linked to products (1:1 relationship)
-function InventoryCombobox({ value, onChange, inventoryList, placeholder, label }) {
+function InventoryCombobox({ value, onChange, inventoryList, products, placeholder, label }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [inputVal, setInputVal] = useState('');
   const ref = useRef(null);
@@ -265,7 +267,7 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label 
                 className="combobox-empty-button"
                 onClick={(e) => {
                   e.preventDefault();
-                  window.location.href = '/dashboard/business/inventory';
+                  router.push('/dashboard/business/inventory');
                 }}
               >
                 Go to Inventory
@@ -288,7 +290,7 @@ function InventoryCombobox({ value, onChange, inventoryList, placeholder, label 
                 className="combobox-empty-button"
                 onClick={(e) => {
                   e.preventDefault();
-                  window.location.href = '/dashboard/business/inventory';
+                  router.push('/dashboard/business/inventory');
                 }}
               >
                 Go to Inventory
@@ -1100,6 +1102,7 @@ function ConfirmSaveProductModal({ isOpen, onClose, onConfirm, product }) {
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function AddProductsPage() {
   const router = useRouter();
+  const { isLoading, token } = useAuth();
 
   const [formData, setFormData] = useState({
     category: '',
@@ -1137,6 +1140,7 @@ export default function AddProductsPage() {
 
   const [savedCategories, setSavedCategories] = useState([]);
   const [savedSubCategories, setSavedSubCategories] = useState({});
+  const [inventoryList, setInventoryList] = useState([]);
   const [products, setProducts] = useState([]);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -1154,6 +1158,9 @@ export default function AddProductsPage() {
 
   // ── Load data on mount ────────────────────────────────────────────────────────
   useEffect(() => {
+    if (!token) return;
+    if (isLoading) return;
+
     const loadData = async () => {
       // Load categories and subcategories from localStorage (helper data)
       setSavedCategories(JSON.parse(localStorage.getItem('customCategories') || '[]'));
@@ -1161,7 +1168,7 @@ export default function AddProductsPage() {
 
       // Load Inventory List from API
       try {
-        const inventory = await fetchInventory();
+        const inventory = await fetchInventory(token);
         setInventoryList(Array.isArray(inventory) ? inventory : []);
       } catch (error) {
         console.error('Failed to load inventory:', error);
@@ -1170,8 +1177,9 @@ export default function AddProductsPage() {
 
       // Load products for linked inventory check
       try {
-        const productsData = await fetchProducts();
-        setProducts(Array.isArray(productsData) ? productsData : []);
+        const productsData = await fetchProducts(token);
+        const productsArray = productsData?.data ?? (Array.isArray(productsData) ? productsData : []);
+        setProducts(productsArray);
       } catch (error) {
         console.error('Failed to load products:', error);
         setProducts([]);
@@ -1179,7 +1187,7 @@ export default function AddProductsPage() {
     };
 
     loadData();
-  }, []);
+  }, [isLoading, token]);
 
   const hasVariants = combinations.length > 0;
   const subCatOptions = savedSubCategories[formData.category] || [];
@@ -1692,6 +1700,7 @@ export default function AddProductsPage() {
     // ──────────────────────────────────────────────────────────────
     const newProduct = {
       id: Date.now(),                        // TODO: MongoDB will auto-generate _id
+      name: formData.subCategoryName || formData.category,
       inventoryId: formData.inventoryId || null,  // Linked Inventory item (Source of Truth)
       category: formData.category,           // Product Category (e.g., "Mugs")
       subCategoryCode: formData.subCategoryCode,  // Auto-generated code (e.g., "CER")
@@ -1758,7 +1767,28 @@ export default function AddProductsPage() {
       // CREATE new product via API
       // Strip temporary client-side id - MongoDB will auto-generate _id
       const { id, ...productDataForApi } = pendingNewProduct;
-      await createProduct(productDataForApi);
+
+      // FC-IMG FIX: Upload File objects to Cloudinary before save.
+      // pendingNewProduct contains blob: URLs (browser-preview only).
+      // Override with Cloudinary secure_url before sending to API.
+      if (thumbnail?.file) {
+        const uploaded = await uploadImage(thumbnail.file, 'pmp-products', token);
+        productDataForApi.thumbnail = uploaded.secure_url;
+      }
+
+      const uploadableImages = images.filter(img => img?.file);
+      if (uploadableImages.length > 0) {
+        const uploadedImages = await Promise.all(
+          uploadableImages.map(img => uploadImage(img.file, 'pmp-products', token))
+        );
+        productDataForApi.images = uploadedImages
+          .map(u => u?.secure_url)
+          .filter(Boolean);
+      } else {
+        productDataForApi.images = [];
+      }
+
+      await createProduct(productDataForApi, token);
 
       // Close modal and show success
       setShowConfirmSaveModal(false);
@@ -1792,7 +1822,8 @@ export default function AddProductsPage() {
       }, 1500);
     } catch (error) {
       console.error('Failed to create product:', error);
-      alert('Failed to create product: ' + (error.message || 'Unknown error'));
+      setPriceErrorMessage('Failed to create product: ' + (error.message || 'Unknown error'));
+      setShowPriceErrorModal(true);
       setShowConfirmSaveModal(false);
     }
   };
@@ -1906,6 +1937,7 @@ export default function AddProductsPage() {
               value={formData.inventoryId}
               onChange={handleInventoryChange}
               inventoryList={inventoryList}
+              products={products}
               placeholder="Select a Product from inventory..."
             />
             <p className="form-hint">

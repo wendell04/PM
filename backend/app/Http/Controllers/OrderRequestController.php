@@ -1,0 +1,305 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\OrderRequest;
+use App\Models\Product;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Http;
+use App\Mail\OrderSubmittedMail;
+use App\Mail\OrderConfirmedMail;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
+
+class OrderRequestController extends Controller
+{
+    /**
+     * POST /order-requests
+     */
+    public function store(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return $this->unauthorizedResponse();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'productId'        => 'required|string',
+            'quantity'         => 'required|integer|min:1',
+            'designNotes'      => 'nullable|string|max:1000',
+            'designUrl'        => 'nullable|string|url',
+            'selectedVariants' => 'nullable|array',
+        ])->validate();
+
+        // Fetch product
+        $product = Product::where('_id', $validated['productId'])
+            ->where('isActive', true)
+            ->where('isPublished', true)
+            ->first();
+
+        if (!$product) {
+            return response()->json([
+                'message' => 'Product not found or unavailable.',
+            ], 422);
+        }
+
+        // Compute suggestedPrice
+        $tiers = $product->priceTiers ?? $product->tiers ?? [];
+        $qty = $validated['quantity'];
+        $selectedVariants = $validated['selectedVariants'] ?? [];
+        $suggestedPrice = null;
+
+        if ($product->priceType === 'tiered' && count($tiers)) {
+            $matchedTier = null;
+            foreach ($tiers as $tier) {
+                $min = (int) ($tier['minQty'] ?? 0);
+                $max = $tier['maxQty'] !== null && $tier['maxQty'] !== ''
+                    ? (int) $tier['maxQty'] : PHP_INT_MAX;
+                if ($qty >= $min && $qty <= $max) {
+                    $matchedTier = $tier;
+                    break;
+                }
+            }
+            if ($matchedTier) {
+                $prices = $matchedTier['prices'] ?? [];
+                if (count($selectedVariants) && count($prices) > 1) {
+                    $sorted = $selectedVariants;
+                    ksort($sorted);
+                    $comboKey = json_encode($sorted, JSON_UNESCAPED_UNICODE);
+                    $unitPrice = $prices[$comboKey]
+                        ?? array_values($prices)[0] ?? null;
+                } else {
+                    $unitPrice = $prices['__base__']
+                        ?? array_values($prices)[0] ?? null;
+                }
+                $suggestedPrice = $unitPrice !== null
+                    ? (float) $unitPrice * $qty : null;
+            }
+        } elseif ($product->priceType === 'fixed') {
+            $variantPrices = $product->variantPrices ?? [];
+            if (count($selectedVariants) && count($variantPrices)) {
+                $sorted = $selectedVariants;
+                ksort($sorted);
+                $comboKey = json_encode($sorted, JSON_UNESCAPED_UNICODE);
+                $unitPrice = $variantPrices[$comboKey]
+                    ?? array_values($variantPrices)[0] ?? null;
+            } else {
+                $unitPrice = $product->price ?? $product->flatPrice ?? null;
+            }
+            $suggestedPrice = $unitPrice !== null
+                ? (float) $unitPrice * $qty : null;
+        }
+
+        // Build statusHistory entry
+        $statusHistoryEntry = [
+            'status'    => 'pending_review',
+            'timestamp' => now()->toJSON(),
+            'note'      => 'Order request submitted by customer.',
+        ];
+
+        $orderRequest = OrderRequest::create([
+            'customerId'       => (string) $user->id,
+            'customerName'     => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')),
+            'customerEmail'    => $user->email ?? '',
+            'productId'        => $validated['productId'],
+            'productName'      => $product->subCategoryName ?? $product->name ?? '',
+            'productThumbnail' => $product->thumbnail ?? null,
+            'category'         => $product->category ?? '',
+            'priceType'        => $product->priceType ?? 'inquiry',
+            'selectedVariants' => $selectedVariants,
+            'quantity'         => $validated['quantity'],
+            'designUrl'        => $validated['designUrl'] ?? null,
+            'designNotes'      => $validated['designNotes'] ?? null,
+            'suggestedPrice'   => $suggestedPrice,
+            'finalPrice'       => null,
+            'status'           => 'pending_review',
+            'statusHistory'    => [$statusHistoryEntry],
+        ]);
+
+        try {
+            Mail::to($orderRequest->customerEmail)
+                ->send(new OrderSubmittedMail(
+                    customerName:   $orderRequest->customerName,
+                    orderId:        (string) $orderRequest->_id,
+                    productName:    $orderRequest->productName,
+                    quantity:       (int) $orderRequest->quantity,
+                    suggestedPrice: (float) ($orderRequest->suggestedPrice ?? 0),
+                ));
+        } catch (\Exception $e) {
+            Log::error('OrderSubmittedMail failed', [
+                'orderId' => (string) $orderRequest->_id,
+                'error'   => $e->getMessage(),
+            ]);
+        }
+
+        return response()->json($orderRequest, 201);
+    }
+
+    /**
+     * GET /admin/order-requests
+     */
+    public function index(Request $request)
+    {
+        $limit = min((int) $request->query('limit', 50), 100);
+        $status = $request->query('status', null);
+
+        $query = OrderRequest::orderBy('createdAt', 'desc')
+            ->limit($limit);
+
+        if ($status) {
+            $query->where('status', $status);
+        }
+
+        $requests = $query->get();
+
+        return response()->json([
+            'data'  => $requests,
+            'total' => $requests->count(),
+        ]);
+    }
+
+    /**
+     * GET /admin/order-requests/{id}
+     */
+    public function show($id)
+    {
+        $req = OrderRequest::find($id);
+        if (!$req) {
+            return response()->json([
+                'message' => 'Order request not found.',
+            ], 404);
+        }
+
+        return response()->json($req);
+    }
+
+    /**
+     * PATCH /admin/order-requests/{id}/status
+     */
+    public function updateStatus(Request $request, $id)
+    {
+        $req = OrderRequest::find($id);
+        if (!$req) {
+            return response()->json([
+                'message' => 'Order request not found.',
+            ], 404);
+        }
+
+        $validated = Validator::make($request->all(), [
+            'status'     => 'required|in:pending_review,confirmed,processing,ready,delivered,cancelled',
+            'finalPrice' => 'nullable|numeric|min:0',
+            'note'       => 'nullable|string|max:500',
+        ])->validate();
+
+        $user = $request->user();
+
+        $newEntry = [
+            'status'    => $validated['status'],
+            'timestamp' => now()->toJSON(),
+            'note'      => $validated['note'] ?? null,
+            'updatedBy' => $user?->name ?? $user?->email ?? 'admin',
+        ];
+
+        $history = $req->statusHistory ?? [];
+        $history[] = $newEntry;
+        $req->status = $validated['status'];
+        $req->statusHistory = $history;
+
+        if (isset($validated['finalPrice']) && $validated['finalPrice'] !== null) {
+            $req->finalPrice = (float) $validated['finalPrice'];
+        }
+
+        $req->save();
+
+        if ($validated['status'] === 'confirmed') {
+            try {
+                Mail::to($req->customerEmail)
+                    ->send(new OrderConfirmedMail(
+                        customerName:   $req->customerName,
+                        orderId:        (string) $req->_id,
+                        productName:    $req->productName,
+                        quantity:       (int) $req->quantity,
+                        suggestedPrice: (float) ($req->suggestedPrice ?? 0),
+                    ));
+            } catch (\Exception $e) {
+                Log::error('OrderConfirmedMail failed', [
+                    'orderId' => (string) $req->_id,
+                    'error'   => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return response()->json($req);
+    }
+
+    /**
+     * GET /my/order-requests
+     */
+    public function myRequests(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return $this->unauthorizedResponse();
+        }
+
+        $requests = OrderRequest::where(
+            'customerId', (string) $user->id
+        )
+            ->orderBy('createdAt', 'desc')
+            ->get();
+
+        return response()->json([
+            'data'  => $requests,
+            'total' => $requests->count(),
+        ]);
+    }
+
+    /**
+     * POST /order-requests/upload-design
+     */
+    public function uploadDesign(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return $this->unauthorizedResponse();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'design' => 'required|file|mimes:jpg,jpeg,png,pdf,ai,psd,svg|max:10240',
+        ])->validate();
+
+        $cloudName = config('services.cloudinary.cloud_name');
+        $uploadPreset = config('services.cloudinary.upload_preset');
+
+        if (!$cloudName || !$uploadPreset) {
+            return response()->json([
+                'message' => 'Cloudinary configuration missing.',
+            ], 500);
+        }
+
+        $response = Http::attach(
+            'file',
+            file_get_contents($validated['design']->getPathname()),
+            $validated['design']->getClientOriginalName()
+        )->post("https://api.cloudinary.com/v1_1/{$cloudName}/raw/upload", [
+            'upload_preset' => $uploadPreset,
+            'folder'        => 'pmp-designs',
+        ]);
+
+        if ($response->successful()) {
+            $data = $response->json();
+            return response()->json([
+                'url'       => $data['secure_url'],
+                'public_id' => $data['public_id'],
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Failed to upload design.',
+        ], 500);
+    }
+}

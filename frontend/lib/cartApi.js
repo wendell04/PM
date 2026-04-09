@@ -12,16 +12,15 @@ import { fetchWithTimeout } from './fetchWithTimeout';
  * Get authentication token from storage
  */
 function getAuthToken() {
-  return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+  return sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
 }
 
 /**
  * Fetch current user's cart from MongoDB
  * @returns {Promise<Object|null>} Cart object or null if empty
  */
-export async function fetchCart() {
+export async function fetchCart(token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/cart`, {
       method: 'GET',
       headers: {
@@ -50,9 +49,8 @@ export async function fetchCart() {
  * @param {Array} items - Array of cart items to save
  * @returns {Promise<Object>} Updated cart object
  */
-export async function syncCart(items) {
+export async function syncCart(items, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/cart/sync`, {
       method: 'POST',
       headers: {
@@ -86,9 +84,8 @@ export async function syncCart(items) {
  * @param {Array} guestItems - Array of guest cart items to merge
  * @returns {Promise<Object>} Merged cart object
  */
-export async function mergeCart(guestItems) {
+export async function mergeCart(guestItems, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/cart/merge`, {
       method: 'POST',
       headers: {
@@ -121,9 +118,8 @@ export async function mergeCart(guestItems) {
  * Clear user's cart
  * @returns {Promise<Object>} Result of clear operation
  */
-export async function clearCart() {
+export async function clearCart(token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/cart/clear`, {
       method: 'DELETE',
       headers: {

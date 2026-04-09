@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useCart } from '../layout';
 import ErrorBoundary from '../../../components/ErrorBoundary';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -38,7 +39,9 @@ function LoginRequiredModal({ isOpen, onClose }) {
         </div>
 
         <div className="modal-body" style={{ textAlign: 'center', padding: '2rem 1rem' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔐</div>
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline-block'}}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
           <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.5rem' }}>
             Please Login or Register
           </h3>
@@ -63,6 +66,7 @@ function LoginRequiredModal({ isOpen, onClose }) {
 export default function CartPage() {
   const router = useRouter();
   const { cart, updateQty, removeFromCart, clearCart } = useCart();
+  const { token } = useAuth();
 
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [notes, setNotes] = useState('');
@@ -73,11 +77,11 @@ export default function CartPage() {
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   // Re-compute unit prices based on current qty
-  const enrichedCart = cart.map(item => ({
+  const enrichedCart = useMemo(() => cart.map(item => ({
     ...item,
     unitPrice: resolvePrice(item.product, item.qty),
     lineTotal: resolvePrice(item.product, item.qty) * item.qty,
-  }));
+  })), [cart]);
 
   // Toggle select item
   const toggleSelectItem = (key) => {
@@ -106,7 +110,7 @@ export default function CartPage() {
   const handleRemoveItem = (productId, variantId, index) => {
     const key = `${productId}_${variantId}`;
     setRemovingId(key);
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       removeFromCart(productId, variantId);
       setSelectedItems(prev => {
         const newSet = new Set(prev);
@@ -115,6 +119,7 @@ export default function CartPage() {
       });
       setRemovingId(null);
     }, 300);
+    return () => clearTimeout(timer);
   };
 
   const handleDeleteSelected = () => {
@@ -126,10 +131,25 @@ export default function CartPage() {
     setSelectedItems(new Set());
   };
 
-  async function handlePlaceOrder() {
-    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-
+  function handlePlaceOrder() {
     if (!token) {
+      // Flush guest cart to localStorage immediately
+      // before showing login modal, so the merge
+      // after login finds the correct items.
+      try {
+        const guestItems = enrichedCart.map(i => ({
+          productId:   i.product._id,
+          productName: i.product.name,
+          images:      i.product.images ?? [],
+          variantId:   i.variantId   ?? null,
+          variantName: i.variantName ?? null,
+          qty:         i.qty,
+          unitPrice:   i.unitPrice,
+        }));
+        if (guestItems.length > 0) {
+          localStorage.setItem('pmp_guest_cart', JSON.stringify(guestItems));
+        }
+      } catch {}
       setShowLoginModal(true);
       return;
     }
@@ -140,38 +160,25 @@ export default function CartPage() {
     }
 
     setError(null);
-    setLoading(true);
-    try {
-      const items = selectedCartItems.map(i => ({
-        productId: i.product._id,
-        variantId: i.variantId ?? null,
-        variantName: i.variantName ?? null,
-        qty: i.qty,
-      }));
 
-      const res = await fetchWithTimeout(`${API_URL}/api/orders`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+    // Serialize selected cart items for checkout page
+    const payload = {
+      items: selectedCartItems.map(i => ({
+        product: {
+          _id:    i.product._id,
+          name:   i.product.name,
+          images: i.product.images ?? [],
         },
-        body: JSON.stringify({ items, notes }),
-      }, 15000);
+        variantId:   i.variantId   ?? null,
+        variantName: i.variantName ?? null,
+        qty:         i.qty,
+        unitPrice:   i.unitPrice,
+      })),
+      notes,
+    };
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to place order.');
-
-      // Remove ordered items from cart
-      selectedCartItems.forEach(item => {
-        removeFromCart(item.product._id, item.variantId);
-      });
-
-      setSuccess(data.order?._id ?? 'success');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    sessionStorage.setItem('checkout_payload', JSON.stringify(payload));
+    router.push('/shop/checkout');
   }
 
   // ── Success screen ──────────────────────────────────────────────────────────
@@ -208,19 +215,44 @@ export default function CartPage() {
   // ── Empty cart ──────────────────────────────────────────────────────────────
   if (cart.length === 0) {
     return (
-      <div className="cart-empty-state">
-        <div className="cart-empty-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
-            stroke="rgba(212,168,67,0.3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-            <line x1="3" y1="6" x2="21" y2="6"/>
-            <path d="M16 10a4 4 0 0 1-8 0"/>
-          </svg>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: '60vh',
+        padding: '2rem',
+      }}>
+        <div>
+          <Link href="/shop" className="back-to-shop-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"/>
+              <polyline points="12 19 5 12 12 5"/>
+            </svg>
+            Back to Shop
+          </Link>
         </div>
-        <p className="cart-empty-text">Your cart is empty.</p>
-        <Link href="/shop" className="cart-continue-btn">
-          Browse Products
-        </Link>
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <div className="cart-empty-state">
+            <div className="cart-empty-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
+                stroke="rgba(212,168,67,0.3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <path d="M16 10a4 4 0 0 1-8 0"/>
+              </svg>
+            </div>
+            <p className="cart-empty-text">Your cart is empty.</p>
+            <Link href="/shop" className="cart-continue-btn">
+              Browse Products
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
@@ -228,9 +260,10 @@ export default function CartPage() {
   // ── Cart ────────────────────────────────────────────────────────────────────
   return (
     <ErrorBoundary>
+      <style>{styles}</style>
       <div className="cart-page-wrapper">
       <div className="cart-header">
-        <Link href="/shop" className="cart-back-link">
+        <Link href="/shop" className="back-to-shop-btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
@@ -448,26 +481,15 @@ export default function CartPage() {
             {/* Place Order Button */}
             <button
               onClick={handlePlaceOrder}
-              disabled={loading || selectedItems.size === 0}
+              disabled={selectedItems.size === 0}
               className="cart-place-order-btn"
             >
-              {loading ? (
-                <>
-                  <svg className="cart-loading-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" strokeOpacity="1"/>
-                  </svg>
-                  Placing Order...
-                </>
-              ) : (
-                <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-                    <line x1="3" y1="6" x2="21" y2="6"/>
-                    <path d="M16 10a4 4 0 0 1-8 0"/>
-                  </svg>
-                  Place Order
-                </>
-              )}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <path d="M16 10a4 4 0 0 1-8 0"/>
+              </svg>
+              Check Out ({selectedItems.size})
             </button>
 
             {/* Disclaimer */}
@@ -502,27 +524,6 @@ const styles = `
     gap: 0.75rem;
     margin-bottom: 1.5rem;
     flex-wrap: wrap;
-  }
-
-  .cart-back-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    color: #888;
-    text-decoration: none;
-    font-size: 0.9rem;
-    font-weight: 500;
-    padding: 0.5rem 0.75rem;
-    border-radius: 8px;
-    transition: all 0.2s;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-  }
-
-  .cart-back-link:hover {
-    color: #d4a843;
-    background: rgba(212, 168, 67, 0.1);
-    border-color: rgba(212, 168, 67, 0.3);
   }
 
   .cart-divider {

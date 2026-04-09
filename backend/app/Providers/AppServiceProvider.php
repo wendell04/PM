@@ -21,6 +21,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Sanctum::usePersonalAccessTokenModel(PersonalAccessToken::class);
+
+        $this->app->bind(
+            \Laravel\Sanctum\PersonalAccessToken::class,
+            \App\Models\PersonalAccessToken::class
+        );
     }
 }

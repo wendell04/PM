@@ -6,87 +6,17 @@
 'use client';
 
 import ErrorBoundary from '../../../../components/ErrorBoundary';
-import React, { useState, useEffect } from 'react';
-import { fetchAllOrders, updateOrder as updateOrderApi } from '@/lib/ordersApi';
-
-// Sample orders for fallback/testing
-const today = new Date();
-const thisMonth = today.getMonth();
-const thisYear = today.getFullYear();
-
-// Helper to add days to a date
-const addDays = (date, days) => {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result.toISOString().split('T')[0];
-};
-
-// TODO: MongoDB - Remove this sample data, fetch from database instead
-// Mongoose Schema Reference:
-// {
-//   _id: ObjectId,
-//   orderId: String (unique, e.g., 'ORD-001'),
-//   customer: {
-//     name: String,
-//     contact: String,
-//     email: String
-//   },
-//   product: {
-//     name: String,
-//     category: String,
-//     variant: String,
-//     unitPrice: Number
-//   },
-//   quantity: Number,
-//   totalPrice: Number,
-//   downPayment: Number,
-//   balance: Number,
-//   orderStatus: String (Pending, In Production, For Delivery, Delivered, Returned, Cancelled),
-//   joStatus: String (Queued, In Progress, Completed, null),
-//   isRush: Boolean,
-//   targetCompletion: Date,
-//   paymentDate: Date,
-//   designFile: String (URL/path),
-//   designNotes: String,
-//   checkoutRestricted: Boolean,
-//   createdAt: Date,
-//   updatedAt: Date
-// }
-const samplePendingOrders = [
-  // 2 Pending orders - ordered TODAY (1 unpaid, 1 paid with DP)
-  { id: 'ORD-001', customerName: 'Maria Santos', customerContact: '09171234567', customerEmail: 'maria@email.com', productName: 'Custom Mug', category: 'Mugs', variant: 'White 11oz', quantity: 25, unitPrice: 150, totalPrice: 3750, downPayment: 0, balance: 3750, orderStatus: 'Pending', designFile: 'design-001.png', designNotes: 'Awaiting design approval', paymentDate: null, isRush: false, joId: null, joStatus: null, targetCompletion: null, checkoutRestricted: true, createdAt: addDays(today, 0) },
-  { id: 'ORD-002', customerName: 'Juan Dela Cruz', customerContact: '09281234567', customerEmail: 'juan@email.com', productName: 'Custom T-Shirt', category: 'T-Shirt', variant: 'L / Black', quantity: 10, unitPrice: 350, totalPrice: 3500, downPayment: 1750, balance: 1750, orderStatus: 'Pending', designFile: 'design-002.png', designNotes: 'Paid DP - ready for production', paymentDate: addDays(today, 0), isRush: false, joId: null, joStatus: null, targetCompletion: null, checkoutRestricted: false, createdAt: addDays(today, 0) },
-  
-  // DELAYED ORDER - Target was 10 days ago (for JO Schedule testing)
-  { id: 'ORD-007', customerName: 'Carlos Mendoza', customerContact: '09179998888', customerEmail: 'carlos@email.com', productName: 'Custom Hoodie', category: 'T-Shirt', variant: 'XL / Navy', quantity: 20, unitPrice: 550, totalPrice: 11000, downPayment: 5500, balance: 5500, orderStatus: 'In Production', designFile: 'design-007.png', designNotes: 'Delayed - production backlog', paymentDate: addDays(today, -10), isRush: false, joId: 'JOB-007', joStatus: 'Queued', targetCompletion: addDays(today, -10), checkoutRestricted: false, createdAt: addDays(today, -10) },
-  
-  // NEAR DEADLINE ORDER - Target is tomorrow (1 day left)
-  { id: 'ORD-008', customerName: 'Lisa Fernandez', customerContact: '09283334444', customerEmail: 'lisa@email.com', productName: 'Custom Cap', category: 'Accessories', variant: 'One Size / Red', quantity: 50, unitPrice: 120, totalPrice: 6000, downPayment: 6000, balance: 0, orderStatus: 'In Production', designFile: 'design-008.png', designNotes: 'Due tomorrow - prioritize', paymentDate: addDays(today, -3), isRush: false, joId: 'JOB-008', joStatus: 'Queued', targetCompletion: addDays(today, 1), checkoutRestricted: false, createdAt: addDays(today, -3) },
-  
-  // 4 In Production orders - ordered YESTERDAY (already moved to production, have JOs)
-  { id: 'ORD-003', customerName: 'Ana Reyes', customerContact: '09171112222', customerEmail: 'ana@email.com', productName: 'Custom Sticker', category: 'Stickers', variant: 'Vinyl 3"', quantity: 100, unitPrice: 15, totalPrice: 1500, downPayment: 1500, balance: 0, orderStatus: 'In Production', designFile: 'design-003.png', designNotes: 'Approved', paymentDate: addDays(today, -1), isRush: false, joId: 'JOB-001', joStatus: 'Queued', targetCompletion: addDays(today, 6), checkoutRestricted: false, createdAt: addDays(today, -1) },
-  { id: 'ORD-004', customerName: 'Pedro Cruz', customerContact: '09281112222', customerEmail: 'pedro@email.com', productName: 'Ceramic Mug', category: 'Mugs', variant: 'White 15oz', quantity: 40, unitPrice: 180, totalPrice: 7200, downPayment: 7200, balance: 0, orderStatus: 'In Production', designFile: 'design-004.png', designNotes: 'Approved', paymentDate: addDays(today, -1), isRush: false, joId: 'JOB-002', joStatus: 'Queued', targetCompletion: addDays(today, 6), checkoutRestricted: false, createdAt: addDays(today, -1) },
-  { id: 'ORD-005', customerName: 'Sofia Garcia', customerContact: '09175556666', customerEmail: 'sofia@email.com', productName: 'Custom Mug', category: 'Mugs', variant: 'Black 11oz', quantity: 30, unitPrice: 150, totalPrice: 4500, downPayment: 2250, balance: 2250, orderStatus: 'In Production', designFile: 'design-005.png', designNotes: 'Rush order - approved', paymentDate: addDays(today, -1), isRush: true, joId: 'JOB-003', joStatus: 'Queued', targetCompletion: addDays(today, 2), checkoutRestricted: false, createdAt: addDays(today, -1) },
-  { id: 'ORD-006', customerName: 'Miguel Torres', customerContact: '09287778888', customerEmail: 'miguel@email.com', productName: 'Custom T-Shirt', category: 'T-Shirt', variant: 'M / White', quantity: 15, unitPrice: 350, totalPrice: 5250, downPayment: 2625, balance: 2625, orderStatus: 'In Production', designFile: 'design-006.png', designNotes: 'Rush order - approved', paymentDate: addDays(today, -1), isRush: true, joId: 'JOB-004', joStatus: 'Queued', targetCompletion: addDays(today, 2), checkoutRestricted: false, createdAt: addDays(today, -1) },
-];
-
-const getStatusBadge = (status) => {
-  if (!status) return { label: '', color: '#6b7280', bg: 'rgba(107, 114, 128, 0.1)', border: 'rgba(107, 114, 128, 0.3)' };
-  const map = {
-    'Pending': { label: 'Pending', color: '#facc15', bg: 'rgba(250, 204, 21, 0.15)', border: 'rgba(250, 204, 21, 0.4)' },
-    'In Production': { label: 'In Production', color: '#6366f1', bg: 'rgba(99, 102, 241, 0.15)', border: 'rgba(99, 102, 241, 0.4)' },
-    'For Delivery': { label: 'For Delivery', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)', border: 'rgba(249, 115, 22, 0.4)' },
-    'Delivered': { label: 'Delivered', color: '#4ade80', bg: 'rgba(74, 222, 128, 0.15)', border: 'rgba(74, 222, 128, 0.4)' },
-    'Returned': { label: 'Returned', color: '#f87171', bg: 'rgba(248, 113, 113, 0.15)', border: 'rgba(248, 113, 113, 0.4)' },
-    'Cancelled': { label: 'Cancelled', color: '#f87171', bg: 'rgba(248, 113, 113, 0.15)', border: 'rgba(248, 113, 113, 0.4)' },
-  };
-  return map[status] || { label: status, color: '#6b7280', bg: 'rgba(107, 114, 128, 0.1)', border: 'rgba(107, 114, 128, 0.3)' };
-};
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchAllOrdersNew, updateOrder as updateOrderApi } from '@/lib/ordersApi';
+import { getStatusBadge } from '@/lib/utils/orderHelpers';
+import OrderQuickViewModal from '@/components/orders/OrderQuickViewModal';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const YEARS = [2025, 2026, 2027, 2028];
 
 export default function OrdersPage() {
+  const { token } = useAuth();
   const [orders, setOrders] = useState([]);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
@@ -103,20 +33,34 @@ export default function OrdersPage() {
   // Print modal form state
   const [printDescription, setPrintDescription] = useState('');
   const [printDesignImages, setPrintDesignImages] = useState([]); // Multiple images
+  const [loadError, setLoadError] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Order Quick View Modal state
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Extract fetch orders logic into named function
+  const fetchOrders = useCallback(async () => {
+    setIsRefreshing(true);
+    setLoadError('');
+    try {
+      const data = await fetchAllOrdersNew(token);
+      setOrders(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to load orders:', error);
+      setLoadError('Failed to load orders. Please refresh the page.');
+      setOrders([]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
 
   // Load orders from API on mount
   useEffect(() => {
-    async function loadOrders() {
-      try {
-        const data = await fetchAllOrders();
-        setOrders(Array.isArray(data) ? data : []);
-      } catch (error) {
-        console.error('Failed to load orders:', error);
-        // Fallback to empty array on error
-        setOrders([]);
-      }
-    }
-    loadOrders();
+    if (!token) return;
+    fetchOrders();
   }, []);
 
   const filtered = orders.filter(o => {
@@ -348,6 +292,7 @@ export default function OrdersPage() {
               const mixedStatus = (hasPending ? 1 : 0) + (hasInProduction ? 1 : 0) + (hasForDelivery ? 1 : 0) > 1;
 
               const handleStatusUpdate = async (newStatus) => {
+                if (isSubmitting) return;
                 // Check for unpaid orders when updating to In Production
                 if (newStatus === 'In Production') {
                   const unpaidOrders = [];
@@ -366,17 +311,18 @@ export default function OrdersPage() {
                 }
 
                 // Update order status for selected orders via API
+                setIsSubmitting(true);
                 try {
                   const updatePromises = Array.from(selectedOrders).map(async (orderId) => {
                     const updatedOrder = { orderStatus: newStatus };
                     if (newStatus === 'For Delivery') {
                       updatedOrder.joStatus = 'Completed';
                     }
-                    return await updateOrderApi(orderId, updatedOrder);
+                    return await updateOrderApi(orderId, updatedOrder, token);
                   });
 
                   const updatedOrders = await Promise.all(updatePromises);
-                  
+
                   // Update local state with API responses
                   setOrders(prev => prev.map(ord => {
                     if (selectedOrders.has(ord.id)) {
@@ -398,8 +344,10 @@ export default function OrdersPage() {
                     }
                     return ord;
                   }));
+                } finally {
+                  setIsSubmitting(false);
                 }
-                
+
                 setSelectedOrders(new Set());
               };
 
@@ -413,20 +361,20 @@ export default function OrdersPage() {
                     <>
                       {hasPending && (
                         <>
-                          <button className="btn-sm btn-primary" onClick={() => handleStatusUpdate('In Production')}>In Production</button>
-                          <button className="btn-sm btn-secondary" onClick={() => handleStatusUpdate('Cancelled')} style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)' }}>Cancel</button>
+                          <button className="btn-sm btn-primary" onClick={() => handleStatusUpdate('In Production')} disabled={isSubmitting} style={{ opacity: isSubmitting ? 0.6 : 1 }}>{isSubmitting ? 'Updating...' : 'In Production'}</button>
+                          <button className="btn-sm btn-secondary" onClick={() => handleStatusUpdate('Cancelled')} disabled={isSubmitting} style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)', opacity: isSubmitting ? 0.6 : 1 }}>{isSubmitting ? 'Updating...' : 'Cancel'}</button>
                         </>
                       )}
                       {hasInProduction && (
                         <>
-                          <button className="btn-sm btn-primary" onClick={() => handleStatusUpdate('For Delivery')}>For Delivery</button>
-                          <button className="btn-sm btn-secondary" onClick={() => handleStatusUpdate('Cancelled')} style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)' }}>Cancel</button>
+                          <button className="btn-sm btn-primary" onClick={() => handleStatusUpdate('For Delivery')} disabled={isSubmitting} style={{ opacity: isSubmitting ? 0.6 : 1 }}>{isSubmitting ? 'Updating...' : 'For Delivery'}</button>
+                          <button className="btn-sm btn-secondary" onClick={() => handleStatusUpdate('Cancelled')} disabled={isSubmitting} style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)', opacity: isSubmitting ? 0.6 : 1 }}>{isSubmitting ? 'Updating...' : 'Cancel'}</button>
                         </>
                       )}
                       {hasForDelivery && (
                         <>
-                          <button className="btn-sm btn-primary" onClick={() => handleStatusUpdate('Delivered')}>Delivered</button>
-                          <button className="btn-sm btn-secondary" onClick={() => handleStatusUpdate('Returned')} style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)' }}>Returned</button>
+                          <button className="btn-sm btn-primary" onClick={() => handleStatusUpdate('Delivered')} disabled={isSubmitting} style={{ opacity: isSubmitting ? 0.6 : 1 }}>{isSubmitting ? 'Updating...' : 'Delivered'}</button>
+                          <button className="btn-sm btn-secondary" onClick={() => handleStatusUpdate('Returned')} disabled={isSubmitting} style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)', opacity: isSubmitting ? 0.6 : 1 }}>{isSubmitting ? 'Updating...' : 'Returned'}</button>
                         </>
                       )}
                     </>
@@ -440,6 +388,11 @@ export default function OrdersPage() {
       )}
 
       {/* Table */}
+      {isRefreshing && (
+        <div className="text-sm text-gray-500" style={{ marginBottom: '0.75rem' }}>
+          Refreshing...
+        </div>
+      )}
       <div style={{
         WebkitOverflowScrolling: 'touch',
         border: '1px solid var(--border)',
@@ -453,6 +406,11 @@ export default function OrdersPage() {
         display: 'block',
         overflowX: 'auto',
       }}>
+        {loadError && (
+          <div className="text-red-500 text-sm" style={{ marginBottom: '1rem' }}>
+            {loadError}
+          </div>
+        )}
         <table className="inventory-table" style={{ fontFamily: 'inherit' }}>
           <thead>
             <tr>
@@ -467,12 +425,13 @@ export default function OrdersPage() {
               <th className="table-col-min">Total</th>
               <th className="table-col-status">Status</th>
               <th className="table-col-min">Date</th>
+              <th style={{ width: '60px' }}></th>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={9}>
+                <td colSpan={10}>
                   <div className="empty-state">
                     <div className="empty-icon">
                       <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -534,10 +493,30 @@ export default function OrdersPage() {
                         </span>
                       </td>
                       <td className="table-cell" style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{o.createdAt}</td>
+                      <td className="table-cell" style={{ textAlign: 'center' }}>
+                        <button
+                          onClick={() => {
+                            setSelectedOrderId(o.id);
+                            setIsModalOpen(true);
+                          }}
+                          style={{
+                            padding: '0.25rem 0.625rem',
+                            fontSize: '0.75rem',
+                            background: 'transparent',
+                            border: '1px solid var(--gold)',
+                            borderRadius: '4px',
+                            color: 'var(--gold)',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          View
+                        </button>
+                      </td>
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={9} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
+                        <td colSpan={10} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
                           <div style={{ padding: '1rem 1.25rem 1.25rem', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
                             {/* Customer Info */}
                             <div>
@@ -1281,7 +1260,11 @@ export default function OrdersPage() {
               <button
                 type="button"
                 className="btn-primary"
+                disabled={isSubmitting}
+                style={{ opacity: isSubmitting ? 0.6 : 1 }}
                 onClick={async () => {
+                  if (isSubmitting) return;
+                  setIsSubmitting(true);
                   // Proceed with status update despite unpaid warning
                   const { newStatus, selectedOrders: selectedSet } = pendingStatusUpdate;
                   try {
@@ -1290,11 +1273,11 @@ export default function OrdersPage() {
                       if (newStatus === 'For Delivery') {
                         updatedOrder.joStatus = 'Completed';
                       }
-                      return await updateOrderApi(orderId, updatedOrder);
+                      return await updateOrderApi(orderId, updatedOrder, token);
                     });
 
                     const updatedOrders = await Promise.all(updatePromises);
-                    
+
                     // Update local state with API responses
                     setOrders(prev => prev.map(ord => {
                       if (selectedSet.has(ord.id)) {
@@ -1312,18 +1295,32 @@ export default function OrdersPage() {
                       }
                       return ord;
                     }));
+                  } finally {
+                    setIsSubmitting(false);
                   }
                   setSelectedOrders(new Set());
                   setShowUnpaidWarning(false);
                   setPendingStatusUpdate(null);
                 }}
               >
-                Proceed Anyway
+                {isSubmitting ? 'Updating...' : 'Proceed Anyway'}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Order Quick View Modal */}
+      <OrderQuickViewModal
+        orderId={selectedOrderId}
+        mode="admin"
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedOrderId(null);
+        }}
+        onStatusUpdated={fetchOrders}
+      />
     </div>
     </ErrorBoundary>
   );

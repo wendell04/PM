@@ -9,19 +9,12 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 import { fetchWithTimeout } from './fetchWithTimeout';
 
 /**
- * Get authentication token from storage
- */
-function getAuthToken() {
-  return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-}
-
-/**
  * Fetch all inventory items from MongoDB
+ * @param {string} token - Authentication token
  * @returns {Promise<Array>} List of inventory items
  */
-export async function fetchInventory() {
+export async function fetchInventory(token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/inventory`, {
       method: 'GET',
       headers: {
@@ -41,7 +34,7 @@ export async function fetchInventory() {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error fetching inventory:', error);
     throw error;
@@ -51,11 +44,11 @@ export async function fetchInventory() {
 /**
  * Fetch a single inventory item by ID
  * @param {string} inventoryId - MongoDB inventory ID
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Inventory item
  */
-export async function fetchInventoryItem(inventoryId) {
+export async function fetchInventoryItem(inventoryId, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/inventory/${inventoryId}`, {
       method: 'GET',
       headers: {
@@ -72,7 +65,7 @@ export async function fetchInventoryItem(inventoryId) {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error fetching inventory item:', error);
     throw error;
@@ -82,11 +75,11 @@ export async function fetchInventoryItem(inventoryId) {
 /**
  * Fetch inventory stock history
  * @param {string} inventoryId - MongoDB inventory ID
+ * @param {string} token - Authentication token
  * @returns {Promise<Array>} Stock history records
  */
-export async function fetchInventoryHistory(inventoryId) {
+export async function fetchInventoryHistory(inventoryId, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/inventory/${inventoryId}/history`, {
       method: 'GET',
       headers: {
@@ -100,7 +93,7 @@ export async function fetchInventoryHistory(inventoryId) {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error fetching inventory history:', error);
     throw error;
@@ -110,11 +103,11 @@ export async function fetchInventoryHistory(inventoryId) {
 /**
  * Create a new inventory item
  * @param {Object} inventoryData - Inventory data to create
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Created inventory item
  */
-export async function createInventory(inventoryData) {
+export async function createInventory(inventoryData, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/inventory`, {
       method: 'POST',
       headers: {
@@ -132,11 +125,11 @@ export async function createInventory(inventoryData) {
       if (response.status === 403) {
         throw new Error('Unauthorized: Admin access required');
       }
-      throw new Error(errorData.error || 'Failed to create inventory');
+      throw new Error(errorData.message || 'Failed to create inventory');
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error creating inventory:', error);
     throw error;
@@ -147,11 +140,11 @@ export async function createInventory(inventoryData) {
  * Update an existing inventory item
  * @param {string} inventoryId - MongoDB inventory ID
  * @param {Object} inventoryData - Updated inventory data
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Updated inventory item
  */
-export async function updateInventory(inventoryId, inventoryData) {
+export async function updateInventory(inventoryId, inventoryData, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/inventory/${inventoryId}`, {
       method: 'PUT',
       headers: {
@@ -172,11 +165,11 @@ export async function updateInventory(inventoryId, inventoryData) {
       if (response.status === 404) {
         throw new Error('Inventory item not found');
       }
-      throw new Error(errorData.error || 'Failed to update inventory');
+      throw new Error(errorData.message || 'Failed to update inventory');
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error updating inventory:', error);
     throw error;
@@ -187,11 +180,11 @@ export async function updateInventory(inventoryId, inventoryData) {
  * Adjust stock level for an inventory item
  * @param {string} inventoryId - MongoDB inventory ID
  * @param {Object} adjustment - Stock adjustment data { adjustmentType: 'add'|'subtract'|'set', quantity: number }
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Updated inventory item
  */
-export async function adjustInventoryStock(inventoryId, adjustment) {
+export async function adjustInventoryStock(inventoryId, adjustment, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/inventory/${inventoryId}/adjust-stock`, {
       method: 'POST',
       headers: {
@@ -206,11 +199,11 @@ export async function adjustInventoryStock(inventoryId, adjustment) {
       if (response.status === 422 && errorData.errors) {
         throw new Error(JSON.stringify(errorData.errors));
       }
-      throw new Error(errorData.error || 'Failed to adjust stock');
+      throw new Error(errorData.message || 'Failed to adjust stock');
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error adjusting inventory stock:', error);
     throw error;
@@ -220,11 +213,11 @@ export async function adjustInventoryStock(inventoryId, adjustment) {
 /**
  * Delete (deactivate) an inventory item
  * @param {string} inventoryId - MongoDB inventory ID
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Deletion result
  */
-export async function deleteInventory(inventoryId) {
+export async function deleteInventory(inventoryId, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/inventory/${inventoryId}`, {
       method: 'DELETE',
       headers: {
@@ -241,11 +234,11 @@ export async function deleteInventory(inventoryId) {
       if (response.status === 404) {
         throw new Error('Inventory item not found');
       }
-      throw new Error(errorData.error || 'Failed to delete inventory');
+      throw new Error(errorData.message || 'Failed to delete inventory');
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error deleting inventory:', error);
     throw error;
@@ -254,11 +247,11 @@ export async function deleteInventory(inventoryId) {
 
 /**
  * Fetch all suppliers from MongoDB
+ * @param {string} token - Authentication token
  * @returns {Promise<Array>} List of suppliers
  */
-export async function fetchSuppliers() {
+export async function fetchSuppliers(token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/suppliers`, {
       method: 'GET',
       headers: {
@@ -268,13 +261,12 @@ export async function fetchSuppliers() {
     }, 10000); // 10 second timeout
 
     if (!response.ok) {
-      // Fallback: return empty array if endpoint doesn't exist yet
-      console.warn('Suppliers endpoint not available yet');
-      return [];
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Failed to fetch suppliers');
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error fetching suppliers:', error);
     return [];
@@ -284,11 +276,11 @@ export async function fetchSuppliers() {
 /**
  * Create a new supplier
  * @param {Object} supplierData - Supplier data to create
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Created supplier
  */
-export async function createSupplier(supplierData) {
+export async function createSupplier(supplierData, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/suppliers`, {
       method: 'POST',
       headers: {
@@ -300,11 +292,11 @@ export async function createSupplier(supplierData) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Failed to create supplier');
+      throw new Error(errorData.message || 'Failed to create supplier');
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error creating supplier:', error);
     throw error;
@@ -315,11 +307,11 @@ export async function createSupplier(supplierData) {
  * Update an existing supplier
  * @param {string} supplierId - MongoDB supplier ID
  * @param {Object} supplierData - Updated supplier data
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Updated supplier
  */
-export async function updateSupplier(supplierId, supplierData) {
+export async function updateSupplier(supplierId, supplierData, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/suppliers/${supplierId}`, {
       method: 'PUT',
       headers: {
@@ -331,11 +323,11 @@ export async function updateSupplier(supplierId, supplierData) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Failed to update supplier');
+      throw new Error(errorData.message || 'Failed to update supplier');
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error updating supplier:', error);
     throw error;
@@ -345,11 +337,11 @@ export async function updateSupplier(supplierId, supplierData) {
 /**
  * Delete a supplier
  * @param {string} supplierId - MongoDB supplier ID
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Deletion result
  */
-export async function deleteSupplier(supplierId) {
+export async function deleteSupplier(supplierId, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/suppliers/${supplierId}`, {
       method: 'DELETE',
       headers: {
@@ -360,11 +352,11 @@ export async function deleteSupplier(supplierId) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Failed to delete supplier');
+      throw new Error(errorData.message || 'Failed to delete supplier');
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error deleting supplier:', error);
     throw error;

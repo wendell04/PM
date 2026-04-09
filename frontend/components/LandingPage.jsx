@@ -18,32 +18,32 @@ const PasswordStrength = ({password}) => {
   ];
   const score = checks.filter(Boolean).length;
   const levels = [
-    {label: 'Too Weak',    color: '#ef4444', width: '20%'},
-    {label: 'Weak',        color: '#f97316', width: '40%'},
-    {label: 'Fair',        color: '#eab308', width: '60%'},
-    {label: 'Strong',      color: '#84cc16', width: '80%'},
-    {label: 'Very Strong', color: '#4ade80', width: '100%'},
+    {label: 'Too Weak',    color: 'var(--red)', width: '20%'},
+    {label: 'Weak',        color: 'var(--red)', width: '40%'},
+    {label: 'Fair',        color: 'var(--gold)', width: '60%'},
+    {label: 'Strong',      color: 'var(--green)', width: '80%'},
+    {label: 'Very Strong', color: 'var(--green)', width: '100%'},
   ];
   const isTooShort = password.length > 0 && password.length < 8;
   const isTooLong  = password.length > 32;
-  const current    = levels[score - 1] || {label: 'Too Weak', color: '#ef4444', width: '20%'};
+  const current    = levels[score - 1] || {label: 'Too Weak', color: 'var(--red)', width: '20%'};
   return (
     <div style={{marginTop: '0.4rem'}}>
       {(isTooShort || isTooLong) && (
         <div style={{ fontSize: '0.7rem', marginBottom: '0.4rem', padding: '0.25rem 0.6rem', borderRadius: '6px',
-          background: isTooLong ? 'rgba(239,68,68,0.12)' : 'rgba(249,115,22,0.12)',
-          border: `1px solid ${isTooLong ? '#ef4444' : '#f97316'}`,
-          color: isTooLong ? '#ef4444' : '#f97316' }}>
+          background: isTooLong ? 'rgba(196,30,58,0.12)' : 'rgba(212,168,67,0.12)',
+          border: `1px solid ${isTooLong ? 'var(--red)' : 'var(--gold)'}`,
+          color: isTooLong ? 'var(--red)' : 'var(--gold)' }}>
           {isTooLong ? '⚠ Too long' : '⚠ Too short'}
         </div>
       )}
       <div style={{ height: '4px', borderRadius: '999px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
         <div style={{ height: '100%', borderRadius: '999px',
           width: isTooLong ? '100%' : current.width,
-          background: isTooLong ? '#ef4444' : current.color,
+          background: isTooLong ? 'var(--red)' : current.color,
           transition: 'width 0.3s ease, background 0.3s ease' }}/>
       </div>
-      <div style={{ fontSize: '0.72rem', marginTop: '0.25rem', color: isTooLong ? '#ef4444' : current.color, transition: 'color 0.3s' }}>
+      <div style={{ fontSize: '0.72rem', marginTop: '0.25rem', color: isTooLong ? 'var(--red)' : current.color, transition: 'color 0.3s' }}>
         {isTooLong ? 'Too Long — recommended max 32 characters' : current.label}
       </div>
     </div>
@@ -59,12 +59,14 @@ const LandingPage = ({onEnterShop}) => {
   };
 
   const [mounted, setMounted] = useState(false);
+  const [activeCategory, setActiveCategory] = useState('all');
   const [mobileMenuOpen, setMobileMenuOpen]   = useState(false);
   const [scrolled, setScrolled]               = useState(false);
   const [modal, setModal]                     = useState(null);
   const [showPassword, setShowPassword]       = useState(false);
   const [showConfirm, setShowConfirm]         = useState(false);
   const [tAndCModalOpen, setTAndCModalOpen]   = useState(false);
+  const [hasReadTerms, setHasReadTerms]       = useState(false);
   const [pricelistModalOpen, setPricelistModalOpen] = useState(false);
   const [loginFromPricing, setLoginFromPricing]     = useState(false);
   const [contactForm, setContactForm]   = useState({name: '', email: '', subject: '', message: ''});
@@ -79,12 +81,18 @@ const LandingPage = ({onEnterShop}) => {
   const [verifyError, setVerifyError]             = useState('');
   const [resendSuccess, setResendSuccess]         = useState(false);
   const [resendCooldown, setResendCooldown]       = useState(0);
+  const [isResending, setIsResending]             = useState(false);
   const [isRegistering, setIsRegistering]         = useState(false);
   const [isLoggingIn, setIsLoggingIn]             = useState(false);
+  const [isVerifying, setIsVerifying]             = useState(false);
   const [rememberMe, setRememberMe]               = useState(false);
   const [hoveredService, setHoveredService]       = useState(null);
   const [tooltipX, setTooltipX] = useState(0);
   const [tooltipY, setTooltipY] = useState(0);
+
+  // Hero carousel
+  const [heroSlide, setHeroSlide] = useState(0);
+  const [heroPaused, setHeroPaused] = useState(false);
 
   // Forgot password
   const [forgotModal, setForgotModal]     = useState(false);
@@ -101,6 +109,7 @@ const LandingPage = ({onEnterShop}) => {
   const [showForgotConfirm, setShowForgotConfirm]     = useState(false);
   const [forgotResendSuccess, setForgotResendSuccess] = useState(false);
   const [forgotResendCooldown, setForgotResendCooldown] = useState(0);
+  const [isForgotResending, setIsForgotResending]     = useState(false);
   const [registerPasswordTouched, setRegisterPasswordTouched] = useState(false);
   const [registerConfirmTouched, setRegisterConfirmTouched] = useState(false);
   const [forgotPasswordTouched, setForgotPasswordTouched] = useState(false);
@@ -112,6 +121,9 @@ const LandingPage = ({onEnterShop}) => {
     password: '', confirmPassword: '', agreeToTerms: false
   });
   const [loginForm, setLoginForm] = useState({email: '', password: ''});
+
+  // Refs for T&C scroll detection
+  const termsScrollRef = useRef(null);
 
   // ─── useEffects ──────────────────────────────────────────────────────────────
 
@@ -150,7 +162,7 @@ const LandingPage = ({onEnterShop}) => {
   useEffect(() => {
     const container = document.getElementById('particles');
     if (!container) return;
-    const colors = ['#d4a843', '#e8c76a', '#c41e3a', 'rgba(245,245,245,0.6)'];
+    const colors = ['var(--gold)', 'var(--gold-light)', 'var(--red)', 'var(--gray-light)'];
     for (let i = 0; i < 18; i++) {
       const p = document.createElement('div');
       p.className = 'particle';
@@ -212,6 +224,15 @@ const LandingPage = ({onEnterShop}) => {
     }
   }, []);
 
+  // Hero carousel auto-advance
+  useEffect(() => {
+    if (heroPaused) return;
+    const t = setInterval(() => {
+      setHeroSlide(s => (s + 1) % 3);
+    }, 4000);
+    return () => clearInterval(t);
+  }, [heroPaused]);
+
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
   const openModal = (type) => { setModal(type); setMobileMenuOpen(false); };
@@ -245,6 +266,9 @@ const LandingPage = ({onEnterShop}) => {
     setShowConfirm(false);
     setRegisterPasswordTouched(false);
     setRegisterConfirmTouched(false);
+    setIsVerifying(false);
+    setVerifyError('');
+    setHasReadTerms(false);
     setRegisterForm({
       firstName: '', middleInitial: '', lastName: '',
       address: '', phoneNumber: '', email: '',
@@ -257,6 +281,13 @@ const LandingPage = ({onEnterShop}) => {
     const next = !mobileMenuOpen;
     setMobileMenuOpen(next);
     document.body.style.overflow = next ? 'hidden' : '';
+  };
+
+  const handleTermsScroll = () => {
+    const el = termsScrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 10;
+    if (atBottom) setHasReadTerms(true);
   };
 
   const handleContactChange = (field, value) => {
@@ -366,7 +397,7 @@ const LandingPage = ({onEnterShop}) => {
 
   const validateForm = () => {
     const newErrors = {};
-    ['firstName','middleInitial','lastName','address','phoneNumber','email','password','confirmPassword','agreeToTerms']
+    ['firstName','middleInitial','lastName','address','phoneNumber','email','password','confirmPassword']
       .forEach(field => {
         const err = validateField(field, registerForm[field]);
         if (err) newErrors[field] = err;
@@ -409,12 +440,14 @@ const LandingPage = ({onEnterShop}) => {
         }
         return;
       }
-      localStorage.setItem('auth_token', data.token);
-      localStorage.setItem('auth_user', JSON.stringify(data.user));
+      const storage = rememberMe ? localStorage : sessionStorage;
+      storage.setItem('auth_token', data.data.token);
+      storage.setItem('auth_user', JSON.stringify(data.data.user));
       setRegisteredEmail(registerForm.email);
       setModal(null);
       setRegisterForm({firstName:'',middleInitial:'',lastName:'',address:'',phoneNumber:'',email:'',password:'',confirmPassword:'',agreeToTerms:false});
       setErrors({});
+      setVerifyError('');
       setVerificationModal(true);
     } catch (err) {
       setErrors({email: 'Network error. Make sure the backend server is running.'});
@@ -436,7 +469,11 @@ const LandingPage = ({onEnterShop}) => {
       const response = await fetch(`${API_URL}/api/login`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({email: loginForm.email, password: loginForm.password}),
+        body: JSON.stringify({
+          email: loginForm.email,
+          password: loginForm.password,
+          device_token: localStorage.getItem('device_token') || null,
+        }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -444,15 +481,23 @@ const LandingPage = ({onEnterShop}) => {
         return;
       }
       const storage = rememberMe ? localStorage : sessionStorage;
-      storage.setItem('auth_token', data.token);
-      storage.setItem('auth_user', JSON.stringify(data.user));
-      
+      storage.setItem('auth_token', data.data.token);
+      storage.setItem('auth_user', JSON.stringify(data.data.user));
+
+      // Check 2FA requirement first
+      if (data.data.requires_2fa) {
+        sessionStorage.setItem('pending_2fa', 'true');
+        closeModal();
+        router.push('/dashboard/2fa-challenge');
+        return;
+      }
+
       // Check for redirect destination
       const redirectPath = sessionStorage.getItem('redirectAfterLogin');
       sessionStorage.removeItem('redirectAfterLogin');
-      
-      if (data.user.role === 'admin' || data.user.role === 'owner') {
-        window.location.href = '/dashboard/business';
+
+      if (data.data.user.role === 'admin' || data.data.user.role === 'business') {
+        router.push('/dashboard/business');
         return;
       }
       if (loginFromPricing) { setPricelistModalOpen(true); setLoginFromPricing(false); closeModal(); return; }
@@ -469,8 +514,9 @@ const LandingPage = ({onEnterShop}) => {
   const handleVerify = useCallback(async () => {
     if (verificationCode.length !== 6) { setVerifyError('Please enter the 6-digit code'); return; }
     setVerifyError('');
+    setIsVerifying(true);
     try {
-      const response = await fetch(`${API_URL}/api/verify`, {
+      const response = await fetch(`${API_URL}/api/verify-email`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({email: registeredEmail, code: verificationCode}),
@@ -482,13 +528,10 @@ const LandingPage = ({onEnterShop}) => {
       openModal('login');
     } catch (err) {
       setVerifyError('Network error. Make sure backend is running.');
+    } finally {
+      setIsVerifying(false);
     }
   }, [verificationCode, registeredEmail]);
-
-  // Auto-submit when 6th digit typed — depends on stable handleVerify
-  useEffect(() => {
-    if (verificationCode.length === 6) handleVerify();
-  }, [verificationCode, handleVerify]);
 
 // STEP 1 — Send reset link to email
 const handleForgotSubmit = async () => {
@@ -587,7 +630,8 @@ const handleForgotVerifyCode = async () => {
 
 // Resend verification code
 const handleForgotResend = async () => {
-  if (forgotResendCooldown > 0) return;
+  if (forgotResendCooldown > 0 || isForgotResending) return;
+  setIsForgotResending(true);
   setForgotResendSuccess(false);
   setForgotError('');
   try {
@@ -597,13 +641,18 @@ const handleForgotResend = async () => {
       body: JSON.stringify({email: forgotEmail}),
     });
     const data = await response.json();
-    if (!response.ok) { setForgotError(data.message || 'Failed to resend code.'); return; }
+    if (!response.ok) {
+      setForgotError(data.message || 'Failed to resend code.');
+      return;
+    }
     setForgotCode('');
     setForgotResendSuccess(true);
     setForgotResendCooldown(60);
     setTimeout(() => setForgotResendSuccess(false), 5000);
   } catch (err) {
     setForgotError('Network error.');
+  } finally {
+    setIsForgotResending(false);
   }
 };
 
@@ -641,8 +690,10 @@ const handleForgotResetPassword = async () => {
 };
 
   const handleResendCode = async () => {
-    if (resendCooldown > 0) return;
+    if (resendCooldown > 0 || isResending) return;
+    setIsResending(true);
     setResendSuccess(false);
+    setVerifyError('');
     try {
       const response = await fetch(`${API_URL}/api/resend-code`, {
         method: 'POST',
@@ -650,33 +701,41 @@ const handleForgotResetPassword = async () => {
         body: JSON.stringify({email: registeredEmail}),
       });
       const data = await response.json();
-      if (!response.ok) { setVerifyError(data.message || 'Failed to resend code.'); return; }
-      setVerifyError('');
+      if (!response.ok) {
+        setVerifyError(data.message || 'Failed to resend code.');
+        return;
+      }
       setVerificationCode('');
       setResendSuccess(true);
       setResendCooldown(60);
       setTimeout(() => setResendSuccess(false), 5000);
     } catch (err) {
       setVerifyError('Network error. Make sure backend is running.');
+    } finally {
+      setIsResending(false);
     }
   };
 
   // ─── Data ─────────────────────────────────────────────────────────────────────
 
   const services = [
-    { img: '/products/Tshit_printing.jpg', title: 'T-Shirt Printing',     desc: 'Silkscreen & DTF printing available. Starts at ₱300. Final cost depends on quantity, design complexity, material type, and panel print. Perfect for teams, events, and merchandise.' },
-    { img: '/products/DTF.jpg',            title: 'DTF Printing',          desc: 'Direct-to-Film printing. Starts at ₱250 per meter. Vivid, full-color prints on fabric. Final cost depends on quantity. Great for custom apparel and fabric items.' },
-    { img: '/products/mugs.jpg',           title: 'Mugs (11oz)',           desc: 'Three variants: Ceramic White, Inner Color Mug, and Magic Mug. Starting at ₱50/pc for 501–1000 pcs. Sublimation-printed for lasting, vibrant color.' },
-    { img: '/products/ButtonPins.jpg',     title: 'Button Pins & Badges',  desc: 'Available as Badge/Button Pin, Magnet Badge, and Keychain Badge (2.25"). Starting at ₱10/pc for 501–1000 pcs. Ideal for promotions, events, and giveaways.' },
-    { img: '/products/ecobags.jpg',        title: 'Canvas Totebag',        desc: 'Plain and w/ Zipper & Pocket variants. Sizes: Small (10x12"), Medium (12x14"), Large (14x16"). Starting at ₱70/pc for bulk orders. Eco-friendly and customizable.' },
-    { img: '/products/MousePad.jpg',       title: 'Mousepad',              desc: 'Rectangle 22x18cm sublimation-printed mousepad. Starting at ₱70/pc for 501–1000 pcs. Full-color custom design on a smooth, non-slip surface.' },
-    { img: '/products/RefMagnet.jpg',      title: 'Ref Magnet',            desc: 'Custom refrigerator magnets up to 3" max size. Starting at ₱15/pc for 501–1000 pcs. Popular souvenir and giveaway item for events and occasions.' },
-    { img: '/products/Souvenirs.jpg',      title: 'Souvenirs & Gift Items', desc: 'Custom souvenir items for weddings, birthdays, debuts, and corporate events. Wide variety of personalized items available.' },
-    { img: '/products/Stickers.jpg',       title: 'Stickers & Labels',     desc: 'Kisscut & Diecut. Variants: Vinyl Waterproof, Laminated, Specialty Label, Photopaper, Regular, and Kraft. Priced per A4 sheet. Starting at ₱25.' },
-    { img: '/products/Bookmarks.jpg',      title: 'Magnetic Bookmark',     desc: 'Maximum size 2.5". Starting at ₱15/pc for 501–1000 pcs. Custom-printed magnetic bookmarks — perfect gifts and giveaways for readers and events.' },
-    { img: '/products/Ballpens.jpg',       title: 'Ballpens',              desc: 'Custom printed ballpens — affordable and practical promotional item. Ideal for corporate giveaways, school events, and bulk orders.' },
-    { img: '/products/Caps.jpg',           title: 'Caps',                  desc: 'Custom printed or embroidered caps. Perfect for teams, sports events, corporate uniforms, and merchandise. Contact us for bulk pricing.' },
+    { img: '/products/Tshit_printing.jpg', title: 'T-Shirt Printing',     category: 'tshirts', desc: 'Silkscreen & DTF printing available. Starts at ₱300. Final cost depends on quantity, design complexity, material type, and panel print. Perfect for teams, events, and merchandise.' },
+    { img: '/products/DTF.jpg',            title: 'DTF Printing',          category: 'tshirts', desc: 'Direct-to-Film printing. Starts at ₱250 per meter. Vivid, full-color prints on fabric. Final cost depends on quantity. Great for custom apparel and fabric items.' },
+    { img: '/products/mugs.jpg',           title: 'Mugs (11oz)',           category: 'mugs', desc: 'Three variants: Ceramic White, Inner Color Mug, and Magic Mug. Starting at ₱50/pc for 501–1000 pcs. Sublimation-printed for lasting, vibrant color.' },
+    { img: '/products/ButtonPins.jpg',     title: 'Button Pins & Badges',  category: 'bags', desc: 'Available as Badge/Button Pin, Magnet Badge, and Keychain Badge (2.25"). Starting at ₱10/pc for 501–1000 pcs. Ideal for promotions, events, and giveaways.' },
+    { img: '/products/ecobags.jpg',        title: 'Canvas Totebag',        category: 'bags', desc: 'Plain and w/ Zipper & Pocket variants. Sizes: Small (10x12"), Medium (12x14"), Large (14x16"). Starting at ₱70/pc for bulk orders. Eco-friendly and customizable.' },
+    { img: '/products/MousePad.jpg',       title: 'Mousepad',              category: 'stickers', desc: 'Rectangle 22x18cm sublimation-printed mousepad. Starting at ₱70/pc for 501–1000 pcs. Full-color custom design on a smooth, non-slip surface.' },
+    { img: '/products/RefMagnet.jpg',      title: 'Ref Magnet',            category: 'stickers', desc: 'Custom refrigerator magnets up to 3" max size. Starting at ₱15/pc for 501–1000 pcs. Popular souvenir and giveaway item for events and occasions.' },
+    { img: '/products/Souvenirs.jpg',      title: 'Souvenirs & Gift Items', category: 'books', desc: 'Custom souvenir items for weddings, birthdays, debuts, and corporate events. Wide variety of personalized items available.' },
+    { img: '/products/Stickers.jpg',       title: 'Stickers & Labels',     category: 'stickers', desc: 'Kisscut & Diecut. Variants: Vinyl Waterproof, Laminated, Specialty Label, Photopaper, Regular, and Kraft. Priced per A4 sheet. Starting at ₱25.' },
+    { img: '/products/Bookmarks.jpg',      title: 'Magnetic Bookmark',     category: 'books', desc: 'Maximum size 2.5". Starting at ₱15/pc for 501–1000 pcs. Custom-printed magnetic bookmarks — perfect gifts and giveaways for readers and events.' },
+    { img: '/products/Ballpens.jpg',       title: 'Ballpens',              category: 'books', desc: 'Custom printed ballpens — affordable and practical promotional item. Ideal for corporate giveaways, school events, and bulk orders.' },
+    { img: '/products/Caps.jpg',           title: 'Caps',                  category: 'tshirts', desc: 'Custom printed or embroidered caps. Perfect for teams, sports events, corporate uniforms, and merchandise. Contact us for bulk pricing.' },
   ];
+
+  const filteredServices = activeCategory === 'all'
+    ? services
+    : services.filter(s => s.category === activeCategory);
 
   const publicPricing = [
     { category: 'T-Shirt Printing',      startingAt: '₱300', note: 'Final cost depends on quantity, design, material & panel print.' },
@@ -742,7 +801,7 @@ const handleForgotResetPassword = async () => {
         color: step === 1 ? 'var(--gold)' : 'var(--gray)', fontWeight: '600' }}>
         <div style={{ width: '20px', height: '20px', borderRadius: '50%', fontWeight: '700',
           background: step === 1 ? 'var(--gold)' : 'rgba(212,168,67,0.2)',
-          color: step === 1 ? '#000' : 'var(--gold)',
+          color: step === 1 ? 'var(--black)' : 'var(--gold)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
           {step > 1 ? '✓' : '1'}
         </div>
@@ -754,12 +813,47 @@ const handleForgotResetPassword = async () => {
         color: step === 2 ? 'var(--gold)' : 'var(--gray)', fontWeight: '600' }}>
         <div style={{ width: '20px', height: '20px', borderRadius: '50%', fontWeight: '700',
           background: step === 2 ? 'var(--gold)' : 'var(--border)',
-          color: step === 2 ? '#000' : 'var(--gray)',
+          color: step === 2 ? 'var(--black)' : 'var(--gray)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>2</div>
         Review T&amp;C
       </div>
     </div>
   );
+
+  // Hero carousel slides
+  const heroSlides = [
+    {
+      tag: 'Premium Custom Printing',
+      titleParts: [
+        {text: 'Print What ', plain: true},
+        {text: 'Represents', className: 'red-text'},
+        {text: ' You', className: 'gold-text'},
+      ],
+      subtitle: 'High-quality personalized printing for t-shirts, mugs, souvenirs, and more. Upload your design — we\'ll make it real.',
+      cta: {label: 'Browse Products', action: 'shop'},
+      cta2: {label: 'How It Works', href: '#how-it-works'},
+    },
+    {
+      tag: 'Fast Turnaround',
+      titleParts: [
+        {text: 'Ready in ', plain: true},
+        {text: '24 Hours', className: 'gold-text'},
+      ],
+      subtitle: 'Most orders are printed and ready within a day. Rush orders available for urgent needs.',
+      cta: {label: 'View Services', href: '#services'},
+      cta2: {label: 'Get a Quote', action: 'login'},
+    },
+    {
+      tag: 'Bulk Orders Welcome',
+      titleParts: [
+        {text: 'Big Orders, ', plain: true},
+        {text: 'Better Prices', className: 'gold-text'},
+      ],
+      subtitle: 'The more you order, the more you save. Check our full pricelist for bulk pricing breakdowns.',
+      cta: {label: 'View Pricing', href: '#pricing'},
+      cta2: {label: 'Register Free', action: 'register'},
+    },
+  ];
 
   // ─── JSX ──────────────────────────────────────────────────────────────────────
   return (
@@ -801,30 +895,91 @@ const handleForgotResetPassword = async () => {
 
       {/* HERO */}
       <section className="hero" id="home">
-        <div className="hero-content">
-          <div className="hero-badge">Premium Custom Printing</div>
-          <h1 className="hero-title">
-            Print What<br/>
-            <span className="red-text">Represents</span>
-            <span className="gold-text"> You</span>
-          </h1>
-          <p className="hero-subtitle">
-            High-quality personalized printing for t-shirts, mugs, souvenirs, and more.
-            Upload your design — we'll make it real. Fast, affordable, and built to impress.
-          </p>
-          <div className="hero-actions">
-            <button className="btn-primary" suppressHydrationWarning onClick={handleEnterShop}>
-              Browse Products
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-            <a href="#how-it-works" className="btn-secondary">How It Works</a>
+        <div
+          className="hero-content"
+          onMouseEnter={() => setHeroPaused(true)}
+          onMouseLeave={() => setHeroPaused(false)}
+        >
+          <div className="hero-carousel">
+            {heroSlides.map((slide, i) => (
+              <div
+                key={i}
+                className={`hero-slide${heroSlide === i ? ' active' : ''}`}
+              >
+                <div className="hero-badge">{slide.tag}</div>
+                <h1 className="hero-title">
+                  {slide.titleParts.map((part, j) =>
+                    part.plain
+                      ? <span key={j}>{part.text}</span>
+                      : <span key={j} className={part.className}>{part.text}</span>
+                  )}
+                </h1>
+                <p className="hero-subtitle">{slide.subtitle}</p>
+                <div className="hero-actions">
+                  {slide.cta.href ? (
+                    <a href={slide.cta.href} className="btn-primary">
+                      {slide.cta.label}
+                    </a>
+                  ) : (
+                    <button
+                      className="btn-primary"
+                      suppressHydrationWarning
+                      onClick={() => {
+                        if (slide.cta.action === 'shop') handleEnterShop();
+                        else openModal(slide.cta.action);
+                      }}
+                    >
+                      {slide.cta.label}
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor"
+                          strokeWidth="1.8" strokeLinecap="round"
+                          strokeLinejoin="round"/>
+                      </svg>
+                    </button>
+                  )}
+                  {slide.cta2.href ? (
+                    <a href={slide.cta2.href} className="btn-secondary">
+                      {slide.cta2.label}
+                    </a>
+                  ) : (
+                    <button
+                      className="btn-secondary"
+                      suppressHydrationWarning
+                      onClick={() => openModal(slide.cta2.action)}
+                    >
+                      {slide.cta2.label}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
+
+          {/* Dot indicators */}
+          <div className="hero-dots">
+            {heroSlides.map((_, i) => (
+              <button
+                key={i}
+                className={`hero-dot${heroSlide === i ? ' active' : ''}`}
+                onClick={() => setHeroSlide(i)}
+                aria-label={`Slide ${i + 1}`}
+              />
+            ))}
+          </div>
+
           <div className="hero-stats">
-            <div><div className="hero-stat-num gold-text">500+</div><div className="hero-stat-label">Happy Clients</div></div>
-            <div><div className="hero-stat-num gold-text">24hr</div><div className="hero-stat-label">Turnaround</div></div>
-            <div><div className="hero-stat-num gold-text">100%</div><div className="hero-stat-label">Satisfaction</div></div>
+            <div>
+              <div className="hero-stat-num gold-text">500+</div>
+              <div className="hero-stat-label">Happy Clients</div>
+            </div>
+            <div>
+              <div className="hero-stat-num gold-text">24hr</div>
+              <div className="hero-stat-label">Turnaround</div>
+            </div>
+            <div>
+              <div className="hero-stat-num gold-text">100%</div>
+              <div className="hero-stat-label">Satisfaction</div>
+            </div>
           </div>
         </div>
         <div className="hero-visual">
@@ -846,6 +1001,78 @@ const handleForgotResetPassword = async () => {
         </div>
       </section>
 
+      {/* CATEGORY PILLS */}
+      <section className="lp-pills-section">
+        <div className="lp-pills-row">
+          {[
+            { id: 'all', label: 'All', icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="7" height="7"/>
+                <rect x="14" y="3" width="7" height="7"/>
+                <rect x="3" y="14" width="7" height="7"/>
+                <rect x="14" y="14" width="7" height="7"/>
+              </svg>
+            )},
+            { id: 'tshirts', label: 'T-Shirts', icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.57a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.57a2 2 0 0 0-1.34-2.23z"/>
+              </svg>
+            )},
+            { id: 'mugs', label: 'Mugs', icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 8h1a4 4 0 0 1 0 8h-1"/>
+                <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/>
+                <line x1="6" y1="2" x2="6" y2="4"/>
+                <line x1="10" y1="2" x2="10" y2="4"/>
+                <line x1="14" y1="2" x2="14" y2="4"/>
+              </svg>
+            )},
+            { id: 'stickers', label: 'Stickers', icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                <line x1="9" y1="9" x2="9.01" y2="9"/>
+                <line x1="15" y1="9" x2="15.01" y2="9"/>
+              </svg>
+            )},
+            { id: 'bags', label: 'Bags', icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <path d="M16 10a4 4 0 0 1-8 0"/>
+              </svg>
+            )},
+            { id: 'books', label: 'Books', icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              </svg>
+            )},
+          ].map(cat => (
+            <button
+              key={cat.id}
+              className={`lp-pill${activeCategory === cat.id ? ' lp-pill--active' : ''}`}
+              onClick={() => setActiveCategory(cat.id)}
+            >
+              {cat.icon}
+              {cat.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
       {/* SERVICE CAROUSEL */}
       <section id="services">
         <div className="container">
@@ -858,55 +1085,156 @@ const handleForgotResetPassword = async () => {
         <div style={{position:'relative'}}>
           {hoveredService !== null && (
             <div style={{ position:'fixed', top:tooltipY-8, left:tooltipX, transform:'translate(-50%,-100%)', width:'240px',
-              background:'linear-gradient(135deg,#1a1a1a 0%,#111 100%)', border:'1px solid var(--gold,#d4a843)',
+              background:'linear-gradient(135deg,var(--dark) 0%,var(--dark2) 100%)', border:'1px solid var(--gold)',
               borderRadius:'14px', padding:'1rem 1.25rem', zIndex:9999,
               boxShadow:'0 12px 40px rgba(0,0,0,0.85),0 0 0 1px rgba(212,168,67,0.15)',
               fontSize:'0.82rem', color:'rgba(255,255,255,0.75)', lineHeight:'1.65', pointerEvents:'none' }}>
-              <div style={{position:'absolute',top:0,left:'10%',right:'10%',height:'2px',background:'linear-gradient(90deg,transparent,var(--gold,#d4a843),transparent)',borderRadius:'999px'}}/>
+              <div style={{position:'absolute',top:0,left:'10%',right:'10%',height:'2px',background:'linear-gradient(90deg,transparent,var(--gold),transparent)',borderRadius:'999px'}}/>
               <div style={{position:'absolute',bottom:'-7px',left:'50%',transform:'translateX(-50%)',width:'12px',height:'7px',overflow:'hidden'}}>
-                <div style={{width:'10px',height:'10px',background:'#1a1a1a',border:'1px solid var(--gold,#d4a843)',transform:'rotate(45deg)',marginTop:'-5px',marginLeft:'1px'}}/>
+                <div style={{width:'10px',height:'10px',background:'var(--dark)',border:'1px solid var(--gold)',transform:'rotate(45deg)',marginTop:'-5px',marginLeft:'1px'}}/>
               </div>
-              <strong style={{color:'var(--gold,#d4a843)',display:'block',marginBottom:'0.5rem',fontSize:'0.9rem',fontWeight:'700'}}>
+              <strong style={{color:'var(--gold)',display:'block',marginBottom:'0.5rem',fontSize:'0.9rem',fontWeight:'700'}}>
                 {services[hoveredService % services.length]?.title}
               </strong>
               {services[hoveredService % services.length]?.desc}
             </div>
           )}
-          <div className="services-carousel-wrapper">
-            <div className="services-carousel-track">
-              {[...services, ...services].map((s, i) => (
-                <div className="service-slide" key={i}
-                  onMouseEnter={(e) => { setHoveredService(i); const r = e.currentTarget.getBoundingClientRect(); setTooltipX(r.left+r.width/2); setTooltipY(r.top-10); }}
-                  onMouseLeave={() => setHoveredService(null)}>
-                  <div className="service-slide-img-wrap"><img src={s.img} alt={s.title} className="service-slide-img"/></div>
-                  <h3>{s.title}</h3>
+          <div
+            className="services-carousel-wrapper"
+            style={activeCategory !== 'all' ? {overflowX:'hidden'} : {}}
+          >
+            <div
+              className="services-carousel-track"
+              style={activeCategory !== 'all' ? {
+                animation: 'none',
+                transform: 'none',
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                gap: '24px',
+                padding: '1.5rem 2rem',
+                width: '100%',
+              } : {}}
+            >
+              {filteredServices.length === 0 ? (
+                <div style={{
+                  display:'flex',
+                  alignItems:'center',
+                  justifyContent:'center',
+                  padding:'4rem 2rem',
+                  color:'var(--gray)',
+                  fontSize:'0.95rem',
+                  width:'100%'
+                }}>
+                  No products found in this category.
                 </div>
-              ))}
+              ) : activeCategory === 'all' ? (
+                [...filteredServices, ...filteredServices].map((s, i) => (
+                  <div className="service-slide" key={i}
+                    onMouseEnter={(e) => { setHoveredService(i); const r = e.currentTarget.getBoundingClientRect(); setTooltipX(r.left+r.width/2); setTooltipY(r.top-10); }}
+                    onMouseLeave={() => setHoveredService(null)}>
+                    <div className="service-slide-img-wrap"><img src={s.img} alt={s.title} className="service-slide-img"/></div>
+                    <h3>{s.title}</h3>
+                  </div>
+                ))
+              ) : (
+                filteredServices.map((s, i) => (
+                  <div className="service-slide" key={i}
+                    onMouseEnter={(e) => { setHoveredService(i); const r = e.currentTarget.getBoundingClientRect(); setTooltipX(r.left+r.width/2); setTooltipY(r.top-10); }}
+                    onMouseLeave={() => setHoveredService(null)}>
+                    <div className="service-slide-img-wrap"><img src={s.img} alt={s.title} className="service-slide-img"/></div>
+                    <h3>{s.title}</h3>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
       </section>
 
       {/* HOW IT WORKS */}
-      <section id="how-it-works" className="how-bg">
-        <div className="container">
+      <section id="how-it-works" className="fade-up">
+        <div className="hiw-inner">
           <div className="section-header center">
             <span className="section-tag">Simple Process</span>
             <h2 className="section-title">How It <span className="red-text">Works</span></h2>
-            <p className="section-subtitle">Getting your custom prints is fast and hassle-free. Just follow these simple steps and we'll handle the rest.</p>
+            <p className="section-subtitle">From idea to your hands in four simple steps.</p>
           </div>
-          <div className="steps-grid">
-            {[
-              {n:'1', title:'Choose a Product',   desc:'Browse our catalog and pick what you want — t-shirts, mugs, stickers, or more.'},
-              {n:'2', title:'Upload Your Design',  desc:"Upload your artwork or describe what you want. No design? We can help you create one."},
-              {n:'3', title:'Review & Approve',    desc:"We'll send you a proof. Confirm the design placement and details before we print."},
-              {n:'4', title:'Get Your Order',      desc:'Once approved, we print and deliver — fast, fresh, exactly as you imagined.'},
-            ].map((s, i) => (
-              <div className="step-card fade-up" key={i}>
-                <div className="step-num">{s.n}</div>
-                <h3>{s.title}</h3><p>{s.desc}</p>
+          <div className="hiw-steps">
+
+            {/* Step 1 — Browse */}
+            <div className="hiw-step">
+              <div className="hiw-step-badge">
+                <span className="hiw-step-number">1</span>
+                <svg className="hiw-step-icon" width="26" height="26" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" strokeWidth="1.8"
+                  strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
               </div>
-            ))}
+              <p className="hiw-step-title">Browse Products</p>
+              <p className="hiw-step-desc">
+                Explore our full catalogue of personalizable
+                items — shirts, mugs, bags, and more.
+              </p>
+            </div>
+
+            {/* Step 2 — Customize */}
+            <div className="hiw-step">
+              <div className="hiw-step-badge">
+                <span className="hiw-step-number">2</span>
+                <svg className="hiw-step-icon" width="26" height="26" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" strokeWidth="1.8"
+                  strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9"/>
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+              </div>
+              <p className="hiw-step-title">Personalize It</p>
+              <p className="hiw-step-desc">
+                Add your name, message, or design.
+                We handle every detail to make it yours.
+              </p>
+            </div>
+
+            {/* Step 3 — Order */}
+            <div className="hiw-step">
+              <div className="hiw-step-badge">
+                <span className="hiw-step-number">3</span>
+                <svg className="hiw-step-icon" width="26" height="26" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" strokeWidth="1.8"
+                  strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="9" cy="21" r="1"/>
+                  <circle cx="20" cy="21" r="1"/>
+                  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                </svg>
+              </div>
+              <p className="hiw-step-title">Place Your Order</p>
+              <p className="hiw-step-desc">
+                Review your item and check out securely.
+                We confirm every order before production.
+              </p>
+            </div>
+
+            {/* Step 4 — Receive */}
+            <div className="hiw-step">
+              <div className="hiw-step-badge">
+                <span className="hiw-step-number">4</span>
+                <svg className="hiw-step-icon" width="26" height="26" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" strokeWidth="1.8"
+                  strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/>
+                  <circle cx="12" cy="10" r="3"/>
+                </svg>
+              </div>
+              <p className="hiw-step-title">Receive &amp; Enjoy</p>
+              <p className="hiw-step-desc">
+                Your personalized item is crafted with care
+                and delivered straight to your door.
+              </p>
+            </div>
+
           </div>
         </div>
       </section>
@@ -1012,7 +1340,7 @@ const handleForgotResetPassword = async () => {
           <div className="contact-layout">
             <div className="contact-info fade-up">
               <div className="contact-info-card">
-                <div className="contact-info-icon" style={{color:'var(--gold,#d4a843)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
                   </svg>
@@ -1020,7 +1348,7 @@ const handleForgotResetPassword = async () => {
                 <div><h4>Visit Us</h4><p>5 Ford St., Fil.2, Batasan Hills, Quezon City</p></div>
               </div>
               <div className="contact-info-card">
-                <div className="contact-info-icon" style={{color:'var(--gold,#d4a843)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                   </svg>
@@ -1028,7 +1356,7 @@ const handleForgotResetPassword = async () => {
                 <div><h4>Message Us</h4><p>Facebook, Instagram, TikTok</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>@personalizemeprints</p></div>
               </div>
               <div className="contact-info-card">
-                <div className="contact-info-icon" style={{color:'var(--gold,#d4a843)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                   </svg>
@@ -1036,7 +1364,7 @@ const handleForgotResetPassword = async () => {
                 <div><h4>Business Hours</h4><p>Mon - Sat: 9:00 AM - 6:00 PM</p><p style={{fontSize:'.78rem',color:'var(--gray)',marginTop:'.2rem'}}>Sunday: By Appointment</p></div>
               </div>
               <div className="contact-info-card">
-                <div className="contact-info-icon" style={{color:'var(--gold,#d4a843)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
                     <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
@@ -1062,7 +1390,7 @@ const handleForgotResetPassword = async () => {
             <div className="contact-form-wrap fade-up">
               {contactSent ? (
                 <div className="contact-success">
-                  <div className="contact-success-icon" style={{color:'#4ade80',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <div className="contact-success-icon" style={{color:'var(--green)',display:'flex',alignItems:'center',justifyContent:'center'}}>
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
                       <polyline points="22 4 12 14.01 9 11.01"/>
@@ -1178,7 +1506,7 @@ const handleForgotResetPassword = async () => {
                       <label>Email Address</label>
                       <input type="email" placeholder="you@example.com"
                         value={loginForm.email}
-                        onChange={e => { setLoginForm(f => ({...f, email: e.target.value})); setSessionMessage(''); }}
+                        onChange={e => { setLoginForm(f => ({...f, email: e.target.value})); setLoginErrors({}); setSessionMessage(''); }}
                         className={loginErrors.email ? 'error' : ''}/>
                       {loginErrors.email && <span className="error-message">{loginErrors.email}</span>}
                     </div>
@@ -1187,7 +1515,7 @@ const handleForgotResetPassword = async () => {
                       <div className="auth-input-wrap">
                         <input type={showPassword ? 'text' : 'password'} placeholder="Enter your password"
                           value={loginForm.password}
-                          onChange={e => { setLoginForm(f => ({...f, password: e.target.value})); setSessionMessage(''); }}
+                          onChange={e => { setLoginForm(f => ({...f, password: e.target.value})); setLoginErrors({}); setSessionMessage(''); }}
                           className={loginErrors.password ? 'error' : ''}/>
                         <button type="button" className="auth-eye" onClick={() => setShowPassword(v => !v)}>
                           {showPassword ? <EyeOpen/> : <EyeClosed/>}
@@ -1229,7 +1557,7 @@ const handleForgotResetPassword = async () => {
                 </div>
                 <StepIndicator step={1}/>
                 <div className="auth-modal-body">
-                  <form onSubmit={handleRegisterSubmit} autoComplete="off">
+                  <form onSubmit={(e) => { e.preventDefault(); }} autoComplete="off">
                     <div className="auth-fields-grid">
                       <div className="auth-field">
                         <label>First Name</label>
@@ -1268,7 +1596,7 @@ const handleForgotResetPassword = async () => {
                     <div className="auth-field">
                       <label>Phone Number</label>
                       <div style={{display:'flex',borderRadius:'10px',overflow:'hidden',border:'1px solid var(--border)'}}>
-                        <div style={{background:'var(--dark3,#1a1a1a)',borderRight:'1px solid var(--border)',padding:'0 1rem',display:'flex',alignItems:'center',color:'var(--white)',fontWeight:'700',fontSize:'0.95rem',flexShrink:0,userSelect:'none'}}>+63</div>
+                        <div style={{background:'var(--dark3)',borderRight:'1px solid var(--border)',padding:'0 1rem',display:'flex',alignItems:'center',color:'var(--white)',fontWeight:'700',fontSize:'0.95rem',flexShrink:0,userSelect:'none'}}>+63</div>
                         <input type="tel" placeholder="912 345 6789"
                           value={registerForm.phoneNumber.replace(/^\+63/, '')}
                           onChange={e => { const d = e.target.value.replace(/\D/g,'').slice(0,10); handleRegisterChange('phoneNumber', '+63'+d); }}
@@ -1309,7 +1637,7 @@ const handleForgotResetPassword = async () => {
                                 {label:'One number',                pass: /\d/.test(registerForm.password)},
                                 {label:'One special character',     pass: /[!@#$%^&*(),.?":{}|<>]/.test(registerForm.password)},
                               ].map((c, i) => (
-                                <div key={i} style={{display:'flex',alignItems:'center',gap:'0.4rem',fontSize:'0.78rem',color:c.pass?'#4ade80':'var(--gray)',transition:'color 0.2s'}}>
+                                <div key={i} style={{display:'flex',alignItems:'center',gap:'0.4rem',fontSize:'0.78rem',color:c.pass?'var(--green)':'var(--gray)',transition:'color 0.2s'}}>
                                   <span style={{fontSize:'0.72rem'}}>{c.pass ? '✓' : '·'}</span>{c.label}
                                 </div>
                               ))}
@@ -1336,7 +1664,7 @@ const handleForgotResetPassword = async () => {
                           </button>
                         </div>
                         {(registerConfirmTouched || registerForm.confirmPassword.length > 0) && (
-                          <div style={{marginTop:'0.5rem',fontSize:'0.8rem',color: registerForm.confirmPassword.length === 0 ? 'var(--gray)' : (registerForm.confirmPassword === registerForm.password ? '#4ade80' : '#ef4444')}}>
+                          <div style={{marginTop:'0.5rem',fontSize:'0.8rem',color: registerForm.confirmPassword.length === 0 ? 'var(--gray)' : (registerForm.confirmPassword === registerForm.password ? 'var(--green)' : 'var(--red)')}}>
                             {registerForm.confirmPassword.length === 0
                               ? 'Re-enter your password to confirm.'
                               : (registerForm.confirmPassword === registerForm.password ? '✓ Passwords match' : 'Passwords do not match')}
@@ -1347,8 +1675,17 @@ const handleForgotResetPassword = async () => {
                     </div>
 
                     <button type="button" className="btn-auth-submit"
-                      disabled={isRegistering}
-                      onClick={() => { if (!validateForm()) return; setTAndCModalOpen(true); }}>
+                      disabled={isRegistering || !!errors.email || !!errors.phoneNumber}
+                      onClick={() => {
+                        if (!validateForm()) return;
+                        setHasReadTerms(false);
+                        setTAndCModalOpen(true);
+                        setTimeout(() => {
+                          if (termsScrollRef.current) {
+                            termsScrollRef.current.scrollTop = 0;
+                          }
+                        }, 50);
+                      }}>
                       Proceed to Terms &amp; Conditions
                     </button>
                   </form>
@@ -1363,14 +1700,19 @@ const handleForgotResetPassword = async () => {
 
       {/* ── T&C MODAL ── */}
       {tAndCModalOpen && (
-        <div className="tnc-overlay" onClick={() => setTAndCModalOpen(false)}>
+        <div className="tnc-overlay" onClick={() => { setTAndCModalOpen(false); setErrors({}); setHasReadTerms(false); setRegisterForm(f => ({...f, agreeToTerms: false})); }}>
           <div className="tnc-modal" onClick={e => e.stopPropagation()}>
             <div className="tnc-header">
               <h3>Terms and Conditions</h3>
-              <button className="tnc-close" onClick={() => setTAndCModalOpen(false)}>✕</button>
+              <button className="tnc-close" onClick={() => { setTAndCModalOpen(false); setErrors({}); setHasReadTerms(false); setRegisterForm(f => ({...f, agreeToTerms: false})); }}>✕</button>
             </div>
             <StepIndicator step={2}/>
-            <div className="tnc-content">
+            {!hasReadTerms && (
+              <p style={{fontSize:'0.8rem',color:'var(--gray)',marginBottom:'0.5rem',textAlign:'center',fontStyle:'italic'}}>
+                Please scroll to the bottom to accept the terms.
+              </p>
+            )}
+            <div className="tnc-content" ref={termsScrollRef} onScroll={handleTermsScroll}>
               <p><strong>1. Acceptance of Terms</strong></p>
               <p>By creating an account with Personalize Me Prints, you agree to comply with and be bound by these Terms and Conditions. If you do not agree with any part of these terms, please do not use our services.</p>
               <p><strong>2. Account Registration</strong></p>
@@ -1390,20 +1732,24 @@ const handleForgotResetPassword = async () => {
               <p><strong>9. Changes to Terms</strong></p>
               <p>We reserve the right to modify these terms at any time. Changes will be effective immediately upon posting on our website. Your continued use of our services after any changes constitutes acceptance of the new terms.</p>
             </div>
-            <div style={{padding:'1rem 1.5rem',borderTop:'1px solid var(--border)',display:'flex',alignItems:'center',gap:'0.75rem'}}>
-              <input type="checkbox" id="tnc-agree-inside" checked={registerForm.agreeToTerms}
-                onChange={e => handleRegisterChange('agreeToTerms', e.target.checked)}
-                style={{width:'16px',height:'16px',cursor:'pointer',accentColor:'var(--gold)',flexShrink:0}}/>
-              <label htmlFor="tnc-agree-inside" style={{fontSize:'0.88rem',color:'var(--white)',cursor:'pointer',userSelect:'none'}}>
-                I have read and agree to the Terms and Conditions
-              </label>
-            </div>
+            {hasReadTerms && (
+              <div style={{padding:'1rem 1.5rem',borderTop:'1px solid var(--border)',display:'flex',alignItems:'center',gap:'0.75rem'}}>
+                <input type="checkbox" id="tnc-agree-inside" checked={registerForm.agreeToTerms}
+                  onChange={e => handleRegisterChange('agreeToTerms', e.target.checked)}
+                  style={{width:'16px',height:'16px',cursor:'pointer',accentColor:'var(--gold)',flexShrink:0}}/>
+                <label htmlFor="tnc-agree-inside" style={{fontSize:'0.88rem',color:'var(--white)',cursor:'pointer',userSelect:'none'}}>
+                  I have read and agree to the Terms and Conditions
+                </label>
+              </div>
+            )}
             <div className="tnc-actions">
-              <button className="btn-primary" disabled={!registerForm.agreeToTerms || isRegistering}
-                onClick={async () => { setTAndCModalOpen(false); await handleRegisterSubmit({preventDefault: () => {}}); }}>
-                {isRegistering ? 'Creating Account...' : 'Create Account'}
-              </button>
-              <button className="btn-secondary" onClick={() => setTAndCModalOpen(false)}>Cancel</button>
+              {hasReadTerms && (
+                <button className="btn-primary" disabled={!registerForm.agreeToTerms || isRegistering}
+                  onClick={async () => { setTAndCModalOpen(false); setErrors({}); await handleRegisterSubmit({preventDefault: () => {}}); }}>
+                  {isRegistering ? 'Creating Account...' : 'Create Account'}
+                </button>
+              )}
+              <button className="btn-secondary" onClick={() => { setTAndCModalOpen(false); setErrors({}); setHasReadTerms(false); setRegisterForm(f => ({...f, agreeToTerms: false})); }}>Cancel</button>
             </div>
           </div>
         </div>
@@ -1446,7 +1792,7 @@ const handleForgotResetPassword = async () => {
                     {forgotError && <span className="error-message">{forgotError}</span>}
                   </div>
                   {forgotSent && (
-                    <div style={{padding:'0.75rem',borderRadius:'8px',background:'rgba(74,222,128,0.12)',border:'1px solid rgba(74,222,128,0.3)',color:'#4ade80',fontSize:'0.85rem'}}>
+                    <div style={{padding:'0.75rem',borderRadius:'8px',background:'rgba(74,222,128,0.12)',border:'1px solid rgba(74,222,128,0.3)',color:'var(--green)',fontSize:'0.85rem'}}>
                       ✓ A reset link has been sent to your email.
                     </div>
                   )}
@@ -1465,7 +1811,7 @@ const handleForgotResetPassword = async () => {
                 <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
                   <div style={{textAlign:'center',padding:'0.5rem 0'}}>
                     <div style={{display:'flex',alignItems:'center',justifyContent:'center',width:'64px',height:'64px',borderRadius:'50%',background:'rgba(212,168,67,0.1)',border:'1px solid rgba(212,168,67,0.25)',margin:'0 auto 1rem'}}>
-                      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--gold,#d4a843)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                         <circle cx="12" cy="5" r="2"/>
                         <path d="M12 7v4"/>
@@ -1477,7 +1823,7 @@ const handleForgotResetPassword = async () => {
                     </p>
                   </div>
                   {forgotError && (
-                    <div style={{padding:'0.75rem',borderRadius:'8px',background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.3)',color:'#ef4444',fontSize:'0.85rem'}}>
+                    <div style={{padding:'0.75rem',borderRadius:'8px',background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.3)',color:'var(--red)',fontSize:'0.85rem'}}>
                       {forgotError}
                     </div>
                   )}
@@ -1511,7 +1857,7 @@ const handleForgotResetPassword = async () => {
                 <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
                   <div style={{textAlign:'center',padding:'0.5rem 0'}}>
                     <div style={{display:'flex',alignItems:'center',justifyContent:'center',width:'64px',height:'64px',borderRadius:'50%',background:'rgba(212,168,67,0.1)',border:'1px solid rgba(212,168,67,0.25)',margin:'0 auto 1rem'}}>
-                      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--gold,#d4a843)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
                         <polyline points="22,6 12,13 2,6"/>
                       </svg>
@@ -1534,7 +1880,7 @@ const handleForgotResetPassword = async () => {
                     />
                     {forgotError && <span className="error-message">{forgotError}</span>}
                     {forgotResendSuccess && (
-                      <span style={{display:'block',fontSize:'0.8rem',color:'#4ade80',marginTop:'0.4rem'}}>✓ A new code has been sent</span>
+                      <span style={{display:'block',fontSize:'0.8rem',color:'var(--green)',marginTop:'0.4rem'}}>✓ A new code has been sent</span>
                     )}
                   </div>
                   <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotVerifyCode}>
@@ -1545,11 +1891,17 @@ const handleForgotResetPassword = async () => {
                     <button
                       type="button"
                       className="auth-link"
-                      disabled={forgotResendCooldown > 0}
-                      style={forgotResendCooldown > 0 ? {opacity:0.5,cursor:'not-allowed'} : {}}
+                      disabled={forgotResendCooldown > 0 || isForgotResending}
+                      style={(forgotResendCooldown > 0 || isForgotResending)
+                        ? {opacity:0.5,cursor:'not-allowed'}
+                        : {}}
                       onClick={handleForgotResend}
                     >
-                      {forgotResendCooldown > 0 ? `Resend in ${forgotResendCooldown}s` : 'Resend Code'}
+                      {isForgotResending
+                        ? 'Sending...'
+                        : forgotResendCooldown > 0
+                          ? `Resend in ${forgotResendCooldown}s`
+                          : 'Resend Code'}
                     </button>
                   </p>
                 </div>
@@ -1587,7 +1939,7 @@ const handleForgotResetPassword = async () => {
                             {label:'One number',                pass: /\d/.test(forgotNewPassword)},
                             {label:'One special character',     pass: /[!@#$%^&*(),.?":{}|<>]/.test(forgotNewPassword)},
                           ].map((c, i) => (
-                            <div key={i} style={{display:'flex',alignItems:'center',gap:'0.4rem',fontSize:'0.78rem',color:c.pass?'#4ade80':'var(--gray)',transition:'color 0.2s'}}>
+                            <div key={i} style={{display:'flex',alignItems:'center',gap:'0.4rem',fontSize:'0.78rem',color:c.pass?'var(--green)':'var(--gray)',transition:'color 0.2s'}}>
                               <span style={{fontSize:'0.72rem'}}>{c.pass ? '✓' : '·'}</span>{c.label}
                             </div>
                           ))}
@@ -1615,7 +1967,7 @@ const handleForgotResetPassword = async () => {
                       </button>
                     </div>
                     {(forgotConfirmTouched || forgotConfirmPassword.length > 0) && (
-                      <div style={{marginTop:'0.5rem',fontSize:'0.8rem',color: forgotConfirmPassword.length === 0 ? 'var(--gray)' : (forgotConfirmPassword === forgotNewPassword ? '#4ade80' : '#ef4444')}}>
+                      <div style={{marginTop:'0.5rem',fontSize:'0.8rem',color: forgotConfirmPassword.length === 0 ? 'var(--gray)' : (forgotConfirmPassword === forgotNewPassword ? 'var(--green)' : 'var(--red)')}}>
                         {forgotConfirmPassword.length === 0
                           ? 'Re-enter your new password to confirm.'
                           : (forgotConfirmPassword === forgotNewPassword ? '✓ Passwords match' : 'Passwords do not match')}
@@ -1687,7 +2039,7 @@ const handleForgotResetPassword = async () => {
         <div className="auth-overlay" onClick={() => setVerificationModal(false)}>
           <div className="verify-modal" onClick={e => e.stopPropagation()}>
             <div className="verify-icon-wrap">
-              <div className="verify-icon" style={{color:'var(--gold,#d4a843)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <div className="verify-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center'}}>
                 <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
                   <polyline points="22,6 12,13 2,6"/>
@@ -1695,8 +2047,8 @@ const handleForgotResetPassword = async () => {
               </div>
               <div className="verify-pulse"/>
             </div>
-            <h2 className="verify-title">Verify Your Email</h2>
-            <p className="verify-subtitle">Enter the 6-digit code</p>
+            <h2 className="verify-title">Account Created!</h2>
+            <p className="verify-subtitle">We sent a 6-digit verification code to {registeredEmail}. Enter it below to activate your account.</p>
             <div className="verify-email-badge">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
@@ -1708,7 +2060,7 @@ const handleForgotResetPassword = async () => {
               <input type="text" className="verify-code-input" placeholder="Enter 6-digit code" maxLength={6}
                 value={verificationCode} onChange={e => setVerificationCode(e.target.value.replace(/\D/g, ''))}/>
               {verifyError   && <span className="error-message" style={{display:'block',marginTop:'0.4rem',textAlign:'center'}}>{verifyError}</span>}
-              {resendSuccess && <span style={{display:'block',fontSize:'0.8rem',color:'#4ade80',marginTop:'0.4rem',textAlign:'center'}}>✓ A new code has been sent to your email</span>}
+              {resendSuccess && <span style={{display:'block',fontSize:'0.8rem',color:'var(--color-text-success)',background:'var(--color-background-success)',border:'1px solid var(--color-border-success)',padding:'0.5rem 0.75rem',borderRadius:'6px',marginTop:'0.4rem',textAlign:'center'}}>A new code has been sent to your email.</span>}
             </div>
             <div className="verify-steps">
               <div className="verify-step"><div className="verify-step-num">1</div><span>Check your inbox (and spam folder)</span></div>
@@ -1716,18 +2068,42 @@ const handleForgotResetPassword = async () => {
               <div className="verify-step"><div className="verify-step-num">3</div><span>Click verify to activate your account</span></div>
             </div>
             <div className="verify-actions">
-              <button className="btn-primary verify-login-btn" onClick={handleVerify}>
-                Verify &amp; Login
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <button
+                className="btn-primary verify-login-btn"
+                onClick={handleVerify}
+                disabled={isVerifying}
+                style={{
+                  pointerEvents: isVerifying ? 'none' : 'auto',
+                  opacity: isVerifying ? 0.6 : 1,
+                  cursor: isVerifying ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isVerifying ? 'Verifying...' : (
+                  <>
+                    Verify &amp; Login
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </>
+                )}
               </button>
               <button className="btn-secondary" onClick={() => setVerificationModal(false)}>Close</button>
             </div>
             <p className="verify-send">
               Didn't receive the code?{' '}
-              <button className="auth-link" disabled={resendCooldown > 0}
-                style={resendCooldown > 0 ? {opacity:0.5, cursor:'not-allowed'} : {}}
-                onClick={handleResendCode}>
-                {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Code'}
+              <button
+                className="auth-link"
+                disabled={resendCooldown > 0 || isResending}
+                style={{
+                  pointerEvents: resendCooldown > 0 || isResending ? 'none' : 'auto',
+                  opacity: resendCooldown > 0 || isResending ? 0.5 : 1,
+                  cursor: resendCooldown > 0 || isResending ? 'not-allowed' : 'pointer',
+                }}
+                onClick={handleResendCode}
+              >
+                {isResending
+                  ? 'Sending...'
+                  : resendCooldown > 0
+                    ? `Resend in ${resendCooldown}s`
+                    : 'Resend Code'}
               </button>
             </p>
           </div>

@@ -1,247 +1,312 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import ErrorBoundary from '../../../components/ErrorBoundary';
-import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { fetchMyOrders, fetchMyOrder } from '@/lib/orderTrackingApi';
+import { useAuth } from '@/contexts/AuthContext';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-
-const STATUS_STYLES = {
-  pending:    { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',   border: 'rgba(245,158,11,0.3)'   },
-  confirmed:  { color: '#3b82f6', bg: 'rgba(59,130,246,0.1)',  border: 'rgba(59,130,246,0.3)'   },
-  processing: { color: '#8b5cf6', bg: 'rgba(139,92,246,0.1)',  border: 'rgba(139,92,246,0.3)'   },
-  completed:  { color: '#4ade80', bg: 'rgba(74,222,128,0.1)',  border: 'rgba(74,222,128,0.3)'   },
-  cancelled:  { color: '#f87171', bg: 'rgba(248,113,113,0.1)', border: 'rgba(248,113,113,0.3)'  },
+const STATUS_MAP = {
+  pending_review: { label: 'Pending Review', color: 'var(--warning, #d4a843)' },
+  confirmed: { label: 'Confirmed', color: 'var(--info, #3b82f6)' },
+  processing: { label: 'Processing', color: 'var(--primary, #8b5cf6)' },
+  ready: { label: 'Ready', color: 'var(--success, #22c55e)' },
+  delivered: { label: 'Delivered', color: 'var(--success, #22c55e)' },
+  cancelled: { label: 'Cancelled', color: 'var(--danger, #ef4444)' },
 };
 
 function StatusBadge({ status }) {
-  const s = STATUS_STYLES[status] ?? STATUS_STYLES.pending;
+  const s = STATUS_MAP[status] || { label: status, color: 'var(--gray)' };
   return (
     <span style={{
       display: 'inline-block',
-      background: s.bg, border: `1px solid ${s.border}`,
-      borderRadius: '6px', padding: '2px 8px',
-      fontSize: '0.72rem', fontWeight: 600,
-      color: s.color, textTransform: 'capitalize',
+      background: `${s.color}22`,
+      color: s.color,
+      borderRadius: '999px',
+      padding: '0.25rem 0.75rem',
+      fontSize: '0.75rem',
+      fontWeight: 700,
     }}>
-      {status}
+      {s.label}
     </span>
   );
 }
 
 function formatDate(dateStr) {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('en-PH', {
-    year: 'numeric', month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export default function OrdersPage() {
-  const [orders, setOrders]   = useState([]);
+function formatTimestamp(dateStr) {
+  if (!dateStr) return '—';
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function formatPeso(n) {
+  if (n == null) return null;
+  return `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function SkeletonRow() {
+  return (
+    <div style={{
+      padding: '1.25rem',
+      background: 'var(--dark2)',
+      borderRadius: '12px',
+      border: '1px solid var(--border)',
+      animation: 'pulse 1.5s ease-in-out infinite',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+        <div style={{ height: '16px', background: 'var(--dark3)', borderRadius: '4px', width: '30%' }} />
+        <div style={{ height: '24px', background: 'var(--dark3)', borderRadius: '999px', width: '100px' }} />
+      </div>
+      <div style={{ height: '14px', background: 'var(--dark3)', borderRadius: '4px', width: '50%', marginBottom: '0.5rem' }} />
+      <div style={{ height: '12px', background: 'var(--dark3)', borderRadius: '4px', width: '25%' }} />
+    </div>
+  );
+}
+
+function ImageWithFallback({ src, alt, label, style }) {
+  const [broken, setBroken] = useState(false);
+  if (!src || broken) {
+    return (
+      <div style={{ ...style, background: 'var(--dark2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)', fontSize: '0.8rem', textAlign: 'center' }}>
+        Image unavailable
+      </div>
+    );
+  }
+  return (
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <a href={src} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textDecoration: 'none' }}>
+      <img
+        src={src}
+        alt={alt}
+        style={{ ...style, cursor: 'pointer', borderRadius: '8px', objectFit: 'cover' }}
+        onError={() => setBroken(true)}
+      />
+    </a>
+  );
+}
+
+export default function ShopOrdersPage() {
+  const router = useRouter();
+  const { token } = useAuth();
+  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
-  const [expanded, setExpanded] = useState(null);
+  const [error, setError] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState(null);
 
-  useEffect(() => { fetchOrders(); }, []);
-
-  async function fetchOrders() {
+  const loadOrders = useCallback(async () => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-      const res = await fetchWithTimeout(`${API_URL}/api/orders/my`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }, 10000);
-      if (!res.ok) throw new Error('Failed to load orders.');
-      const data = await res.json();
+      const data = await fetchMyOrders(token);
       setOrders(Array.isArray(data) ? data : []);
     } catch (err) {
+      if (err.message === 'Unauthorized') {
+        router.push('/shop');
+        return;
+      }
       setError(err.message);
     } finally {
       setLoading(false);
     }
+  }, [token]);
+
+  useEffect(() => { loadOrders(); }, [loadOrders]);
+
+  async function openDetail(order) {
+    if (!token) return;
+    setSelectedOrder(order);
+    setModalLoading(true);
+    setModalError(null);
+    try {
+      const data = await fetchMyOrder(token, order.id ?? order._id);
+      setSelectedOrder(data);
+    } catch (err) {
+      setModalError(err.message);
+    } finally {
+      setModalLoading(false);
+    }
+  }
+
+  function closeDetail() {
+    setSelectedOrder(null);
+    setModalLoading(false);
+    setModalError(null);
   }
 
   return (
-    <ErrorBoundary>
-      <div style={{ maxWidth: '720px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem' }}>
-        <div>
-          <h1 style={{ margin: '0 0 0.25rem', fontSize: '1.4rem', fontWeight: 700, color: '#f5f5f5' }}>
-            My Orders
-          </h1>
-          <p style={{ margin: 0, color: '#777', fontSize: '0.85rem' }}>
-            Track all your orders here
-          </p>
-        </div>
-        <Link href="/shop" style={{
-          padding: '0.5rem 1rem',
-          background: 'rgba(212,168,67,0.1)',
-          border: '1px solid rgba(212,168,67,0.3)',
-          borderRadius: '8px', color: '#d4a843',
-          textDecoration: 'none', fontSize: '0.85rem', fontWeight: 600,
-        }}>
-          ← Back to Shop
-        </Link>
-      </div>
-
-      {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {[...Array(3)].map((_, i) => (
-            <div key={i} style={{
-              height: '80px', borderRadius: '12px',
-              background: 'linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%)',
-              backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite',
-            }} />
-          ))}
-        </div>
-      ) : error ? (
-        <div style={{
-          background: 'rgba(255,77,79,0.1)', border: '1px solid rgba(255,77,79,0.3)',
-          borderRadius: '10px', padding: '1.25rem', color: '#ff6b6b', textAlign: 'center',
-        }}>
-          {error}
-          <button onClick={fetchOrders} style={{
-            display: 'block', margin: '0.75rem auto 0',
-            background: 'none', border: '1px solid rgba(255,107,107,0.3)',
-            borderRadius: '6px', padding: '0.4rem 0.75rem',
-            color: '#ff6b6b', cursor: 'pointer', fontSize: '0.8rem',
-          }}>
-            Try again
-          </button>
-        </div>
-      ) : orders.length === 0 ? (
-        <div style={{
-          textAlign: 'center', padding: '4rem 2rem', color: '#555',
-        }}>
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem' }}>
-            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-            <line x1="3" y1="6" x2="21" y2="6"/>
-            <path d="M16 10a4 4 0 0 1-8 0"/>
-          </svg>
-          <p style={{ margin: '0 0 1rem' }}>No orders yet.</p>
-          <Link href="/shop" style={{
-            display: 'inline-block', padding: '0.6rem 1.25rem',
-            background: '#d4a843', borderRadius: '8px',
-            color: '#0f0f0f', textDecoration: 'none', fontWeight: 700, fontSize: '0.875rem',
-          }}>
-            Start Shopping
+    <div style={{ minHeight: '100vh', background: 'var(--darker, #0f0f0f)', padding: '2rem 1rem' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        {/* Back to Shop */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <Link href="/shop" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', color: 'var(--gray)', textDecoration: 'none', fontSize: '0.875rem' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+            Back to Shop
           </Link>
         </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {orders.map(order => {
-            const isOpen = expanded === order._id;
-            return (
-              <div key={order._id} style={{
-                background: '#161616',
-                border: `1px solid ${isOpen ? 'rgba(212,168,67,0.25)' : 'rgba(255,255,255,0.07)'}`,
-                borderRadius: '12px', overflow: 'hidden',
-                transition: 'border-color 0.2s',
-              }}>
-                {/* Header row */}
-                <button
-                  onClick={() => setExpanded(isOpen ? null : order._id)}
-                  style={{
-                    width: '100%', padding: '1rem',
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: '1rem',
-                    textAlign: 'left',
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap',
-                      marginBottom: '0.25rem',
-                    }}>
-                      <span style={{
-                        fontFamily: 'monospace', fontSize: '0.72rem', color: '#555',
-                      }}>
-                        #{order._id?.slice(-8).toUpperCase()}
-                      </span>
-                      <StatusBadge status={order.status} />
-                      {order.paymentStatus === 'paid' && (
-                        <span style={{
-                          display: 'inline-block',
-                          background: 'rgba(74,222,128,0.08)',
-                          border: '1px solid rgba(74,222,128,0.2)',
-                          borderRadius: '6px', padding: '2px 8px',
-                          fontSize: '0.7rem', color: '#4ade80',
-                        }}>
-                          Paid
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '0.78rem', color: '#666' }}>
-                      {formatDate(order.created_at)} · {order.items?.length ?? 0} item{order.items?.length !== 1 ? 's' : ''}
-                    </div>
-                  </div>
-                  <div style={{ fontWeight: 700, color: '#d4a843', fontSize: '1rem', flexShrink: 0 }}>
-                    ₱{(order.totalAmount ?? 0).toLocaleString()}
-                  </div>
-                  <svg
-                    width="16" height="16" viewBox="0 0 24 24" fill="none"
-                    stroke="#555" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                    style={{ flexShrink: 0, transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0)' }}
-                  >
-                    <polyline points="6 9 12 15 18 9"/>
-                  </svg>
-                </button>
 
-                {/* Expanded details */}
-                {isOpen && (
-                  <div style={{
-                    borderTop: '1px solid rgba(255,255,255,0.06)',
-                    padding: '1rem',
-                  }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                      {order.items?.map((item, i) => (
-                        <div key={i} style={{
-                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                          fontSize: '0.82rem',
-                        }}>
-                          <div>
-                            <span style={{ color: '#ddd' }}>{item.productName}</span>
-                            {item.variantName && (
-                              <span style={{ color: '#666', marginLeft: '0.4rem' }}>({item.variantName})</span>
-                            )}
-                            <span style={{ color: '#555', marginLeft: '0.4rem' }}>×{item.qty}</span>
+        {/* Header */}
+        <div style={{ marginBottom: '2rem' }}>
+          <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.5rem', fontWeight: 700, color: 'var(--white, #f5f5f5)' }}>My Orders</h1>
+          <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.9rem' }}>Track your custom print requests</p>
+        </div>
+
+        {/* Loading */}
+        {loading && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {[1, 2, 3].map(i => <SkeletonRow key={i} />)}
+          </div>
+        )}
+
+        {/* Error */}
+        {!loading && error && (
+          <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--danger, #ef4444)' }}>
+            <p style={{ marginBottom: '1rem' }}>{error}</p>
+            <button onClick={loadOrders} style={{ background: 'var(--gold, #d4a843)', color: '#000', border: 'none', borderRadius: '8px', padding: '0.625rem 1.25rem', fontWeight: 700, cursor: 'pointer' }}>Retry</button>
+          </div>
+        )}
+
+        {/* Empty */}
+        {!loading && !error && orders.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5" style={{ marginBottom: '1rem' }}>
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+              <line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+            <p style={{ fontSize: '1rem', color: 'var(--white)', marginBottom: '0.5rem' }}>No orders yet.</p>
+            <Link href="/shop" style={{ display: 'inline-block', padding: '0.625rem 1.25rem', background: 'var(--gold, #d4a843)', color: '#000', borderRadius: '8px', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 600, marginTop: '1rem' }}>Browse Products</Link>
+          </div>
+        )}
+
+        {/* Orders List */}
+        {!loading && !error && orders.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {orders.map(order => (
+              <div key={order.id ?? order._id} style={{ padding: '1.25rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--white)' }}>{(order.id ?? order._id)?.slice(-8).toUpperCase()}</span>
+                  <StatusBadge status={order.status} />
+                </div>
+                <div style={{ fontSize: '0.9rem', color: 'var(--white)', marginBottom: '0.25rem' }}>{order.productName || '—'}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>Qty: {order.quantity}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.75rem' }}>{formatDate(order.createdAt)}</div>
+                <div style={{ marginBottom: '0.75rem' }}>
+                  {order.finalPrice != null
+                    ? <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--gold, #d4a843)' }}>Final Price: {formatPeso(order.finalPrice)}</span>
+                    : <span style={{ fontSize: '0.8rem', color: 'var(--text-muted, #666)' }}>Price pending confirmation</span>
+                  }
+                </div>
+                <button onClick={() => openDetail(order)} style={{ background: 'var(--gold, #d4a843)', color: '#000', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>View Details</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Detail Modal */}
+      {selectedOrder && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={closeDetail}>
+          <div style={{ background: 'var(--dark2, #161616)', border: '1px solid var(--border)', borderRadius: '16px', maxWidth: '560px', width: '100%', maxHeight: '90vh', overflowY: 'auto', position: 'relative' }} onClick={e => e.stopPropagation()}>
+            {/* Close button */}
+            <button onClick={closeDetail} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', padding: '0.25rem', zIndex: 10 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+
+            {modalLoading ? (
+              <div style={{ padding: '3rem', textAlign: 'center' }}>
+                <div className="spinner" style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--gold)', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }} />
+              </div>
+            ) : modalError ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger, #ef4444)' }}>
+                <p>{modalError}</p>
+                <button onClick={() => openDetail(selectedOrder)} style={{ background: 'var(--gold, #d4a843)', color: '#000', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontWeight: 700, cursor: 'pointer', marginTop: '0.5rem' }}>Retry</button>
+              </div>
+            ) : (
+              <div style={{ padding: '1.5rem' }}>
+                {/* Section 1: Order Info */}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold, #d4a843)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Order Info</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>{(selectedOrder.id ?? selectedOrder._id)?.slice(-8).toUpperCase()}</span>
+                    <StatusBadge status={selectedOrder.status} />
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>{formatDate(selectedOrder.createdAt)}</div>
+                </div>
+
+                {/* Section 2: Product Details */}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold, #d4a843)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Product Details</h3>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.25rem' }}>{selectedOrder.productName || '—'}</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '1rem' }}>Quantity: {selectedOrder.quantity}</div>
+
+                  {selectedOrder.designUrl && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>Design File</div>
+                      <ImageWithFallback src={selectedOrder.designUrl} alt="Design" label="Design File" style={{ width: '100%', maxWidth: '200px', height: '120px' }} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Section 3: Pricing */}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold, #d4a843)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Pricing</h3>
+                  {selectedOrder.finalPrice != null
+                    ? <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--gold, #d4a843)' }}>Final Price: {formatPeso(selectedOrder.finalPrice)}</div>
+                    : <div style={{ fontSize: '0.85rem', color: 'var(--text-muted, #666)' }}>Awaiting final price from admin</div>
+                  }
+                </div>
+
+                {/* Section 4: Status History */}
+                <div>
+                  <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold, #d4a843)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status History</h3>
+                  {selectedOrder.statusHistory && selectedOrder.statusHistory.length > 0 ? (
+                    <div style={{ position: 'relative', paddingLeft: '1.25rem' }}>
+                      <div style={{ position: 'absolute', left: '4px', top: '0', bottom: '0', width: '1px', background: 'var(--border)' }} />
+                      {[...selectedOrder.statusHistory].reverse().map((entry, i) => (
+                        <div key={i} style={{ position: 'relative', marginBottom: i < selectedOrder.statusHistory.length - 1 ? '1rem' : '0' }}>
+                          <div style={{ position: 'absolute', left: '-1.25rem', top: '4px', width: '9px', height: '9px', borderRadius: '50%', background: 'var(--gold, #d4a843)', border: '2px solid var(--dark2, #161616)' }} />
+                          <div style={{ marginBottom: '0.25rem' }}>
+                            <StatusBadge status={entry.status} />
                           </div>
-                          <span style={{ color: '#d4a843', fontWeight: 600 }}>
-                            ₱{(item.lineTotal ?? item.unitPrice * item.qty).toLocaleString()}
-                          </span>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.125rem' }}>{formatTimestamp(entry.changed_at)}</div>
+                          {entry.note && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted, #666)', fontStyle: 'italic' }}>{entry.note}</div>}
                         </div>
                       ))}
                     </div>
-
-                    {order.notes && (
-                      <div style={{
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(255,255,255,0.06)',
-                        borderRadius: '8px', padding: '0.6rem 0.75rem',
-                        fontSize: '0.78rem', color: '#777',
-                      }}>
-                        <strong style={{ color: '#555' }}>Notes: </strong>{order.notes}
-                      </div>
-                    )}
-                  </div>
-                )}
+                  ) : (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted, #666)' }}>No status history available.</div>
+                  )}
+                </div>
               </div>
-            );
-          })}
+            )}
+
+            {/* Footer */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '1rem 1.5rem', borderTop: '1px solid var(--border)' }}>
+              <button onClick={closeDetail} style={{ background: 'var(--dark, #0f0f0f)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.625rem 1.25rem', color: 'var(--gray)', fontSize: '0.875rem', cursor: 'pointer' }}>Close</button>
+            </div>
+          </div>
         </div>
       )}
 
-      <style>{`
-        @keyframes shimmer {
-          0%   { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
+      <style jsx global>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>
-    </ErrorBoundary>
   );
 }

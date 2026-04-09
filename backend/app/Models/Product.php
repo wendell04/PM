@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use MongoDB\Laravel\Eloquent\Model;
+use MongoDB\Laravel\Eloquent\Casts\ObjectId;
 
 class Product extends Model
 {
@@ -31,17 +32,20 @@ class Product extends Model
         'stockStatus',
         'isPublished',
         'isActive',
+        'isArchived',
         'createdAt',
         'updatedAt',
     ];
 
     protected $casts = [
+        'inventoryId'    => ObjectId::class,
         'price'          => 'float',
         'flatPrice'      => 'float',
         'trackInventory' => 'boolean',
         'stock'          => 'integer',
         'isPublished'    => 'boolean',
         'isActive'       => 'boolean',
+        'isArchived'     => 'boolean',
         'createdAt'      => 'datetime',
         'updatedAt'      => 'datetime',
     ];
@@ -49,6 +53,7 @@ class Product extends Model
     protected $attributes = [
         'isActive'    => true,
         'isPublished' => false,
+        'isArchived'  => false,
     ];
 
     public function inventory()

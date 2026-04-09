@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\Inventory;
+use MongoDB\BSON\Regex;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
@@ -26,7 +27,7 @@ class ProductController extends Controller
             }
 
             if ($request->filled('tag')) {
-                $query->where('tags', $request->tag);
+                $query->whereIn('tags', [$request->tag]);
             }
 
             if ($request->filled('search')) {
@@ -37,7 +38,7 @@ class ProductController extends Controller
                 });
             }
 
-            $products = $query->orderBy('created_at', 'desc')->get();
+            $products = $query->orderBy('createdAt', 'desc')->get();
 
             return $this->successResponse('Products fetched successfully.', $products);
         } catch (\Exception $e) {
@@ -80,7 +81,7 @@ class ProductController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $products = Product::with('inventory')->orderBy('created_at', 'desc')->get();
+            $products = Product::with('inventory')->orderBy('createdAt', 'desc')->get();
             return $this->successResponse('Products fetched successfully.', $products);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching products.');
@@ -128,7 +129,18 @@ class ProductController extends Controller
             }
 
             $validated = $request->validate([
-                'inventoryId'       => 'required|exists:inventory,_id',
+                'name'              => 'required|string|max:200',
+                'inventoryId'       => [
+                    'required',
+                    function ($attribute, $value, $fail) {
+                        $found = Inventory::where('_id', $value)
+                            ->where('isActive', true)
+                            ->exists();
+                        if (!$found) {
+                            $fail('The selected inventory item does not exist or is inactive.');
+                        }
+                    },
+                ],
                 'category'          => 'required|string|max:100',
                 'subCategoryCode'   => 'nullable|string|max:10',
                 'subCategoryName'   => 'required|string|max:100',
@@ -238,7 +250,19 @@ class ProductController extends Controller
             }
 
             $validated = $request->validate([
-                'inventoryId'       => 'sometimes|required|exists:inventory,_id',
+                'name'              => 'sometimes|required|string|max:200',
+                'inventoryId'       => [
+                    'sometimes',
+                    'required',
+                    function ($attribute, $value, $fail) {
+                        $found = Inventory::where('_id', $value)
+                            ->where('isActive', true)
+                            ->exists();
+                        if (!$found) {
+                            $fail('The selected inventory item does not exist or is inactive.');
+                        }
+                    },
+                ],
                 'category'          => 'sometimes|required|string|max:100',
                 'subCategoryCode'   => 'nullable|string|max:10',
                 'subCategoryName'   => 'sometimes|required|string|max:100',
@@ -325,7 +349,7 @@ class ProductController extends Controller
             }
 
             // Soft delete — keep data, just hide from store
-            $product->update(['isActive' => false, 'updatedAt' => now()]);
+            $product->update(['isActive' => false, 'isArchived' => true, 'updatedAt' => now()]);
 
             return $this->successResponse('Product deactivated successfully.');
         } catch (\Exception $e) {
@@ -389,9 +413,9 @@ class ProductController extends Controller
             $folder = $validated['folder'] ?? 'pmp-products';
 
             // Upload to Cloudinary
-            $response = Http::attach(
+            $response = Http::timeout(55)->attach(
                 'file',
-                file_get_contents($file->getRealPath()),
+                fopen($file->getRealPath(), 'r'),
                 $file->getClientOriginalName(),
                 ['Content-Type' => $file->getMimeType()]
             )->post("https://api.cloudinary.com/v1_1/{$cloudName}/image/upload", [
@@ -414,6 +438,62 @@ class ProductController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while uploading the image.');
+        }
+    }
+
+    /**
+     * GET /api/products/search
+     * Search products by query string (public endpoint)
+     */
+    public function search(Request $request)
+    {
+        try {
+            $q = trim(strtolower($request->query('q', '')));
+            
+            // Return empty array if query is too short
+            if (strlen($q) < 2) {
+                return response()->json([]);
+            }
+
+            $category = trim($request->query('category', ''));
+
+            // Build MongoDB regex query
+            $query = Product::where('isPublished', true)
+                ->where('isActive', true)
+                ->where(function($qBuilder) use ($q) {
+                    $pattern = new Regex(preg_quote($q, '/'), 'i');
+                    $qBuilder->where('name', 'regex', $pattern)
+                             ->orWhere('description', 'regex', $pattern)
+                             ->orWhere('category', 'regex', $pattern)
+                             ->orWhere('tags', 'regex', $pattern);
+                });
+
+            // Add category filter if provided
+            if ($category !== '') {
+                $query->where('category', $category);
+            }
+
+            // Limit to 8 results
+            $products = $query->limit(8)->get();
+
+            // Return only needed fields
+            $results = $products->map(function($product) {
+                return [
+                    'id' => (string) $product->_id,
+                    'name' => $product->name,
+                    'category' => $product->category,
+                    'images' => isset($product->images[0])
+                        ? [$product->images[0]]
+                        : [],
+                    'flatPrice' => $product->flatPrice,
+                    'priceTiers' => $product->priceTiers,
+                    'tags' => $product->tags,
+                ];
+            });
+
+            return response()->json($results);
+        } catch (\Exception $e) {
+            return response()->json([], 500);
         }
     }
 }

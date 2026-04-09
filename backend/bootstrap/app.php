@@ -4,6 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\HandleCors;
+use Illuminate\Auth\AuthenticationException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -15,16 +16,34 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prepend(HandleCors::class);
         $middleware->alias([
-            'auth.token' => \App\Http\Middleware\AuthTokenMiddleware::class,
+            'isAdmin'    => \App\Http\Middleware\IsAdminMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Handle unauthenticated requests — return 401 JSON
+        // instead of redirecting to non-existent login route
+        $exceptions->render(function (AuthenticationException $e, $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthenticated.',
+                ], 401);
+            }
+        });
+
+        // Handle all other exceptions on API routes
         $exceptions->render(function (\Throwable $e, $request) {
             if ($request->is('api/*')) {
+                if (app()->environment('local', 'development')) {
+                    return response()->json([
+                        'error' => $e->getMessage(),
+                        'file'  => $e->getFile(),
+                        'line'  => $e->getLine(),
+                    ], 500);
+                }
+
                 return response()->json([
-                    'error' => $e->getMessage(),
-                    'file' => $e->getFile(),
-                    'line' => $e->getLine(),
+                    'error' => 'An unexpected error occurred.',
                 ], 500);
             }
         });

@@ -14,9 +14,7 @@ class SupplierController extends Controller
      */
     private function getAuthUser(Request $request): ?User
     {
-        $token = $request->bearerToken();
-        if (!$token) return null;
-        return User::where('api_token', hash('sha256', $token))->first();
+        return $request->user();
     }
 
     /**

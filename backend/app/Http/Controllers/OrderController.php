@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\AdminNewOrderMail;
+use App\Mail\OrderConfirmationMail;
+use App\Mail\OrderStatusMail;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
@@ -20,9 +23,7 @@ class OrderController extends Controller
      */
     private function getAuthUser(Request $request): ?User
     {
-        $token = $request->bearerToken();
-        if (!$token) return null;
-        return User::where('api_token', hash('sha256', $token))->first();
+        return $request->user();
     }
 
     // ─── Customer ─────────────────────────────────────────────────────────────
@@ -45,12 +46,22 @@ class OrderController extends Controller
             }
 
             $validated = $request->validate([
-                'items'              => 'required|array|min:1',
-                'items.*.productId'  => 'required|string',
-                'items.*.variantId'  => 'nullable|string',
-                'items.*.variantName'=> 'nullable|string',
-                'items.*.qty'        => 'required|integer|min:1',
-                'notes'              => 'nullable|string|max:1000',
+                'items'                      => 'required|array|min:1',
+                'items.*.productId'          => 'required|string',
+                'items.*.variantId'          => 'nullable|string',
+                'items.*.variantName'        => 'nullable|string',
+                'items.*.qty'                => 'required|integer|min:1',
+                'notes'                      => 'nullable|string|max:1000',
+                'deliveryAddress'            => 'nullable|array',
+                'deliveryAddress.label'      => 'nullable|string|max:100',
+                'deliveryAddress.house_number'=> 'nullable|string|max:100',
+                'deliveryAddress.street'     => 'nullable|string|max:255',
+                'deliveryAddress.subdivision'=> 'nullable|string|max:255',
+                'deliveryAddress.barangay'   => 'nullable|string|max:255',
+                'deliveryAddress.city'       => 'nullable|string|max:255',
+                'deliveryAddress.province'   => 'nullable|string|max:255',
+                'deliveryAddress.zip'        => 'nullable|string|max:10',
+                'deliveryAddress.phone'      => 'nullable|string|max:30',
             ]);
 
             // Build order items with pricing (no transaction wrapper for MongoDB compatibility)
@@ -90,23 +101,46 @@ class OrderController extends Controller
             }
 
             $order = Order::create([
-                'userId'       => (string) $user->_id,
-                'userSnapshot' => [
+                'userId'          => (string) $user->_id,
+                'userSnapshot'    => [
                     'name'  => trim("{$user->firstName} {$user->lastName}"),
                     'email' => $user->email,
                     'phone' => $user->phoneNumber,
                 ],
-                'items'        => $orderItems,
-                'totalAmount'  => $totalAmount,
-                'status'       => 'pending',
-                'paymentStatus'=> 'unpaid',
-                'notes'        => $validated['notes'] ?? '',
-                'createdAt'    => now(),
-                'updatedAt'    => now(),
+                'items'           => $orderItems,
+                'totalAmount'     => $totalAmount,
+                'orderStatus'     => 'Pending',
+                'paymentStatus'   => 'unpaid',
+                'notes'           => strip_tags($validated['notes'] ?? ''),
+                'deliveryAddress' => $validated['deliveryAddress'] ?? null,
+                'createdAt'       => now(),
+                'updatedAt'       => now(),
             ]);
 
-            // Notify owner asynchronously
+            // Notify owner
             $this->notifyOwner($order);
+
+            // Notify customer — order confirmation
+            try {
+                $customerEmail = $order->userSnapshot['email'] ?? null;
+                $customerName  = $order->userSnapshot['name'] ?? '';
+                $firstName     = explode(' ', trim($customerName))[0] ?? 'Customer';
+                if ($customerEmail) {
+                    Mail::to($customerEmail)->send(new OrderConfirmationMail(
+                        firstName:   $firstName,
+                        orderId:     (string) $order->_id,
+                        items:       $order->items ?? [],
+                        totalAmount: (float) ($order->totalAmount ?? 0),
+                        status:      $order->orderStatus ?? 'Pending',
+                        notes:       $order->notes ?? ''
+                    ));
+                }
+            } catch (\Exception $e) {
+                Log::error('OrderController @store: Failed to send confirmation email', [
+                    'order_id' => (string) $order->_id,
+                    'error'    => $e->getMessage(),
+                ]);
+            }
 
             return $this->successResponse('Order placed successfully!', $order, 201);
 
@@ -130,7 +164,7 @@ class OrderController extends Controller
             }
 
             $orders = Order::where('userId', (string) $user->_id)
-                           ->orderBy('created_at', 'desc')
+                           ->orderBy('createdAt', 'desc')
                            ->get();
 
             return $this->successResponse('Orders fetched successfully.', $orders);
@@ -178,10 +212,10 @@ class OrderController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $query = Order::orderBy('created_at', 'desc');
+            $query = Order::orderBy('createdAt', 'desc');
 
-            if ($request->filled('status')) {
-                $query->where('status', $request->status);
+            if ($request->filled('orderStatus')) {
+                $query->where('orderStatus', $request->orderStatus);
             }
 
             $orders = $query->get();
@@ -209,17 +243,41 @@ class OrderController extends Controller
             }
 
             $validated = $request->validate([
-                'status'        => 'sometimes|in:pending,confirmed,processing,completed,cancelled',
+                'orderStatus'   => 'sometimes|in:Pending,In Production,For Delivery,Delivered,Returned,Cancelled',
                 'paymentStatus' => 'sometimes|in:unpaid,paid',
                 'notes'         => 'nullable|string|max:1000',
             ]);
 
-            $oldStatus = $order->status;
+            $oldStatus = $order->orderStatus;
             $order->update($validated);
 
             // Handle completion: Create sales records and deduct inventory
-            if ($order->status === 'completed' && $oldStatus !== 'completed') {
+            if ($order->orderStatus === 'Delivered' && $oldStatus !== 'Delivered') {
                 $this->completeOrder($order);
+            }
+
+            // Notify customer if status changed
+            if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus) {
+                try {
+                    $customerEmail = $order->userSnapshot['email']
+                        ?? optional(User::find($order->userId))->email
+                        ?? null;
+                    $customerName  = $order->userSnapshot['name'] ?? '';
+                    $firstName     = explode(' ', trim($customerName))[0] ?? 'Customer';
+                    if ($customerEmail) {
+                        Mail::to($customerEmail)->send(new OrderStatusMail(
+                            firstName:   $firstName,
+                            orderId:     (string) $order->_id,
+                            newStatus:   $order->orderStatus,
+                            totalAmount: (float) ($order->totalAmount ?? 0)
+                        ));
+                    }
+                } catch (\Exception $e) {
+                    Log::error('OrderController @adminUpdate: Failed to send status email', [
+                        'order_id' => (string) $order->_id,
+                        'error'    => $e->getMessage(),
+                    ]);
+                }
             }
 
             return $this->successResponse('Order updated successfully.', $order);
@@ -237,16 +295,11 @@ class OrderController extends Controller
     public function stats(Request $request)
     {
         try {
-            $user = $this->getAuthUser($request);
-            if (!$user) {
-                return $this->unauthorizedResponse();
-            }
-
             $totalOrders = Order::count();
-            $pendingOrders = Order::where('status', 'pending')->count();
-            $completedOrders = Order::where('status', 'completed')->count();
-            $cancelledOrders = Order::where('status', 'cancelled')->count();
-            $totalRevenue = Order::where('status', 'completed')->sum('totalAmount');
+            $pendingOrders = Order::where('orderStatus', 'Pending')->count();
+            $completedOrders = Order::where('orderStatus', 'Delivered')->count();
+            $cancelledOrders = Order::where('orderStatus', 'Cancelled')->count();
+            $totalRevenue = Order::where('orderStatus', 'Delivered')->sum('totalAmount');
 
             return $this->successResponse('Order statistics fetched successfully.', [
                 'totalOrders' => $totalOrders,
@@ -274,10 +327,9 @@ class OrderController extends Controller
                 if (!$inventory) continue;
 
                 // 1. Create Sale Record
-                // Generate Sale ID (no transaction wrapper for MongoDB compatibility)
-                $lastSale = Sale::orderBy('saleId', 'desc')->first();
-                $lastNumber = $lastSale ? intval(substr($lastSale->saleId, 5)) : 0;
-                $newSaleId = 'SALE-' . str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
+                // Generate UUID-based Sale ID — collision-free, no DB read required
+                $newSaleId = 'SALE-' . strtoupper(substr(str_replace('-', '',
+                    \Illuminate\Support\Str::uuid()->toString()), 0, 8));
 
                 $cost = $inventory->averageCost * $item['qty'];
                 $profit = $item['lineTotal'] - $cost;
@@ -322,6 +374,129 @@ class OrderController extends Controller
             Log::error('OrderController@completeOrder: Failed for order ' . $order->_id, ['error' => $e->getMessage()]);
             // We don't throw exception here to avoid failing the order update,
             // but we log it for manual intervention.
+        }
+    }
+
+    // ─── Admin API Endpoints (New Schema) ─────────────────────────────────────
+
+    /**
+     * GET /api/orders
+     * Returns all orders for admin dashboard (new schema).
+     */
+    public function index(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if (!$user) {
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
+
+            if ($user->role !== 'admin' && $user->role !== 'owner') {
+                return response()->json(['error' => 'Forbidden'], 403);
+            }
+
+            $orders = Order::orderBy('createdAt', 'desc')->get();
+
+            return response()->json(['orders' => $orders]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching orders.');
+        }
+    }
+
+    /**
+     * GET /api/orders/{id}
+     * Returns a single order by ID (new schema).
+     */
+    public function show(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+
+            if (!$user) {
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
+
+            if ($user->role !== 'admin' && $user->role !== 'owner') {
+                return response()->json(['error' => 'Forbidden'], 403);
+            }
+
+            $order = Order::find($id);
+
+            if (!$order) {
+                return response()->json(['error' => 'Order not found'], 404);
+            }
+
+            return response()->json(['order' => $order]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching the order.');
+        }
+    }
+
+    /**
+     * PATCH /api/orders/{id}/status
+     * Admin updates order status only.
+     */
+    public function updateStatus(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+
+            if (!$user) {
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
+
+            if ($user->role !== 'admin' && $user->role !== 'owner') {
+                return response()->json(['error' => 'Forbidden'], 403);
+            }
+
+            $validated = $request->validate([
+                'orderStatus' => 'required|in:Pending,In Production,For Delivery,Delivered,Returned,Cancelled',
+            ]);
+
+            $order = Order::find($id);
+
+            if (!$order) {
+                return response()->json(['error' => 'Order not found'], 404);
+            }
+
+            $oldStatus = $order->orderStatus;
+            $order->orderStatus = $validated['orderStatus'];
+            $order->updatedAt = now();
+            $order->save();
+
+            // Notify customer on status change
+            if ($oldStatus !== $order->orderStatus) {
+                try {
+                    $customerEmail = $order->userSnapshot['email']
+                        ?? optional(User::find($order->userId))->email
+                        ?? null;
+                    $customerName  = $order->userSnapshot['name'] ?? '';
+                    $firstName     = explode(' ', trim($customerName))[0] ?? 'Customer';
+                    if ($customerEmail) {
+                        Mail::to($customerEmail)->send(new OrderStatusMail(
+                            firstName:   $firstName,
+                            orderId:     (string) $order->_id,
+                            newStatus:   $order->orderStatus,
+                            totalAmount: (float) ($order->totalAmount ?? 0)
+                        ));
+                    }
+                } catch (\Exception $e) {
+                    Log::error('OrderController @updateStatus: Failed to send status email', [
+                        'order_id' => (string) $order->_id,
+                        'error'    => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            return response()->json([
+                'message' => 'Status updated',
+                'order'   => $order,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while updating the order status.');
         }
     }
 
@@ -379,7 +554,7 @@ class OrderController extends Controller
     }
 
     /**
-     * Sends an email notification to the store owner when a new order is placed.
+     * Sends a branded email to the store owner when a new order is placed.
      */
     private function notifyOwner(Order $order): void
     {
@@ -387,26 +562,16 @@ class OrderController extends Controller
             $ownerEmail = env('ADMIN_EMAIL');
             if (!$ownerEmail) return;
 
-            $itemLines = collect($order->items)->map(function ($item) {
-                $variant = $item['variantName'] ? " ({$item['variantName']})" : '';
-                return "• {$item['productName']}{$variant} x{$item['qty']} @ ₱{$item['unitPrice']} = ₱{$item['lineTotal']}";
-            })->implode("\n");
-
-            $body = "New order received!\n\n"
-                  . "Customer: {$order->userSnapshot['name']}\n"
-                  . "Email: {$order->userSnapshot['email']}\n"
-                  . "Phone: {$order->userSnapshot['phone']}\n\n"
-                  . "Items:\n{$itemLines}\n\n"
-                  . "Total: ₱{$order->totalAmount}\n"
-                  . "Notes: " . ($order->notes ?: 'None') . "\n\n"
-                  . "Order ID: {$order->_id}";
-
-            Mail::raw($body, function ($message) use ($ownerEmail, $order) {
-                $message->to($ownerEmail)
-                        ->subject("New Order #{$order->_id} — PersonalizeMe");
-            });
+            Mail::to($ownerEmail)->send(new AdminNewOrderMail(
+                orderId:       (string) $order->_id,
+                customerName:  $order->userSnapshot['name']  ?? 'Unknown',
+                customerEmail: $order->userSnapshot['email'] ?? '',
+                customerPhone: $order->userSnapshot['phone'] ?? '',
+                items:         $order->items ?? [],
+                totalAmount:   (float) ($order->totalAmount ?? 0),
+                notes:         $order->notes ?? ''
+            ));
         } catch (\Exception $e) {
-            // Don't fail the order if email fails
             Log::error('OrderController@notifyOwner: ' . $e->getMessage());
         }
     }

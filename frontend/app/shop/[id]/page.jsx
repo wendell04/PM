@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useCart } from '../layout';
 import ErrorBoundary from '../../../components/ErrorBoundary';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -55,6 +56,7 @@ export default function ProductDetailPage() {
   const { id }    = useParams();
   const router    = useRouter();
   const { addToCart } = useCart();
+  const { token } = useAuth();
 
   const [product, setProduct]       = useState(null);
   const [loading, setLoading]       = useState(true);
@@ -65,9 +67,9 @@ export default function ProductDetailPage() {
 
   useEffect(() => {
     async function fetchProduct() {
+      if (!token) return;
       setLoading(true);
       try {
-        const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
         const res = await fetchWithTimeout(`${API_URL}/api/products/${id}`, {
           headers: { Authorization: `Bearer ${token}` },
         }, 10000);
@@ -88,7 +90,7 @@ export default function ProductDetailPage() {
     }
 
     fetchProduct();
-  }, [id, router]);
+  }, [id, router, token]);
 
   function handleAddToCart() {
     if (!product) return;

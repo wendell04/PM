@@ -9,19 +9,12 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 import { fetchWithTimeout } from './fetchWithTimeout';
 
 /**
- * Get authentication token from storage
- */
-function getAuthToken() {
-  return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-}
-
-/**
  * Fetch all products from MongoDB (admin view - includes unpublished/inactive)
+ * @param {string} token - Authentication token
  * @returns {Promise<Array>} List of products
  */
-export async function fetchProducts() {
+export async function fetchProducts(token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/products`, {
       method: 'GET',
       headers: {
@@ -41,7 +34,7 @@ export async function fetchProducts() {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error fetching products:', error);
     throw error;
@@ -50,11 +43,11 @@ export async function fetchProducts() {
 
 /**
  * Fetch available inventory items (not linked to products)
+ * @param {string} token - Authentication token
  * @returns {Promise<Array>} List of available inventory items
  */
-export async function fetchAvailableInventory() {
+export async function fetchAvailableInventory(token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/products/available-inventory`, {
       method: 'GET',
       headers: {
@@ -68,7 +61,7 @@ export async function fetchAvailableInventory() {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error fetching available inventory:', error);
     throw error;
@@ -78,11 +71,11 @@ export async function fetchAvailableInventory() {
 /**
  * Create a new product
  * @param {Object} productData - Product data to create
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Created product
  */
-export async function createProduct(productData) {
+export async function createProduct(productData, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/products`, {
       method: 'POST',
       headers: {
@@ -104,7 +97,7 @@ export async function createProduct(productData) {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error creating product:', error);
     throw error;
@@ -115,11 +108,11 @@ export async function createProduct(productData) {
  * Update an existing product
  * @param {string} productId - MongoDB product ID
  * @param {Object} productData - Updated product data
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Updated product
  */
-export async function updateProduct(productId, productData) {
+export async function updateProduct(productId, productData, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/products/${productId}`, {
       method: 'PUT',
       headers: {
@@ -144,7 +137,7 @@ export async function updateProduct(productId, productData) {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error updating product:', error);
     throw error;
@@ -154,11 +147,11 @@ export async function updateProduct(productId, productData) {
 /**
  * Delete (deactivate) a product
  * @param {string} productId - MongoDB product ID
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Deletion result
  */
-export async function deleteProduct(productId) {
+export async function deleteProduct(productId, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/products/${productId}`, {
       method: 'DELETE',
       headers: {
@@ -179,7 +172,7 @@ export async function deleteProduct(productId) {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error deleting product:', error);
     throw error;
@@ -189,11 +182,11 @@ export async function deleteProduct(productId) {
 /**
  * Toggle product publish status
  * @param {string} productId - MongoDB product ID
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Result with new publish status
  */
-export async function togglePublishProduct(productId) {
+export async function togglePublishProduct(productId, token) {
   try {
-    const token = getAuthToken();
     const response = await fetchWithTimeout(`${API_URL}/api/admin/products/${productId}/toggle-publish`, {
       method: 'POST',
       headers: {
@@ -214,7 +207,7 @@ export async function togglePublishProduct(productId) {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error toggling publish status:', error);
     throw error;
@@ -225,11 +218,11 @@ export async function togglePublishProduct(productId) {
  * Upload image to Cloudinary via backend
  * @param {File} file - Image file to upload
  * @param {string} folder - Upload folder (optional)
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Upload result with URL and public_id
  */
-export async function uploadImage(file, folder = 'pmp-products') {
+export async function uploadImage(file, folder = 'pmp-products', token) {
   try {
-    const token = getAuthToken();
     const formData = new FormData();
     formData.append('image', file);
     formData.append('folder', folder);
@@ -240,7 +233,7 @@ export async function uploadImage(file, folder = 'pmp-products') {
         'Authorization': `Bearer ${token}`,
       },
       body: formData,
-    }, 15000); // 15 second timeout for file upload
+    }, 60000); // 60s — Cloudinary upload can be slow on dev
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -251,7 +244,7 @@ export async function uploadImage(file, folder = 'pmp-products') {
     }
 
     const data = await response.json();
-    return data;
+    return data.data ?? data;
   } catch (error) {
     console.error('Error uploading image:', error);
     throw error;
@@ -262,15 +255,15 @@ export async function uploadImage(file, folder = 'pmp-products') {
  * Bulk update products (publish/unpublish/archive)
  * @param {Array<string>} productIds - List of product IDs to update
  * @param {Object} updates - Fields to update (e.g., { isPublished: true })
+ * @param {string} token - Authentication token
  * @returns {Promise<Object>} Result of bulk update
  */
-export async function bulkUpdateProducts(productIds, updates) {
+export async function bulkUpdateProducts(productIds, updates, token) {
   try {
-    const token = getAuthToken();
     // Note: You may need to add a bulk update endpoint to your backend
     // For now, this is a placeholder for individual updates
     const results = await Promise.all(
-      productIds.map(id => updateProduct(id, updates))
+      productIds.map(id => updateProduct(id, updates, token))
     );
     return { success: true, count: results.length };
   } catch (error) {

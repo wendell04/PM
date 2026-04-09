@@ -9,56 +9,34 @@ class Order extends Model
     protected $connection = 'mongodb';
     protected $collection = 'orders';
 
-    protected $fillable = [
-        'orderId',
-        'userId',
-        'userSnapshot',
-        'customerName',
-        'customerContact',
-        'customerEmail',
-        'product',
-        'quantity',
-        'totalPrice',
-        'downPayment',
-        'balance',
-        'orderStatus',
-        'joStatus',
-        'isRush',
-        'targetCompletion',
-        'paymentDate',
-        'designFile',
-        'designNotes',
-        'checkoutRestricted',
-        'joId',
-        'items',
-        'totalAmount',
-        'status',
-        'paymentMethod',
-        'paymentStatus',
-        'notes',
-        'createdAt',
-        'updatedAt',
-    ];
+    protected $guarded = [];
 
     protected $casts = [
-        'items'        => 'array',
-        'userSnapshot' => 'array',
-        'product'      => 'array',
-        'totalAmount'  => 'float',
-        'totalPrice'   => 'float',
-        'downPayment'  => 'float',
-        'balance'      => 'float',
-        'isRush'       => 'boolean',
+        'items'              => 'array',
+        'userSnapshot'       => 'array',
+        'deliveryAddress'    => 'array',
+        'isRush'             => 'boolean',
         'checkoutRestricted' => 'boolean',
-        'targetCompletion' => 'datetime',
-        'paymentDate'  => 'datetime',
-        'createdAt'    => 'datetime',
-        'updatedAt'    => 'datetime',
+        'downPayment'        => 'float',
+        'balance'            => 'float',
+        'shippingFee'        => 'float',
+        'totalAmount'        => 'float',
+        'targetCompletion'   => 'datetime',
+        'paymentDate'        => 'datetime',
+        'createdAt'          => 'datetime',
+        'updatedAt'          => 'datetime',
+    ];
+
+    protected $indexes = [
+        ['key' => ['userId'      => 1]],
+        ['key' => ['orderStatus' => 1]],
+        ['key' => ['createdAt'   => -1]],
+        ['key' => ['userId' => 1, 'createdAt' => -1]],
     ];
 
     protected $attributes = [
         'orderStatus'        => 'Pending',
-        'joStatus'           => null,
+        'paymentStatus'      => 'unpaid',
         'isRush'             => false,
         'checkoutRestricted' => true,
         'downPayment'        => 0,

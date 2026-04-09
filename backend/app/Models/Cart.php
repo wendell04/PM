@@ -20,6 +20,10 @@ class Cart extends Model
         'updatedAt' => 'datetime',
     ];
 
+    protected $indexes = [
+        ['key' => ['userId' => 1], 'unique' => true],
+    ];
+
     protected $attributes = [
         'items' => '[]',
     ];

@@ -47,7 +47,7 @@ return [
     |
     */
 
-    'expiration' => null,
+    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 1440),
 
     /*
     |--------------------------------------------------------------------------
@@ -62,7 +62,19 @@ return [
     |
     */
 
-    'token_prefix' => env('SANCTUM_TOKEN_PREFIX', ''),
+    'token_prefix' => env('SANCTUM_TOKEN_PREFIX', 'pmp_'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Personal Access Token Model
+    |--------------------------------------------------------------------------
+    |
+    | This model is used to store personal access tokens. Override to use
+    | MongoDB-compatible model instead of the default SQL Eloquent model.
+    |
+    */
+
+    'personal_access_token_model' => App\Models\PersonalAccessToken::class,
 
     /*
     |--------------------------------------------------------------------------

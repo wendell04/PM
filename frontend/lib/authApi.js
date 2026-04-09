@@ -434,3 +434,190 @@ export async function updatePassword(token, passwordData) {
     throw error;
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2FA ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Send 2FA OTP to user's email
+ * @param {string} token - Auth token
+ * @returns {Promise<Object>} Result
+ */
+export async function sendTwoFactorOtp(token) {
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/api/2fa/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    }, 10000);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const err = new Error(errorData.message || 'Failed to send OTP');
+      err.status = response.status;
+      err.retryAfter = errorData.retry_after ?? null;
+      err.lockedUntil = errorData.locked_until ?? null;
+      throw err;
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error sending 2FA OTP:', error);
+    throw error;
+  }
+}
+
+/**
+ * Verify 2FA OTP
+ * @param {string} token - Auth token
+ * @param {Object} data - Verification data { code }
+ * @returns {Promise<Object>} Result
+ */
+export async function verifyTwoFactorOtp(token, payload) {
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/api/2fa/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    }, 10000);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const err = new Error(errorData.message || 'OTP verification failed');
+      err.status = response.status;
+      err.lockedUntil = errorData.locked_until ?? null;
+      throw err;
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error verifying 2FA OTP:', error);
+    throw error;
+  }
+}
+
+/**
+ * Remember current device
+ * @param {string} token - Auth token
+ * @returns {Promise<Object>} Result with device_token
+ */
+export async function rememberDevice(token) {
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/api/2fa/remember-device`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    }, 10000);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Failed to remember device');
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error remembering device:', error);
+    throw error;
+  }
+}
+
+/**
+ * Check if current device is recognized
+ * @param {string} token - Auth token
+ * @param {Object} data - Check data { device_token }
+ * @returns {Promise<Object>} Result with recognized boolean
+ */
+export async function checkDevice(token, payload) {
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/api/2fa/check-device`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    }, 10000);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Device check failed');
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error checking device:', error);
+    throw error;
+  }
+}
+
+/**
+ * Send OTP to authenticated user's email
+ * @param {string} token - Auth token from login
+ * @returns {Promise<Object>} Result { message }
+ */
+export async function sendOtp(token) {
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/api/2fa/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    }, 10000);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      if (response.status === 423) {
+        throw new Error(errorData.message || 'Account temporarily locked.');
+      }
+      throw new Error(errorData.message || 'Failed to send OTP.');
+    }
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error sending OTP:', error);
+    throw error;
+  }
+}
+
+/**
+ * Verify OTP code
+ * @param {string} token - Auth token from login
+ * @param {string} code  - 6-digit OTP entered by user
+ * @returns {Promise<Object>} Result { verified: true }
+ */
+export async function verifyOtp(token, code) {
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/api/2fa/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ code }),
+    }, 10000);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      if (response.status === 423) {
+        throw new Error(errorData.message || 'Account temporarily locked.');
+      }
+      throw new Error(errorData.message || 'Invalid or expired code.');
+    }
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error verifying OTP:', error);
+    throw error;
+  }
+}

@@ -5,19 +5,34 @@ import Link from 'next/link';
 import { useCart } from './layout';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
-import { getBanners, getActiveBanners } from '@/lib/bannerUtils';
+import { getStorefrontBanners } from '@/lib/bannerUtils';
+import { fetchProductSearch } from '@/lib/productsApi';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 // ─── Price Helper ─────────────────────────────────────────────────────────────
 function getDisplayPrice(product) {
-  if (product.flatPrice) return `₱${product.flatPrice.toLocaleString()}`;
-  if (product.priceTiers?.length) {
-    const sorted = [...product.priceTiers].sort((a, b) => a.minQty - b.minQty);
-    const min = sorted[0].price;
-    const max = sorted[sorted.length - 1].price;
+  if (product.priceType === 'inquiry') return 'Price on request';
+  if (product.priceType === 'fixed') {
+    if (product.variantPrices && Object.keys(product.variantPrices).length > 0) {
+      const prices = Object.values(product.variantPrices).map(p => parseFloat(p)).filter(p => p > 0);
+      if (!prices.length) return 'Price on request';
+      const min = Math.min(...prices);
+      const max = Math.max(...prices);
+      if (min === max) return `₱${min.toLocaleString()}`;
+      return `₱${min.toLocaleString()} – ₱${max.toLocaleString()}`;
+    }
+    if (product.price) return `₱${parseFloat(product.price).toLocaleString()}`;
+  }
+  if (product.priceType === 'tiered' && product.priceTiers?.length) {
+    const allPrices = product.priceTiers.flatMap(t =>
+      Object.values(t.prices || {}).map(p => parseFloat(p)).filter(p => p > 0)
+    );
+    if (!allPrices.length) return 'Price on request';
+    const min = Math.min(...allPrices);
+    const max = Math.max(...allPrices);
     if (min === max) return `₱${min.toLocaleString()}`;
-    return `₱${max.toLocaleString()} – ₱${min.toLocaleString()}`;
+    return `₱${min.toLocaleString()} – ₱${max.toLocaleString()}`;
   }
   return 'Price on request';
 }
@@ -26,7 +41,7 @@ function getDisplayPrice(product) {
 function ProductCard({ product, onAddToCart }) {
   const [hovered, setHovered] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
-  const hasImage = product.images?.length > 0;
+  const hasImage = product.thumbnail || product.images?.length > 0;
 
   const handleAddToCart = (e) => {
     e.preventDefault();
@@ -37,7 +52,7 @@ function ProductCard({ product, onAddToCart }) {
   };
 
   return (
-    <Link href={`/shop/${product._id}`} className="shop-product-card-link">
+    <Link href={`/shop/products/${product.id ?? product._id}`} className="shop-product-card-link">
       <div
         className={`shop-product-card ${hovered ? 'hovered' : ''}`}
         onMouseEnter={() => setHovered(true)}
@@ -48,8 +63,8 @@ function ProductCard({ product, onAddToCart }) {
           {hasImage ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
-              src={product.images[0]}
-              alt={product.name}
+              src={product.thumbnail || product.images[0]}
+              alt={product.subCategoryName || product.name || 'Product'}
               className="shop-product-image"
             />
           ) : (
@@ -94,11 +109,11 @@ function ProductCard({ product, onAddToCart }) {
         {/* Info */}
         <div className="shop-product-info">
           <h3 className="shop-product-name">
-            {product.name}
+            {product.subCategoryName || product.name || 'Unnamed Product'}
           </h3>
 
           <p className="shop-product-description">
-            {product.description}
+            {product.description || ''}
           </p>
 
           <div className="shop-product-footer">
@@ -106,9 +121,9 @@ function ProductCard({ product, onAddToCart }) {
               {getDisplayPrice(product)}
             </span>
 
-            {product.variants?.length > 0 && (
+            {product.variantGroups?.length > 0 && (
               <span className="shop-product-variants">
-                {product.variants.length} {product.variants.length !== 1 ? 'variants' : 'variant'}
+                {product.combinations?.length || product.variantGroups.length} variant{(product.combinations?.length || product.variantGroups.length) !== 1 ? 's' : ''}
               </span>
             )}
           </div>
@@ -118,38 +133,6 @@ function ProductCard({ product, onAddToCart }) {
   );
 }
 
-// ─── Carousel Slide Data ──────────────────────────────────────────────────────
-const carouselSlides = [
-  {
-    title: 'Custom T-Shirts',
-    subtitle: 'Silkscreen & DTF Printing',
-    description: 'Premium quality prints that last. Perfect for teams, events, and merchandise.',
-    image: '/products/Tshit_printing.jpg',
-    gradient: 'linear-gradient(135deg, rgba(212, 168, 67, 0.3) 0%, rgba(196, 30, 58, 0.4) 100%)',
-  },
-  {
-    title: 'Custom Mugs',
-    subtitle: 'Ceramic & Magic Mugs',
-    description: 'Start your day with a personalized touch. Durable and dishwasher safe.',
-    image: '/products/mugs.jpg',
-    gradient: 'linear-gradient(135deg, rgba(196, 30, 58, 0.3) 0%, rgba(212, 168, 67, 0.4) 100%)',
-  },
-  {
-    title: 'Button Pins & Badges',
-    subtitle: 'Custom Promotional Items',
-    description: 'Perfect for events, promotions, and giveaways. Available in various sizes.',
-    image: '/products/ButtonPins.jpg',
-    gradient: 'linear-gradient(135deg, rgba(212, 168, 67, 0.3) 0%, rgba(100, 100, 100, 0.4) 100%)',
-  },
-  {
-    title: 'Stickers & Labels',
-    subtitle: 'Vinyl & Waterproof',
-    description: 'High-quality custom stickers for branding, packaging, and personal use.',
-    image: '/products/Stickers.jpg',
-    gradient: 'linear-gradient(135deg, rgba(100, 100, 100, 0.3) 0%, rgba(212, 168, 67, 0.4) 100%)',
-  },
-];
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ShopPage() {
   const [products, setProducts]   = useState([]);
@@ -157,6 +140,11 @@ export default function ShopPage() {
   const [error, setError]         = useState(null);
   const [category, setCategory]   = useState('All');
   const [search, setSearch]       = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchRef = useRef(null);
+  const debounceRef = useRef(null);
   const [toast, setToast]         = useState(null);
   const [banners, setBanners] = useState([]);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -166,32 +154,29 @@ export default function ShopPage() {
   const autoplayRef = useRef(null);
 
   useEffect(() => {
-    fetchProducts();
+    loadProducts();
     loadBanners();
   }, []);
 
   /**
-   * Load all active banners for carousel
-   * 🔧 TODO: Replace with API call when backend is ready
+   * Load all active banners from backend API
    */
-  function loadBanners() {
+  async function loadBanners() {
     try {
-      const activeBanners = getActiveBanners();
-      if (activeBanners.length > 0) {
-        // Sort by order
-        const sorted = activeBanners.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setBanners(sorted);
-      } else {
-        setBanners([]);
-      }
-    } catch (error) {
-      console.error('Error loading banners:', error);
+      const data = await getStorefrontBanners();
+      const banners = Array.isArray(data) ? data : [];
+      // Sort by order
+      const sorted = banners.sort((a, b) => (a.order || 0) - (b.order || 0));
+      setBanners(sorted);
+    } catch (err) {
+      console.error('Failed to load banners:', err);
       setBanners([]);
     }
   }
 
   // Auto-play carousel
   useEffect(() => {
+    if (banners.length === 0) return;
     if (!isAutoPlaying || banners.length <= 1) return;
 
     autoplayRef.current = setInterval(() => {
@@ -224,17 +209,15 @@ export default function ShopPage() {
     setTimeout(() => setIsAutoPlaying(true), 10000);
   };
 
-  async function fetchProducts() {
+  async function loadProducts() {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-      const res = await fetchWithTimeout(`${API_URL}/api/products`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }, 10000);
+      const res = await fetchWithTimeout(`${API_URL}/api/products`, {}, 30000);
       if (!res.ok) throw new Error('Server error');
       const data = await res.json();
-      setProducts(Array.isArray(data) ? data : []);
+      const products = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+      setProducts(products);
     } catch (err) {
       setError(err.message);
       setProducts([]);
@@ -255,11 +238,49 @@ export default function ShopPage() {
   const filtered = products.filter(p => {
     const matchCat  = category === 'All' || p.category === category;
     const matchSearch = search.trim() === '' ||
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.description.toLowerCase().includes(search.toLowerCase()) ||
+      (p.name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (p.description || '').toLowerCase().includes(search.toLowerCase()) ||
       p.tags?.some(t => t.toLowerCase().includes(search.toLowerCase()));
     return matchCat && matchSearch;
   });
+
+  // Search suggestions with debounce - fetch from backend
+  useEffect(() => {
+    if (search.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const results = await fetchProductSearch(
+          search.trim(),
+          category !== 'All' ? category : ''
+        );
+        setSuggestions(results);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [search, category]);
+
+  // Click outside to close suggestions
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <ErrorBoundary>
@@ -345,18 +366,98 @@ export default function ShopPage() {
       {/* Search + Filter bar */}
       <div className="shop-filter-bar">
         {/* Search */}
-        <div className="shop-search-wrapper">
-          <svg className="shop-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input
-            type="text"
-            placeholder="Search products, categories, or tags..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="shop-search-input"
-          />
+        <div ref={searchRef} style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
+          <div className="shop-search-wrapper">
+            <svg className="shop-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              type="text"
+              placeholder="Search products, categories, or tags..."
+              value={search}
+              onChange={e => {
+                setSearch(e.target.value);
+                setShowSuggestions(true);
+                if (e.target.value.trim() === '') setSuggestions([]);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              className="shop-search-input"
+            />
+          </div>
+          {showSuggestions && (suggestions.length > 0 || searchLoading) && (
+            <div style={{
+              position: 'absolute',
+              top: 'calc(100% + 6px)',
+              left: 0,
+              right: 0,
+              background: 'var(--dark2)',
+              border: '1px solid var(--border)',
+              borderRadius: '10px',
+              overflow: 'hidden',
+              zIndex: 50,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            }}>
+              {searchLoading && suggestions.length === 0 && (
+                <div style={{
+                  padding: '0.75rem 1rem',
+                  fontSize: '0.85rem',
+                  color: 'var(--gray)',
+                  textAlign: 'center',
+                }}>
+                  Searching...
+                </div>
+              )}
+              {suggestions.map((product, i) => (
+                <button
+                  key={product.id ?? product._id}
+                  type="button"
+                  onMouseDown={() => {
+                    setSearch(product.name);
+                    setShowSuggestions(false);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    width: '100%',
+                    padding: '0.625rem 1rem',
+                    background: 'transparent',
+                    border: 'none',
+                    borderBottom: i < suggestions.length - 1
+                      ? '1px solid var(--border)'
+                      : 'none',
+                    color: 'var(--white)',
+                    fontSize: '0.875rem',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="var(--gray)" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {product.name}
+                  </span>
+                  <span style={{
+                    fontSize: '0.7rem',
+                    color: 'var(--gold)',
+                    background: 'color-mix(in srgb, var(--gold) 10%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--gold) 25%, transparent)',
+                    borderRadius: '999px',
+                    padding: '1px 8px',
+                    flexShrink: 0,
+                  }}>
+                    {product.category}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Category pills */}
@@ -416,7 +517,7 @@ export default function ShopPage() {
       ) : (
         <div className="shop-products-grid">
           {filtered.map(product => (
-            <ProductCard key={product._id} product={product} onAddToCart={handleAddToCart} />
+            <ProductCard key={product.id ?? product._id} product={product} onAddToCart={handleAddToCart} />
           ))}
         </div>
       )}
@@ -1251,6 +1352,7 @@ export default function ShopPage() {
 
         .shop-product-info {
           padding: 1.25rem;
+          min-height: 80px;
         }
 
         .shop-product-name {

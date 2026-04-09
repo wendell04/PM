@@ -1,0 +1,43 @@
+<?php
+
+namespace App\Http\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class StoreAddressRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'label'        => ['required', 'string', 'max:50'],
+            'house_number' => ['required', 'string', 'max:100'],
+            'street'       => ['required', 'string', 'max:100'],
+            'subdivision'  => ['nullable', 'string', 'max:100'],
+            'barangay'     => ['required', 'string', 'max:100'],
+            'city'         => ['required', 'string', 'max:100'],
+            'province'     => ['required', 'string', 'max:100'],
+            'zip'          => ['required', 'string', 'regex:/^\d{4}$/'],
+            'phone'        => ['required', 'string',
+                               'regex:/^(09|\+639)\d{9}$/'],
+            'is_default'   => ['sometimes', 'boolean'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'phone.regex'       => 'Phone must be a valid PH number (09XXXXXXXXX or +639XXXXXXXXX).',
+            'zip.regex'         => 'ZIP/Postal code must be exactly 4 digits.',
+            'house_number.required' => 'House/Unit number is required.',
+            'street.required'   => 'Street address is required.',
+            'barangay.required' => 'Barangay is required.',
+            'city.required'     => 'City is required.',
+            'province.required' => 'Province is required.',
+        ];
+    }
+}

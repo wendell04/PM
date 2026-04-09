@@ -3,103 +3,19 @@
 /**
  * BANNER MANAGEMENT PAGE
  *
- * Current Status: LocalStorage (Browser-only, for testing)
- * ⚠️ TODO: MongoDB + Cloudinary Integration
- *
- * Features:
- * - Multiple banners with auto-swipe carousel preview
- * - Add, edit, delete, reorder banners
- * - Schedule visibility (start/end dates) — custom dark calendar picker
- * - Max 5 banners (UX limit, not a storage constraint)
- * - localStorage persistence (ready for backend API)
- *
- * MongoDB Integration Steps:
- * 1. Create MongoDB collection: 'banners'
- * 2. Replace LocalStorage calls with API endpoints:
- *    - GET    /api/banners           - Fetch all banners (sorted by order)
- *    - POST   /api/banners           - Create new banner
- *    - PUT    /api/banners/:id       - Update banner (content, visibility, order)
- *    - DELETE /api/banners/:id       - Delete banner
- *    - PUT    /api/banners/reorder   - Bulk update order after drag/reorder
- * 3. Add API routes in app/api/banners/route.js
- * 4. Add Mongoose schema in models/Banner.js
- * 5. Remove LocalStorage references
- *
- * Cloudinary Integration Steps:
- * 1. Replace base64 image storage with Cloudinary upload
- * 2. On image select → POST to /api/upload (Cloudinary SDK server-side)
- * 3. Store returned Cloudinary URL in banner.imageUrl instead of base64
- * 4. Recommended folder: 'banners/' in Cloudinary
- * 5. On banner delete → also delete image from Cloudinary via public_id
- *
- * Data Shape (MongoDB Document):
- * {
- *   _id:           ObjectId,        // MongoDB auto-generated
- *   name:          String,          // Internal label (admin only)
- *   headline:      String,          // Storefront headline text
- *   subtext:       String,          // Storefront subtext
- *   ctaLabel:      String,          // Button label
- *   ctaLink:       String,          // Button href
- *   imageUrl:      String,          // Cloudinary URL (replaces base64)
- *   isVisible:     Boolean,         // Live on storefront
- *   status:        String,          // 'draft' | 'live' | 'scheduled'
- *   scheduleStart: String,          // ISO date string or null
- *   scheduleEnd:   String,          // ISO date string or null
- *   order:         Number,          // Display order in carousel
- *   createdAt:     Date,
- *   updatedAt:     Date,
- * }
- *
- * 🔧 LOCAL STORAGE KEYS (current, browser-only):
- * - `pmp_banners`          - Array of all banner objects
- * - `pmp_banner_activeId`  - Currently selected banner for editing
+ * Backend-connected banner management via MongoDB API
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-
-// ── LocalStorage Keys ──────────────────────────────────────────────────────────
-// TODO: MongoDB — Remove these keys when connecting to database
-// CURRENT: Browser-only, data is lost on clear/different device
-const STORAGE_KEY = 'pmp_banners';
-const ACTIVE_ID_KEY = 'pmp_banner_activeId';
-
-// ── LocalStorage Helpers ───────────────────────────────────────────────────────
-// TODO: MongoDB — Replace getBanners() with: GET /api/banners
-// TODO: MongoDB — Replace saveBanners() with: PUT /api/banners/:id or POST /api/banners
-//
-// Example MongoDB API:
-// ```js
-// // app/api/banners/route.js
-// export async function GET() {
-//   const banners = await Banner.find({}).sort({ order: 1 });
-//   return NextResponse.json(banners);
-// }
-// export async function POST(request) {
-//   const body = await request.json();
-//   const banner = await Banner.create(body);
-//   return NextResponse.json(banner);
-// }
-// ```
-const getBanners = () => {
-  try {
-    const data = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
-    return data ? JSON.parse(data) : [];
-  } catch (e) {
-    console.error('Error reading banners:', e);
-    return [];
-  }
-};
-
-const saveBanners = (banners) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(banners));
-  } catch (e) {
-    console.error('Error saving banners:', e);
-  }
-};
-
-// TODO: MongoDB — Remove generateId(), MongoDB will auto-generate _id
-const generateId = () => `banner_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  getBanners,
+  createBanner as apiCreateBanner,
+  updateBanner as apiUpdateBanner,
+  deleteBanner as apiDeleteBanner,
+  publishBanner as apiPublishBanner,
+  unpublishBanner as apiUnpublishBanner,
+} from '@/lib/bannerUtils';
 
 // UX limit — keeps carousel manageable regardless of storage backend
 // Safe to keep even after MongoDB migration (enforced at API level too)
@@ -127,8 +43,6 @@ const fileToBase64 = (file) => {
 
 // ── Default Banner ──────────────────────────────────────────────────────────────
 const createDefaultBanner = () => ({
-  id: generateId(),
-  name: 'New Banner',
   headline: '',
   subtext: '',
   ctaLabel: '',
@@ -136,11 +50,9 @@ const createDefaultBanner = () => ({
   image: null,
   isVisible: false,
   status: 'draft',
-  scheduleStart: '',
-  scheduleEnd: '',
+  scheduleStart: null,
+  scheduleEnd: null,
   order: 0,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
 });
 
 // ── Calendar Helpers ────────────────────────────────────────────────────────────
@@ -442,6 +354,7 @@ function DateRangePicker({ startValue, endValue, onStartChange, onEndChange }) {
 
 // ── Main Component ──────────────────────────────────────────────────────────────
 export default function BannerManagementPage() {
+  const { token } = useAuth();
   const fileInputRef = useRef(null);
   const carouselIntervalRef = useRef(null);
 
@@ -452,36 +365,35 @@ export default function BannerManagementPage() {
   const [dragOver, setDragOver] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
 
   // ── Load banners on mount ──────────────────────────────────────────────────
-  // TODO: MongoDB — Replace with: GET /api/banners (sorted by order ASC)
-  // CURRENT: Reads from localStorage (browser-only, not persistent across devices)
   useEffect(() => {
-    const loadedBanners = getBanners();
-    const activeId = typeof window !== 'undefined' ? localStorage.getItem(ACTIVE_ID_KEY) : null;
-    if (loadedBanners.length > 0) {
-      setBanners(loadedBanners);
-      if (activeId && loadedBanners.find(b => b.id === activeId)) {
-        setActiveBannerIdLocal(activeId);
-        setEditedBanner({ ...loadedBanners.find(b => b.id === activeId) });
-      } else {
-        setActiveBannerIdLocal(loadedBanners[0].id);
-        setEditedBanner({ ...loadedBanners[0] });
+    if (!token) return;
+    async function loadBanners() {
+      try {
+        const loadedBanners = await getBanners(token);
+        if (loadedBanners.length > 0) {
+          setBanners(loadedBanners);
+          setActiveBannerIdLocal(loadedBanners[0]._id || loadedBanners[0].id);
+          setEditedBanner({ ...loadedBanners[0] });
+        } else {
+          setBanners([]);
+          setEditedBanner(null);
+        }
+      } catch (err) {
+        console.error('Failed to load banners:', err);
+        setBanners([]);
+        setEditedBanner(null);
+      } finally {
+        setIsLoading(false);
       }
-    } else {
-      setBanners([]);
-      setEditedBanner(null);
     }
-    setIsLoading(false);
+    loadBanners();
   }, []);
-
-  // TODO: MongoDB — Remove this useEffect
-  // CURRENT: Auto-saves to localStorage on every state change
-  // FUTURE: Not needed — each action (create/update/delete) will call its own API endpoint
-  useEffect(() => { if (!isLoading) saveBanners(banners); }, [banners, isLoading]);
 
   useEffect(() => {
     if (editedBanner && activeBannerId) {
@@ -504,13 +416,15 @@ export default function BannerManagementPage() {
   }, [activeBannerId, banners, currentSlide]);
 
   const selectBanner = (bannerId) => {
-    const banner = banners.find(b => b.id === bannerId);
-    if (banner) { setActiveBannerIdLocal(bannerId); localStorage.setItem(ACTIVE_ID_KEY, bannerId); setEditedBanner({ ...banner }); }
+    const banner = banners.find(b => (b._id || b.id) === bannerId);
+    if (banner) {
+      setActiveBannerIdLocal(banner._id || banner.id);
+      setEditedBanner({ ...banner });
+    }
   };
 
-  // TODO: MongoDB — Replace with: POST /api/banners
-  // CURRENT: Pushes to localStorage array
-  const createNewBanner = () => {
+  // Create new banner via API
+  const createNewBanner = async () => {
     if (banners.length >= MAX_BANNERS) {
       setModal({
         type: 'error',
@@ -519,67 +433,174 @@ export default function BannerManagementPage() {
       });
       return;
     }
-    const newBanner = { ...createDefaultBanner(), order: banners.length };
-    const updatedBanners = [...banners, newBanner];
-    setBanners(updatedBanners); saveBanners(updatedBanners); selectBanner(newBanner.id);
+    setIsLoading(true);
+    try {
+      const newBanner = await apiCreateBanner(createDefaultBanner(), token);
+      const updatedBanners = [...banners, newBanner];
+      setBanners(updatedBanners);
+      selectBanner(newBanner._id || newBanner.id);
+    } catch (err) {
+      console.error('Failed to create banner:', err);
+      setModal({
+        type: 'error',
+        title: 'Create Failed',
+        message: err.message || 'Failed to create banner. Please try again.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // TODO: MongoDB — Replace with: DELETE /api/banners/:id
-  // CURRENT: Filters out from localStorage array
-  const deleteBanner = (bannerId) => {
+  // Delete banner via API
+  const deleteBanner = async (bannerId) => {
     setModal({
-      type: 'confirm', title: 'Delete Banner',
+      type: 'confirm',
+      title: 'Delete Banner',
       message: 'Are you sure you want to delete this banner? This action cannot be undone.',
-      onConfirm: () => {
-        const updatedBanners = banners.filter(b => b.id !== bannerId);
-        setBanners(updatedBanners); saveBanners(updatedBanners);
-        if (activeBannerId === bannerId) {
-          if (updatedBanners.length > 0) selectBanner(updatedBanners[0].id);
-          else { setActiveBannerIdLocal(null); localStorage.removeItem(ACTIVE_ID_KEY); setEditedBanner(null); }
+      onConfirm: async () => {
+        setIsSubmitting(true);
+        setIsLoading(true);
+        try {
+          await apiDeleteBanner(bannerId, token);
+          const updatedBanners = banners.filter(b => (b._id || b.id) !== bannerId);
+          setBanners(updatedBanners);
+          if (activeBannerId === bannerId) {
+            if (updatedBanners.length > 0) {
+              selectBanner(updatedBanners[0]._id || updatedBanners[0].id);
+            } else {
+              setActiveBannerIdLocal(null);
+              setEditedBanner(null);
+            }
+          }
+          setModal(null);
+        } catch (err) {
+          console.error('Failed to delete banner:', err);
+          setModal({
+            type: 'error',
+            title: 'Delete Failed',
+            message: err.message || 'Failed to delete banner. Please try again.',
+          });
+        } finally {
+          setIsLoading(false);
+          setIsSubmitting(false);
         }
-        setModal(null);
       },
     });
   };
 
-  // TODO: MongoDB — Replace with: PUT /api/banners/reorder
-  // CURRENT: Swaps order in localStorage array
-  const moveBanner = (index, direction) => {
+  // Move banner (reorder) - updates order locally, will sync on next save
+  const moveBanner = async (index, direction) => {
+    if (isSubmitting) return;
     const newIndex = index + direction;
     if (newIndex < 0 || newIndex >= banners.length) return;
+
     const updatedBanners = [...banners];
     [updatedBanners[index], updatedBanners[newIndex]] = [updatedBanners[newIndex], updatedBanners[index]];
     updatedBanners.forEach((b, idx) => { b.order = idx; });
-    setBanners(updatedBanners); saveBanners(updatedBanners);
+
+    setIsSubmitting(true);
+    setIsLoading(true);
+    try {
+      // Update the moved banner's order via API
+      const movedBanner = updatedBanners[newIndex];
+      await apiUpdateBanner(movedBanner._id || movedBanner.id, { order: movedBanner.order }, token);
+      setBanners(updatedBanners);
+    } catch (err) {
+      console.error('Failed to reorder banner:', err);
+      setModal({
+        type: 'error',
+        title: 'Reorder Failed',
+        message: err.message || 'Failed to reorder banner. Please try again.',
+      });
+    } finally {
+      setIsLoading(false);
+      setIsSubmitting(false);
+    }
   };
 
   const updateField = (field, value) => {
-    setEditedBanner(prev => ({ ...prev, [field]: value, updatedAt: new Date().toISOString() }));
+    setEditedBanner(prev => ({ ...prev, [field]: value }));
     setHasUnsavedChanges(true);
   };
 
   const discardChanges = () => {
     if (!activeBannerId) return;
-    const originalBanner = banners.find(b => b.id === activeBannerId);
+    const originalBanner = banners.find(b => (b._id || b.id) === activeBannerId);
     if (originalBanner) { setEditedBanner({ ...originalBanner }); setHasUnsavedChanges(false); }
   };
 
-  // TODO: MongoDB — Replace with: PUT /api/banners/:id  { isVisible: true, status: 'live' }
-  // CURRENT: Updates status in localStorage
-  const publishBanner = () => {
-    if (!editedBanner) return;
-    const updatedBanner = { ...editedBanner, isVisible: true, status: 'live', updatedAt: new Date().toISOString() };
-    const updatedBanners = banners.map(b => b.id === activeBannerId ? updatedBanner : b);
-    setBanners(updatedBanners); saveBanners(updatedBanners); setEditedBanner(updatedBanner); setHasUnsavedChanges(false);
+  // Save edited banner via API
+  const saveChanges = async () => {
+    if (!editedBanner || !activeBannerId) return;
+    setIsLoading(true);
+    try {
+      const updatedBanner = await apiUpdateBanner(activeBannerId, editedBanner, token);
+      const updatedBanners = banners.map(b => (b._id || b.id) === activeBannerId ? updatedBanner : b);
+      setBanners(updatedBanners);
+      setEditedBanner(updatedBanner);
+      setHasUnsavedChanges(false);
+      setModal({
+        type: 'success',
+        title: 'Banner Updated',
+        message: 'Banner has been updated successfully.',
+      });
+      setTimeout(() => setModal(null), 2000);
+    } catch (err) {
+      console.error('Failed to save banner:', err);
+      setModal({
+        type: 'error',
+        title: 'Save Failed',
+        message: err.message || 'Failed to save banner. Please try again.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // TODO: MongoDB — Replace with: PUT /api/banners/:id  { isVisible: false, status: 'draft' }
-  // CURRENT: Updates status in localStorage
-  const unpublishBanner = () => {
+  // Publish banner via API
+  const publishBanner = async () => {
     if (!editedBanner) return;
-    const updatedBanner = { ...editedBanner, isVisible: false, status: 'draft', updatedAt: new Date().toISOString() };
-    const updatedBanners = banners.map(b => b.id === activeBannerId ? updatedBanner : b);
-    setBanners(updatedBanners); saveBanners(updatedBanners); setEditedBanner(updatedBanner); setHasUnsavedChanges(false);
+    setIsLoading(true);
+    try {
+      const updatedBanner = await apiPublishBanner(activeBannerId, token);
+      const updatedBanners = banners.map(b => (b._id || b.id) === activeBannerId ? updatedBanner : b);
+      setBanners(updatedBanners);
+      setEditedBanner(updatedBanner);
+      setHasUnsavedChanges(false);
+    } catch (err) {
+      console.error('Failed to publish banner:', err);
+      setModal({
+        type: 'error',
+        title: 'Publish Failed',
+        message: err.message || 'Failed to publish banner. Please try again.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Unpublish banner via API
+  const unpublishBanner = async () => {
+    if (!editedBanner || isSubmitting) return;
+    setIsSubmitting(true);
+    setIsLoading(true);
+    try {
+      const updatedBanner = await apiUnpublishBanner(activeBannerId, token);
+      const updatedBanners = banners.map(b => (b._id || b.id) === activeBannerId ? updatedBanner : b);
+      setBanners(updatedBanners);
+      setEditedBanner(updatedBanner);
+      setHasUnsavedChanges(false);
+    } catch (err) {
+      console.error('Failed to unpublish banner:', err);
+      setModal({
+        type: 'error',
+        title: 'Unpublish Failed',
+        message: err.message || 'Failed to unpublish banner. Please try again.',
+      });
+    } finally {
+      setIsLoading(false);
+      setIsSubmitting(false);
+    }
   };
 
   // ── Image Upload ─────────────────────────────────────────────────────────────
@@ -593,15 +614,17 @@ export default function BannerManagementPage() {
   const handleImageUpload = async (file) => {
     if (!file) return;
     const validTypes = ['image/png', 'image/jpeg', 'image/webp'];
-    if (!validTypes.includes(file.type)) { setModal({ type: 'error', title: 'Invalid File Type', message: 'Please upload PNG, JPEG, or WebP images only.' }); return; }
-    if (file.size > 5 * 1024 * 1024) { setModal({ type: 'error', title: 'File Too Large', message: 'Image size must be less than 5MB.' }); return; }
+    if (!validTypes.includes(file.type)) {
+      setModal({ type: 'error', title: 'Invalid File Type', message: 'Please upload PNG, JPEG, or WebP images only.' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setModal({ type: 'error', title: 'File Too Large', message: 'Image size must be less than 5MB.' });
+      return;
+    }
     try {
       const base64 = await fileToBase64(file);
       updateField('image', base64);
-      const updatedBanners = banners.map(b => b.id === activeBannerId ? { ...b, image: base64, updatedAt: new Date().toISOString() } : b);
-      setBanners(updatedBanners); saveBanners(updatedBanners);
-      setModal({ type: 'success', title: 'Image Uploaded', message: 'Banner image has been uploaded successfully.' });
-      setTimeout(() => setModal(null), 2000);
     } catch (error) {
       console.error('Error uploading image:', error);
       setModal({ type: 'error', title: 'Upload Failed', message: 'Failed to upload image. Please try again.' });
@@ -828,21 +851,27 @@ export default function BannerManagementPage() {
         <h1 className="banner-title">Banner Management</h1>
         <div className="banner-actions">
           {isLive ? (
-            <button className="banner-btn banner-btn-secondary" onClick={unpublishBanner}>
-              Unpublish
+            <button className="banner-btn banner-btn-secondary" onClick={unpublishBanner} disabled={isSubmitting} style={{ opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}>
+              {isSubmitting ? 'Unpublishing...' : 'Unpublish'}
             </button>
           ) : (
             <>
-              <button className="banner-btn banner-btn-secondary" onClick={discardChanges}>
-                Discard Changes
-              </button>
+              {hasUnsavedChanges ? (
+                <button
+                  className="banner-btn banner-btn-secondary"
+                  onClick={saveChanges}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+              ) : null}
               <button
                 className="banner-btn banner-btn-primary"
                 onClick={publishBanner}
-                disabled={!editedBanner?.image}
+                disabled={!editedBanner?.image || isLoading}
                 title={!editedBanner?.image ? 'Upload a banner image first' : ''}
               >
-                Publish Live
+                {isLoading ? 'Publishing...' : 'Publish Live'}
               </button>
             </>
           )}
@@ -866,8 +895,8 @@ export default function BannerManagementPage() {
                   onClick={() => selectBanner(banner.id)}
                 >
                   <div className="banner-order-btns">
-                    <button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(index, -1); }} disabled={index === 0} title="Move up">▲</button>
-                    <button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(index, 1); }} disabled={index === banners.length - 1} title="Move down">▼</button>
+                    <button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(index, -1); }} disabled={index === 0 || isSubmitting} title="Move up">▲</button>
+                    <button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(index, 1); }} disabled={index === banners.length - 1 || isSubmitting} title="Move down">▼</button>
                   </div>
                   <div className="banner-item-thumbnail">
                     {banner.image ? <img src={banner.image} alt={banner.name} /> : <span>No Image</span>}
@@ -1010,11 +1039,11 @@ export default function BannerManagementPage() {
               <h3 className="banner-editor-card-title">Content</h3>
               <div className="banner-form-group">
                 <label className="banner-form-label">Banner Name <span className="banner-char-count">{editedBanner?.name?.length || 0}/50</span></label>
-                <input type="text" className="banner-form-input" value={editedBanner?.name || ''} onChange={(e) => updateField('name', e.target.value.slice(0, 50))} placeholder="Internal name for this banner..." maxLength={50} disabled={isLive} />
+                <input type="text" className="banner-form-input" value={editedBanner?.name || ''} onChange={(e) => updateField('name', e.target.value.slice(0, 50))} onKeyDown={e => { if (e.key === 'Enter' && !isLive) { e.preventDefault(); saveChanges(); } }} placeholder="Internal name for this banner..." maxLength={50} disabled={isLive} />
               </div>
               <div className="banner-form-group">
                 <label className="banner-form-label">Headline <span className="banner-char-count">{editedBanner?.headline?.length || 0}/60</span></label>
-                <input type="text" className="banner-form-input" value={editedBanner?.headline || ''} onChange={(e) => updateField('headline', e.target.value.slice(0, 60))} placeholder="Main headline text..." maxLength={60} disabled={isLive} />
+                <input type="text" className="banner-form-input" value={editedBanner?.headline || ''} onChange={(e) => updateField('headline', e.target.value.slice(0, 60))} onKeyDown={e => { if (e.key === 'Enter' && !isLive) { e.preventDefault(); saveChanges(); } }} placeholder="Main headline text..." maxLength={60} disabled={isLive} />
               </div>
               <div className="banner-form-group">
                 <label className="banner-form-label">Subtext <span className="banner-char-count">{editedBanner?.subtext?.length || 0}/200</span></label>
@@ -1023,11 +1052,11 @@ export default function BannerManagementPage() {
               <div className="banner-form-row">
                 <div className="banner-form-group">
                   <label className="banner-form-label">Button Text <span className="banner-char-count">{editedBanner?.ctaLabel?.length || 0}/30</span></label>
-                  <input type="text" className="banner-form-input" value={editedBanner?.ctaLabel || ''} onChange={(e) => updateField('ctaLabel', e.target.value.slice(0, 30))} placeholder="CTA button..." maxLength={30} disabled={isLive} />
+                  <input type="text" className="banner-form-input" value={editedBanner?.ctaLabel || ''} onChange={(e) => updateField('ctaLabel', e.target.value.slice(0, 30))} onKeyDown={e => { if (e.key === 'Enter' && !isLive) { e.preventDefault(); saveChanges(); } }} placeholder="CTA button..." maxLength={30} disabled={isLive} />
                 </div>
                 <div className="banner-form-group">
                   <label className="banner-form-label">Button Link</label>
-                  <input type="text" className="banner-form-input" value={editedBanner?.ctaLink || ''} onChange={(e) => updateField('ctaLink', e.target.value)} placeholder="/shop or /contact..." disabled={isLive} />
+                  <input type="text" className="banner-form-input" value={editedBanner?.ctaLink || ''} onChange={(e) => updateField('ctaLink', e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !isLive) { e.preventDefault(); saveChanges(); } }} placeholder="/shop or /contact..." disabled={isLive} />
                 </div>
               </div>
             </div>
@@ -1081,7 +1110,9 @@ export default function BannerManagementPage() {
               {modal.type === 'confirm' ? (
                 <>
                   <button className="banner-modal-btn banner-modal-btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-                  <button className="banner-modal-btn banner-modal-btn-danger" onClick={modal.onConfirm}>Delete</button>
+                  <button className="banner-modal-btn banner-modal-btn-danger" onClick={modal.onConfirm} disabled={isSubmitting} style={{ opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}>
+                    {isSubmitting ? 'Deleting...' : 'Delete'}
+                  </button>
                 </>
               ) : (
                 <button className="banner-modal-btn banner-modal-btn-primary" onClick={() => setModal(null)}>

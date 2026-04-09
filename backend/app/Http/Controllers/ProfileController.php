@@ -13,8 +13,7 @@ class ProfileController extends Controller
     public function update(Request $request)
     {
         try {
-            $token = $request->bearerToken();
-            $user = User::where('api_token', hash('sha256', $token))->first();
+            $user = $request->user();
 
             if (!$user) {
                 return $this->unauthorizedResponse();
@@ -24,8 +23,8 @@ class ProfileController extends Controller
                 'firstName' => 'required|string|min:2',
                 'lastName' => 'required|string|min:2',
                 'email' => ['required', 'email', Rule::unique('users')->ignore($user->id, '_id')],
-                'phoneNumber' => ['required', 'string', 'regex:/^(09|\+639)\d{9}$/'],
-                'address' => 'required|string|min:10',
+                'phoneNumber' => ['required', 'string', 'regex:/^(\+?63|0)9\d{9}$/'],
+                'address' => 'required|string|min:3',
             ]);
 
             $user->firstName = $request->firstName;
@@ -54,8 +53,7 @@ class ProfileController extends Controller
     public function updatePassword(Request $request)
     {
         try {
-            $token = $request->bearerToken();
-            $user = User::where('api_token', hash('sha256', $token))->first();
+            $user = $request->user();
 
             if (!$user) {
                 return $this->unauthorizedResponse();
@@ -78,6 +76,92 @@ class ProfileController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred.');
+        }
+    }
+
+    public function updateAvatar(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if (!$user) {
+                return $this->unauthorizedResponse();
+            }
+
+            $request->validate([
+                'avatar' => 'required|string|url',
+            ]);
+
+            $user->avatar = $request->avatar;
+            $user->save();
+
+            return $this->successResponse('Avatar updated successfully.', [
+                'avatar' => $user->avatar,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to update avatar.');
+        }
+    }
+
+    /**
+     * POST /api/profile/upload-avatar
+     * Upload avatar file, save to Cloudinary, update user
+     */
+    public function uploadAvatar(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if (!$user) {
+                return $this->unauthorizedResponse();
+            }
+
+            $request->validate([
+                'avatar' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
+            ]);
+
+            $cloudName = config('services.cloudinary.cloud_name');
+            $uploadPreset = config('services.cloudinary.upload_preset');
+
+            if (!$cloudName || !$uploadPreset) {
+                return $this->errorResponse('Image upload service not configured.', 500);
+            }
+
+            $file = $request->file('avatar');
+
+            $response = \Illuminate\Support\Facades\Http::attach(
+                'file',
+                file_get_contents($file->getRealPath()),
+                $file->getClientOriginalName(),
+                ['Content-Type' => $file->getMimeType()]
+            )->post("https://api.cloudinary.com/v1_1/{$cloudName}/image/upload", [
+                'upload_preset' => $uploadPreset,
+                'folder'        => 'pmp-avatars',
+            ]);
+
+            if (!$response->successful()) {
+                return $this->errorResponse('Failed to upload image.', 500);
+            }
+
+            $data = $response->json();
+            $avatarUrl = $data['secure_url'] ?? null;
+
+            if (!$avatarUrl) {
+                return $this->errorResponse('Upload succeeded but no URL returned.', 500);
+            }
+
+            $user->avatar = $avatarUrl;
+            $user->save();
+
+            return $this->successResponse('Avatar updated successfully.', [
+                'avatar' => $avatarUrl,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to upload avatar.');
         }
     }
 }

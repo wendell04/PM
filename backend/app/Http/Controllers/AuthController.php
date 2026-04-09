@@ -4,13 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Mail\ContactFormMail;
 use App\Mail\VerificationCodeMail;
+use App\Mail\WelcomeMail;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -25,12 +26,44 @@ class AuthController extends Controller
                 'lastName'    => 'required|string|min:2',
                 'address'     => 'required|string|min:10',
                 'phoneNumber' => ['required', 'string', 'regex:/^(09|\+639)\d{9}$/'],
-                'email'       => [
-                    'required', 'email',
-                    Rule::unique('users', 'email')->where(fn($q) => $q->where('is_verified', true)),
-                ],
+                'email'       => ['required', 'email'],
                 'password'    => 'required|string|min:8|confirmed',
+            ], [
+                'firstName.required'  => 'First name is required.',
+                'firstName.min'       => 'First name must be at least 2 characters.',
+                'lastName.required'   => 'Last name is required.',
+                'lastName.min'        => 'Last name must be at least 2 characters.',
+                'address.required'    => 'Address is required.',
+                'address.min'         => 'Address must be at least 10 characters.',
+                'phoneNumber.required'=> 'Phone number is required.',
+                'phoneNumber.regex'   => 'Phone number must be a valid PH number (e.g. 09171234567 or +639171234567).',
+                'email.required'      => 'Email address is required.',
+                'email.email'         => 'Please enter a valid email address.',
+                'password.required'   => 'Password is required.',
+                'password.min'        => 'Password must be at least 8 characters.',
+                'password.confirmed'  => 'Passwords do not match.',
             ]);
+
+            // Manual uniqueness checks for MongoDB
+            $emailExists = User::where('email', $request->email)
+                ->where('is_verified', true)
+                ->exists();
+
+            if ($emailExists) {
+                throw ValidationException::withMessages([
+                    'email' => ['This email is already registered. Please log in or use a different email.'],
+                ]);
+            }
+
+            $phoneExists = User::where('phoneNumber', $request->phoneNumber)
+                ->where('is_verified', true)
+                ->exists();
+
+            if ($phoneExists) {
+                throw ValidationException::withMessages([
+                    'phoneNumber' => ['This phone number is already registered. Please log in or use a different number.'],
+                ]);
+            }
 
             // Additional email validation
             $email = strtolower(trim($request->email));
@@ -56,8 +89,7 @@ class AuthController extends Controller
             User::where('email', $request->email)->where('is_verified', false)->delete();
 
             $plainCode = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-            $hashedCode = hash('sha256', $plainCode);
-            $token = Str::random(60);
+            $hashedCode = Hash::make($plainCode);
 
             $user = User::create([
                 'firstName'     => $request->firstName,
@@ -68,7 +100,6 @@ class AuthController extends Controller
                 'email'         => $request->email,
                 'password'      => Hash::make($request->password),
                 'is_verified'   => false,
-                'api_token'     => hash('sha256', $token),
                 'role'          => 'customer', // All new users are customers by default
                 'verification_code' => $hashedCode,
                 'verification_code_expires_at' => now()->addMinutes(10)->toDateTimeString(),
@@ -85,11 +116,15 @@ class AuthController extends Controller
             return $this->successResponse(
                 'Registration successful! Please check your email for the verification code.',
                 [
-                    'token' => $token,
                     'user' => [
-                        'firstName' => $user->firstName,
-                        'lastName' => $user->lastName,
-                        'email' => $user->email,
+                        'firstName'   => $user->firstName,
+                        'middleInitial' => $user->middleInitial,
+                        'lastName'    => $user->lastName,
+                        'email'       => $user->email,
+                        'phoneNumber' => $user->phoneNumber,
+                        'address'     => $user->address,
+                        'role'        => $user->role,
+                        'avatar'      => $user->avatar ?? null,
                     ],
                 ],
                 201
@@ -108,39 +143,60 @@ class AuthController extends Controller
             $request->validate([
                 'email'    => 'required|email',
                 'password' => 'required|string',
+                'device_token' => 'nullable|string|size:64',
             ]);
 
             $user = User::where('email', $request->email)->first();
 
             if (!$user || !Hash::check($request->password, $user->password)) {
-                return $this->errorResponse('Invalid credentials.', 401);
+                return $this->errorResponse('The email or password you entered is incorrect. Please try again.', 401);
             }
 
             if (!$user->is_verified) {
                 return $this->errorResponse('Please verify your email before logging in.', 403);
             }
 
-            $token = Str::random(60);
-            $user->api_token = hash('sha256', $token);
-            $user->lastLogin = now()->toDateTimeString();
+            $deviceName = $this->parseDeviceName($request->userAgent() ?? 'Unknown Device');
+            $sanctumToken = $user->createToken($deviceName)->plainTextToken;
+            $user->lastLogin     = now()->toDateTimeString();
+            $user->last_login_at = now();
             $user->save();
+
+            $requires2fa  = false;
+            $deviceToken  = $request->input('device_token');
+            $deviceTokens = $user->device_tokens ?? [];
+
+            if (!$deviceToken) {
+                // No device token sent — require 2FA
+                $requires2fa = true;
+            } else {
+                $isRecognized = collect($deviceTokens)->contains(
+                    fn($entry) => isset($entry['token']) &&
+                                  $entry['token'] === $deviceToken
+                );
+                $requires2fa = !$isRecognized;
+            }
 
             return $this->successResponse(
                 'Login successful!',
                 [
-                    'token' => $token,
+                    'token'        => $sanctumToken,
+                    'requires_2fa' => $requires2fa,
                     'user' => [
-                        'firstName' => $user->firstName,
-                        'lastName' => $user->lastName,
-                        'email' => $user->email,
+                        'firstName'   => $user->firstName,
+                        'lastName'    => $user->lastName,
+                        'email'       => $user->email,
                         'phoneNumber' => $user->phoneNumber,
-                        'address' => $user->address,
-                        'role' => $user->role,
-                        'lastLogin' => $user->lastLogin,
+                        'address'     => $user->address,
+                        'role'        => $user->role,
+                        'lastLogin'   => $user->lastLogin,
+                        'avatar'      => $user->avatar,
                     ],
                 ]
             );
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred during login.');
         }
@@ -157,7 +213,7 @@ class AuthController extends Controller
             $user = User::where('email', $request->email)->first();
 
             if (!$user) {
-                return $this->errorResponse('Invalid request.', 400);
+                return $this->errorResponse('No account found with this email address.', 400);
             }
 
             if ($user->is_verified) {
@@ -168,14 +224,40 @@ class AuthController extends Controller
                 return $this->errorResponse('Verification code has expired. Please request a new code.', 400);
             }
 
-            if (hash('sha256', $request->code) !== $user->verification_code) {
+            // Attempt limiting: max 5 attempts before code is invalidated
+            $attempts = (int) ($user->verification_attempts ?? 0) + 1;
+            if ($attempts > 5) {
+                $user->verification_code = null;
+                $user->verification_code_expires_at = null;
+                $user->verification_attempts = 0;
+                $user->save();
+                return $this->errorResponse(
+                    'Too many attempts. Please request a new verification code.',
+                    429
+                );
+            }
+            $user->verification_attempts = $attempts;
+            $user->save();
+
+            if (!Hash::check($request->code, $user->verification_code)) {
                 return $this->errorResponse('Invalid verification code.', 400);
             }
 
             $user->is_verified = true;
             $user->verification_code = null;
             $user->verification_code_expires_at = null;
+            $user->verification_attempts = 0;
             $user->save();
+
+            // Send welcome email
+            try {
+                Mail::to($user->email)->send(new WelcomeMail($user->firstName));
+            } catch (\Exception $e) {
+                Log::error('AuthController @verify: Failed to send welcome email', [
+                    'email' => $user->email,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             return $this->successResponse('Email verified successfully! You can now log in.');
         } catch (\Exception $e) {
@@ -198,8 +280,20 @@ class AuthController extends Controller
                 return $this->errorResponse('Email already verified.', 400);
             }
 
+            // Per-user resend cooldown: 60 seconds minimum between requests
+            if ($user->verification_code_expires_at) {
+                $lastSent = \Carbon\Carbon::parse($user->verification_code_expires_at)
+                                ->subMinutes(10); // code_expires_at = sent_at + 10 min
+                if (\Carbon\Carbon::now()->diffInSeconds($lastSent, false) < 60) {
+                    return $this->errorResponse(
+                        'Please wait before requesting another code.',
+                        429
+                    );
+                }
+            }
+
             $plainCode = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-            $hashedCode = hash('sha256', $plainCode);
+            $hashedCode = Hash::make($plainCode);
 
             $user->verification_code = $hashedCode;
             $user->verification_code_expires_at = now()->addMinutes(10)->toDateTimeString();
@@ -315,7 +409,7 @@ class AuthController extends Controller
                 return $this->errorResponse('Code has expired. Please request a new one.', 400);
             }
 
-            if (hash('sha256', $request->code) !== $user->reset_code) {
+            if (!Hash::check($request->code, $user->reset_code)) {
                 return $this->errorResponse('Invalid or expired code.', 400);
             }
 
@@ -356,7 +450,7 @@ class AuthController extends Controller
 
             // Generate 6-digit code
             $plainCode = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-            $hashedCode = hash('sha256', $plainCode);
+            $hashedCode = Hash::make($plainCode);
 
             $user->reset_code = $hashedCode;
             $user->reset_code_expires_at = \Carbon\Carbon::now('Asia/Manila')->addMinutes(10)->toDateTimeString();
@@ -393,7 +487,7 @@ class AuthController extends Controller
             $user = User::where('email', $request->email)->first();
 
             if (!$user) {
-                return $this->notFoundResponse('User');
+                return $this->errorResponse('Invalid or expired reset code. Please request a new one.', 400);
             }
 
             if (!$user->reset_code || !$user->reset_code_expires_at) {
@@ -407,7 +501,7 @@ class AuthController extends Controller
                 return $this->errorResponse('Reset code has expired. Please request a new one.', 400);
             }
 
-            if (hash('sha256', $request->code) !== $user->reset_code) {
+            if (!Hash::check($request->code, $user->reset_code)) {
                 return $this->errorResponse('Invalid reset code.', 400);
             }
 
@@ -451,10 +545,32 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
-        $token = $request->bearerToken();
-        if ($token) {
-            User::where('api_token', hash('sha256', $token))->update(['api_token' => null]);
+        $user = $request->user();
+        if ($user) {
+            $user->currentAccessToken()->delete();
         }
         return $this->successResponse('Logged out successfully.');
+    }
+
+    private function parseDeviceName(string $userAgent): string
+    {
+        // Detect browser
+        $browser = 'Browser';
+        if (str_contains($userAgent, 'Edg/'))         $browser = 'Edge';
+        elseif (str_contains($userAgent, 'OPR/'))     $browser = 'Opera';
+        elseif (str_contains($userAgent, 'Chrome/'))  $browser = 'Chrome';
+        elseif (str_contains($userAgent, 'Firefox/')) $browser = 'Firefox';
+        elseif (str_contains($userAgent, 'Safari/') && !str_contains($userAgent, 'Chrome/')) $browser = 'Safari';
+
+        // Detect OS
+        $os = 'Unknown OS';
+        if (str_contains($userAgent, 'Windows NT'))   $os = 'Windows';
+        elseif (str_contains($userAgent, 'Macintosh')) $os = 'Mac';
+        elseif (str_contains($userAgent, 'iPhone'))   $os = 'iPhone';
+        elseif (str_contains($userAgent, 'iPad'))     $os = 'iPad';
+        elseif (str_contains($userAgent, 'Android'))  $os = 'Android';
+        elseif (str_contains($userAgent, 'Linux'))    $os = 'Linux';
+
+        return "{$browser} on {$os}";
     }
 }

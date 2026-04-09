@@ -10,6 +10,7 @@ import ErrorBoundary from '../../../../components/ErrorBoundary';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 import { formatPrice } from '../../../../src/utils/format';
 import { fetchSales } from '@/lib/salesApi';
 import { fetchInventory } from '@/lib/inventoryApi';
@@ -109,6 +110,7 @@ function OrderExpandRow({ order, colSpan }) {
 
 // ── Main SalesListPage ───────────────────────────────────────────────────────
 export default function SalesListPage() {
+  const { token } = useAuth();
   const router = useRouter();
   const [sales, setSales] = useState([]);
   const [inventory, setInventory] = useState([]);
@@ -127,15 +129,26 @@ export default function SalesListPage() {
   // Load sales and inventory from backend API on mount
   useEffect(() => {
     async function loadData() {
+      if (!token) {
+        console.error('No auth token. Cannot load sales.');
+        setIsLoading(false);
+        setError('Unable to load sales. Please refresh or log in again.');
+        return;
+      }
+
       setIsLoading(true);
       setError(null);
       try {
         // Fetch sales from API
-        const salesData = await fetchSales();
-        
+        const salesResponse = await fetchSales({}, token);
+        const salesData = Array.isArray(salesResponse)
+          ? salesResponse : [];
+
         // Fetch inventory from API (for cost calculation)
-        const inventoryData = await fetchInventory();
-        
+        const inventoryResponse = await fetchInventory(token);
+        const inventoryData = Array.isArray(inventoryResponse)
+          ? inventoryResponse : [];
+
         // Process sales with cost from inventory for manual sales
         const processedSales = salesData.map(sale => {
           const saleWithDate = {
@@ -145,7 +158,7 @@ export default function SalesListPage() {
 
           // Calculate cost from inventory if not present
           if (saleWithDate.source === 'manual' && (!saleWithDate.cost || saleWithDate.cost === 0) && saleWithDate.inventoryId) {
-            const invItem = inventoryData.find(inv => inv._id === saleWithDate.inventoryId || inv.id === saleWithDate.inventoryId);
+            const invItem = inventoryData.find(inv => inv.id === saleWithDate.inventoryId);
             if (invItem) {
               const avgCost = invItem.averageCost || invItem.lastUnitCost || 0;
               return {
@@ -337,17 +350,6 @@ export default function SalesListPage() {
           >
             Retry
           </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isLoaded) {
-    return (
-      <div className="page-content-wrapper">
-        <div className="loading-state">
-          <div className="loading-spinner"></div>
-          <p>Loading sales...</p>
         </div>
       </div>
     );

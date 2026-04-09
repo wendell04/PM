@@ -1,12 +1,18 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CartContext, useCart as useGlobalCart } from '../../context/CartContext';
 import { fetchCart, syncCart, mergeCart } from '@/lib/cartApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { forgotPassword, sendResetCode, verifyResetCode, resetPassword } from '@/lib/authApi';
+import {
+  fetchUnreadCount,
+  fetchNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+} from '@/lib/notificationApi';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -48,7 +54,7 @@ function toLayoutItem(item) {
 // Convert Layout format → MongoDB format
 function toMongoItem(item) {
   return {
-    productId: item.product?._id || item.productId,
+    productId: item.product?.id ?? item.product?._id ?? item.productId,
     productName: item.product?.name || item.productName,
     variantId: item.variantId || null,
     variantName: item.variantName || null,
@@ -63,14 +69,17 @@ function toMongoItem(item) {
 function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState({
+    email: '',
+    password: '',
+  });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setErrors({ email: '', password: '' });
     setLoading(true);
 
     try {
@@ -81,11 +90,19 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
       }, 15000);
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Login failed');
+      if (!res.ok) {
+        const authError = new Error('Incorrect email or password.');
+        authError.isAuthError = true;
+        throw authError;
+      }
 
-      onSuccess(data.user, data.token, rememberMe);
+      onSuccess(data.data.user, data.data.token, rememberMe, data.data.requires_2fa);
     } catch (err) {
-      setError(err.message);
+      if (err.isAuthError) {
+        setErrors({ email: '', password: err.message });
+      } else {
+        setErrors({ email: '', password: 'Something went wrong. Please try again.' });
+      }
     } finally {
       setLoading(false);
     }
@@ -93,8 +110,7 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
 
   return (
     <form onSubmit={handleSubmit} autoComplete="off">
-      {error && <div className="error-message" style={{ marginBottom: '1rem', display: 'block' }}>{error}</div>}
-      
+
       <div className="auth-field">
         <label>Email Address</label>
         <input
@@ -102,10 +118,10 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
           placeholder="you@example.com"
           value={email}
           onChange={e => setEmail(e.target.value)}
-          className={error ? 'error' : ''}
+          className={errors.email ? 'error' : ''}
           required
         />
-        {error && <span className="error-message">{error}</span>}
+        {errors.email && <span className="error-message">{errors.email}</span>}
       </div>
 
       <div className="auth-field">
@@ -116,14 +132,14 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
             placeholder="Enter your password"
             value={password}
             onChange={e => setPassword(e.target.value)}
-            className={error ? 'error' : ''}
+            className={errors.password ? 'error' : ''}
             required
           />
           <button type="button" className="auth-eye" onClick={() => setShowPassword(v => !v)}>
             {showPassword ? <EyeOpen /> : <EyeClosed />}
           </button>
         </div>
-        {error && <span className="error-message">{error}</span>}
+        {errors.password && <span className="error-message">{errors.password}</span>}
       </div>
 
       <div className="auth-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -177,15 +193,15 @@ function PasswordStrength({ password }) {
   ];
   const score = checks.filter(Boolean).length;
   const levels = [
-    { label: 'Too Weak', color: '#ef4444', width: '20%' },
-    { label: 'Weak', color: '#f97316', width: '40%' },
-    { label: 'Fair', color: '#eab308', width: '60%' },
-    { label: 'Strong', color: '#84cc16', width: '80%' },
-    { label: 'Very Strong', color: '#4ade80', width: '100%' },
+    { label: 'Too Weak',    color: 'var(--red)',   width: '20%'  },
+    { label: 'Weak',        color: 'var(--red)',   width: '40%'  },
+    { label: 'Fair',        color: 'var(--gold)',  width: '60%'  },
+    { label: 'Strong',      color: 'var(--green)', width: '80%'  },
+    { label: 'Very Strong', color: 'var(--green)', width: '100%' },
   ];
   const isTooShort = password.length > 0 && password.length < 8;
   const isTooLong = password.length > 32;
-  const current = levels[score - 1] || { label: 'Too Weak', color: '#ef4444', width: '20%' };
+  const current = levels[score - 1] || { label: 'Too Weak', color: 'var(--red)', width: '20%' };
   return (
     <div style={{ marginTop: '0.4rem' }}>
       {(isTooShort || isTooLong) && (
@@ -193,7 +209,15 @@ function PasswordStrength({ password }) {
           background: isTooLong ? 'rgba(239,68,68,0.12)' : 'rgba(249,115,22,0.12)',
           border: `1px solid ${isTooLong ? '#ef4444' : '#f97316'}`,
           color: isTooLong ? '#ef4444' : '#f97316' }}>
-          {isTooLong ? '⚠ Too long' : '⚠ Too short'}
+          {isTooLong ? (
+            <>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>{' '}Too long
+            </>
+          ) : (
+            <>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>{' '}Too short
+            </>
+          )}
         </div>
       )}
       <div style={{ height: '4px', borderRadius: '999px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
@@ -220,7 +244,9 @@ function StepIndicator({ step }) {
           background: step === 1 ? 'var(--gold)' : 'rgba(212,168,67,0.2)',
           color: step === 1 ? '#000' : 'var(--gold)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
-          {step > 1 ? '✓' : '1'}
+          {step > 1 ? (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          ) : '1'}
         </div>
         Fill in Details
       </div>
@@ -369,7 +395,7 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
         return;
       }
 
-      onSuccess(data.user, data.token, rememberMe);
+      onSuccess(data.data.user, data.data.token, rememberMe, data.data.requires_2fa);
     } catch (err) {
       setErrors({ email: 'Network error. Make sure the backend server is running.' });
     } finally {
@@ -491,7 +517,11 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
                       { label: 'One special character', pass: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password) },
                     ].map((c, i) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: c.pass ? '#4ade80' : 'var(--gray)', transition: 'color 0.2s' }}>
-                        <span style={{ fontSize: '0.72rem' }}>{c.pass ? '✓' : '·'}</span>{c.label}
+                        <span style={{ fontSize: '0.72rem' }}>{c.pass ? (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><polyline points="20 6 9 17 4 12"/></svg>
+                        ) : (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,opacity:0.3}}><circle cx="12" cy="12" r="2"/></svg>
+                        )}</span>{c.label}
                       </div>
                     ))}
                   </div>
@@ -523,7 +553,9 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
                 <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: formData.confirmPassword.length === 0 ? 'var(--gray)' : (formData.confirmPassword === formData.password ? '#4ade80' : '#ef4444') }}>
                   {formData.confirmPassword.length === 0
                     ? 'Re-enter your password to confirm.'
-                    : (formData.confirmPassword === formData.password ? '✓ Passwords match' : 'Passwords do not match')}
+                    : (formData.confirmPassword === formData.password ? (
+                        <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><polyline points="20 6 9 17 4 12"/></svg> Passwords match</>
+                      ) : 'Passwords do not match')}
                 </div>
               )}
               {errors.confirmPassword && <span className="error-message">{errors.confirmPassword}</span>}
@@ -565,7 +597,9 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
           <div className="tnc-modal" onClick={e => e.stopPropagation()}>
             <div className="tnc-header">
               <h3>Terms and Conditions</h3>
-              <button className="tnc-close" onClick={() => setTAndCModalOpen(false)}>✕</button>
+              <button className="tnc-close" onClick={() => setTAndCModalOpen(false)}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
             </div>
             <StepIndicator step={2} />
             <div className="tnc-content">
@@ -644,17 +678,33 @@ export default function ShopLayout({ children }) {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showForgotConfirm, setShowForgotConfirm] = useState(false);
 
+  // Notification state
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const notifRef = useRef(null);
+
   // Load user info (public access - no login required to browse)
   useEffect(() => {
     setMounted(true);
     const u = getUser();
     setUser(u);
 
+    // Listen for avatar/profile updates from other components
+    const handleUserUpdate = () => {
+      setUser(getUser());
+    };
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'auth_user') handleUserUpdate();
+    });
+    window.addEventListener('pmp_user_updated', handleUserUpdate);
+
     // Load cart from appropriate source
     const token = getToken();
     if (token && u) {
       // Logged in user - fetch cart from MongoDB
-      fetchCart()
+      fetchCart(getToken())
         .then(cartData => {
           const mongoItems = cartData?.items || [];
           const layoutItems = mongoItems.map(toLayoutItem);
@@ -684,6 +734,11 @@ export default function ShopLayout({ children }) {
       setCartInitialized(true);
       processPendingAdds();
     }
+
+    return () => {
+      window.removeEventListener('storage', handleUserUpdate);
+      window.removeEventListener('pmp_user_updated', handleUserUpdate);
+    };
   }, []);
 
   // Process pending cart items added before initialization
@@ -710,14 +765,23 @@ export default function ShopLayout({ children }) {
   };
 
   // Handle successful login
-  const handleLoginSuccess = async (userData, token, rememberMe = false) => {
+  const handleLoginSuccess = async (userData, token, rememberMe = false, requires2fa = false) => {
+    if (requires2fa) {
+      const storage = rememberMe ? localStorage : sessionStorage;
+      storage.setItem('auth_token', token);
+      storage.setItem('auth_user', JSON.stringify(userData));
+      sessionStorage.setItem('pending_2fa', 'true');
+      router.push('/dashboard/2fa-challenge');
+      return;
+    }
+
     const storage = rememberMe ? localStorage : sessionStorage;
     storage.setItem('auth_token', token);
     storage.setItem('auth_user', JSON.stringify(userData));
 
     // Redirect admin/owner to dashboard
-    if (userData.role === 'admin' || userData.role === 'owner') {
-      window.location.href = '/dashboard/business';
+    if (userData.role === 'admin' || userData.role === 'business') {
+      router.push('/dashboard/business');
       return;
     }
 
@@ -732,7 +796,7 @@ export default function ShopLayout({ children }) {
       if (guestCart) {
         const guestItems = JSON.parse(guestCart);
         if (guestItems && guestItems.length > 0) {
-          const mergedCart = await mergeCart(guestItems);
+          const mergedCart = await mergeCart(guestItems, getToken());
           // Update both cart systems
           const mongoItems = mergedCart?.items || [];
           const layoutItems = mongoItems.map(toLayoutItem);
@@ -754,8 +818,8 @@ export default function ShopLayout({ children }) {
     storage.setItem('auth_user', JSON.stringify(userData));
 
     // Redirect admin/owner to dashboard
-    if (userData.role === 'admin' || userData.role === 'owner') {
-      window.location.href = '/dashboard/business';
+    if (userData.role === 'admin' || userData.role === 'business') {
+      router.push('/dashboard/business');
       return;
     }
 
@@ -770,7 +834,7 @@ export default function ShopLayout({ children }) {
       if (guestCart) {
         const guestItems = JSON.parse(guestCart);
         if (guestItems && guestItems.length > 0) {
-          const mergedCart = await mergeCart(guestItems);
+          const mergedCart = await mergeCart(guestItems, getToken());
           // Update both cart systems
           const mongoItems = mergedCart?.items || [];
           const layoutItems = mongoItems.map(toLayoutItem);
@@ -804,13 +868,13 @@ export default function ShopLayout({ children }) {
   // Core add logic (used by both addToCart and pending)
   function addToCartCore(product, variantId, variantName, qty = 1) {
     setCart(prev => {
-      const key = `${product._id}_${variantId ?? 'none'}`;
+      const key = `${product.id ?? product._id}_${variantId ?? 'none'}`;
       const exists = prev.find(i =>
-        `${i.product._id}_${i.variantId ?? 'none'}` === key
+        `${(i.product.id ?? i.product._id)}_${i.variantId ?? 'none'}` === key
       );
       if (exists) {
         return prev.map(i =>
-          `${i.product._id}_${i.variantId ?? 'none'}` === key
+          `${(i.product.id ?? i.product._id)}_${i.variantId ?? 'none'}` === key
             ? { ...i, qty: i.qty + qty, lineTotal: (i.qty + qty) * i.unitPrice }
             : i
         );
@@ -838,7 +902,7 @@ export default function ShopLayout({ children }) {
 
   function removeFromCart(productId, variantId) {
     setCart(prev => prev.filter(i =>
-      !(i.product._id === productId && (i.variantId ?? null) === (variantId ?? null))
+      !((i.product.id ?? i.product._id) === productId && (i.variantId ?? null) === (variantId ?? null))
     ));
   }
 
@@ -847,11 +911,11 @@ export default function ShopLayout({ children }) {
     setCart(prev => {
       if (qty === 0) {
         return prev.filter(i =>
-          !(i.product._id === productId && (i.variantId ?? null) === (variantId ?? null))
+          !((i.product.id ?? i.product._id) === productId && (i.variantId ?? null) === (variantId ?? null))
         );
       }
       return prev.map(i =>
-        i.product._id === productId && (i.variantId ?? null) === (variantId ?? null)
+        (i.product.id ?? i.product._id) === productId && (i.variantId ?? null) === (variantId ?? null)
           ? { ...i, qty, lineTotal: qty * i.unitPrice }
           : i
       );
@@ -866,10 +930,13 @@ export default function ShopLayout({ children }) {
 
   // Sync cart to correct storage based on auth state
   function syncCartToStorage(mongoItems) {
+    if (!mongoItems || mongoItems.length === 0) {
+      return;
+    }
     const token = getToken();
     if (token) {
       // Logged in: sync to MongoDB (non-blocking)
-      syncCart(mongoItems).catch(err =>
+      syncCart(mongoItems, getToken()).catch(err =>
         console.warn('Cart sync failed:', err)
       );
     } else {
@@ -1003,6 +1070,84 @@ export default function ShopLayout({ children }) {
     return () => clearTimeout(t);
   }, [forgotResendCooldown]);
 
+  // Poll unread count every 60 seconds (logged-in only)
+  useEffect(() => {
+    const token = getToken();
+    if (!token || !user) return;
+    const poll = async () => {
+      try {
+        const data = await fetchUnreadCount(token);
+        setUnreadCount(data.unread_count ?? 0);
+      } catch {
+        // silent fail — polling should never break the UI
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  // Close notification panel on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (notifRef.current &&
+          !notifRef.current.contains(e.target)) {
+        setNotifOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () =>
+      document.removeEventListener(
+        'mousedown', handleClickOutside);
+  }, []);
+
+  const handleOpenNotifications = useCallback(async () => {
+    const isOpening = !notifOpen;
+    setNotifOpen(isOpening);
+    if (!isOpening) return;
+    setNotifLoading(true);
+    try {
+      const token = getToken();
+      const data = await fetchNotifications(token);
+      setNotifications(data.notifications ?? []);
+      setUnreadCount(data.unread_count ?? 0);
+    } catch {
+      // silent fail
+    } finally {
+      setNotifLoading(false);
+    }
+  }, [notifOpen]);
+
+  const handleMarkRead = useCallback(async (id) => {
+    try {
+      const token = getToken();
+      const data = await markNotificationRead(id, token);
+      setUnreadCount(data.unread_count ?? 0);
+      setNotifications(prev =>
+        prev.map(n =>
+          (n._id === id || n.id === id)
+            ? { ...n, is_read: true }
+            : n
+        )
+      );
+    } catch {
+      // silent fail
+    }
+  }, []);
+
+  const handleMarkAllRead = useCallback(async () => {
+    try {
+      const token = getToken();
+      await markAllNotificationsRead(token);
+      setUnreadCount(0);
+      setNotifications(prev =>
+        prev.map(n => ({ ...n, is_read: true }))
+      );
+    } catch {
+      // silent fail
+    }
+  }, []);
+
   // ── Logout ─────────────────────────────────────────────────────────────────
   async function handleLogout() {
     const token = getToken();
@@ -1042,14 +1187,14 @@ export default function ShopLayout({ children }) {
                 </Link>
               )}
 
-              {/* Logo - Non-clickable brand mark */}
-              <div className="shop-navbar-logo">
+              {/* Logo - Navigates to landing page */}
+              <Link href="/" className="shop-navbar-logo">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/logos/PersonalizeMe logo.png" alt="Personalize Me Prints" className="shop-navbar-logo-img" />
                 <div className="shop-navbar-logo-text">
                   PERSONALIZE <span>ME</span><br />PRINTS
                 </div>
-              </div>
+              </Link>
             </div>
 
             {/* Right side */}
@@ -1058,9 +1203,9 @@ export default function ShopLayout({ children }) {
               <Link href="/shop/cart" className="shop-navbar-cart">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-                  <line x1="3" y1="6" x2="21" y2="6"/>
-                  <path d="M16 10a4 4 0 0 1-8 0"/>
+                  <circle cx="9" cy="21" r="1"/>
+                  <circle cx="20" cy="21" r="1"/>
+                  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
                 </svg>
                 {cartCount > 0 && (
                   <span className="shop-navbar-cart-badge">
@@ -1071,57 +1216,199 @@ export default function ShopLayout({ children }) {
 
               {/* User section - Show Login/Register if not logged in, or User menu if logged in */}
               {user ? (
-                /* Logged in - Show user menu */
-                <div className="shop-navbar-user">
-                  <button
-                    onClick={() => setMenuOpen(o => !o)}
-                    className="shop-navbar-user-btn"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                      <circle cx="12" cy="7" r="4"/>
-                    </svg>
-                    <span className="shop-navbar-user-name">
-                      {user?.firstName || 'Account'}
-                    </span>
-                    <svg className={`shop-navbar-user-chevron ${menuOpen ? 'open' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                  </button>
+                <>
+                  {/* Notification Bell — logged-in customers only */}
+                  <div ref={notifRef} style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      className="shop-navbar-notif-btn"
+                      onClick={handleOpenNotifications}
+                      aria-label="Notifications"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" strokeWidth="2"
+                        style={{ flexShrink: 0 }}>
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                      </svg>
+                      {unreadCount > 0 && (
+                        <span className="shop-navbar-notif-badge">
+                          {unreadCount > 99 ? '99+' : unreadCount}
+                        </span>
+                      )}
+                    </button>
 
-                  {menuOpen && (
-                    <>
-                      <div className="shop-navbar-user-backdrop" onClick={() => setMenuOpen(false)} />
-                      <div className="shop-navbar-user-menu">
-                        <div className="shop-navbar-user-info">
-                          <div className="shop-navbar-user-label">Signed in as</div>
-                          <div className="shop-navbar-user-name-full">
-                            {user?.firstName} {user?.lastName}
+                    {notifOpen && (
+                      <div className="shop-notif-panel">
+                        {/* Panel header */}
+                        <div className="shop-notif-panel-header">
+                          <div className="shop-notif-panel-title">
+                            Notifications
+                            {unreadCount > 0 && (
+                              <span className="shop-notif-count-badge">
+                                {unreadCount}
+                              </span>
+                            )}
                           </div>
+                          {unreadCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleMarkAllRead}
+                              className="shop-notif-mark-all"
+                            >
+                              Mark all read
+                            </button>
+                          )}
                         </div>
-                        <Link href="/shop/orders" className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <polyline points="14 2 14 8 20 8"/>
-                            <line x1="16" y1="13" x2="8" y2="13"/>
-                            <line x1="16" y1="17" x2="8" y2="17"/>
-                          </svg>
-                          My Orders
-                        </Link>
-                        <button onClick={handleLogout} className="shop-navbar-menu-item shop-navbar-logout">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                            <polyline points="16 17 21 12 16 7"/>
-                            <line x1="21" y1="12" x2="9" y2="12"/>
-                          </svg>
-                          Log Out
-                        </button>
+
+                        {/* Panel body */}
+                        <div className="shop-notif-panel-body">
+                          {notifLoading ? (
+                            <div className="shop-notif-empty">
+                              Loading...
+                            </div>
+                          ) : notifications.length === 0 ? (
+                            <div className="shop-notif-empty">
+                              <svg width="40" height="40"
+                                viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" strokeWidth="1.5"
+                                style={{ marginBottom: '0.75rem',
+                                  opacity: 0.4 }}>
+                                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3
+                                  9h18s-3-2-3-9"/>
+                                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                              </svg>
+                              <div style={{ fontWeight: 600,
+                                color: 'var(--white)',
+                                marginBottom: '0.25rem' }}>
+                                No notifications
+                              </div>
+                              <div style={{ fontSize: '0.8rem' }}>
+                                You are all caught up.
+                              </div>
+                            </div>
+                          ) : (
+                            notifications.map((n) => {
+                              const id = n._id || n.id;
+                              return (
+                                <div
+                                  key={id}
+                                  onClick={() =>
+                                    !n.is_read && handleMarkRead(id)}
+                                  className={`shop-notif-item${
+                                    n.is_read ? '' : ' unread'}`}
+                                >
+                                  <div className={`shop-notif-dot${
+                                    n.is_read ? ' read' : ''}`} />
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div className="shop-notif-item-title"
+                                      style={{
+                                        fontWeight: n.is_read ? 400 : 600,
+                                      }}>
+                                      {n.title}
+                                    </div>
+                                    <div className="shop-notif-item-msg">
+                                      {n.message}
+                                    </div>
+                                    <div className="shop-notif-item-time">
+                                      {new Date(n.created_at)
+                                        .toLocaleDateString('en-PH', {
+                                          month: 'short',
+                                          day: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
                       </div>
-                    </>
-                  )}
-                </div>
+                    )}
+                  </div>
+
+                  {/* Logged in - Show user menu */}
+                  <div className="shop-navbar-user">
+                    <button
+                      onClick={() => setMenuOpen(o => !o)}
+                      className="shop-navbar-user-btn"
+                    >
+                      {user?.avatar ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={user.avatar}
+                          alt="avatar"
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '50%',
+                            objectFit: 'cover',
+                            flexShrink: 0,
+                          }}
+                        />
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                          <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                      )}
+                      <span className="shop-navbar-user-name">
+                        {user?.firstName || 'Account'}
+                      </span>
+                      <svg className={`shop-navbar-user-chevron ${menuOpen ? 'open' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                      </svg>
+                    </button>
+
+                    {menuOpen && (
+                      <>
+                        <div className="shop-navbar-user-backdrop" onClick={() => setMenuOpen(false)} />
+                        <div className="shop-navbar-user-menu">
+                          <div className="shop-navbar-user-info">
+                            <div className="shop-navbar-user-label">Signed in as</div>
+                            <div className="shop-navbar-user-name-full">
+                              {user?.firstName} {user?.lastName}
+                            </div>
+                          </div>
+                          <Link href="/shop/profile" className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                              <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                            My Profile
+                          </Link>
+                          <Link href="/shop/orders" className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                              <polyline points="14 2 14 8 20 8"/>
+                              <line x1="16" y1="13" x2="8" y2="13"/>
+                              <line x1="16" y1="17" x2="8" y2="17"/>
+                            </svg>
+                            My Orders
+                          </Link>
+                          <Link href="/shop/orders-history" className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            Order History
+                          </Link>
+                          <button onClick={handleLogout} className="shop-navbar-menu-item shop-navbar-logout">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                              <polyline points="16 17 21 12 16 7"/>
+                              <line x1="21" y1="12" x2="9" y2="12"/>
+                            </svg>
+                            Log Out
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
               ) : (
                 /* Not logged in - Show Login/Register buttons */
                 <div className="shop-navbar-auth">
@@ -1153,7 +1440,9 @@ export default function ShopLayout({ children }) {
                   <h2>{authModalType === 'login' ? 'Welcome Back' : 'Create Account'}</h2>
                   <p>{authModalType === 'login' ? 'Sign in to continue shopping' : 'Join Personalize Me Prints'}</p>
                 </div>
-                <button className="auth-close" onClick={() => { setAuthModalOpen(false); setAuthModalInstanceKey(k => k + 1); }}>✕</button>
+                <button className="auth-close" onClick={() => { setAuthModalOpen(false); setAuthModalInstanceKey(k => k + 1); }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
               </div>
 
               <div className="auth-modal-body">
@@ -1186,7 +1475,9 @@ export default function ShopLayout({ children }) {
                      forgotStep === 2 ? "Enter verification code" : "Set a new password"}
                   </p>
                 </div>
-                <button className="auth-close" onClick={closeForgotPassword}>✕</button>
+                <button className="auth-close" onClick={closeForgotPassword}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
               </div>
               <div className="auth-modal-body">
                 {/* STEP 1 — Enter Email */}
@@ -1209,7 +1500,7 @@ export default function ShopLayout({ children }) {
                     </div>
                     {forgotSent && (
                       <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ade80', fontSize: '0.85rem' }}>
-                        ✓ A reset code has been sent to your email.
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'6px'}}><polyline points="20 6 9 17 4 12"/></svg> A reset code has been sent to your email.
                       </div>
                     )}
                     <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotSubmit}>
@@ -1250,7 +1541,9 @@ export default function ShopLayout({ children }) {
                       />
                       {forgotError && <span className="error-message">{forgotError}</span>}
                       {forgotResendSuccess && (
-                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#4ade80', marginTop: '0.4rem' }}>✓ A new code has been sent</span>
+                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#4ade80', marginTop: '0.4rem' }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><polyline points="20 6 9 17 4 12"/></svg> A new code has been sent
+                        </span>
                       )}
                     </div>
                     <button className="btn-auth-submit" disabled={isSendingReset} onClick={handleForgotVerifyCode}>
@@ -1342,7 +1635,7 @@ export default function ShopLayout({ children }) {
         .shop-wrapper {
           min-height: 100vh;
           background: #0f0f0f;
-          color: #f5f5f5;
+          color: var(--white);
           font-family: 'Outfit', sans-serif;
         }
 
@@ -1353,12 +1646,12 @@ export default function ShopLayout({ children }) {
           z-index: 100;
           background: rgba(15, 15, 15, 0.95);
           backdrop-filter: blur(12px);
-          border-bottom: 1px solid rgba(212, 168, 67, 0.2);
+          border-bottom: 1px solid color-mix(in srgb, var(--gold) 20%, transparent);
           transition: all 0.3s ease;
         }
 
         .shop-navbar.scrolled {
-          border-bottom: 1px solid rgba(212, 168, 67, 0.4);
+          border-bottom: 1px solid color-mix(in srgb, var(--gold) 40%, transparent);
           box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
         }
 
@@ -1384,17 +1677,17 @@ export default function ShopLayout({ children }) {
           justify-content: center;
           width: 44px;
           height: 44px;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: color-mix(in srgb, var(--white) 5%, transparent);
+          border: 1px solid color-mix(in srgb, var(--white) 10%, transparent);
           border-radius: 10px;
-          color: #d4a843;
+          color: var(--gold);
           text-decoration: none;
           transition: all 0.2s;
         }
 
         .shop-navbar-back:hover {
-          background: rgba(212, 168, 67, 0.1);
-          border-color: rgba(212, 168, 67, 0.3);
+          background: color-mix(in srgb, var(--gold) 10%, transparent);
+          border-color: color-mix(in srgb, var(--gold) 30%, transparent);
           transform: translateX(-2px);
         }
 
@@ -1402,7 +1695,13 @@ export default function ShopLayout({ children }) {
           display: flex;
           align-items: center;
           gap: 0.75rem;
-          cursor: default;
+          cursor: pointer;
+          text-decoration: none;
+        }
+
+        .shop-navbar-logo:hover {
+          opacity: 0.85;
+          transition: opacity 0.2s;
         }
 
         .shop-navbar-logo-img {
@@ -1418,12 +1717,12 @@ export default function ShopLayout({ children }) {
           font-weight: 800;
           letter-spacing: 1.2px;
           line-height: 1.3;
-          color: #fff;
+          color: var(--white);
           text-transform: uppercase;
         }
 
         .shop-navbar-logo-text span {
-          color: #d4a843;
+          color: var(--gold);
         }
 
         .shop-navbar-right {
@@ -1439,24 +1738,24 @@ export default function ShopLayout({ children }) {
           justify-content: center;
           width: 44px;
           height: 44px;
-          background: rgba(212, 168, 67, 0.08);
-          border: 1px solid rgba(212, 168, 67, 0.25);
+          background: color-mix(in srgb, var(--gold) 8%, transparent);
+          border: 1px solid color-mix(in srgb, var(--gold) 25%, transparent);
           border-radius: 10px;
-          color: #d4a843;
+          color: var(--gold);
           text-decoration: none;
           transition: all 0.2s;
         }
 
         .shop-navbar-cart:hover {
-          background: rgba(212, 168, 67, 0.15);
-          border-color: rgba(212, 168, 67, 0.4);
+          background: color-mix(in srgb, var(--gold) 15%, transparent);
+          border-color: color-mix(in srgb, var(--gold) 40%, transparent);
         }
 
         .shop-navbar-cart-badge {
           position: absolute;
           top: -6px;
           right: -6px;
-          background: #d4a843;
+          background: var(--gold);
           color: #0f0f0f;
           border-radius: 50%;
           min-width: 20px;
@@ -1469,6 +1768,174 @@ export default function ShopLayout({ children }) {
           padding: 0 4px;
         }
 
+        /* ── Notification Bell ── */
+        .shop-navbar-notif-btn {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 44px;
+          height: 44px;
+          background: color-mix(in srgb, var(--gold) 8%, transparent);
+          border: 1px solid color-mix(in srgb, var(--gold) 25%, transparent);
+          border-radius: 10px;
+          color: var(--gold);
+          cursor: pointer;
+          transition: all 0.2s;
+          flex-shrink: 0;
+        }
+
+        .shop-navbar-notif-btn:hover {
+          background: color-mix(in srgb, var(--gold) 15%, transparent);
+          border-color: color-mix(in srgb, var(--gold) 40%, transparent);
+        }
+
+        .shop-navbar-notif-badge {
+          position: absolute;
+          top: -6px;
+          right: -6px;
+          background: var(--red, #ef4444);
+          color: #fff;
+          border-radius: 50%;
+          min-width: 20px;
+          height: 20px;
+          font-size: 0.7rem;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0 4px;
+        }
+
+        .shop-notif-panel {
+          position: absolute;
+          top: calc(100% + 8px);
+          right: 0;
+          width: 360px;
+          max-height: 480px;
+          background: var(--dark2, #1a1a1a);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+          z-index: 200;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        .shop-notif-panel-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 1rem 1.25rem;
+          border-bottom: 1px solid var(--border);
+          flex-shrink: 0;
+        }
+
+        .shop-notif-panel-title {
+          font-weight: 700;
+          font-size: 0.95rem;
+          color: var(--white);
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .shop-notif-count-badge {
+          padding: 0.1rem 0.5rem;
+          background: var(--red, #ef4444);
+          border-radius: 999px;
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: #fff;
+        }
+
+        .shop-notif-mark-all {
+          background: none;
+          border: none;
+          color: var(--gold);
+          font-size: 0.78rem;
+          cursor: pointer;
+          font-weight: 600;
+          padding: 0;
+        }
+
+        .shop-notif-panel-body {
+          overflow-y: auto;
+          flex: 1;
+        }
+
+        .shop-notif-empty {
+          padding: 2.5rem 1.25rem;
+          text-align: center;
+          color: var(--gray);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .shop-notif-item {
+          padding: 0.875rem 1.25rem;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          background: transparent;
+          cursor: default;
+          display: flex;
+          gap: 0.75rem;
+          align-items: flex-start;
+          transition: background 0.15s;
+        }
+
+        .shop-notif-item.unread {
+          background: rgba(212,168,67,0.06);
+          cursor: pointer;
+        }
+
+        .shop-notif-item.unread:hover {
+          background: rgba(212,168,67,0.1);
+        }
+
+        .shop-notif-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: var(--gold);
+          flex-shrink: 0;
+          margin-top: 5px;
+        }
+
+        .shop-notif-dot.read {
+          background: transparent;
+        }
+
+        .shop-notif-item-title {
+          font-size: 0.875rem;
+          color: var(--white);
+          margin-bottom: 0.2rem;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .shop-notif-item-msg {
+          font-size: 0.8rem;
+          color: var(--gray);
+          line-height: 1.4;
+        }
+
+        .shop-notif-item-time {
+          font-size: 0.72rem;
+          color: var(--gray);
+          margin-top: 0.35rem;
+          opacity: 0.7;
+        }
+
+        @media (max-width: 768px) {
+          .shop-notif-panel {
+            width: 320px;
+            right: -44px;
+          }
+        }
+
         .shop-navbar-auth {
           display: flex;
           gap: 0.5rem;
@@ -1477,10 +1944,10 @@ export default function ShopLayout({ children }) {
 
         .shop-navbar-login-btn {
           padding: 0.5rem 1.25rem;
-          background: rgba(212, 168, 67, 0.1);
-          border: 1px solid rgba(212, 168, 67, 0.3);
+          background: color-mix(in srgb, var(--gold) 10%, transparent);
+          border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
           border-radius: 10px;
-          color: #d4a843;
+          color: var(--gold);
           text-decoration: none;
           font-weight: 600;
           font-size: 0.9rem;
@@ -1488,14 +1955,14 @@ export default function ShopLayout({ children }) {
         }
 
         .shop-navbar-login-btn:hover {
-          background: rgba(212, 168, 67, 0.2);
-          border-color: rgba(212, 168, 67, 0.5);
+          background: color-mix(in srgb, var(--gold) 20%, transparent);
+          border-color: color-mix(in srgb, var(--gold) 50%, transparent);
         }
 
         .shop-navbar-register-btn {
           padding: 0.5rem 1.25rem;
-          background: #d4a843;
-          border: 1px solid #d4a843;
+          background: var(--gold);
+          border: 1px solid var(--gold);
           border-radius: 10px;
           color: #0f0f0f;
           text-decoration: none;
@@ -1508,7 +1975,7 @@ export default function ShopLayout({ children }) {
           background: #e5b953;
           border-color: #e5b953;
           transform: translateY(-1px);
-          box-shadow: 0 4px 16px rgba(212, 168, 67, 0.3);
+          box-shadow: 0 4px 16px color-mix(in srgb, var(--gold) 30%, transparent);
         }
 
         .shop-navbar-user {
@@ -1519,11 +1986,11 @@ export default function ShopLayout({ children }) {
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: color-mix(in srgb, var(--white) 5%, transparent);
+          border: 1px solid color-mix(in srgb, var(--white) 10%, transparent);
           border-radius: 10px;
           padding: 0.5rem 0.875rem;
-          color: #f5f5f5;
+          color: var(--white);
           cursor: pointer;
           font-size: 0.9rem;
           font-weight: 500;
@@ -1531,8 +1998,8 @@ export default function ShopLayout({ children }) {
         }
 
         .shop-navbar-user-btn:hover {
-          background: rgba(255, 255, 255, 0.08);
-          border-color: rgba(212, 168, 67, 0.3);
+          background: color-mix(in srgb, var(--white) 8%, transparent);
+          border-color: color-mix(in srgb, var(--gold) 30%, transparent);
         }
 
         .shop-navbar-user-name {
@@ -1560,8 +2027,8 @@ export default function ShopLayout({ children }) {
           position: absolute;
           right: 0;
           top: calc(100% + 10px);
-          background: #1a1a1a;
-          border: 1px solid rgba(212, 168, 67, 0.2);
+          background: var(--dark);
+          border: 1px solid color-mix(in srgb, var(--gold) 20%, transparent);
           border-radius: 12px;
           min-width: 200px;
           box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
@@ -1571,19 +2038,19 @@ export default function ShopLayout({ children }) {
 
         .shop-navbar-user-info {
           padding: 1rem 1.25rem;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          border-bottom: 1px solid color-mix(in srgb, var(--white) 8%, transparent);
         }
 
         .shop-navbar-user-label {
           font-size: 0.75rem;
-          color: #888;
+          color: var(--gray);
           margin-bottom: 2px;
         }
 
         .shop-navbar-user-name-full {
           font-size: 0.95rem;
           font-weight: 600;
-          color: #f5f5f5;
+          color: var(--white);
         }
 
         .shop-navbar-menu-item {
@@ -1594,7 +2061,7 @@ export default function ShopLayout({ children }) {
           padding: 0.75rem 1.25rem;
           background: none;
           border: none;
-          color: #ccc;
+          color: var(--gray);
           font-size: 0.9rem;
           cursor: pointer;
           transition: all 0.15s;
@@ -1603,17 +2070,17 @@ export default function ShopLayout({ children }) {
         }
 
         .shop-navbar-menu-item:hover {
-          background: rgba(255, 255, 255, 0.05);
-          color: #f5f5f5;
+          background: color-mix(in srgb, var(--white) 5%, transparent);
+          color: var(--white);
         }
 
         .shop-navbar-logout {
-          color: #ef4444;
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
+          color: var(--red);
+          border-top: 1px solid color-mix(in srgb, var(--white) 5%, transparent);
         }
 
         .shop-navbar-logout:hover {
-          background: rgba(239, 68, 68, 0.1);
+          background: color-mix(in srgb, var(--red) 10%, transparent);
         }
 
         /* ── Main Content ── */

@@ -212,15 +212,33 @@ class InventoryController extends Controller
             }
 
             $validated = $request->validate([
-                'quantity'     => 'required|integer',
-                'reason'       => 'required|in:restock,correction-add,correction-deduct,sale,return',
-                'supplierId'   => 'nullable|string',
-                'supplierName' => 'nullable|string',
-                'unitCost'     => 'nullable|numeric|min:0',
+                'quantity'         => 'required|integer',
+                'reason'           => 'required|in:restock,correction-add,correction-deduct,sale,return,sales-outside,damaged',
+                'adjustmentType'   => 'nullable|in:add,subtract',
+                'supplierId'       => 'nullable|string',
+                'supplierName'     => 'nullable|string',
+                'unitCost'         => 'nullable|numeric|min:0',
+                'batchId'          => 'nullable|string',
+                'invoiceNumber'    => 'nullable|string|max:100',
+                'deliveryDate'     => 'nullable|string',
+                'sellingPrice'     => 'nullable|numeric|min:0',
+                'saleDate'         => 'nullable|string',
+                'customerName'     => 'nullable|string|max:100',
+                'remarks'          => 'nullable|string|max:500',
             ]);
 
-            // Adjust stock without transaction wrapper for MongoDB compatibility
+            // Determine actual direction from adjustmentType if provided
+            // Frontend sends positive quantity + adjustmentType signal
+            $adjustmentType = $validated['adjustmentType'] ?? null;
             $quantity = $validated['quantity'];
+            if ($adjustmentType === 'subtract') {
+                $quantity = -abs($quantity);
+            } elseif ($adjustmentType === 'add') {
+                $quantity = abs($quantity);
+            }
+            // If no adjustmentType, use raw sign of quantity (legacy support)
+
+            // Adjust stock without transaction wrapper for MongoDB compatibility
             $newStock = $inventory->stockQty + $quantity;
 
             if ($newStock < 0) {
@@ -240,14 +258,22 @@ class InventoryController extends Controller
             $inventory->save();
 
             StockHistory::create([
-                'inventoryId'  => $inventory->_id,
-                'supplierId'   => $validated['supplierId'] ?? null,
-                'quantity'     => abs($quantity),
-                'remainingQty' => $newStock,
-                'unitCost'     => $validated['unitCost'] ?? $inventory->averageCost,
-                'totalCost'    => abs($quantity) * ($validated['unitCost'] ?? $inventory->averageCost),
-                'reason'       => $validated['reason'],
-                'createdAt'    => now(),
+                'inventoryId'   => $inventory->_id,
+                'supplierId'    => $validated['supplierId'] ?? null,
+                'supplierName'  => $validated['supplierName'] ?? null,
+                'quantity'      => abs($quantity),
+                'remainingQty'  => $newStock,
+                'unitCost'      => $validated['unitCost'] ?? $inventory->averageCost,
+                'totalCost'     => abs($quantity) * ($validated['unitCost'] ?? $inventory->averageCost),
+                'reason'        => $validated['reason'],
+                'batchId'       => $validated['batchId'] ?? null,
+                'invoiceNumber' => $validated['invoiceNumber'] ?? null,
+                'deliveryDate'  => $validated['deliveryDate'] ?? null,
+                'sellingPrice'  => $validated['sellingPrice'] ?? null,
+                'saleDate'      => $validated['saleDate'] ?? null,
+                'customerName'  => $validated['customerName'] ?? null,
+                'remarks'       => $validated['remarks'] ?? null,
+                'createdAt'     => now(),
             ]);
 
             return $this->successResponse('Stock adjusted successfully.', $inventory);

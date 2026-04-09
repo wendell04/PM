@@ -12,99 +12,182 @@ use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\BannerController;
+use App\Http\Controllers\AddressController; // NEW: Address Book controller
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\TwoFactorController;
+use App\Http\Controllers\SessionController;
+use App\Http\Controllers\FlashSaleController;
+use App\Http\Controllers\OrderRequestController;
+use App\Http\Controllers\ShopOrderRequestController;
+use App\Http\Controllers\PaymentController;
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::post('/register',        [AuthController::class, 'register'])->middleware('throttle:10,1');
 Route::post('/login',           [AuthController::class, 'login'])->middleware('throttle:10,1');
-Route::post('/logout',          [AuthController::class, 'logout']);
-Route::post('/verify-email',    [AuthController::class, 'verify']);
+Route::post('/logout',          [AuthController::class, 'logout'])->middleware('auth:sanctum');
+Route::post('/verify-email',    [AuthController::class, 'verify'])->middleware('throttle:5,1');
 Route::post('/resend-code',     [AuthController::class, 'resend'])->middleware('throttle:5,1');
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
 Route::post('/verify-reset-token', [AuthController::class, 'verifyResetToken'])->middleware('throttle:10,1');
 Route::post('/send-reset-code', [AuthController::class, 'sendResetCode'])->middleware('throttle:5,1');
 Route::post('/verify-reset-code', [AuthController::class, 'verifyResetCode'])->middleware('throttle:10,1');
 Route::post('/reset-password',  [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
-Route::post('/contact',         [AuthController::class, 'contact']); // Contact form
+Route::post('/contact',         [AuthController::class, 'contact'])->middleware('throttle:5,1'); // Contact form
 
 // ─── Auth (Protected — any logged-in user) ───────────────────────────────────
 Route::get('/user', function (Request $request) {
-    $token = $request->bearerToken();
-    if (!$token) return response()->json(['message' => 'unauthenticated'], 401);
-    $user = \App\Models\User::where('api_token', hash('sha256', $token))->first();
-    if (!$user) return response()->json(['message' => 'unauthenticated'], 401);
-    return $user;
-});
-
-Route::put('/profile',          [ProfileController::class, 'update']);
-Route::put('/profile/password', [ProfileController::class, 'updatePassword']);
+    return $request->user();
+})->middleware('auth:sanctum');
 
 // ─── Products (Public — any logged-in customer can browse) ───────────────────
+Route::get('/products/search', [ProductController::class, 'search'])
+    ->middleware('throttle:60,1');
 Route::get('/products',             [ProductController::class, 'index']);
 Route::get('/products/{id}',        [ProductController::class, 'show']);
 
-// ─── Orders (Protected — authenticated customers only) ───────────────────────
-Route::get('/orders/my',        [OrderController::class, 'myOrders']);
-Route::get('/orders/my/{id}',   [OrderController::class, 'myOrderShow']);
-Route::post('/orders',          [OrderController::class, 'store']);
+// ─── Protected — any authenticated user ──────────────────────────────────────
+Route::middleware('auth:sanctum')->group(function () {
+    // ─── Profile ─────────────────────────────────────────────────────────────
+    Route::put('/profile',               [ProfileController::class, 'update']);
+    Route::put('/profile/password',      [ProfileController::class, 'updatePassword']);
+    Route::post('/profile/avatar',       [ProfileController::class, 'updateAvatar']);
+    Route::post('/profile/upload-avatar',[ProfileController::class, 'uploadAvatar']);
 
-// ─── Cart (Protected — authenticated customers only) ─────────────────────────
-Route::middleware('auth.token')->group(function () {
-    Route::get('/cart', [CartController::class, 'index']);
-    Route::post('/cart/sync', [CartController::class, 'sync']);
-    Route::post('/cart/merge', [CartController::class, 'merge']);
-    Route::delete('/cart/clear', [CartController::class, 'clear']);
+    // ─── Orders (Customer) ────────────────────────────────────────────────────
+    Route::get('/orders/my',             [OrderController::class, 'myOrders']);
+    Route::get('/orders/my/{id}',        [OrderController::class, 'myOrderShow']);
+    Route::post('/orders',               [OrderController::class, 'store']);
 
-    // Suppliers Admin (Protected by auth.token + isAdmin() check)
+    // ─── Cart ─────────────────────────────────────────────────────────────────
+    Route::get('/cart',                  [CartController::class, 'index']);
+    Route::post('/cart/sync',            [CartController::class, 'sync']);
+    Route::post('/cart/merge',           [CartController::class, 'merge']);
+    Route::delete('/cart/clear',         [CartController::class, 'clear']);
+
+    // ─── Address Book ─────────────────────────────────────────────────────────
+    Route::get('/addresses',             [AddressController::class, 'index']);
+    Route::post('/addresses',            [AddressController::class, 'store']);
+    Route::put('/addresses/{id}',        [AddressController::class, 'update']);
+    Route::delete('/addresses/{id}',     [AddressController::class, 'destroy']);
+    Route::patch('/addresses/{id}/default', [AddressController::class, 'setDefault']);
+
+    // ─── Notifications ────────────────────────────────────────────────────────
+    Route::get('/notifications/unread-count',  [NotificationController::class, 'unreadCount']);
+    Route::get('/notifications',               [NotificationController::class, 'index']);
+    Route::patch('/notifications/read-all',    [NotificationController::class, 'markAllRead']);
+    Route::patch('/notifications/{id}/read',   [NotificationController::class, 'markRead']);
+
+    // ─── Active Sessions ──────────────────────────────────────────────────────
+    Route::delete('/sessions/others/all', [SessionController::class, 'destroyOthers']);
+    Route::get('/sessions',               [SessionController::class, 'index']);
+    Route::delete('/sessions/{id}',       [SessionController::class, 'destroy']);
+});
+
+// ─── Admin (authenticated + admin role required) ──────────────────────────────
+Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
+    // ─── Suppliers ────────────────────────────────────────────────────────────
     Route::get('/admin/suppliers',               [SupplierController::class, 'index']);
     Route::post('/admin/suppliers',              [SupplierController::class, 'store']);
     Route::put('/admin/suppliers/{id}',          [SupplierController::class, 'update']);
     Route::delete('/admin/suppliers/{id}',       [SupplierController::class, 'destroy']);
 
-    // Order Stats (Protected by auth.token + getAuthUser() check)
+    // ─── Order Stats ──────────────────────────────────────────────────────────
     Route::get('/admin/orders/stats',            [OrderController::class, 'stats']);
 
-    // ─── Admin Routes (Protected — owner/admin only) ─────────────────────────
-    // All other admin routes moved here under auth.token middleware
-
-    // Products Admin
-    Route::get('/admin/products',              [ProductController::class, 'adminIndex']);
+    // ─── Products ─────────────────────────────────────────────────────────────
+    Route::get('/admin/products',                [ProductController::class, 'adminIndex']);
     Route::get('/admin/products/available-inventory', [ProductController::class, 'availableInventory']);
-    Route::post('/admin/products',             [ProductController::class, 'store']);
-    Route::put('/admin/products/{id}',         [ProductController::class, 'update']);
-    Route::delete('/admin/products/{id}',      [ProductController::class, 'destroy']);
+    Route::post('/admin/products',               [ProductController::class, 'store']);
+    Route::put('/admin/products/{id}',           [ProductController::class, 'update']);
+    Route::delete('/admin/products/{id}',        [ProductController::class, 'destroy']);
     Route::post('/admin/products/{id}/toggle-publish', [ProductController::class, 'togglePublish']);
-    Route::post('/admin/upload-image',         [ProductController::class, 'uploadImage']);
+    Route::post('/admin/upload-image',           [ProductController::class, 'uploadImage']);
 
-    // Inventory Admin
-    Route::get('/admin/inventory',              [InventoryController::class, 'index']);
-    Route::get('/admin/inventory/{id}',         [InventoryController::class, 'show']);
-    Route::get('/admin/inventory/{id}/history', [InventoryController::class, 'history']);
-    Route::post('/admin/inventory',             [InventoryController::class, 'store']);
-    Route::put('/admin/inventory/{id}',         [InventoryController::class, 'update']);
+    // ─── Inventory ────────────────────────────────────────────────────────────
+    Route::get('/admin/inventory',               [InventoryController::class, 'index']);
+    Route::get('/admin/inventory/{id}',          [InventoryController::class, 'show']);
+    Route::get('/admin/inventory/{id}/history',  [InventoryController::class, 'history']);
+    Route::post('/admin/inventory',              [InventoryController::class, 'store']);
+    Route::put('/admin/inventory/{id}',          [InventoryController::class, 'update']);
     Route::post('/admin/inventory/{id}/adjust-stock', [InventoryController::class, 'adjustStock']);
-    Route::delete('/admin/inventory/{id}',      [InventoryController::class, 'destroy']);
+    Route::delete('/admin/inventory/{id}',       [InventoryController::class, 'destroy']);
 
-    // Orders Admin
-    Route::get('/admin/orders',          [OrderController::class, 'adminIndex']);
-    Route::put('/admin/orders/{id}',     [OrderController::class, 'adminUpdate']);
+    // ─── Orders (Admin) ───────────────────────────────────────────────────────
+    Route::get('/admin/orders',                  [OrderController::class, 'adminIndex']);
+    Route::put('/admin/orders/{id}',             [OrderController::class, 'adminUpdate']);
 
-    // Job Orders Admin (Production Schedule)
+    // ─── Job Orders ───────────────────────────────────────────────────────────
     Route::get('/admin/job-orders',              [JobOrderController::class, 'index']);
     Route::get('/admin/job-orders/schedule',     [JobOrderController::class, 'schedule']);
     Route::get('/admin/job-orders/{id}',         [JobOrderController::class, 'show']);
     Route::post('/admin/job-orders',             [JobOrderController::class, 'store']);
     Route::put('/admin/job-orders/{id}',         [JobOrderController::class, 'update']);
 
-    // Audit Logs Admin
+    // ─── Audit Logs ───────────────────────────────────────────────────────────
     Route::get('/admin/audit-logs',              [AuditLogController::class, 'index']);
     Route::get('/admin/audit-logs/summary',      [AuditLogController::class, 'summary']);
     Route::get('/admin/audit-logs/inventory/{id}', [AuditLogController::class, 'byInventory']);
     Route::post('/admin/audit-logs',             [AuditLogController::class, 'store']);
 
-    // Sales Admin
+    // ─── Sales ────────────────────────────────────────────────────────────────
     Route::get('/admin/sales',                   [SaleController::class, 'index']);
     Route::get('/admin/sales/summary',           [SaleController::class, 'summary']);
     Route::get('/admin/sales/{id}',              [SaleController::class, 'show']);
     Route::post('/admin/sales',                  [SaleController::class, 'store']);
     Route::put('/admin/sales/{id}',              [SaleController::class, 'update']);
+
+    // ─── Banners ──────────────────────────────────────────────────────────────
+    Route::get('/admin/banners',                 [BannerController::class, 'index']);
+    Route::post('/admin/banners',                [BannerController::class, 'store']);
+    Route::put('/admin/banners/{id}',            [BannerController::class, 'update']);
+    Route::delete('/admin/banners/{id}',         [BannerController::class, 'destroy']);
+    Route::put('/admin/banners/{id}/publish',    [BannerController::class, 'publish']);
+    Route::put('/admin/banners/{id}/unpublish',  [BannerController::class, 'unpublish']);
+
+    // ─── Flash Sales ─────────────────────────────────────────────────────────
+    Route::get('/admin/flash-sales',              [FlashSaleController::class, 'index']);
+    Route::post('/admin/flash-sales',             [FlashSaleController::class, 'store']);
+    Route::put('/admin/flash-sales/{id}',         [FlashSaleController::class, 'update']);
+    Route::delete('/admin/flash-sales/{id}',      [FlashSaleController::class, 'destroy']);
+    Route::patch('/admin/flash-sales/{id}/toggle', [FlashSaleController::class, 'toggle']);
+
+    // ─── Order Requests ──────────────────────────────────────────────────────
+    Route::get('/admin/order-requests',              [OrderRequestController::class, 'index']);
+    Route::get('/admin/order-requests/{id}',         [OrderRequestController::class, 'show']);
+    Route::patch('/admin/order-requests/{id}/status', [OrderRequestController::class, 'updateStatus']);
+});
+
+// ─── Orders API (Admin Only — protected) ─────────────────────────────────────
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/orders',               [OrderController::class, 'index']);
+    Route::get('/orders/{id}',          [OrderController::class, 'show']);
+    Route::patch('/orders/{id}/status', [OrderController::class, 'updateStatus']);
+
+    // ─── Order Requests (Customer) ───────────────────────────────────────────
+    Route::post('/order-requests',                [OrderRequestController::class, 'store']);
+    Route::get('/my/order-requests',              [OrderRequestController::class, 'myRequests']);
+    Route::post('/order-requests/upload-design',  [OrderRequestController::class, 'uploadDesign']);
+
+    // ─── Shop Order Tracking (Customer) ──────────────────────────────────────
+    Route::get('/shop/order-requests',            [ShopOrderRequestController::class, 'index']);
+    Route::get('/shop/order-requests/{id}',       [ShopOrderRequestController::class, 'show']);
+});
+
+// ─── Storefront Banners (Public — no auth required) ──────────────────────────
+Route::get('/storefront/banners',                [BannerController::class, 'storefront']);
+Route::get('/storefront/flash-sales',            [FlashSaleController::class, 'storefront']);
+
+// ─── 2FA (Protected — auth:sanctum) ─────────────────────────────────────────
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/2fa/send',          [TwoFactorController::class, 'sendOtp']);
+    Route::post('/2fa/verify',        [TwoFactorController::class, 'verifyOtp']);
+    Route::post('/2fa/remember-device', [TwoFactorController::class, 'rememberDevice']);
+    Route::post('/2fa/check-device',  [TwoFactorController::class, 'checkDevice']);
+});
+
+// ─── Payments (PayMongo) ─────────────────────────────────────────────────────
+Route::post('/payment/webhook',     [PaymentController::class, 'webhook']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/payment/create-link', [PaymentController::class, 'createLink']);
 });

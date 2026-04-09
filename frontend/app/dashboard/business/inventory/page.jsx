@@ -55,6 +55,7 @@ import ErrorBoundary from '../../../../components/ErrorBoundary';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { formatNumber, formatPrice } from '../../../../src/utils/format';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   fetchInventory,
   createInventory,
@@ -68,6 +69,16 @@ import {
 } from '@/lib/inventoryApi';
 import { fetchProducts, updateProduct } from '@/lib/productApi';
 import { fetchAllOrders } from '@/lib/ordersApi';
+
+// ── DEFAULT CATEGORIES — Fallback when inventory is empty ─────────────────────
+const DEFAULT_CATEGORIES = [
+  'T-Shirts',
+  'Mugs',
+  'Stickers',
+  'Accessories',
+  'Bags',
+  'Other'
+];
 
 // ── Integer Input (stock qty, min level, damaged qty) ─────────────────────────
 // Blocks: e, E, +, -, . (integers only, no decimals)
@@ -170,7 +181,10 @@ function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confirmLabel
         </div>
         <div className="modal-actions">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className={confirmClass} onClick={onConfirm}>{confirmLabel}</button>
+          <button type="button" className={confirmClass} onClick={onConfirm} disabled={confirmLabel === 'Restoring...'}
+            style={{ opacity: confirmLabel === 'Restoring...' ? 0.6 : 1, cursor: confirmLabel === 'Restoring...' ? 'not-allowed' : 'pointer' }}>
+            {confirmLabel}
+          </button>
         </div>
       </div>
     </div>
@@ -1180,6 +1194,7 @@ function AddSupplierQuickModal({ isOpen, onClose, onAdd, categories, existingSup
             </label>
             <input type="text" className="form-input" value={form.name}
               onChange={e => setForm(p => ({ ...p, name: e.target.value.slice(0, 80) }))}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); } }}
               placeholder="e.g., SanRoque Trading" autoFocus maxLength={80} />
           </div>
 
@@ -1211,6 +1226,7 @@ function AddSupplierQuickModal({ isOpen, onClose, onAdd, categories, existingSup
             </label>
             <input type="text" className="form-input" value={form.contact}
               onChange={e => setForm(p => ({ ...p, contact: e.target.value.slice(0, 60) }))}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); } }}
               placeholder="e.g., Juan Dela Cruz" maxLength={60} required />
           </div>
 
@@ -1223,6 +1239,7 @@ function AddSupplierQuickModal({ isOpen, onClose, onAdd, categories, existingSup
               </label>
               <input type="text" className="form-input" value={form.phone}
                 onChange={handlePhoneChange}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); } }}
                 placeholder="09xx-xxx-xxxx" maxLength={15} inputMode="tel" />
               <p className="form-hint">Digits and dashes only. e.g., 0912-345-6789</p>
             </div>
@@ -1235,6 +1252,7 @@ function AddSupplierQuickModal({ isOpen, onClose, onAdd, categories, existingSup
               </label>
               <input type="text" className="form-input" value={form.address}
                 onChange={e => setForm(p => ({ ...p, address: e.target.value.slice(0, 100) }))}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); } }}
                 placeholder="e.g., Marikina City" maxLength={100} />
             </div>
           </div>
@@ -1354,6 +1372,7 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
               <div className="form-group">
                 <label className="form-label">Supplier Name <span className="required">*</span></label>
                 <input type="text" className="form-input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); } }}
                   placeholder="e.g., SanRoque Trading" maxLength={80} autoFocus disabled={editingInUse}
                   style={editingInUse ? { opacity: 0.6, cursor: 'not-allowed' } : {}} />
               </div>
@@ -1385,6 +1404,7 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
                   </label>
                   <input type="text" className="form-input" value={form.contact}
                     onChange={e => setForm(p => ({ ...p, contact: e.target.value.slice(0, 60) }))}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); } }}
                     placeholder="e.g., Juan Dela Cruz" maxLength={60} required />
                 </div>
                 <div className="form-group">
@@ -1394,6 +1414,7 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
                   </label>
                   <input type="text" className="form-input" value={form.phone}
                     onChange={e => setForm(p => ({ ...p, phone: e.target.value.replace(/[^0-9-]/g, '').slice(0, 15) }))}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); } }}
                     placeholder="09xx-xxx-xxxx" maxLength={15} inputMode="tel" />
                   <p className="form-hint">Digits and dashes only.</p>
                 </div>
@@ -1405,6 +1426,7 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
                 </label>
                 <input type="text" className="form-input" value={form.address}
                   onChange={e => setForm(p => ({ ...p, address: e.target.value.slice(0, 100) }))}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); } }}
                   placeholder="e.g., Marikina City" maxLength={100} />
               </div>
               <div className="modal-actions" style={{ marginTop: '1.5rem' }}>
@@ -1431,7 +1453,7 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
 // isOnDemand REMOVED — inventory = physical stocked items only
 // FIX: minStockLevel is now editable when editing (was previously locked)
 // FIX: SKU generated once and stored in state — never regenerates on re-render
-function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, categories, onAddCategory, inventory, editingItem, suppliers, onAddSupplier, masterlist }) {
+function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, categories, onAddCategory, inventory, editingItem, suppliers, onAddSupplier, masterlist, products = [] }) {
   const [form, setForm] = useState({ name: '', category: categories[0]||'', initialStock: '', minStockLevel: 10, supplierId: 'unspecified', supplierName: 'General Merchandise', unitCost: '', isBulkPurchase: false, totalCost: '', invoiceNumber: '', deliveryDate: new Date().toISOString().split('T')[0], damagedOnArrival: '', notes: '', receiptImage: null });
   // SKU stored in state — generated once when name is first filled, never regenerated
   const [skuPreview, setSkuPreview] = useState('');
@@ -1676,7 +1698,7 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
               </label>
               {showNewCat ? (
                 <div>
-                  <input type="text" className="form-input" value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="New category..." autoFocus
+                  <input type="text" className="form-input" value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="e.g., Mugs, Shirts..." autoFocus
                     onKeyDown={e => { if (e.key==='Enter') { e.preventDefault(); if (newCatName.trim()) { onAddCategory(newCatName.trim()); setForm(p => ({ ...p, category: newCatName.trim() })); setShowNewCat(false); setNewCatName(''); } } if (e.key==='Escape') { setShowNewCat(false); setNewCatName(''); } }} />
                   <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
                     <button type="button" className="btn-primary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
@@ -1999,7 +2021,7 @@ function ArchiveConfirmModal({ isOpen, onClose, onArchive, onDelete, itemName, i
 
 // ── Stock Addition Modal (+) ───────────────────────────────────────────────────
 // NOTE: isOnDemand conversion REMOVED — inventory is always stocked items
-function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, categories, onAddSupplier }) {
+function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, categories, onAddSupplier, submitting = false }) {
   const [qty, setQty] = useState('');
   const [damaged, setDamaged] = useState('');
   const [supplierId, setSupplierId] = useState('unspecified');
@@ -2216,8 +2238,12 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, categ
               <p className="confirm-hint" style={{ marginTop: '1rem', color: '#facc15' }}>This will update inventory stock and create a batch record.</p>
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => setShowConfirm(false)}>Cancel</button>
-              <button type="button" className="btn-primary" onClick={() => { onConfirm(pending); setShowConfirm(false); setPending(null); onClose(); }}>Confirm Addition</button>
+              <button type="button" className="btn-secondary" onClick={() => setShowConfirm(false)} disabled={submitting}>Cancel</button>
+              <button type="button" className="btn-primary"
+                onClick={() => { onConfirm(pending); setShowConfirm(false); setPending(null); onClose(); }}
+                disabled={submitting}>
+                {submitting ? 'Adding...' : 'Confirm Addition'}
+              </button>
             </div>
           </div>
         </div>
@@ -2233,7 +2259,7 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, categ
 // ── Stock Reduction Modal (-) ──────────────────────────────────────────────────
 // Reasons: Manual Sale (outside system), Damaged/Write-off
 // Stock Correction REMOVED — all stock movements must have a valid source document
-function StockReductionModal({ isOpen, onClose, onConfirm, item, inventory }) {
+function StockReductionModal({ isOpen, onClose, onConfirm, item, inventory, submitting = false }) {
   const [reason, setReason] = useState('sales-outside');
   const [qty, setQty] = useState('');
   const [sellingPrice, setSellingPrice] = useState('');
@@ -2437,9 +2463,11 @@ function StockReductionModal({ isOpen, onClose, onConfirm, item, inventory }) {
               </p>
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => setShowConfirm(false)}>Cancel</button>
-              <button type="button" className="btn-primary" onClick={() => { onConfirm(pending); setShowConfirm(false); setPending(null); onClose(); }}>
-                {pending.reason==='sales-outside' ? 'Confirm Sale' : 'Confirm Reduction'}
+              <button type="button" className="btn-secondary" onClick={() => setShowConfirm(false)} disabled={submitting}>Cancel</button>
+              <button type="button" className="btn-primary"
+                onClick={() => { onConfirm(pending); setShowConfirm(false); setPending(null); onClose(); }}
+                disabled={submitting}>
+                {submitting ? 'Processing...' : pending.reason==='sales-outside' ? 'Confirm Sale' : 'Confirm Reduction'}
               </button>
             </div>
           </div>
@@ -2451,6 +2479,7 @@ function StockReductionModal({ isOpen, onClose, onConfirm, item, inventory }) {
 }
 // ── Main Inventory Page ────────────────────────────────────────────────────────
 export default function InventoryPage() {
+  const { token } = useAuth();
   const [inventory, setInventory] = useState([]);
   const [categories, setCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -2459,6 +2488,7 @@ export default function InventoryPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingInline, setEditingInline] = useState(null);
   const [statusFilter, setStatusFilter] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -2473,6 +2503,7 @@ export default function InventoryPage() {
   const [hasSalesHistory, setHasSalesHistory] = useState(false);
   const [adjustmentItem, setAdjustmentItem] = useState(null);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [showAdjustmentSuccess, setShowAdjustmentSuccess] = useState(false);
   const [additionItem, setAdditionItem] = useState(null);
   const [showAdditionModal, setShowAdditionModal] = useState(false);
   const [showManageSuppliersModal, setShowManageSuppliersModal] = useState(false);
@@ -2481,13 +2512,17 @@ export default function InventoryPage() {
   const [showBatchDetailsModal, setShowBatchDetailsModal] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [selectedBatchItem, setSelectedBatchItem] = useState(null);
+  const [infoModal, setInfoModal] = useState(null);
 
   // Load inventory, suppliers, and products from API on mount
   useEffect(() => {
+    if (!token) return;
     async function loadData() {
       try {
         // Load inventory
-        const inventoryData = await fetchInventory();
+        const inventoryResponse = await fetchInventory(token);
+        const inventoryData = Array.isArray(inventoryResponse)
+          ? inventoryResponse : [];
         setInventory(Array.isArray(inventoryData) ? inventoryData : []);
 
         // Load categories (derive from inventory or use default)
@@ -2497,12 +2532,16 @@ export default function InventoryPage() {
         setCategories(inventoryCategories.length > 0 ? inventoryCategories : DEFAULT_CATEGORIES);
 
         // Load suppliers
-        const suppliersData = await fetchSuppliers();
+        const suppliersResponse = await fetchSuppliers(token);
+        const suppliersData = Array.isArray(suppliersResponse)
+          ? suppliersResponse : [];
         setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
 
         // Load products for linkage checks
         try {
-          const productsData = await fetchProducts();
+          const productsResponse = await fetchProducts(token);
+          const productsData = Array.isArray(productsResponse)
+            ? productsResponse : [];
           setProducts(Array.isArray(productsData) ? productsData : []);
         } catch (prodError) {
           console.error('Failed to load products (linkage checks will be unavailable):', prodError);
@@ -2523,21 +2562,15 @@ export default function InventoryPage() {
     loadData();
   }, []);
 
-  // Handle Add Category - adds to state only (categories derived from inventory)
-  const handleAddCategory = (newCategory) => {
-    const updatedCategories = [...categories, newCategory];
-    setCategories(updatedCategories);
-  };
-
   // NEW: Handle Add Supplier - Uses API
   const handleAddSupplier = async (supplierData) => {
     try {
-      const created = await createSupplier(supplierData);
+      const created = await createSupplier(supplierData, token);
       setSuppliers(prev => [...prev, created]);
       return created;
     } catch (error) {
       console.error('Failed to add supplier:', error);
-      alert('Failed to add supplier: ' + (error.message || 'Unknown error'));
+      setInfoModal({ title: 'Failed to Add Supplier', message: error.message || 'Unknown error occurred while adding the supplier.' });
       return null;
     }
   };
@@ -2558,16 +2591,14 @@ export default function InventoryPage() {
     if (item.isActive === false) return false;
 
     const query = searchQuery.toLowerCase();
-    const matchesSearch = item.name.toLowerCase().includes(query) || item.category.toLowerCase().includes(query);
+    const matchesSearch = (item.name || '').toLowerCase().includes(query) || (item.category || '').toLowerCase().includes(query);
 
     // Status filter
     let matchesStatus = true;
     if (statusFilter === 'low-stock') {
-      matchesStatus = !item.isOnDemand && item.stockQty > 0 && item.stockQty <= item.minStockLevel;
+      matchesStatus = item.stockQty > 0 && item.stockQty <= item.minStockLevel;
     } else if (statusFilter === 'out-of-stock') {
-      matchesStatus = !item.isOnDemand && item.stockQty === 0;
-    } else if (statusFilter === 'upon-order') {
-      matchesStatus = item.isOnDemand;
+      matchesStatus = item.stockQty === 0;
     }
 
     return matchesSearch && matchesStatus;
@@ -2621,20 +2652,19 @@ export default function InventoryPage() {
   // Check for linked products and sales history before delete
   const handleDelete = async (item) => {
     const linkedProducts = products.filter(p => p.inventoryId === item.id);
-    
+
     // Fetch orders to check for sales history
     let hasSales = false;
     try {
-      const allOrders = await fetchAllOrders();
-      hasSales = allOrders.some(o => 
-        o.items?.some(i => i.inventoryId === item.id || i.inventoryId === item._id)
+      const allOrders = await fetchAllOrders({}, token);
+      hasSales = allOrders.some(o =>
+        o.items?.some(i => i.inventoryId === item.id)
       );
     } catch (error) {
       console.error('Failed to fetch orders for sales check:', error);
       // Fail safe: if we can't verify, assume there might be sales
       hasSales = true;
     }
-    
     setReferencingProducts(linkedProducts);
     setHasSalesHistory(hasSales);
     setArchiveItem(item);
@@ -2643,20 +2673,19 @@ export default function InventoryPage() {
 
   // NEW: Archive item (soft delete) - Uses API
   const handleArchive = async () => {
-    if (!archiveItem) return;
-
+    if (!archiveItem || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       // Archive via API (sets isActive: false)
       const id = archiveItem.id || archiveItem._id;
-      await deleteInventory(id);
+      await deleteInventory(id, token);
 
       // Auto-archive products linked to this inventory item
       try {
-        const allProducts = await fetchProducts();
+        const allProducts = await fetchProducts(token);
         const linkedProducts = allProducts.filter(p =>
           p.inventoryId === id ||
-          p.inventoryId === archiveItem?.id ||
-          p.inventoryId === archiveItem?._id
+          p.inventoryId === archiveItem?.id
         );
         if (linkedProducts.length > 0) {
           await Promise.all(
@@ -2689,18 +2718,20 @@ export default function InventoryPage() {
       setReferencingProducts([]);
     } catch (error) {
       console.error('Failed to archive item:', error);
-      alert('Failed to archive: ' + (error.message || 'Unknown error'));
+      setInfoModal({ title: 'Failed to Archive', message: error.message || 'Unknown error occurred while archiving the item.' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Handle Permanent Delete (only if not referenced) - Uses API
   const handlePermanentDelete = async () => {
-    if (!archiveItem) return;
-
+    if (!archiveItem || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       // Delete permanently via API
       const id = archiveItem.id || archiveItem._id;
-      await deleteInventory(id);
+      await deleteInventory(id, token);
 
       // Remove from local state
       setInventory(prev => prev.filter(item =>
@@ -2713,12 +2744,16 @@ export default function InventoryPage() {
       setReferencingProducts([]);
     } catch (error) {
       console.error('Failed to delete item:', error);
-      alert('Failed to delete: ' + (error.message || 'Unknown error'));
+      setInfoModal({ title: 'Failed to Delete', message: error.message || 'Unknown error occurred while deleting the item.' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // NEW: Restore archived item - Uses API
   const handleRestore = async (item) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const id = item.id || item._id;
 
@@ -2727,7 +2762,7 @@ export default function InventoryPage() {
         isActive: true,
         deletedAt: null,
         updatedAt: new Date().toISOString()
-      });
+      }, token);
 
       // Update local state with restored item
       setInventory(prev => prev.map(i =>
@@ -2738,7 +2773,9 @@ export default function InventoryPage() {
 
     } catch (error) {
       console.error('Failed to restore item:', error);
-      alert('Failed to restore item: ' + (error.message || 'Unknown error'));
+      setInfoModal({ title: 'Failed to Restore', message: error.message || 'Unknown error occurred while restoring the item.' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -2750,7 +2787,6 @@ export default function InventoryPage() {
 
     try {
       const id = adjustmentItem.id || adjustmentItem._id;
-      const { reason, quantity, sellingPrice, saleDate, remarks, customerName, batchId, batchData } = adjustmentData;
 
       // Prepare adjustment data for API
       const adjustData = {
@@ -2782,24 +2818,30 @@ export default function InventoryPage() {
       setShowAdjustmentSuccess(true);
     } catch (error) {
       console.error('Failed to adjust stock:', error);
-      alert('Failed to adjust stock: ' + (error.message || 'Unknown error'));
+      setInfoModal({ title: 'Failed to Adjust Stock', message: error.message || 'Unknown error occurred while adjusting stock.' });
     }
   };
 
   // NEW: Handle stock addition (Manual Stock In) - Uses API
   const handleStockAddition = async (additionData) => {
-    if (!additionItem) return;
-
+    if (!additionItem || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const id = additionItem.id || additionItem._id;
 
       const updated = await adjustInventoryStock(id, {
         adjustmentType: 'add',
-        quantity: Math.abs(additionData.quantity),
-        reason: additionData.reason || 'restock',
-        supplierId: additionData.supplierId || null,
-        supplierName: additionData.supplierName || null,
-        unitCost: additionData.unitCost ? parseFloat(additionData.unitCost) : null,
+        quantity:       Math.abs(additionData.quantity),
+        reason:         'restock',
+        supplierId:     additionData.supplierId || null,
+        supplierName:   additionData.supplierName || null,
+        unitCost:       additionData.unitCost
+                          ? parseFloat(additionData.unitCost)
+                          : null,
+        invoiceNumber:  additionData.invoiceNumber || null,
+        deliveryDate:   additionData.deliveryDate || null,
+        batchId:        additionData.batchData?.batchId || null,
+        remarks:        additionData.notes || null,
       });
 
       // Update local state with updated item
@@ -2817,7 +2859,53 @@ export default function InventoryPage() {
       setShowAdjustmentSuccess(true);
     } catch (error) {
       console.error('Failed to add stock:', error);
-      alert('Failed to add stock: ' + (error.message || 'Unknown error'));
+      setInfoModal({ title: 'Failed to Add Stock', message: error.message || 'Unknown error occurred while adding stock.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // NEW: Handle stock reduction (Manual Stock Out / Sale) - Uses API
+  const handleStockReduction = async (reductionData) => {
+    if (!adjustmentItem || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const id = adjustmentItem.id || adjustmentItem._id;
+      const { reason, quantity, sellingPrice, saleDate, remarks, customerName, batchId, batchData } = reductionData;
+
+      // Prepare adjustment data for API
+      const adjustData = {
+        adjustmentType: 'subtract',
+        quantity: quantity,
+        reason: reason,
+        batchId: batchId,
+        sellingPrice: reason === 'sales-outside' ? sellingPrice : null,
+        saleDate: reason === 'sales-outside' ? saleDate : null,
+        customerName: reason === 'sales-outside' ? customerName : null,
+        remarks: remarks,
+      };
+
+      // Call API to adjust stock
+      const updated = await adjustInventoryStock(id, adjustData);
+
+      // Update local state with updated item
+      setInventory(prev => prev.map(item =>
+        (item.id === id || item._id === id)
+          ? { ...item, ...updated }
+          : item
+      ));
+
+      // Close modal
+      setShowAdjustmentModal(false);
+      setAdjustmentItem(null);
+
+      // Show success message
+      setShowAdjustmentSuccess(true);
+    } catch (error) {
+      console.error('Failed to reduce stock:', error);
+      setInfoModal({ title: 'Failed to Reduce Stock', message: error.message || 'Unknown error occurred while reducing stock.' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -2838,7 +2926,7 @@ export default function InventoryPage() {
       if (editingItem) {
         // Update existing item via API
         const id = editingItem.id || editingItem._id;
-        const updated = await updateInventory(id, pendingItemData);
+        const updated = await updateInventory(id, pendingItemData, token);
         setInventory(prev =>
           prev.map(item =>
             (item.id === id || item._id === id) ? updated : item
@@ -2852,7 +2940,7 @@ export default function InventoryPage() {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
-        const created = await createInventory(newItem);
+        const created = await createInventory(newItem, token);
         setInventory(prev => [...prev, created]);
       }
 
@@ -2863,16 +2951,34 @@ export default function InventoryPage() {
       setPendingItemData(null);
     } catch (error) {
       console.error('Failed to save inventory item:', error);
-      alert('Failed to save: ' + (error.message || 'Unknown error'));
+      setInfoModal({ title: 'Failed to Save', message: error.message || 'Unknown error occurred while saving the inventory item.' });
     }
   };
 
   // Inline min stock level editing
   const handleInlineEditStart = (item) => setEditingInline({ id: item.id, value: String(item.minStockLevel) });
-  const handleInlineEditSave = () => {
+  const handleInlineEditSave = async () => {
     if (!editingInline) return;
-    setInventory(prev => prev.map(i => i.id === editingInline.id ? { ...i, minStockLevel: parseInt(editingInline.value)||0 } : i));
-    setEditingInline(null);
+    const newLevel = parseInt(editingInline.value) || 0;
+    try {
+      await updateInventory(editingInline.id, {
+        minStockLevel: newLevel
+      }, token);
+      setInventory(prev => prev.map(i =>
+        i.id === editingInline.id
+          ? { ...i, minStockLevel: newLevel }
+          : i
+      ));
+    } catch (error) {
+      console.error('Failed to update min stock level:', error);
+      setInfoModal({
+        title: 'Failed to Update',
+        message: error.message ||
+          'Could not save minimum stock level.'
+      });
+    } finally {
+      setEditingInline(null);
+    }
   };
 
   const getStockStatus = (item) => {
@@ -3071,7 +3177,7 @@ Item Masterlist
                       <td className="table-cell"><span style={{ color: 'var(--gray)' }}>{item.stockQty} pcs</span></td>
                       <td className="table-cell"><span style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>{item.deletedAt ? new Date(item.deletedAt).toLocaleDateString() : '—'}</span></td>
                       <td className="table-cell-actions">
-                        <button className="btn-sm btn-secondary" onClick={() => setRestoreItem(item)}>Restore</button>
+                        <button className="btn-sm btn-secondary" onClick={() => setRestoreItem(item)} disabled={isSubmitting}>Restore</button>
                         {!hasProducts && !hasSales && <button className="btn-sm btn-danger" onClick={() => handleDelete(item)}>Delete</button>}
                       </td>
                     </tr>
@@ -3093,30 +3199,32 @@ Item Masterlist
         onRestoreItem={handleRestore} item={editingItem} editingItem={editingItem}
         categories={categories} onAddCategory={handleAddCategory}
         inventory={inventory} suppliers={suppliers} onAddSupplier={handleAddSupplier}
-        masterlist={masterlist} />
+        masterlist={masterlist} products={products} />
 
       <ConfirmSaveModal isOpen={isConfirmModalOpen} onClose={() => { setIsConfirmModalOpen(false); setPendingItemData(null); }}
         onConfirm={handleConfirmSave} itemData={pendingItemData} isEdit={!!editingItem} />
 
       <ArchiveConfirmModal isOpen={showArchiveModal}
-        onClose={() => { setShowArchiveModal(false); setArchiveItem(null); setReferencingProducts([]); setHasSalesHistory(false); }}
+        onClose={() => { if (!isSubmitting) { setShowArchiveModal(false); setArchiveItem(null); setReferencingProducts([]); setHasSalesHistory(false); } }}
         onArchive={handleArchive} onDelete={handlePermanentDelete}
         itemName={archiveItem?.name} isReferenced={referencingProducts.length > 0}
         referencingProductsCount={referencingProducts.length} hasSalesHistory={hasSalesHistory} />
 
-      <ConfirmModal isOpen={!!restoreItem} onClose={() => setRestoreItem(null)}
+      <ConfirmModal isOpen={!!restoreItem} onClose={() => !isSubmitting && setRestoreItem(null)}
         onConfirm={() => { handleRestore(restoreItem); setRestoreItem(null); }}
-        title="Restore Item" confirmLabel="Restore"
+        title="Restore Item" confirmLabel={isSubmitting ? 'Restoring...' : 'Restore'}
         message={`Restore "${restoreItem?.name}" from archive? It will be available for use again.`} />
 
       <StockReductionModal isOpen={showAdjustmentModal}
         onClose={() => { setShowAdjustmentModal(false); setAdjustmentItem(null); }}
-        onConfirm={handleStockReduction} item={adjustmentItem} inventory={inventory} />
+        onConfirm={handleStockReduction} item={adjustmentItem} inventory={inventory}
+        submitting={isSubmitting} />
 
       <StockAdditionModal isOpen={showAdditionModal}
         onClose={() => { setShowAdditionModal(false); setAdditionItem(null); }}
         onConfirm={handleStockAddition} item={additionItem}
-        suppliers={suppliers} categories={categories} onAddSupplier={handleAddSupplier} />
+        suppliers={suppliers} categories={categories} onAddSupplier={handleAddSupplier}
+        submitting={isSubmitting} />
 
       {/* Item Masterlist Modal */}
       {/* TODO: MongoDB — onSave triggers POST/PUT/DELETE /api/masterlist/* */}
@@ -3130,6 +3238,8 @@ Item Masterlist
       <ManageSuppliersModal isOpen={showManageSuppliersModal} onClose={() => setShowManageSuppliersModal(false)}
         suppliers={suppliers} categories={categories} inventory={inventory}
         onAdd={async (data) => {
+          if (isSubmitting) return;
+          setIsSubmitting(true);
           try {
             const s = await handleAddSupplier(data);
             if (s) {
@@ -3137,30 +3247,39 @@ Item Masterlist
             }
           } catch (error) {
             console.error('Failed to add supplier in modal:', error);
+          } finally {
+            setIsSubmitting(false);
           }
         }}
         onUpdate={async (id, data) => {
+          if (isSubmitting) return;
+          setIsSubmitting(true);
           try {
-            await updateSupplier(id, data);
+            await updateSupplier(id, data, token);
             setSuppliers(prev => prev.map(s => s.id === id ? { ...s, ...data } : s));
           } catch (error) {
             console.error('Failed to update supplier in modal:', error);
+          } finally {
+            setIsSubmitting(false);
           }
         }}
         onDelete={async (id) => {
+          if (isSubmitting) return;
+          setIsSubmitting(true);
           try {
-            await deleteSupplier(id);
+            await deleteSupplier(id, token);
             setSuppliers(prev => prev.filter(s => s.id !== id));
           } catch (error) {
             console.error('Failed to delete supplier in modal:', error);
+          } finally {
+            setIsSubmitting(false);
           }
         }} />
 
       <BatchDetailsModal batch={selectedBatch} item={selectedBatchItem}
         isOpen={showBatchDetailsModal} onClose={() => { setShowBatchDetailsModal(false); setSelectedBatch(null); setSelectedBatchItem(null); }} />
 
-
-
+      <InfoModal isOpen={!!infoModal} onClose={() => setInfoModal(null)} title={infoModal?.title||''} message={infoModal?.message||''} />
     </div>
     </ErrorBoundary>
   );

@@ -14,15 +14,22 @@ class Inventory extends Model
         'lastUnitCost', 'averageCost', 'createdAt', 'updatedAt',  
     ]; 
   
-    protected $casts = [  
-        'stockQty' => 'integer', 'minStockLevel' => 'integer',  
-        'isOnDemand' => 'boolean', 'isActive' => 'boolean',  
-        'deletedAt' => 'datetime', 'lastUnitCost' => 'float',  
-        'averageCost' => 'float', 'createdAt' => 'datetime',  
-        'updatedAt' => 'datetime',  
-    ]; 
-  
-    protected $attributes = [  
+    protected $casts = [
+        'stockQty' => 'integer', 'minStockLevel' => 'integer',
+        'isOnDemand' => 'boolean', 'isActive' => 'boolean',
+        'deletedAt' => 'datetime', 'lastUnitCost' => 'float',
+        'averageCost' => 'float', 'createdAt' => 'datetime',
+        'updatedAt' => 'datetime',
+    ];
+
+    protected $indexes = [
+        ['key' => ['isActive'   => 1]],
+        ['key' => ['isOnDemand' => 1]],
+        ['key' => ['supplierId' => 1]],
+        ['key' => ['isActive' => 1, 'supplierId' => 1]],
+    ];
+
+    protected $attributes = [
         'isActive' => true, 'deletedAt' => null,  
         'stockQty' => 0, 'minStockLevel' => 10, 'isOnDemand' => false,  
     ];  
