@@ -13,7 +13,8 @@
 
 import CustomDropdown from "@/app/components/CustomDropdown";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import StockReductionModal from "../../inventory-old/StockReductionModal";
+import GoodsIssueModal from "../GoodsIssueModal";
+import { genDocNumber, getStore, setStore } from "../utils";
 import ActualStockTab from "./ActualStockTab";
 import InventoryReports from "./InventoryReports";
 import StockOutHistoryTab from "./StockOutHistoryTab";
@@ -22,27 +23,6 @@ import StockOutHistoryTab from "./StockOutHistoryTab";
 const MATERIALS_KEY = "pmp_materials";
 const VENDORS_KEY = "pmp_vendors";
 const STOCK_OUT_KEY = "pmp_stock_out_log";
-
-// ── Storage Helpers ────────────────────────────────────────────────────────────
-function getStore(key) {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(key) || "[]");
-  } catch {
-    return [];
-  }
-}
-function setStore(key, data) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(data));
-}
-
-// ── Number Generation ──────────────────────────────────────────────────────────
-function genDocNumber(prefix, list) {
-  const year = new Date().getFullYear();
-  const seq = String((list.length || 0) + 1).padStart(4, "0");
-  return `${prefix}-${year}-${seq}`;
-}
 
 // ── Issue Type Config ──────────────────────────────────────────────────────────
 const ISSUE_TYPES = {
@@ -362,8 +342,18 @@ function StockOverviewTab({ materials, onIssueStock }) {
           childrenMap.set(child.parentId, []);
         childrenMap.get(child.parentId).push(child);
       });
-    const standalone = materials.filter((m) => !m.hasVariants && !m.parentId);
-    return { parents, childrenMap, standalone };
+    // Materials with hasVariants but ZERO children → treat as standalone
+    const orphanParents = parents.filter(
+      (p) => !childrenMap.has(p.id) || childrenMap.get(p.id).length === 0,
+    );
+    const realParents = parents.filter(
+      (p) => childrenMap.has(p.id) && childrenMap.get(p.id).length > 0,
+    );
+    const standalone = [
+      ...materials.filter((m) => !m.hasVariants && !m.parentId),
+      ...orphanParents,
+    ];
+    return { parents: realParents, childrenMap, standalone };
   }, [materials]);
 
   const toggleExpand = (id) => {
@@ -1138,8 +1128,8 @@ export default function StocksPage() {
   const [activeTab, setActiveTab] = useState("goods");
   const [materials, setMaterials] = useState([]);
   const [stockOuts, setStockOuts] = useState([]);
-  const [showReductionModal, setShowReductionModal] = useState(false);
-  const [reductionItem, setReductionItem] = useState(null);
+  const [showGoodsIssue, setShowGoodsIssue] = useState(false);
+  const [goodsIssueItem, setGoodsIssueItem] = useState(null);
 
   const refresh = useCallback(() => {
     setMaterials(getStore(MATERIALS_KEY));
@@ -1169,136 +1159,104 @@ export default function StocksPage() {
     return oldest ? oldest.unitCost || 0 : 0;
   };
 
-  // ── Stock Reduction Handler (Old Modal → New Batch System) ─────────────────
-  const handleStockReduction = (data) => {
-    const {
-      reason,
-      remarks,
-      variants,
-      totals,
-      performedBy,
-      saleRef,
-      saleDate,
-      customer,
-    } = data;
+  // ── Goods Issue Handler — from GoodsIssueModal ─────────────────────────
+  const handleGoodsIssueConfirm = (data) => {
+    const { issueType, performedBy, remarks, variants, totals } = data;
     const now = new Date().toISOString();
-    const issueTypeMap = {
-      damaged: "damage",
-      writeoff: "scrap",
-      missing: "missing",
-      sales: "sale",
-    };
-    const issueType = issueTypeMap[reason] || "damage";
-
     const mats = getStore(MATERIALS_KEY);
     const log = getStore(STOCK_OUT_KEY);
 
-    variants.forEach((variant) => {
+    for (const variant of variants) {
       const qtyFulfilled = variant.qtyFulfilled;
-      if (qtyFulfilled <= 0) return;
+      if (qtyFulfilled <= 0) continue;
+
       const mat = mats.find((m) => m.id === variant.variantId);
-      if (!mat) return;
+      if (!mat) continue;
 
-      const deductions = {};
-      variant.batches.forEach((b) => {
-        deductions[b.batchId] = b.take;
-      });
-      const currentBatches = [...(mat.batches || [])];
-      const updatedBatches = currentBatches.map((batch) => {
-        const deduct = deductions[batch.batchId];
-        if (!deduct) return batch;
-        const newRemaining = (batch.remainingQty || 0) - deduct;
-        return {
-          ...batch,
-          remainingQty: newRemaining,
-          // FIX 1: Track qtyDamaged when reason is 'damaged'
-          qtyDamaged:
-            reason === "damaged"
-              ? (batch.qtyDamaged || 0) + deduct
-              : batch.qtyDamaged || 0,
-          movements: [
-            ...(batch.movements || []),
-            {
-              type: issueType,
-              qty: -deduct,
-              remainingAfter: newRemaining,
-              reason:
-                remarks ||
-                (reason === "writeoff"
-                  ? "Write-off"
-                  : reason === "missing"
-                    ? "Missing"
-                    : "Damaged"),
-              date: now,
-            },
-          ],
-          status: newRemaining === 0 ? "exhausted" : "active",
-        };
-      });
-
-      const idx = mats.findIndex((m) => m.id === variant.variantId);
-      if (idx !== -1) {
-        mats[idx] = {
-          ...mats[idx],
-          stockQty: computeStockFromBatches(updatedBatches),
-          baseCost: computeAveCostFromBatches(updatedBatches),
-          batches: updatedBatches,
-          updatedAt: now,
-        };
+      // Deduct from batches
+      if (data.batchMode === "fifo") {
+        const result = deductFromBatchesFIFO(mat.batches, qtyFulfilled);
+        if (!result.success) {
+          console.error("FIFO deduction failed:", result.error);
+          continue;
+        }
+      } else {
+        // Pick mode: manual batch deduction
+        for (const c of variant.batches) {
+          const batch = mat.batches.find((b) => b.batchId === c.batchId);
+          if (!batch) continue;
+          batch.remainingQty = Math.max(0, (batch.remainingQty || 0) - c.take);
+          if (batch.remainingQty === 0) batch.status = "exhausted";
+        }
       }
 
-      // FIX 5: Upgraded log entry format with audit fields
-      const batchBreakdown = variant.batches.map((b) => ({
-        batchId: b.batchId,
-        qty: b.take,
-        unitCost: b.unitCost || 0,
-        totalCost: b.totalCost || 0,
-      }));
+      // Sync stockQty
+      mat.stockQty = mat.batches.reduce((s, b) => s + (b.remainingQty || 0), 0);
+      mat.updatedAt = now;
+
+      // If variant child, sync parent stockQty
+      if (mat.parentId) {
+        const parentIdx = mats.findIndex((m) => m.id === mat.parentId);
+        if (parentIdx !== -1) {
+          const parent = mats[parentIdx];
+          const siblings = mats.filter((m) => m.parentId === mat.parentId);
+          parent.stockQty = siblings.reduce(
+            (s, sib) =>
+              s +
+              (sib.batches || []).reduce(
+                (ss, b) => ss + (b.remainingQty || 0),
+                0,
+              ),
+            0,
+          );
+          parent.updatedAt = now;
+        }
+      }
+    }
+
+    setStore(MATERIALS_KEY, mats);
+    setMaterials(getStore(MATERIALS_KEY));
+
+    // Log to stock-out
+    for (const variant of variants) {
+      if (variant.qtyFulfilled <= 0) continue;
+      const mat = mats.find((m) => m.id === variant.variantId);
       const unitCost =
-        qtyFulfilled > 0 ? (variant.totalCostValue || 0) / qtyFulfilled : 0;
-      const sellingPrice = variant.sellingPrice || 0;
-      const totalRevenue = variant.totalRevenue || 0;
+        variant.qtyFulfilled > 0
+          ? (variant.totalCostValue || 0) / variant.qtyFulfilled
+          : 0;
 
       log.push({
-        // FIX 5: Use genDocNumber for proper ID format
-        id: genDocNumber("GI", log),
+        id: genDocNumber("GI"),
         materialId: variant.variantId,
         materialName: variant.variantName,
         variantId: variant.variantId,
         variantName: variant.variantName,
         sku: variant.sku,
-        category: variant.category || mat.category || "",
-        uom: variant.uom || mat.uom || "pcs",
+        category: mat?.category || "",
+        uom: variant.uom || mat?.uom || "pcs",
         issueType,
-        quantity: qtyFulfilled,
+        quantity: variant.qtyFulfilled,
         unitCost,
-        totalCost: qtyFulfilled * unitCost,
+        totalCost: variant.qtyFulfilled * unitCost,
         performedBy: performedBy || "",
         notes: remarks || "",
-        batchBreakdown,
-        // Sale-specific fields (only when issueType === 'sale')
-        ...(issueType === "sale"
-          ? {
-              saleRef: saleRef || null,
-              saleDate: saleDate || null,
-              customer: customer || null,
-              sellingPrice,
-              totalRevenue,
-              grossProfit: totalRevenue - (variant.totalCostValue || 0),
-            }
-          : {}),
-        previousStock: mat.stockQty || 0,
-        newStock: computeStockFromBatches(updatedBatches),
+        batchBreakdown: variant.batches.map((b) => ({
+          batchId: b.batchId,
+          qty: b.take,
+          unitCost: b.unitCost || 0,
+          totalCost: b.totalCost || 0,
+        })),
+        previousStock: mat?.stockQty || 0,
+        newStock: mat?.stockQty || 0,
         totalLoss: variant.totalCostValue || 0,
         dateIssued: now,
         createdAt: now,
       });
-    });
+    }
 
-    setStore(MATERIALS_KEY, mats);
     setStore(STOCK_OUT_KEY, log);
-    setShowReductionModal(false);
-    setReductionItem(null);
+    setStockOuts(getStore(STOCK_OUT_KEY));
     refresh();
   };
 
@@ -1370,8 +1328,13 @@ export default function StocksPage() {
         <StockOverviewTab
           materials={materials}
           onIssueStock={() => {
-            setReductionItem(null);
-            setShowReductionModal(true);
+            if (materials.length === 0) return;
+            // Default to first material with stock, or let user pick
+            setGoodsIssueItem(
+              materials.find((m) => !m.parentId && (m.stockQty || 0) > 0) ||
+                materials[0],
+            );
+            setShowGoodsIssue(true);
           }}
         />
       )}
@@ -1383,18 +1346,17 @@ export default function StocksPage() {
         <InventoryReports materials={materials} stockOuts={stockOuts} />
       )}
 
-      {/* Stock Reduction Modal (Old Inventory — FIFO + Pick Batch + Sales/Damage/Writeoff) */}
-      {showReductionModal && (
-        <StockReductionModal
-          isOpen={showReductionModal}
+      {/* Goods Issue Modal */}
+      {showGoodsIssue && goodsIssueItem && (
+        <GoodsIssueModal
+          isOpen={showGoodsIssue}
           onClose={() => {
-            setShowReductionModal(false);
-            setReductionItem(null);
+            setShowGoodsIssue(false);
+            setGoodsIssueItem(null);
           }}
-          onConfirm={handleStockReduction}
-          item={reductionItem}
+          onConfirm={handleGoodsIssueConfirm}
+          item={goodsIssueItem}
           inventory={materials}
-          masterlist={null}
         />
       )}
     </div>

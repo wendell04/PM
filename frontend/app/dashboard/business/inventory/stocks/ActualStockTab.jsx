@@ -54,6 +54,7 @@ export default function ActualStockTab({ materials }) {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [viewMode, setViewMode] = useState("product");
   const [expandedInvoice, setExpandedInvoice] = useState(null);
+  const [showCSVPreview, setShowCSVPreview] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [pendingPOs, setPendingPOs] = useState([]);
@@ -82,71 +83,6 @@ export default function ActualStockTab({ materials }) {
     });
     return map;
   }, [pendingPOs]);
-
-  // Export CSV for invoice view
-  const handleExportCSV = () => {
-    const data = filteredInvoices;
-    if (data.length === 0) return;
-    const headers = [
-      "Invoice No",
-      "Supplier",
-      "Date",
-      "Material",
-      "Variant",
-      "Good",
-      "Damaged",
-      "Total",
-      "Unit Cost",
-      "Value",
-    ];
-    const rows = [];
-    data.forEach((inv) => {
-      const date = inv.dateReceived
-        ? new Date(inv.dateReceived).toLocaleDateString("en-PH")
-        : "";
-      inv.items.forEach((it) => {
-        rows.push([
-          inv.invoiceNo,
-          inv.vendorName,
-          date,
-          it.materialName,
-          it.variantName !== "—" ? it.variantName : "",
-          it.good,
-          it.damaged,
-          it.total,
-          (it.unitCost || 0).toFixed(2),
-          (it.value || 0).toFixed(2),
-        ]);
-      });
-      // Invoice total row
-      const invGood = inv.items.reduce((s, it) => s + it.good, 0);
-      const invDamaged = inv.items.reduce((s, it) => s + it.damaged, 0);
-      const invTotal = inv.items.reduce((s, it) => s + it.total, 0);
-      const invValue = inv.items.reduce((s, it) => s + (it.value || 0), 0);
-      rows.push([
-        `TOTAL: ${inv.invoiceNo}`,
-        "",
-        "",
-        "",
-        "",
-        invGood,
-        invDamaged,
-        invTotal,
-        "",
-        invValue.toFixed(2),
-      ]);
-    });
-    const csvContent = [headers, ...rows]
-      .map((r) => r.map((c) => `"${c}"`).join(","))
-      .join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `actual-stock-by-invoice-${new Date().toISOString().split("T")[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   // Print Invoice Report
   const handlePrintInvoices = () => {
@@ -241,6 +177,10 @@ export default function ActualStockTab({ materials }) {
       totalWaste = 0;
     let totalInTransit = 0,
       totalBackorders = 0;
+    let arrivalDamage = 0,
+      internalDamage = 0;
+    let arrivalDamageValue = 0,
+      internalDamageValue = 0;
 
     materials.forEach((m) => {
       if (m.parentId) return; // Skip children - only process parent materials
@@ -273,13 +213,25 @@ export default function ActualStockTab({ materials }) {
           parentDamaged += childDamaged;
           totalWaste += childDamaged;
 
+          // Split arrival vs internal damage
+          childBatches.forEach((b) => {
+            const damagedQty = b.qtyDamaged || b.damagedQty || 0;
+            const cost = b.unitCost || 0;
+            if (b.damageType === "arrival") {
+              arrivalDamage += damagedQty;
+              arrivalDamageValue += damagedQty * cost;
+            } else {
+              internalDamage += damagedQty;
+              internalDamageValue += damagedQty * cost;
+            }
+            totalInventoryLoss += damagedQty * cost;
+          });
+
           // Calculate costs from children batches
           childBatches.forEach((b) => {
             const remaining = b.remainingQty || 0;
-            const damagedQty = b.qtyDamaged || b.damagedQty || 0;
             const cost = b.unitCost || 0;
             totalGoodsCost += remaining * cost;
-            totalInventoryLoss += damagedQty * cost;
           });
         });
 
@@ -326,8 +278,15 @@ export default function ActualStockTab({ materials }) {
           const remaining = b.remainingQty || 0;
           const damagedQty = b.qtyDamaged || b.damagedQty || 0;
           const cost = b.unitCost || 0;
-          totalGoodsCost += remaining * cost;
+          if (b.damageType === "arrival") {
+            arrivalDamage += damagedQty;
+            arrivalDamageValue += damagedQty * cost;
+          } else {
+            internalDamage += damagedQty;
+            internalDamageValue += damagedQty * cost;
+          }
           totalInventoryLoss += damagedQty * cost;
+          totalGoodsCost += remaining * cost;
         });
       }
     });
@@ -348,6 +307,10 @@ export default function ActualStockTab({ materials }) {
       totalInTransit,
       totalWaste,
       totalBackorders,
+      arrivalDamage,
+      internalDamage,
+      arrivalDamageValue,
+      internalDamageValue,
     };
   }, [materials, inTransitMap]);
 
@@ -507,6 +470,164 @@ export default function ActualStockTab({ materials }) {
     return groups;
   }, [invoiceGroups, categoryFilter, search, materials]);
 
+  // ── CSV Preview Data ────────────────────────────────────────────────────
+  const csvPreviewData = useMemo(() => {
+    if (viewMode !== "invoice" || filteredInvoices.length === 0) return null;
+    const rows = [];
+    let grandGood = 0,
+      grandDamaged = 0,
+      grandTotal = 0,
+      grandValue = 0;
+    filteredInvoices.forEach((inv) => {
+      let invGood = 0,
+        invDamaged = 0,
+        invTotal = 0,
+        invValue = 0;
+      inv.items.forEach((it) => {
+        rows.push({
+          type: "item",
+          invoice: inv.invoiceNo,
+          vendor: inv.vendorName,
+          date: inv.dateReceived
+            ? new Date(inv.dateReceived).toLocaleDateString("en-PH")
+            : "",
+          material: it.materialName,
+          variant: it.variantName !== "—" ? it.variantName : "",
+          good: it.good,
+          damaged: it.damaged,
+          total: it.total,
+          unitCost: (it.unitCost || 0).toFixed(2),
+          value: (it.value || 0).toFixed(2),
+        });
+        invGood += it.good;
+        invDamaged += it.damaged;
+        invTotal += it.total;
+        invValue += it.value || 0;
+      });
+      rows.push({
+        type: "subtotal",
+        invoice: inv.invoiceNo,
+        good: invGood,
+        damaged: invDamaged,
+        total: invTotal,
+        value: invValue.toFixed(2),
+      });
+      grandGood += invGood;
+      grandDamaged += invDamaged;
+      grandTotal += invTotal;
+      grandValue += invValue;
+    });
+    rows.push({
+      type: "grand",
+      good: grandGood,
+      damaged: grandDamaged,
+      total: grandTotal,
+      value: grandValue.toFixed(2),
+    });
+    return rows;
+  }, [filteredInvoices, viewMode]);
+
+  // Generate grouped CSV string
+  const generateCSV = () => {
+    const data = filteredInvoices;
+    if (data.length === 0) return "";
+    const lines = [];
+    lines.push(
+      [
+        "Invoice No",
+        "Supplier",
+        "Date",
+        "Material",
+        "Variant",
+        "Good",
+        "Damaged",
+        "Total",
+        "Unit Cost",
+        "Value",
+      ].join(","),
+    );
+    let grandGood = 0,
+      grandDamaged = 0,
+      grandTotal = 0,
+      grandValue = 0;
+    data.forEach((inv) => {
+      let invGood = 0,
+        invDamaged = 0,
+        invTotal = 0,
+        invValue = 0;
+      const date = inv.dateReceived
+        ? new Date(inv.dateReceived).toLocaleDateString("en-PH")
+        : "";
+      inv.items.forEach((it) => {
+        lines.push(
+          [
+            inv.invoiceNo,
+            `"${inv.vendorName}"`,
+            date,
+            `"${it.materialName}"`,
+            it.variantName !== "—" ? `"${it.variantName}"` : "",
+            it.good,
+            it.damaged,
+            it.total,
+            (it.unitCost || 0).toFixed(2),
+            (it.value || 0).toFixed(2),
+          ].join(","),
+        );
+        invGood += it.good;
+        invDamaged += it.damaged;
+        invTotal += it.total;
+        invValue += it.value || 0;
+      });
+      lines.push(
+        [
+          `SUBTOTAL: ${inv.invoiceNo}`,
+          "",
+          "",
+          "",
+          "",
+          invGood,
+          invDamaged,
+          invTotal,
+          "",
+          invValue.toFixed(2),
+        ].join(","),
+      );
+      grandGood += invGood;
+      grandDamaged += invDamaged;
+      grandTotal += invTotal;
+      grandValue += invValue;
+    });
+    lines.push(
+      [
+        "GRAND TOTAL",
+        "",
+        "",
+        "",
+        "",
+        grandGood,
+        grandDamaged,
+        grandTotal,
+        "",
+        grandValue.toFixed(2),
+      ].join(","),
+    );
+    return lines.join("\n");
+  };
+
+  // Download CSV (from preview modal)
+  const handleDownloadCSV = () => {
+    const csvContent = generateCSV();
+    if (!csvContent) return;
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `actual-stock-by-invoice-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setShowCSVPreview(false);
+  };
+
   // Pagination
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
   const paginatedItems = filtered.slice(
@@ -534,10 +655,18 @@ export default function ActualStockTab({ materials }) {
         </div>
         <div className="summary-card">
           <div className="summary-content">
-            <span className="summary-value" style={{ color: "#ef4444" }}>
-              {summaryCards.totalWaste}
+            <span className="summary-value" style={{ color: "#f59e0b" }}>
+              {summaryCards.arrivalDamage}
             </span>
-            <span className="summary-label">Total Waste</span>
+            <span className="summary-label">Arrival Damage (RTV)</span>
+          </div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-content">
+            <span className="summary-value" style={{ color: "#ef4444" }}>
+              {summaryCards.internalDamage}
+            </span>
+            <span className="summary-label">Internal Damage</span>
           </div>
         </div>
         <div className="summary-card">
@@ -559,15 +688,30 @@ export default function ActualStockTab({ materials }) {
           <div className="summary-content">
             <span
               className="summary-value"
-              style={{ color: "#ef4444", fontSize: "1rem" }}
+              style={{ color: "#f59e0b", fontSize: "1rem" }}
             >
               ₱
-              {summaryCards.totalInventoryLoss.toLocaleString("en-PH", {
+              {summaryCards.arrivalDamageValue.toLocaleString("en-PH", {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
             </span>
-            <span className="summary-label">Total Waste Value</span>
+            <span className="summary-label">Arrival Damage Value</span>
+          </div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-content">
+            <span
+              className="summary-value"
+              style={{ color: "#ef4444", fontSize: "1rem" }}
+            >
+              ₱
+              {summaryCards.internalDamageValue.toLocaleString("en-PH", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </span>
+            <span className="summary-label">Internal Damage Value</span>
           </div>
         </div>
       </div>
@@ -675,7 +819,7 @@ export default function ActualStockTab({ materials }) {
         {viewMode === "invoice" && (
           <>
             <button
-              onClick={handleExportCSV}
+              onClick={() => setShowCSVPreview(true)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -778,8 +922,15 @@ export default function ActualStockTab({ materials }) {
                 <th style={thStyle}>SKU / Name</th>
                 <th style={{ ...thStyle, textAlign: "center" }}>Category</th>
                 <th style={{ ...thStyle, textAlign: "center" }}>Good Stock</th>
-                <th style={{ ...thStyle, textAlign: "center" }}>
-                  Damaged / Others
+                <th
+                  style={{ ...thStyle, textAlign: "center", color: "#f59e0b" }}
+                >
+                  Arrival Dmg
+                </th>
+                <th
+                  style={{ ...thStyle, textAlign: "center", color: "#ef4444" }}
+                >
+                  Internal Dmg
                 </th>
                 <th style={{ ...thStyle, textAlign: "center" }}>Total</th>
                 <th style={{ ...thStyle, textAlign: "right" }}>Unit Cost</th>
@@ -790,7 +941,7 @@ export default function ActualStockTab({ materials }) {
               {paginatedItems.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     style={{
                       padding: "3rem",
                       textAlign: "center",
@@ -809,6 +960,8 @@ export default function ActualStockTab({ materials }) {
                   let batches,
                     goodStock,
                     damaged,
+                    arrivalDamaged,
+                    internalDamaged,
                     totalStock,
                     avgCost,
                     goodsValue,
@@ -829,6 +982,18 @@ export default function ActualStockTab({ materials }) {
                     );
                     damaged = allChildrenBatches.reduce(
                       (s, b) => s + (b.qtyDamaged || 0),
+                      0,
+                    );
+                    arrivalDamaged = allChildrenBatches.reduce(
+                      (s, b) =>
+                        s +
+                        (b.damageType === "arrival" ? b.qtyDamaged || 0 : 0),
+                      0,
+                    );
+                    internalDamaged = allChildrenBatches.reduce(
+                      (s, b) =>
+                        s +
+                        (b.damageType === "arrival" ? 0 : b.qtyDamaged || 0),
                       0,
                     );
                     totalStock = goodStock + damaged;
@@ -853,6 +1018,18 @@ export default function ActualStockTab({ materials }) {
                     );
                     damaged = batches.reduce(
                       (s, b) => s + (b.qtyDamaged || 0),
+                      0,
+                    );
+                    arrivalDamaged = batches.reduce(
+                      (s, b) =>
+                        s +
+                        (b.damageType === "arrival" ? b.qtyDamaged || 0 : 0),
+                      0,
+                    );
+                    internalDamaged = batches.reduce(
+                      (s, b) =>
+                        s +
+                        (b.damageType === "arrival" ? 0 : b.qtyDamaged || 0),
                       0,
                     );
                     totalStock = goodStock + damaged;
@@ -991,11 +1168,31 @@ export default function ActualStockTab({ materials }) {
                             padding: "0.875rem 1rem",
                             textAlign: "center",
                             fontWeight: 700,
-                            color: damaged > 0 ? "#ef4444" : "#6b7280",
+                            color: arrivalDamaged > 0 ? "#f59e0b" : "#6b7280",
                             fontFamily: "monospace",
                           }}
                         >
-                          {damaged}{" "}
+                          {arrivalDamaged}{" "}
+                          <span
+                            style={{
+                              color: "var(--gray)",
+                              fontWeight: 400,
+                              fontSize: "0.75rem",
+                            }}
+                          >
+                            {mat.uom || "pcs"}
+                          </span>
+                        </td>
+                        <td
+                          style={{
+                            padding: "0.875rem 1rem",
+                            textAlign: "center",
+                            fontWeight: 700,
+                            color: internalDamaged > 0 ? "#ef4444" : "#6b7280",
+                            fontFamily: "monospace",
+                          }}
+                        >
+                          {internalDamaged}{" "}
                           <span
                             style={{
                               color: "var(--gray)",
@@ -1166,13 +1363,25 @@ export default function ActualStockTab({ materials }) {
                                             style={{
                                               padding: "0.4rem 0.6rem",
                                               textAlign: "center",
-                                              color: "#D4A843",
+                                              color: "#f59e0b",
                                               fontWeight: 700,
                                               fontSize: "0.6rem",
                                               textTransform: "uppercase",
                                             }}
                                           >
-                                            Damaged
+                                            Arrival Dmg
+                                          </th>
+                                          <th
+                                            style={{
+                                              padding: "0.4rem 0.6rem",
+                                              textAlign: "center",
+                                              color: "#ef4444",
+                                              fontWeight: 700,
+                                              fontSize: "0.6rem",
+                                              textTransform: "uppercase",
+                                            }}
+                                          >
+                                            Internal Dmg
                                           </th>
                                           <th
                                             style={{
@@ -1225,6 +1434,24 @@ export default function ActualStockTab({ materials }) {
                                               (s, b) => s + (b.qtyDamaged || 0),
                                               0,
                                             );
+                                          const childArrivalDamaged =
+                                            childBatches.reduce(
+                                              (s, b) =>
+                                                s +
+                                                (b.damageType === "arrival"
+                                                  ? b.qtyDamaged || 0
+                                                  : 0),
+                                              0,
+                                            );
+                                          const childInternalDamaged =
+                                            childBatches.reduce(
+                                              (s, b) =>
+                                                s +
+                                                (b.damageType === "arrival"
+                                                  ? 0
+                                                  : b.qtyDamaged || 0),
+                                              0,
+                                            );
                                           const childTotal =
                                             childGood + childDamaged;
                                           const childCost =
@@ -1258,6 +1485,7 @@ export default function ActualStockTab({ materials }) {
                                             childDamaged > 0
                                           ) {
                                             childStatus = "All Damaged";
+                                            childStatusColor = "#ef4444";
                                           } else if (
                                             childBatches.length > 0 &&
                                             childGood === 0
@@ -1391,13 +1619,26 @@ export default function ActualStockTab({ materials }) {
                                                     padding: "0.4rem 0.6rem",
                                                     textAlign: "center",
                                                     color:
-                                                      childDamaged > 0
+                                                      childArrivalDamaged > 0
+                                                        ? "#f59e0b"
+                                                        : "#6b7280",
+                                                    fontWeight: 600,
+                                                  }}
+                                                >
+                                                  {childArrivalDamaged}
+                                                </td>
+                                                <td
+                                                  style={{
+                                                    padding: "0.4rem 0.6rem",
+                                                    textAlign: "center",
+                                                    color:
+                                                      childInternalDamaged > 0
                                                         ? "#ef4444"
                                                         : "#6b7280",
                                                     fontWeight: 600,
                                                   }}
                                                 >
-                                                  {childDamaged}
+                                                  {childInternalDamaged}
                                                 </td>
                                                 <td
                                                   style={{
@@ -2535,6 +2776,462 @@ export default function ActualStockTab({ materials }) {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* CSV Preview Modal */}
+      {showCSVPreview && csvPreviewData && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.78)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+          }}
+          onClick={() => setShowCSVPreview(false)}
+        >
+          <div
+            style={{
+              background: "var(--dark)",
+              border: "1px solid var(--border)",
+              borderRadius: "14px",
+              width: "90%",
+              maxWidth: "960px",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: "1.25rem 1.5rem",
+                borderBottom: "1px solid var(--border)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "1.1rem",
+                    fontWeight: 700,
+                    color: "#E5E2E1",
+                  }}
+                >
+                  Export CSV Preview
+                </h3>
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "var(--gray)",
+                    marginTop: "0.25rem",
+                  }}
+                >
+                  {filteredInvoices.length} invoices •{" "}
+                  {filteredInvoices.reduce((s, inv) => s + inv.items.length, 0)}{" "}
+                  entries
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCSVPreview(false)}
+                style={{
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "50%",
+                  width: "32px",
+                  height: "32px",
+                  cursor: "pointer",
+                  color: "var(--gray)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "1rem 1.5rem" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: "0.78rem",
+                }}
+              >
+                <thead>
+                  <tr style={{ borderBottom: "2px solid var(--border)" }}>
+                    <th
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        textAlign: "left",
+                        color: "#D4A843",
+                        fontWeight: 700,
+                        fontSize: "0.6rem",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Invoice
+                    </th>
+                    <th
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        textAlign: "left",
+                        color: "#D4A843",
+                        fontWeight: 700,
+                        fontSize: "0.6rem",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Material
+                    </th>
+                    <th
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        textAlign: "left",
+                        color: "#D4A843",
+                        fontWeight: 700,
+                        fontSize: "0.6rem",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Variant
+                    </th>
+                    <th
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        textAlign: "center",
+                        color: "#D4A843",
+                        fontWeight: 700,
+                        fontSize: "0.6rem",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Good
+                    </th>
+                    <th
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        textAlign: "center",
+                        color: "#D4A843",
+                        fontWeight: 700,
+                        fontSize: "0.6rem",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Damaged
+                    </th>
+                    <th
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        textAlign: "center",
+                        color: "#D4A843",
+                        fontWeight: 700,
+                        fontSize: "0.6rem",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Total
+                    </th>
+                    <th
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        textAlign: "right",
+                        color: "#D4A843",
+                        fontWeight: 700,
+                        fontSize: "0.6rem",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Value
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {csvPreviewData.map((row, idx) => {
+                    if (row.type === "item") {
+                      return (
+                        <tr
+                          key={idx}
+                          style={{
+                            borderBottom: "1px solid rgba(255,255,255,0.04)",
+                          }}
+                        >
+                          <td
+                            style={{
+                              padding: "0.4rem 0.75rem",
+                              fontFamily: "monospace",
+                              fontSize: "0.72rem",
+                              color: "var(--gray)",
+                            }}
+                          >
+                            {row.invoice}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.4rem 0.75rem",
+                              color: "#E5E2E1",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {row.material}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.4rem 0.75rem",
+                              color: "var(--gray)",
+                            }}
+                          >
+                            {row.variant}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.4rem 0.75rem",
+                              textAlign: "center",
+                              color: "#E5E2E1",
+                            }}
+                          >
+                            {row.good}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.4rem 0.75rem",
+                              textAlign: "center",
+                              color:
+                                row.damaged > 0 ? "#ef4444" : "var(--gray)",
+                            }}
+                          >
+                            {row.damaged}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.4rem 0.75rem",
+                              textAlign: "center",
+                              color: "#E5E2E1",
+                            }}
+                          >
+                            {row.total}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.4rem 0.75rem",
+                              textAlign: "right",
+                              fontFamily: "monospace",
+                              color: "#E5E2E1",
+                            }}
+                          >
+                            ₱{row.value}
+                          </td>
+                        </tr>
+                      );
+                    } else if (row.type === "subtotal") {
+                      return (
+                        <tr
+                          key={idx}
+                          style={{
+                            background: "rgba(212,168,67,0.08)",
+                            borderTop: "1px solid rgba(212,168,67,0.2)",
+                            borderBottom: "1px solid rgba(212,168,67,0.2)",
+                          }}
+                        >
+                          <td
+                            colSpan={3}
+                            style={{
+                              padding: "0.5rem 0.75rem",
+                              fontSize: "0.72rem",
+                              fontWeight: 700,
+                              color: "#D4A843",
+                            }}
+                          >
+                            SUBTOTAL: {row.invoice}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.5rem 0.75rem",
+                              textAlign: "center",
+                              fontWeight: 700,
+                              color: "#D4A843",
+                            }}
+                          >
+                            {row.good}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.5rem 0.75rem",
+                              textAlign: "center",
+                              fontWeight: 700,
+                              color: row.damaged > 0 ? "#ef4444" : "#D4A843",
+                            }}
+                          >
+                            {row.damaged}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.5rem 0.75rem",
+                              textAlign: "center",
+                              fontWeight: 700,
+                              color: "#D4A843",
+                            }}
+                          >
+                            {row.total}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.5rem 0.75rem",
+                              textAlign: "right",
+                              fontWeight: 700,
+                              color: "#D4A843",
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            ₱{row.value}
+                          </td>
+                        </tr>
+                      );
+                    } else {
+                      return (
+                        <tr
+                          key={idx}
+                          style={{
+                            background: "rgba(34,197,94,0.08)",
+                            borderTop: "2px solid rgba(34,197,94,0.3)",
+                          }}
+                        >
+                          <td
+                            colSpan={3}
+                            style={{
+                              padding: "0.6rem 0.75rem",
+                              fontSize: "0.78rem",
+                              fontWeight: 800,
+                              color: "#22c55e",
+                            }}
+                          >
+                            GRAND TOTAL
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.6rem 0.75rem",
+                              textAlign: "center",
+                              fontWeight: 800,
+                              color: "#22c55e",
+                            }}
+                          >
+                            {row.good}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.6rem 0.75rem",
+                              textAlign: "center",
+                              fontWeight: 800,
+                              color: row.damaged > 0 ? "#ef4444" : "#22c55e",
+                            }}
+                          >
+                            {row.damaged}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.6rem 0.75rem",
+                              textAlign: "center",
+                              fontWeight: 800,
+                              color: "#22c55e",
+                            }}
+                          >
+                            {row.total}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.6rem 0.75rem",
+                              textAlign: "right",
+                              fontWeight: 800,
+                              color: "#22c55e",
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            ₱{row.value}
+                          </td>
+                        </tr>
+                      );
+                    }
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: "1rem 1.5rem",
+                borderTop: "1px solid var(--border)",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "0.75rem",
+              }}
+            >
+              <button
+                onClick={() => setShowCSVPreview(false)}
+                style={{
+                  padding: "0.6rem 1.25rem",
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "8px",
+                  color: "#E5E2E1",
+                  fontSize: "0.82rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDownloadCSV}
+                style={{
+                  padding: "0.6rem 1.5rem",
+                  background: "#D4A843",
+                  border: "none",
+                  borderRadius: "8px",
+                  color: "#000",
+                  fontSize: "0.82rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                >
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Download CSV
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

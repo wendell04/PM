@@ -1140,6 +1140,7 @@ export default function StockInPage() {
   const [pendingEntries, setPendingEntries] = useState([]);
   const [pendingGood, setPendingGood] = useState(0);
   const [pendingDamaged, setPendingDamaged] = useState(0);
+  const [pendingShortage, setPendingShortage] = useState(0);
 
   // Wizard
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -1172,6 +1173,7 @@ export default function StockInPage() {
   const [reportGenerated, setReportGenerated] = useState(false);
   const [reportData, setReportData] = useState([]);
   const [reportSummary, setReportSummary] = useState(null);
+  const [showCSVPreview, setShowCSVPreview] = useState(false);
   const reportRef = useRef(null);
 
   useEffect(() => {
@@ -1209,6 +1211,7 @@ export default function StockInPage() {
           category: material.category || "",
           qty: "",
           damaged: "",
+          shortage: "",
           unitCost:
             material.baseCost != null && material.baseCost > 0
               ? String(material.baseCost)
@@ -1228,6 +1231,7 @@ export default function StockInPage() {
           category: material.category || "",
           qty: "",
           damaged: "",
+          shortage: "",
           unitCost:
             material.baseCost != null && material.baseCost > 0
               ? String(material.baseCost)
@@ -1244,6 +1248,7 @@ export default function StockInPage() {
       category: c.category || material.category || "",
       qty: "",
       damaged: "",
+      shortage: "",
       unitCost:
         c.baseCost != null && c.baseCost > 0
           ? String(c.baseCost)
@@ -1313,6 +1318,10 @@ export default function StockInPage() {
   const totalReceived = allRows.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
   const totalDamaged = allRows.reduce(
     (s, r) => s + (parseInt(r.damaged) || 0),
+    0,
+  );
+  const totalShortage = allRows.reduce(
+    (s, r) => s + (parseInt(r.shortage) || 0),
     0,
   );
   const totalGood = totalReceived - totalDamaged;
@@ -1585,6 +1594,7 @@ export default function StockInPage() {
             qtyDamaged: damaged,
             remainingQty: good,
             unitCost,
+            damageType: damaged > 0 ? "arrival" : null,
             dateReceived: invoice.deliveryDate + "T00:00:00.000Z",
             invoiceNumber: invoice.invoiceNumber.trim(),
             notes: invoice.notes.trim(),
@@ -1638,6 +1648,36 @@ export default function StockInPage() {
     siLog.push(...entries);
     setStore(STOCK_IN_KEY, siLog);
 
+    // Log shortage entries as vendor claims (owed items, no stock movement)
+    if (totalShortage > 0) {
+      const claims = getStore("pmp_vendor_claims");
+      const shortageEntries = [];
+      selectedMaterials.forEach((mat) => {
+        const rows = (stockRowsByMaterial[mat.id] || []).filter(
+          (r) => (parseInt(r.shortage) || 0) > 0,
+        );
+        rows.forEach((r) => {
+          shortageEntries.push({
+            id: `claim-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            vendorId: invoice.vendorId || null,
+            vendorName: invoice.vendorName || "General Merchandise",
+            materialId: r.materialId,
+            materialName: r.variantLabel,
+            sku: r.sku || "",
+            uom: r.uom || "pcs",
+            qtyOwed: parseInt(r.shortage) || 0,
+            unitCost: parseFloat(r.unitCost) || 0,
+            invoiceNo: invoice.invoiceNumber.trim(),
+            poNumber: "",
+            status: "pending", // pending → fulfilled (when received in next stock-in)
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        });
+      });
+      setStore("pmp_vendor_claims", [...claims, ...shortageEntries]);
+    }
+
     if (invoice.vendorId && categoriesWithQty.length > 0) {
       const allVendors = getStore(VENDORS_KEY);
       const vIdx = allVendors.findIndex((v) => v.id === invoice.vendorId);
@@ -1657,6 +1697,7 @@ export default function StockInPage() {
     setPendingEntries(entries);
     setPendingGood(totalGoodAll);
     setPendingDamaged(totalDamagedAll);
+    setPendingShortage(totalShortage);
     setShowConfirmModal(true);
   };
 
@@ -1726,38 +1767,69 @@ export default function StockInPage() {
     window.print();
   };
 
-  // CSV Export for Stock In Reports
-  const handleExportCSV = () => {
-    if (!reportGenerated || !reportData.length) return;
-    const headers = [
-      "Date",
-      "Material",
-      "SKU",
-      "Vendor",
-      "Invoice No",
-      "Delivery Date",
-      "Received Qty",
-      "Damaged",
-      "Unit Cost",
-      "Total Cost",
-    ];
-    const rows = reportData.map((e) => [
-      new Date(e.dateAdded || e.dateReceived).toLocaleDateString("en-PH"),
-      e.materialName,
-      e.sku || "",
-      e.vendorName || "General Merchandise",
-      e.invoiceNo || "",
-      e.deliveryDate
-        ? new Date(e.deliveryDate).toLocaleDateString("en-PH")
-        : "",
-      e.goodQty || e.receivedQty || 0,
-      e.damagedQty || 0,
-      (e.unitCost || 0).toFixed(2),
-      (e.totalCost || 0).toFixed(2),
-    ]);
-    const csvContent = [headers, ...rows]
-      .map((r) => r.map((c) => `"${c}"`).join(","))
-      .join("\n");
+  // Generate CSV string for Stock In Reports
+  const generateStockInCSV = () => {
+    if (!reportGenerated || !reportData.length) return "";
+    const lines = [];
+    lines.push(
+      [
+        "Date",
+        "Material",
+        "SKU",
+        "Vendor",
+        "Invoice No",
+        "Delivery Date",
+        "Received Qty",
+        "Damaged",
+        "Unit Cost",
+        "Total Cost",
+      ].join(","),
+    );
+    let grandReceived = 0,
+      grandDamaged = 0,
+      grandTotalCost = 0;
+    reportData.forEach((e) => {
+      lines.push(
+        [
+          new Date(e.dateAdded || e.dateReceived).toLocaleDateString("en-PH"),
+          `"${e.materialName}"`,
+          e.sku || "",
+          `"${e.vendorName || "General Merchandise"}"`,
+          e.invoiceNo || "",
+          e.deliveryDate
+            ? new Date(e.deliveryDate).toLocaleDateString("en-PH")
+            : "",
+          e.goodQty || e.receivedQty || 0,
+          e.damagedQty || 0,
+          (e.unitCost || 0).toFixed(2),
+          (e.totalCost || 0).toFixed(2),
+        ].join(","),
+      );
+      grandReceived += e.goodQty || e.receivedQty || 0;
+      grandDamaged += e.damagedQty || 0;
+      grandTotalCost += e.totalCost || 0;
+    });
+    lines.push(
+      [
+        "GRAND TOTAL",
+        "",
+        "",
+        "",
+        "",
+        "",
+        grandReceived,
+        grandDamaged,
+        "",
+        grandTotalCost.toFixed(2),
+      ].join(","),
+    );
+    return lines.join("\n");
+  };
+
+  // Download Stock In CSV (from preview modal)
+  const handleDownloadStockInCSV = () => {
+    const csvContent = generateStockInCSV();
+    if (!csvContent) return;
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1765,6 +1837,7 @@ export default function StockInPage() {
     a.download = `stock-in-report-${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    setShowCSVPreview(false);
   };
 
   const filteredHistory = useMemo(() => {
@@ -2421,7 +2494,7 @@ export default function StockInPage() {
                 <button
                   type="button"
                   className="btn-secondary"
-                  onClick={handleExportCSV}
+                  onClick={() => setShowCSVPreview(true)}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -3506,6 +3579,43 @@ export default function StockInPage() {
                             </div>
                           </div>
 
+                          {/* Min Stock Hint — locked, set in Master Data */}
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                              marginBottom: "0.75rem",
+                              padding: "0.4rem 0.75rem",
+                              background: "rgba(255,255,255,0.02)",
+                              borderRadius: "6px",
+                            }}
+                          >
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="var(--gray)"
+                              strokeWidth="2"
+                            >
+                              <circle cx="12" cy="12" r="10" />
+                              <path d="M12 16v-4M12 8h.01" />
+                            </svg>
+                            <span
+                              style={{
+                                fontSize: "0.65rem",
+                                color: "var(--gray)",
+                              }}
+                            >
+                              Min stock levels are set in{" "}
+                              <strong style={{ color: "#D4A843" }}>
+                                Master Data
+                              </strong>{" "}
+                              and locked during stock entry.
+                            </span>
+                          </div>
+
                           <div
                             style={{
                               background: "rgba(255,255,255,0.02)",
@@ -3584,6 +3694,20 @@ export default function StockInPage() {
                                   >
                                     Damaged
                                   </th>
+                                  <th
+                                    style={{
+                                      padding: "0.875rem 0.75rem",
+                                      textAlign: "center",
+                                      fontSize: "0.65rem",
+                                      fontWeight: 700,
+                                      color: "#f59e0b",
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.08em",
+                                      width: "100px",
+                                    }}
+                                  >
+                                    Shortage
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -3631,30 +3755,25 @@ export default function StockInPage() {
                                       >
                                         <IntegerInput
                                           value={row.minStockLevel}
-                                          onChange={(val) =>
-                                            updateStockRow(
-                                              mat.id,
-                                              idx,
-                                              "minStockLevel",
-                                              val,
-                                            )
-                                          }
+                                          onChange={() => {}}
                                           min={1}
                                           max={9999}
                                           placeholder="10"
+                                          disabled
                                           style={{
                                             textAlign: "center",
                                             width: "80px",
                                             background:
-                                              "rgba(255,255,255,0.06)",
+                                              "rgba(255,255,255,0.03)",
                                             border:
-                                              "1px solid rgba(255,255,255,0.1)",
+                                              "1px solid rgba(255,255,255,0.06)",
                                             borderRadius: "8px",
-                                            color: "#E5E2E1",
+                                            color: "var(--gray)",
                                             fontWeight: 600,
                                             padding: "0.5rem",
                                             fontSize: "0.85rem",
                                             outline: "none",
+                                            cursor: "not-allowed",
                                           }}
                                         />
                                       </td>
@@ -3723,6 +3842,44 @@ export default function StockInPage() {
                                             borderRadius: "8px",
                                             color:
                                               d > 0 ? "#F87171" : "var(--gray)",
+                                            fontWeight: 600,
+                                            padding: "0.5rem",
+                                            fontSize: "0.85rem",
+                                            outline: "none",
+                                          }}
+                                        />
+                                      </td>
+                                      <td
+                                        style={{
+                                          padding: "1rem 0.75rem",
+                                          textAlign: "center",
+                                        }}
+                                      >
+                                        <IntegerInput
+                                          value={row.shortage || ""}
+                                          onChange={(val) =>
+                                            updateStockRow(
+                                              mat.id,
+                                              idx,
+                                              "shortage",
+                                              val,
+                                            )
+                                          }
+                                          min={0}
+                                          max={99999}
+                                          placeholder="0"
+                                          style={{
+                                            textAlign: "center",
+                                            width: "80px",
+                                            background:
+                                              "rgba(255,255,255,0.06)",
+                                            border:
+                                              "1px solid rgba(255,255,255,0.1)",
+                                            borderRadius: "8px",
+                                            color:
+                                              (parseInt(row.shortage) || 0) > 0
+                                                ? "#f59e0b"
+                                                : "var(--gray)",
                                             fontWeight: 600,
                                             padding: "0.5rem",
                                             fontSize: "0.85rem",
@@ -5763,6 +5920,365 @@ export default function StockInPage() {
         totalGood={pendingGood}
         totalDamaged={pendingDamaged}
       />
+
+      {/* CSV Preview Modal */}
+      {showCSVPreview && reportData.length > 0 && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.78)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+          }}
+          onClick={() => setShowCSVPreview(false)}
+        >
+          <div
+            style={{
+              background: "var(--dark)",
+              border: "1px solid var(--border)",
+              borderRadius: "14px",
+              width: "90%",
+              maxWidth: "960px",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: "1.25rem 1.5rem",
+                borderBottom: "1px solid var(--border)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "1.1rem",
+                    fontWeight: 700,
+                    color: "#E5E2E1",
+                  }}
+                >
+                  Export CSV Preview
+                </h3>
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "var(--gray)",
+                    marginTop: "0.25rem",
+                  }}
+                >
+                  {reportData.length} entries
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCSVPreview(false)}
+                style={{
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "50%",
+                  width: "32px",
+                  height: "32px",
+                  cursor: "pointer",
+                  color: "var(--gray)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "1rem 1.5rem" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: "0.78rem",
+                }}
+              >
+                <thead>
+                  <tr style={{ borderBottom: "2px solid var(--border)" }}>
+                    <th
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        textAlign: "left",
+                        color: "#D4A843",
+                        fontWeight: 700,
+                        fontSize: "0.6rem",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Date
+                    </th>
+                    <th
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        textAlign: "left",
+                        color: "#D4A843",
+                        fontWeight: 700,
+                        fontSize: "0.6rem",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Material
+                    </th>
+                    <th
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        textAlign: "left",
+                        color: "#D4A843",
+                        fontWeight: 700,
+                        fontSize: "0.6rem",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Vendor
+                    </th>
+                    <th
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        textAlign: "center",
+                        color: "#D4A843",
+                        fontWeight: 700,
+                        fontSize: "0.6rem",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Received
+                    </th>
+                    <th
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        textAlign: "center",
+                        color: "#D4A843",
+                        fontWeight: 700,
+                        fontSize: "0.6rem",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Damaged
+                    </th>
+                    <th
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        textAlign: "right",
+                        color: "#D4A843",
+                        fontWeight: 700,
+                        fontSize: "0.6rem",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Total Cost
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportData.map((e, idx) => (
+                    <tr
+                      key={idx}
+                      style={{
+                        borderBottom: "1px solid rgba(255,255,255,0.04)",
+                      }}
+                    >
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          color: "var(--gray)",
+                          fontSize: "0.72rem",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {new Date(
+                          e.dateAdded || e.dateReceived,
+                        ).toLocaleDateString("en-PH")}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          color: "#E5E2E1",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {e.materialName}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          color: "var(--gray)",
+                        }}
+                      >
+                        {e.vendorName || "General Merchandise"}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          textAlign: "center",
+                          color: "#E5E2E1",
+                        }}
+                      >
+                        {e.goodQty || e.receivedQty || 0}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          textAlign: "center",
+                          color:
+                            (e.damagedQty || 0) > 0 ? "#ef4444" : "var(--gray)",
+                        }}
+                      >
+                        {e.damagedQty || 0}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          textAlign: "right",
+                          fontFamily: "monospace",
+                          color: "#D4A843",
+                        }}
+                      >
+                        ₱
+                        {(e.totalCost || 0).toLocaleString("en-PH", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr
+                    style={{
+                      background: "rgba(34,197,94,0.08)",
+                      borderTop: "2px solid rgba(34,197,94,0.3)",
+                    }}
+                  >
+                    <td
+                      colSpan={3}
+                      style={{
+                        padding: "0.6rem 0.75rem",
+                        fontSize: "0.78rem",
+                        fontWeight: 800,
+                        color: "#22c55e",
+                      }}
+                    >
+                      GRAND TOTAL
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.6rem 0.75rem",
+                        textAlign: "center",
+                        fontWeight: 800,
+                        color: "#22c55e",
+                      }}
+                    >
+                      {reportData.reduce(
+                        (s, e) => s + (e.goodQty || e.receivedQty || 0),
+                        0,
+                      )}
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.6rem 0.75rem",
+                        textAlign: "center",
+                        fontWeight: 800,
+                        color: reportData.some((e) => (e.damagedQty || 0) > 0)
+                          ? "#ef4444"
+                          : "#22c55e",
+                      }}
+                    >
+                      {reportData.reduce((s, e) => s + (e.damagedQty || 0), 0)}
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.6rem 0.75rem",
+                        textAlign: "right",
+                        fontWeight: 800,
+                        color: "#22c55e",
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      ₱
+                      {reportData
+                        .reduce((s, e) => s + (e.totalCost || 0), 0)
+                        .toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div
+              style={{
+                padding: "1rem 1.5rem",
+                borderTop: "1px solid var(--border)",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "0.75rem",
+              }}
+            >
+              <button
+                onClick={() => setShowCSVPreview(false)}
+                style={{
+                  padding: "0.6rem 1.25rem",
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "8px",
+                  color: "#E5E2E1",
+                  fontSize: "0.82rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDownloadStockInCSV}
+                style={{
+                  padding: "0.6rem 1.5rem",
+                  background: "#D4A843",
+                  border: "none",
+                  borderRadius: "8px",
+                  color: "#000",
+                  fontSize: "0.82rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                >
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Download CSV
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
