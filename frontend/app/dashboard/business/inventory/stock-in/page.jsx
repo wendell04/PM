@@ -1,7 +1,7 @@
 "use client";
 
 import CustomDropdown from "@/app/components/CustomDropdown";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   genDocNumber,
   getStore,
@@ -124,176 +124,6 @@ function InfoModal({ isOpen, onClose, title, message }) {
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── External Issue Type Selector ──────────────────────────────────────────────
-// Dropdown to categorize external issues: Wrong Item, Defective, Damaged, Other
-const ISSUE_TYPES = {
-  wrong_item: {
-    label: "Wrong Item Shipped",
-    color: "#f59e0b",
-    bg: "rgba(245,158,11,0.1)",
-    border: "rgba(245,158,11,0.3)",
-  },
-  defective: {
-    label: "Defective",
-    color: "#f97316",
-    bg: "rgba(249,115,22,0.1)",
-    border: "rgba(249,115,22,0.3)",
-  },
-  damaged: {
-    label: "Damaged",
-    color: "#ef4444",
-    bg: "rgba(239,68,68,0.1)",
-    border: "rgba(239,68,68,0.3)",
-  },
-  other: {
-    label: "Other",
-    color: "#6b7280",
-    bg: "rgba(107,114,128,0.1)",
-    border: "rgba(107,114,128,0.3)",
-  },
-};
-
-function ExternalIssueTypeSelector({ value, onChange, style }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const h = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-
-  const currentCfg = value ? ISSUE_TYPES[value] : null;
-
-  return (
-    <div ref={ref} style={{ position: "relative", ...style }}>
-      <div
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          width: "100%",
-          padding: "0.4rem 0.6rem",
-          background: currentCfg ? currentCfg.bg : "rgba(255,255,255,0.06)",
-          border: `1px solid ${currentCfg ? currentCfg.border : "rgba(255,255,255,0.1)"}`,
-          borderRadius: "6px",
-          color: currentCfg ? currentCfg.color : "var(--gray)",
-          fontSize: "0.72rem",
-          fontWeight: 600,
-          cursor: "pointer",
-          userSelect: "none",
-          whiteSpace: "nowrap",
-        }}
-      >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-          {currentCfg ? currentCfg.label : "Select Issue..."}
-        </span>
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          style={{
-            flexShrink: 0,
-            marginLeft: "0.3rem",
-            transform: open ? "rotate(180deg)" : "none",
-            transition: "transform 0.2s",
-          }}
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </div>
-
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
-            left: 0,
-            right: 0,
-            background: "#1A1A1A",
-            border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: "8px",
-            zIndex: 50,
-            overflow: "hidden",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-            maxHeight: "220px",
-            overflowY: "auto",
-          }}
-        >
-          {Object.entries(ISSUE_TYPES).map(([key, cfg]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => {
-                onChange(key);
-                setOpen(false);
-              }}
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.6rem",
-                padding: "0.6rem 0.75rem",
-                background: value === key ? cfg.bg : "transparent",
-                border: "none",
-                borderBottom: "1px solid rgba(255,255,255,0.05)",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = cfg.bg)}
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background =
-                  value === key ? cfg.bg : "transparent")
-              }
-            >
-              <span
-                style={{
-                  width: "12px",
-                  height: "12px",
-                  borderRadius: "3px",
-                  background: cfg.color,
-                  flexShrink: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {value === key && (
-                  <svg
-                    width="8"
-                    height="8"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#fff"
-                    strokeWidth="3"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                )}
-              </span>
-              <span
-                style={{
-                  fontSize: "0.78rem",
-                  fontWeight: 600,
-                  color: cfg.color,
-                }}
-              >
-                {cfg.label}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -748,16 +578,9 @@ function ConfirmSaveModal({
                     }}
                   >
                     {[
-                      ["Invoice", entry.invoiceNo, "#D4A843", "monospace"],
+                      ["Batch ID", entry.batchId, "#D4A843", "monospace"],
                       ["Supplier", entry.vendorName, "#E5E2E1", null],
-                      [
-                        "Delivery",
-                        new Date(entry.dateReceived).toLocaleDateString(
-                          "en-PH",
-                        ),
-                        "#E5E2E1",
-                        null,
-                      ],
+                      ["Invoice", entry.invoiceNo, "#E5E2E1", null],
                     ].map(([l, v, c, ff]) => (
                       <div key={l}>
                         <div
@@ -1341,7 +1164,6 @@ export default function StockInPage() {
   // History tab
   const [historySearch, setHistorySearch] = useState("");
   const [historyVendorFilter, setHistoryVendorFilter] = useState("");
-  const [expandedInvoices, setExpandedInvoices] = useState(new Set());
 
   // Reports tab
   const [reportMode, setReportMode] = useState("month");
@@ -1389,6 +1211,7 @@ export default function StockInPage() {
           category: material.category || "",
           qty: "",
           damaged: "",
+          shortage: "",
           unitCost:
             material.baseCost != null && material.baseCost > 0
               ? String(material.baseCost)
@@ -1408,6 +1231,7 @@ export default function StockInPage() {
           category: material.category || "",
           qty: "",
           damaged: "",
+          shortage: "",
           unitCost:
             material.baseCost != null && material.baseCost > 0
               ? String(material.baseCost)
@@ -1424,6 +1248,7 @@ export default function StockInPage() {
       category: c.category || material.category || "",
       qty: "",
       damaged: "",
+      shortage: "",
       unitCost:
         c.baseCost != null && c.baseCost > 0
           ? String(c.baseCost)
@@ -1493,6 +1318,10 @@ export default function StockInPage() {
   const totalReceived = allRows.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
   const totalDamaged = allRows.reduce(
     (s, r) => s + (parseInt(r.damaged) || 0),
+    0,
+  );
+  const totalShortage = allRows.reduce(
+    (s, r) => s + (parseInt(r.shortage) || 0),
     0,
   );
   const totalGood = totalReceived - totalDamaged;
@@ -1766,7 +1595,6 @@ export default function StockInPage() {
             remainingQty: good,
             unitCost,
             damageType: damaged > 0 ? "arrival" : null,
-            issueType: r.issueType || null,
             dateReceived: invoice.deliveryDate + "T00:00:00.000Z",
             invoiceNumber: invoice.invoiceNumber.trim(),
             notes: invoice.notes.trim(),
@@ -1803,7 +1631,6 @@ export default function StockInPage() {
           receivedQty: received,
           goodQty: good,
           damagedQty: damaged,
-          issueType: r.issueType || null,
           unitCost,
           totalCost: received * unitCost,
           invoiceNo: invoice.invoiceNumber.trim(),
@@ -1923,33 +1750,9 @@ export default function StockInPage() {
         new Date(b.dateAdded || b.dateReceived) -
         new Date(a.dateAdded || a.dateReceived),
     );
-
-    // Group by invoice for display
-    const groups = {};
-    filtered.forEach((e) => {
-      const key = e.invoiceNo || "No Invoice";
-      if (!groups[key])
-        groups[key] = {
-          invoice: key,
-          vendor: e.vendorName || "—",
-          date: e.dateReceived || e.dateAdded,
-          items: [],
-          totalQty: 0,
-          totalDamaged: 0,
-          totalCost: 0,
-        };
-      groups[key].items.push(e);
-      groups[key].totalQty += e.goodQty || e.receivedQty || 0;
-      groups[key].totalDamaged += e.damagedQty || 0;
-      groups[key].totalCost += e.totalCost || 0;
-    });
-
-    const grouped = Object.values(groups).sort(
-      (a, b) => new Date(b.date) - new Date(a.date),
-    );
-    setReportData(grouped);
+    setReportData(filtered);
     setReportSummary({
-      totalEntries: grouped.length,
+      totalEntries: filtered.length,
       totalQtyIn: filtered.reduce(
         (s, e) => s + (e.goodQty || e.receivedQty || 0),
         0,
@@ -1970,11 +1773,12 @@ export default function StockInPage() {
     const lines = [];
     lines.push(
       [
-        "Invoice No",
         "Date",
         "Material",
         "SKU",
         "Vendor",
+        "Invoice No",
+        "Delivery Date",
         "Received Qty",
         "Damaged",
         "Unit Cost",
@@ -1984,29 +1788,31 @@ export default function StockInPage() {
     let grandReceived = 0,
       grandDamaged = 0,
       grandTotalCost = 0;
-    reportData.forEach((group) => {
-      group.items.forEach((e) => {
-        lines.push(
-          [
-            `"${e.invoiceNo || ""}"`,
-            new Date(e.dateAdded || e.dateReceived).toLocaleDateString("en-PH"),
-            `"${e.materialName}"`,
-            e.sku || "",
-            `"${e.vendorName || "General Merchandise"}"`,
-            e.goodQty || e.receivedQty || 0,
-            e.damagedQty || 0,
-            (e.unitCost || 0).toFixed(2),
-            (e.totalCost || 0).toFixed(2),
-          ].join(","),
-        );
-        grandReceived += e.goodQty || e.receivedQty || 0;
-        grandDamaged += e.damagedQty || 0;
-        grandTotalCost += e.totalCost || 0;
-      });
+    reportData.forEach((e) => {
+      lines.push(
+        [
+          new Date(e.dateAdded || e.dateReceived).toLocaleDateString("en-PH"),
+          `"${e.materialName}"`,
+          e.sku || "",
+          `"${e.vendorName || "General Merchandise"}"`,
+          e.invoiceNo || "",
+          e.deliveryDate
+            ? new Date(e.deliveryDate).toLocaleDateString("en-PH")
+            : "",
+          e.goodQty || e.receivedQty || 0,
+          e.damagedQty || 0,
+          (e.unitCost || 0).toFixed(2),
+          (e.totalCost || 0).toFixed(2),
+        ].join(","),
+      );
+      grandReceived += e.goodQty || e.receivedQty || 0;
+      grandDamaged += e.damagedQty || 0;
+      grandTotalCost += e.totalCost || 0;
     });
     lines.push(
       [
         "GRAND TOTAL",
+        "",
         "",
         "",
         "",
@@ -2036,7 +1842,7 @@ export default function StockInPage() {
 
   const filteredHistory = useMemo(() => {
     const q = historySearch.toLowerCase();
-    const all = stockInLog
+    return stockInLog
       .filter((e) => {
         const matchSearch =
           !q ||
@@ -2052,40 +1858,7 @@ export default function StockInPage() {
           new Date(b.dateAdded || b.dateReceived) -
           new Date(a.dateAdded || a.dateReceived),
       );
-
-    // Group by invoice
-    const groups = {};
-    all.forEach((e) => {
-      const key = e.invoiceNo || "No Invoice";
-      if (!groups[key])
-        groups[key] = {
-          invoice: key,
-          vendor: e.vendorName || "—",
-          vendorId: e.vendorId,
-          date: e.dateReceived || e.dateAdded,
-          items: [],
-          totalQty: 0,
-          totalDamaged: 0,
-          totalCost: 0,
-        };
-      groups[key].items.push(e);
-      groups[key].totalQty += e.goodQty || e.receivedQty || 0;
-      groups[key].totalDamaged += e.damagedQty || 0;
-      groups[key].totalCost += e.totalCost || 0;
-    });
-
-    return Object.values(groups).sort(
-      (a, b) => new Date(b.date) - new Date(a.date),
-    );
   }, [stockInLog, historySearch, historyVendorFilter]);
-
-  const toggleExpandInvoice = (key) => {
-    setExpandedInvoices((prev) => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-  };
 
   const historyVendors = useMemo(() => {
     const map = new Map();
@@ -2367,7 +2140,13 @@ export default function StockInPage() {
                 </p>
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <div
+                style={{
+                  overflowX: "auto",
+                  maxHeight: "60vh",
+                  overflowY: "auto",
+                }}
+              >
                 <table
                   style={{
                     width: "100%",
@@ -2380,248 +2159,145 @@ export default function StockInPage() {
                       position: "sticky",
                       top: 0,
                       zIndex: 1,
-                      background: "rgba(0,0,0,0.5)",
+                      background: "rgba(0,0,0,1)",
                     }}
                   >
                     <tr style={{ borderBottom: "2px solid var(--border)" }}>
-                      <th style={{ ...thStyle, width: "40px" }}></th>
-                      <th style={thStyle}>Invoice No.</th>
-                      <th style={thStyle}>Vendor</th>
-                      <th style={{ ...thStyle, textAlign: "center" }}>Items</th>
-                      <th style={{ ...thStyle, textAlign: "center" }}>
-                        Total Qty
-                      </th>
-                      <th style={{ ...thStyle, textAlign: "center" }}>
-                        Damaged
-                      </th>
-                      <th style={{ ...thStyle, textAlign: "right" }}>
-                        Total Value
-                      </th>
                       <th style={thStyle}>Date</th>
+                      <th style={thStyle}>Material</th>
+                      <th style={thStyle}>Vendor</th>
+                      <th style={{ ...thStyle, textAlign: "center" }}>Qty</th>
+                      <th style={{ ...thStyle, textAlign: "right" }}>
+                        Unit Cost
+                      </th>
+                      <th style={{ ...thStyle, textAlign: "right" }}>Total</th>
+                      <th style={thStyle}>Invoice No.</th>
+                      <th style={thStyle}>Delivery Date</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredHistory.map((group) => {
-                      const isExpanded = expandedInvoices.has(group.invoice);
-                      return (
-                        <React.Fragment key={group.invoice}>
-                          <tr
-                            onClick={() => toggleExpandInvoice(group.invoice)}
+                    {filteredHistory.map((e, idx) => (
+                      <tr
+                        key={e.id || idx}
+                        style={{
+                          borderBottom: "1px solid rgba(255,255,255,0.04)",
+                        }}
+                        onMouseEnter={(ev) =>
+                          (ev.currentTarget.style.background =
+                            "rgba(255,255,255,0.02)")
+                        }
+                        onMouseLeave={(ev) =>
+                          (ev.currentTarget.style.background = "transparent")
+                        }
+                      >
+                        <td
+                          style={{
+                            padding: "0.75rem 1rem",
+                            color: "var(--gray)",
+                            fontSize: "0.78rem",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {new Date(
+                            e.dateAdded || e.dateReceived,
+                          ).toLocaleDateString("en-PH")}
+                        </td>
+                        <td style={{ padding: "0.75rem 1rem" }}>
+                          <div
                             style={{
-                              cursor: "pointer",
-                              borderBottom: "1px solid rgba(255,255,255,0.04)",
+                              fontWeight: 600,
+                              color: "#E5E2E1",
+                              fontSize: "0.85rem",
                             }}
-                            onMouseEnter={(e) =>
-                              (e.currentTarget.style.background =
-                                "rgba(255,255,255,0.03)")
-                            }
-                            onMouseLeave={(e) =>
-                              (e.currentTarget.style.background = "transparent")
-                            }
                           >
-                            <td
+                            {e.materialName}
+                          </div>
+                          {e.sku && (
+                            <div
                               style={{
-                                padding: "0.75rem 1rem",
-                                textAlign: "center",
-                              }}
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2.5"
-                                style={{
-                                  color: "var(--gray)",
-                                  transform: isExpanded
-                                    ? "rotate(90deg)"
-                                    : "none",
-                                  transition: "transform 0.2s",
-                                }}
-                              >
-                                <path d="M9 18l6-6-6-6" />
-                              </svg>
-                            </td>
-                            <td
-                              style={{
-                                padding: "0.75rem 1rem",
-                                fontFamily: "monospace",
-                                fontWeight: 700,
-                                color: "#D4A843",
-                              }}
-                            >
-                              {group.invoice}
-                            </td>
-                            <td
-                              style={{
-                                padding: "0.75rem 1rem",
-                                color: "#E5E2E1",
-                              }}
-                            >
-                              {group.vendor}
-                            </td>
-                            <td
-                              style={{
-                                padding: "0.75rem 1rem",
-                                textAlign: "center",
+                                fontSize: "0.65rem",
                                 color: "var(--gray)",
-                              }}
-                            >
-                              {group.items.length}
-                            </td>
-                            <td
-                              style={{
-                                padding: "0.75rem 1rem",
-                                textAlign: "center",
-                                fontWeight: 600,
-                                color: "#4ade80",
-                              }}
-                            >
-                              {group.totalQty} pcs
-                            </td>
-                            <td
-                              style={{
-                                padding: "0.75rem 1rem",
-                                textAlign: "center",
-                                fontWeight: 600,
-                                color:
-                                  group.totalDamaged > 0
-                                    ? "#F87171"
-                                    : "var(--gray)",
-                              }}
-                            >
-                              {group.totalDamaged}
-                            </td>
-                            <td
-                              style={{
-                                padding: "0.75rem 1rem",
-                                textAlign: "right",
-                                fontWeight: 700,
-                                color: "#D4A843",
                                 fontFamily: "monospace",
+                                marginTop: "0.1rem",
                               }}
                             >
-                              ₱
-                              {group.totalCost.toLocaleString("en-PH", {
-                                minimumFractionDigits: 2,
-                              })}
-                            </td>
-                            <td
-                              style={{
-                                padding: "0.75rem 1rem",
-                                color: "var(--gray)",
-                                fontSize: "0.78rem",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {new Date(group.date).toLocaleDateString("en-PH")}
-                            </td>
-                          </tr>
-                          {isExpanded &&
-                            group.items.map((item, i) => (
-                              <tr
-                                key={item.id || i}
-                                style={{ background: "rgba(0,0,0,0.2)" }}
-                              >
-                                <td
-                                  style={{
-                                    padding: "0.6rem 1rem 0.6rem 2.5rem",
-                                  }}
-                                >
-                                  <svg
-                                    width="12"
-                                    height="12"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="var(--gray)"
-                                    strokeWidth="2.5"
-                                  >
-                                    <path d="M9 18l6-6-6-6" />
-                                  </svg>
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.6rem 1rem 0.6rem 2rem",
-                                  }}
-                                  colSpan={2}
-                                >
-                                  <div
-                                    style={{
-                                      fontWeight: 600,
-                                      color: "#E5E2E1",
-                                      fontSize: "0.82rem",
-                                    }}
-                                  >
-                                    {item.materialName}
-                                  </div>
-                                  {item.sku && (
-                                    <div
-                                      style={{
-                                        fontSize: "0.65rem",
-                                        color: "var(--gray)",
-                                        fontFamily: "monospace",
-                                      }}
-                                    >
-                                      {item.sku}
-                                    </div>
-                                  )}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.6rem 0.75rem",
-                                    textAlign: "center",
-                                    color: "var(--gray)",
-                                  }}
-                                >
-                                  —
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.6rem 0.75rem",
-                                    textAlign: "center",
-                                    fontWeight: 600,
-                                    color: "#4ade80",
-                                  }}
-                                >
-                                  {item.goodQty || item.receivedQty || 0}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.6rem 0.75rem",
-                                    textAlign: "center",
-                                    fontWeight: 600,
-                                    color:
-                                      item.damagedQty > 0
-                                        ? "#F87171"
-                                        : "var(--gray)",
-                                  }}
-                                >
-                                  {item.damagedQty || 0}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.6rem 0.75rem",
-                                    textAlign: "right",
-                                    color: "#E5E2E1",
-                                    fontFamily: "monospace",
-                                  }}
-                                >
-                                  ₱{(item.unitCost || 0).toFixed(2)}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.6rem 1rem",
-                                    color: "var(--gray)",
-                                  }}
-                                >
-                                  —
-                                </td>
-                              </tr>
-                            ))}
-                        </React.Fragment>
-                      );
-                    })}
+                              {e.sku}
+                            </div>
+                          )}
+                        </td>
+                        <td
+                          style={{
+                            padding: "0.75rem 1rem",
+                            color: "#E5E2E1",
+                            fontSize: "0.82rem",
+                          }}
+                        >
+                          {e.vendorName || "—"}
+                        </td>
+                        <td
+                          style={{
+                            padding: "0.75rem 1rem",
+                            textAlign: "center",
+                            fontWeight: 700,
+                            color: "#4ade80",
+                          }}
+                        >
+                          {e.goodQty || e.receivedQty || 0} {e.uom || "pcs"}
+                        </td>
+                        <td
+                          style={{
+                            padding: "0.75rem 1rem",
+                            textAlign: "right",
+                            color: "#E5E2E1",
+                            fontFamily: "monospace",
+                            fontSize: "0.8rem",
+                          }}
+                        >
+                          ₱
+                          {(e.unitCost || 0).toLocaleString("en-PH", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td
+                          style={{
+                            padding: "0.75rem 1rem",
+                            textAlign: "right",
+                            fontWeight: 700,
+                            color: "#D4A843",
+                            fontFamily: "monospace",
+                          }}
+                        >
+                          ₱
+                          {(e.totalCost || 0).toLocaleString("en-PH", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td
+                          style={{
+                            padding: "0.75rem 1rem",
+                            color: "#E5E2E1",
+                            fontSize: "0.82rem",
+                            fontFamily: "monospace",
+                          }}
+                        >
+                          {e.invoiceNo || "—"}
+                        </td>
+                        <td
+                          style={{
+                            padding: "0.75rem 1rem",
+                            color: "var(--gray)",
+                            fontSize: "0.78rem",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {e.deliveryDate
+                            ? new Date(
+                                e.deliveryDate + "T00:00:00",
+                              ).toLocaleDateString("en-PH")
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -2831,43 +2507,75 @@ export default function StockInPage() {
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="2.5"
+                    strokeWidth="2"
                   >
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
                   Export CSV
+                </button>
+              )}
+              {reportGenerated && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handlePrint}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                  }}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <polyline points="6 9 6 2 18 2 18 9" />
+                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                    <rect x="6" y="14" width="12" height="8" />
+                  </svg>
+                  Print
                 </button>
               )}
             </div>
           </div>
 
-          {/* Report Summary & Table */}
           {reportGenerated && reportSummary && (
-            <>
+            <div>
               <div
-                className="inventory-summary"
-                style={{ marginBottom: "1.5rem" }}
+                className="no-print"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))",
+                  gap: "0.75rem",
+                  marginBottom: "1.5rem",
+                }}
               >
                 {[
                   {
-                    label: "Total Invoices",
+                    label: "Total Entries",
                     value: reportSummary.totalEntries.toString(),
                     color: "#E5E2E1",
                   },
                   {
                     label: "Total Qty In",
                     value: reportSummary.totalQtyIn.toLocaleString(),
-                    color: "#4ade80",
+                    color: "#E5E2E1",
                   },
                   {
-                    label: "Total Amount",
+                    label: "Total Invoice Amount",
                     value: formatPrice(reportSummary.totalAmount),
                     color: "#D4A843",
                   },
                   {
-                    label: "Damaged",
+                    label: "Damaged on Arrival",
                     value: reportSummary.totalDamaged.toLocaleString(),
-                    color: "#F87171",
+                    color: "#ef4444",
                   },
                 ].map((card, i) => (
                   <div
@@ -2903,7 +2611,6 @@ export default function StockInPage() {
                   </div>
                 ))}
               </div>
-
               <div
                 style={{
                   background: "var(--dark)",
@@ -2938,7 +2645,7 @@ export default function StockInPage() {
                       fontSize: "0.85rem",
                     }}
                   >
-                    No entries found.
+                    No entries found for the selected filters.
                   </div>
                 ) : (
                   <div
@@ -2948,276 +2655,207 @@ export default function StockInPage() {
                       overflowY: "auto",
                     }}
                   >
-                    <table
-                      style={{
-                        width: "100%",
-                        borderCollapse: "collapse",
-                        fontSize: "0.82rem",
-                      }}
-                    >
-                      <thead
-                        style={{
-                          position: "sticky",
-                          top: 0,
-                          zIndex: 1,
-                          background: "rgba(0,0,0,0.5)",
-                        }}
-                      >
-                        <tr style={{ borderBottom: "2px solid var(--border)" }}>
-                          <th style={{ ...thStyle, width: "40px" }}></th>
-                          <th style={thStyle}>Invoice No.</th>
-                          <th style={thStyle}>Vendor</th>
-                          <th style={{ ...thStyle, textAlign: "center" }}>
-                            Items
-                          </th>
-                          <th style={{ ...thStyle, textAlign: "center" }}>
-                            Total Qty
-                          </th>
-                          <th style={{ ...thStyle, textAlign: "center" }}>
-                            Damaged
-                          </th>
-                          <th style={{ ...thStyle, textAlign: "right" }}>
-                            Total Value
-                          </th>
-                          <th style={thStyle}>Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {reportData.map((group) => {
-                          const isExpanded = expandedInvoices.has(
-                            group.invoice,
-                          );
-                          return (
-                            <React.Fragment key={group.invoice}>
-                              <tr
-                                onClick={() =>
-                                  toggleExpandInvoice(group.invoice)
-                                }
+                    {(() => {
+                      const groups = {};
+                      reportData.forEach((e) => {
+                        const key = e.materialId || e.materialName;
+                        if (!groups[key])
+                          groups[key] = {
+                            name: e.materialName,
+                            category: e.category,
+                            entries: [],
+                          };
+                        groups[key].entries.push(e);
+                      });
+                      let grandQty = 0,
+                        grandDmg = 0,
+                        grandTotal = 0;
+                      const groupEntries = Object.entries(groups);
+                      return (
+                        <>
+                          {groupEntries.map(([gKey, group], gi) => {
+                            grandQty += group.entries.reduce(
+                              (s, e) => s + (e.goodQty || e.receivedQty || 0),
+                              0,
+                            );
+                            grandDmg += group.entries.reduce(
+                              (s, e) => s + (e.damagedQty || 0),
+                              0,
+                            );
+                            grandTotal += group.entries.reduce(
+                              (s, e) => s + (e.totalCost || 0),
+                              0,
+                            );
+                            return (
+                              <MaterialReportGroup
+                                key={gKey}
+                                group={group}
+                                isLast={gi === groupEntries.length - 1}
+                              />
+                            );
+                          })}
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              padding: "1rem 1.5rem",
+                              background: "rgba(212,168,67,0.08)",
+                              borderTop: "2px solid rgba(212,168,67,0.3)",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: "0.8rem",
+                                fontWeight: 700,
+                                color: "#D4A843",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.08em",
+                              }}
+                            >
+                              Grand Total
+                            </span>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: "2rem",
+                                alignItems: "center",
+                              }}
+                            >
+                              <span
                                 style={{
-                                  cursor: "pointer",
-                                  borderBottom:
-                                    "1px solid rgba(255,255,255,0.04)",
+                                  fontSize: "0.82rem",
+                                  color: "#4ade80",
+                                  fontWeight: 700,
                                 }}
-                                onMouseEnter={(e) =>
-                                  (e.currentTarget.style.background =
-                                    "rgba(255,255,255,0.03)")
-                                }
-                                onMouseLeave={(e) =>
-                                  (e.currentTarget.style.background =
-                                    "transparent")
-                                }
                               >
-                                <td
-                                  style={{
-                                    padding: "0.75rem 1rem",
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                    style={{
-                                      color: "var(--gray)",
-                                      transform: isExpanded
-                                        ? "rotate(90deg)"
-                                        : "none",
-                                      transition: "transform 0.2s",
-                                    }}
-                                  >
-                                    <path d="M9 18l6-6-6-6" />
-                                  </svg>
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.75rem 1rem",
-                                    fontFamily: "monospace",
-                                    fontWeight: 700,
-                                    color: "#D4A843",
-                                  }}
-                                >
-                                  {group.invoice}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.75rem 1rem",
-                                    color: "#E5E2E1",
-                                  }}
-                                >
-                                  {group.vendor}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.75rem 1rem",
-                                    textAlign: "center",
-                                    color: "var(--gray)",
-                                  }}
-                                >
-                                  {group.items.length}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.75rem 1rem",
-                                    textAlign: "center",
-                                    fontWeight: 600,
-                                    color: "#4ade80",
-                                  }}
-                                >
-                                  {group.totalQty} pcs
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.75rem 1rem",
-                                    textAlign: "center",
-                                    fontWeight: 600,
-                                    color:
-                                      group.totalDamaged > 0
-                                        ? "#F87171"
-                                        : "var(--gray)",
-                                  }}
-                                >
-                                  {group.totalDamaged}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.75rem 1rem",
-                                    textAlign: "right",
-                                    fontWeight: 700,
-                                    color: "#D4A843",
-                                    fontFamily: "monospace",
-                                  }}
-                                >
-                                  ₱
-                                  {group.totalCost.toLocaleString("en-PH", {
-                                    minimumFractionDigits: 2,
-                                  })}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.75rem 1rem",
-                                    color: "var(--gray)",
-                                    fontSize: "0.78rem",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {new Date(group.date).toLocaleDateString(
-                                    "en-PH",
-                                  )}
-                                </td>
-                              </tr>
-                              {isExpanded &&
-                                group.items.map((item, i) => (
-                                  <tr
-                                    key={item.id || i}
-                                    style={{ background: "rgba(0,0,0,0.2)" }}
-                                  >
-                                    <td
-                                      style={{
-                                        padding: "0.6rem 1rem 0.6rem 2.5rem",
-                                      }}
-                                    >
-                                      <svg
-                                        width="12"
-                                        height="12"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="var(--gray)"
-                                        strokeWidth="2.5"
-                                      >
-                                        <path d="M9 18l6-6-6-6" />
-                                      </svg>
-                                    </td>
-                                    <td
-                                      style={{
-                                        padding: "0.6rem 1rem 0.6rem 2rem",
-                                      }}
-                                      colSpan={2}
-                                    >
-                                      <div
-                                        style={{
-                                          fontWeight: 600,
-                                          color: "#E5E2E1",
-                                          fontSize: "0.82rem",
-                                        }}
-                                      >
-                                        {item.materialName}
-                                      </div>
-                                      {item.sku && (
-                                        <div
-                                          style={{
-                                            fontSize: "0.65rem",
-                                            color: "var(--gray)",
-                                            fontFamily: "monospace",
-                                          }}
-                                        >
-                                          {item.sku}
-                                        </div>
-                                      )}
-                                    </td>
-                                    <td
-                                      style={{
-                                        padding: "0.6rem 0.75rem",
-                                        textAlign: "center",
-                                        color: "var(--gray)",
-                                      }}
-                                    >
-                                      —
-                                    </td>
-                                    <td
-                                      style={{
-                                        padding: "0.6rem 0.75rem",
-                                        textAlign: "center",
-                                        fontWeight: 600,
-                                        color: "#4ade80",
-                                      }}
-                                    >
-                                      {item.goodQty || item.receivedQty || 0}
-                                    </td>
-                                    <td
-                                      style={{
-                                        padding: "0.6rem 0.75rem",
-                                        textAlign: "center",
-                                        fontWeight: 600,
-                                        color:
-                                          item.damagedQty > 0
-                                            ? "#F87171"
-                                            : "var(--gray)",
-                                      }}
-                                    >
-                                      {item.damagedQty || 0}
-                                    </td>
-                                    <td
-                                      style={{
-                                        padding: "0.6rem 0.75rem",
-                                        textAlign: "right",
-                                        color: "#E5E2E1",
-                                        fontFamily: "monospace",
-                                      }}
-                                    >
-                                      ₱{(item.unitCost || 0).toFixed(2)}
-                                    </td>
-                                    <td
-                                      style={{
-                                        padding: "0.6rem 1rem",
-                                        color: "var(--gray)",
-                                      }}
-                                    >
-                                      —
-                                    </td>
-                                  </tr>
-                                ))}
-                            </React.Fragment>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                                {grandQty} pcs
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: "0.82rem",
+                                  color: "#F87171",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {grandDmg} damaged
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: "1rem",
+                                  fontWeight: 800,
+                                  color: "#D4A843",
+                                  fontFamily: "monospace",
+                                }}
+                              >
+                                {formatPrice(grandTotal)}
+                              </span>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
-            </>
+            </div>
+          )}
+
+          {reportGenerated && reportSummary && (
+            <div
+              className="print-report-view"
+              style={{ display: "none" }}
+              ref={reportRef}
+            >
+              <div
+                style={{
+                  fontFamily: "sans-serif",
+                  padding: "2rem",
+                  color: "#000",
+                }}
+              >
+                <div
+                  style={{
+                    textAlign: "center",
+                    marginBottom: "2rem",
+                    borderBottom: "2px solid #000",
+                    paddingBottom: "1rem",
+                  }}
+                >
+                  <h1 style={{ fontSize: "1.5rem", margin: "0 0 0.5rem" }}>
+                    Stock-In Report
+                  </h1>
+                  <p style={{ fontSize: "0.75rem", margin: 0, color: "#666" }}>
+                    Generated: {new Date().toLocaleString("en-PH")}
+                  </p>
+                </div>
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: "0.75rem",
+                  }}
+                >
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid #000" }}>
+                      {[
+                        "Date",
+                        "Material",
+                        "Vendor",
+                        "Qty",
+                        "Damaged",
+                        "Unit Cost",
+                        "Total",
+                        "Invoice No.",
+                      ].map((h) => (
+                        <th
+                          key={h}
+                          style={{ padding: "0.5rem", textAlign: "left" }}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportData.map((e, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid #ddd" }}>
+                        <td style={{ padding: "0.5rem" }}>
+                          {new Date(
+                            e.dateAdded || e.dateReceived,
+                          ).toLocaleDateString("en-PH")}
+                        </td>
+                        <td style={{ padding: "0.5rem" }}>{e.materialName}</td>
+                        <td style={{ padding: "0.5rem" }}>
+                          {e.vendorName || "—"}
+                        </td>
+                        <td style={{ padding: "0.5rem", textAlign: "center" }}>
+                          {e.goodQty || e.receivedQty || 0}
+                        </td>
+                        <td style={{ padding: "0.5rem", textAlign: "center" }}>
+                          {e.damagedQty || 0}
+                        </td>
+                        <td style={{ padding: "0.5rem", textAlign: "right" }}>
+                          ₱
+                          {(e.unitCost || 0).toLocaleString("en-PH", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td style={{ padding: "0.5rem", textAlign: "right" }}>
+                          ₱
+                          {(e.totalCost || 0).toLocaleString("en-PH", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td style={{ padding: "0.5rem" }}>
+                          {e.invoiceNo || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -4056,6 +3694,20 @@ export default function StockInPage() {
                                   >
                                     Damaged
                                   </th>
+                                  <th
+                                    style={{
+                                      padding: "0.875rem 0.75rem",
+                                      textAlign: "center",
+                                      fontSize: "0.65rem",
+                                      fontWeight: 700,
+                                      color: "#f59e0b",
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.08em",
+                                      width: "100px",
+                                    }}
+                                  >
+                                    Shortage
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -4190,6 +3842,44 @@ export default function StockInPage() {
                                             borderRadius: "8px",
                                             color:
                                               d > 0 ? "#F87171" : "var(--gray)",
+                                            fontWeight: 600,
+                                            padding: "0.5rem",
+                                            fontSize: "0.85rem",
+                                            outline: "none",
+                                          }}
+                                        />
+                                      </td>
+                                      <td
+                                        style={{
+                                          padding: "1rem 0.75rem",
+                                          textAlign: "center",
+                                        }}
+                                      >
+                                        <IntegerInput
+                                          value={row.shortage || ""}
+                                          onChange={(val) =>
+                                            updateStockRow(
+                                              mat.id,
+                                              idx,
+                                              "shortage",
+                                              val,
+                                            )
+                                          }
+                                          min={0}
+                                          max={99999}
+                                          placeholder="0"
+                                          style={{
+                                            textAlign: "center",
+                                            width: "80px",
+                                            background:
+                                              "rgba(255,255,255,0.06)",
+                                            border:
+                                              "1px solid rgba(255,255,255,0.1)",
+                                            borderRadius: "8px",
+                                            color:
+                                              (parseInt(row.shortage) || 0) > 0
+                                                ? "#f59e0b"
+                                                : "var(--gray)",
                                             fontWeight: 600,
                                             padding: "0.5rem",
                                             fontSize: "0.85rem",
@@ -6286,12 +5976,7 @@ export default function StockInPage() {
                     marginTop: "0.25rem",
                   }}
                 >
-                  {(() => {
-                    const invoiceCount = new Set(
-                      reportData.map((e) => e.invoiceNo || "No Invoice"),
-                    ).size;
-                    return `${invoiceCount} invoices • ${reportData.length} entries`;
-                  })()}
+                  {reportData.length} entries
                 </div>
               </div>
               <button
@@ -6341,7 +6026,7 @@ export default function StockInPage() {
                         textTransform: "uppercase",
                       }}
                     >
-                      Invoice
+                      Date
                     </th>
                     <th
                       style={{
@@ -6365,7 +6050,7 @@ export default function StockInPage() {
                         textTransform: "uppercase",
                       }}
                     >
-                      Variant
+                      Vendor
                     </th>
                     <th
                       style={{
@@ -6377,7 +6062,7 @@ export default function StockInPage() {
                         textTransform: "uppercase",
                       }}
                     >
-                      Good
+                      Received
                     </th>
                     <th
                       style={{
@@ -6394,18 +6079,6 @@ export default function StockInPage() {
                     <th
                       style={{
                         padding: "0.5rem 0.75rem",
-                        textAlign: "center",
-                        color: "#D4A843",
-                        fontWeight: 700,
-                        fontSize: "0.6rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Total
-                    </th>
-                    <th
-                      style={{
-                        padding: "0.5rem 0.75rem",
                         textAlign: "right",
                         color: "#D4A843",
                         fontWeight: 700,
@@ -6413,207 +6086,138 @@ export default function StockInPage() {
                         textTransform: "uppercase",
                       }}
                     >
-                      Value
+                      Total Cost
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(() => {
-                    // Group by invoice
-                    const groups = {};
-                    reportData.forEach((e) => {
-                      const key = e.invoiceNo || "No Invoice";
-                      if (!groups[key])
-                        groups[key] = {
-                          invoice: key,
-                          items: [],
-                          totalGood: 0,
-                          totalDamaged: 0,
-                          totalQty: 0,
-                          totalValue: 0,
-                        };
-                      groups[key].items.push(e);
-                      groups[key].totalGood += e.goodQty || e.receivedQty || 0;
-                      groups[key].totalDamaged += e.damagedQty || 0;
-                      groups[key].totalQty +=
-                        (e.goodQty || e.receivedQty || 0) + (e.damagedQty || 0);
-                      groups[key].totalValue += e.totalCost || 0;
-                    });
-                    const invoiceGroups = Object.values(groups);
-                    let grandGood = 0,
-                      grandDamaged = 0,
-                      grandQty = 0,
-                      grandValue = 0;
-
-                    return invoiceGroups.map((group, gi) => {
-                      grandGood += group.totalGood;
-                      grandDamaged += group.totalDamaged;
-                      grandQty += group.totalQty;
-                      grandValue += group.totalValue;
-                      return (
-                        <React.Fragment key={group.invoice}>
-                          {group.items.map((item, ii) => (
-                            <tr
-                              key={item.id || `${group.invoice}-${ii}`}
-                              style={{
-                                borderBottom:
-                                  ii < group.items.length - 1
-                                    ? "1px solid rgba(255,255,255,0.04)"
-                                    : "none",
-                              }}
-                            >
-                              <td
-                                style={{
-                                  padding: "0.4rem 0.75rem",
-                                  fontFamily: "monospace",
-                                  fontSize: "0.72rem",
-                                  color: "#D4A843",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {ii === 0 ? group.invoice : ""}
-                              </td>
-                              <td
-                                style={{
-                                  padding: "0.4rem 0.75rem",
-                                  color: "#E5E2E1",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {item.materialName}
-                              </td>
-                              <td
-                                style={{
-                                  padding: "0.4rem 0.75rem",
-                                  color: "var(--gray)",
-                                  fontSize: "0.72rem",
-                                }}
-                              >
-                                {item.materialName !== item.materialName
-                                  ? item.materialName
-                                  : item.sku
-                                    ? item.sku
-                                    : "—"}
-                              </td>
-                              <td
-                                style={{
-                                  padding: "0.4rem 0.75rem",
-                                  textAlign: "center",
-                                  color: "#E5E2E1",
-                                }}
-                              >
-                                {item.goodQty || item.receivedQty || 0}
-                              </td>
-                              <td
-                                style={{
-                                  padding: "0.4rem 0.75rem",
-                                  textAlign: "center",
-                                  color:
-                                    (item.damagedQty || 0) > 0
-                                      ? "#ef4444"
-                                      : "var(--gray)",
-                                }}
-                              >
-                                {item.damagedQty || 0}
-                              </td>
-                              <td
-                                style={{
-                                  padding: "0.4rem 0.75rem",
-                                  textAlign: "center",
-                                  color: "#E5E2E1",
-                                }}
-                              >
-                                {(item.goodQty || item.receivedQty || 0) +
-                                  (item.damagedQty || 0)}
-                              </td>
-                              <td
-                                style={{
-                                  padding: "0.4rem 0.75rem",
-                                  textAlign: "right",
-                                  fontFamily: "monospace",
-                                  color: "#D4A843",
-                                }}
-                              >
-                                ₱
-                                {(item.totalCost || 0).toLocaleString("en-PH", {
-                                  minimumFractionDigits: 2,
-                                })}
-                              </td>
-                            </tr>
-                          ))}
-                          {/* Subtotal row */}
-                          <tr
-                            style={{
-                              background: "rgba(212,168,67,0.08)",
-                              borderBottom:
-                                gi < invoiceGroups.length - 1
-                                  ? "1px solid rgba(255,255,255,0.06)"
-                                  : "none",
-                            }}
-                          >
-                            <td
-                              colSpan={3}
-                              style={{
-                                padding: "0.5rem 0.75rem",
-                                fontSize: "0.72rem",
-                                fontWeight: 700,
-                                color: "#D4A843",
-                              }}
-                            >
-                              SUBTOTAL: {group.invoice}
-                            </td>
-                            <td
-                              style={{
-                                padding: "0.5rem 0.75rem",
-                                textAlign: "center",
-                                fontWeight: 700,
-                                color: "#D4A843",
-                              }}
-                            >
-                              {group.totalGood}
-                            </td>
-                            <td
-                              style={{
-                                padding: "0.5rem 0.75rem",
-                                textAlign: "center",
-                                fontWeight: 700,
-                                color:
-                                  group.totalDamaged > 0
-                                    ? "#ef4444"
-                                    : "#D4A843",
-                              }}
-                            >
-                              {group.totalDamaged}
-                            </td>
-                            <td
-                              style={{
-                                padding: "0.5rem 0.75rem",
-                                textAlign: "center",
-                                fontWeight: 700,
-                                color: "#D4A843",
-                              }}
-                            >
-                              {group.totalQty}
-                            </td>
-                            <td
-                              style={{
-                                padding: "0.5rem 0.75rem",
-                                textAlign: "right",
-                                fontWeight: 700,
-                                color: "#D4A843",
-                                fontFamily: "monospace",
-                              }}
-                            >
-                              ₱
-                              {group.totalValue.toLocaleString("en-PH", {
-                                minimumFractionDigits: 2,
-                              })}
-                            </td>
-                          </tr>
-                        </React.Fragment>
-                      );
-                    });
-                  })()}
+                  {reportData.map((e, idx) => (
+                    <tr
+                      key={idx}
+                      style={{
+                        borderBottom: "1px solid rgba(255,255,255,0.04)",
+                      }}
+                    >
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          color: "var(--gray)",
+                          fontSize: "0.72rem",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {new Date(
+                          e.dateAdded || e.dateReceived,
+                        ).toLocaleDateString("en-PH")}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          color: "#E5E2E1",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {e.materialName}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          color: "var(--gray)",
+                        }}
+                      >
+                        {e.vendorName || "General Merchandise"}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          textAlign: "center",
+                          color: "#E5E2E1",
+                        }}
+                      >
+                        {e.goodQty || e.receivedQty || 0}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          textAlign: "center",
+                          color:
+                            (e.damagedQty || 0) > 0 ? "#ef4444" : "var(--gray)",
+                        }}
+                      >
+                        {e.damagedQty || 0}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          textAlign: "right",
+                          fontFamily: "monospace",
+                          color: "#D4A843",
+                        }}
+                      >
+                        ₱
+                        {(e.totalCost || 0).toLocaleString("en-PH", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr
+                    style={{
+                      background: "rgba(34,197,94,0.08)",
+                      borderTop: "2px solid rgba(34,197,94,0.3)",
+                    }}
+                  >
+                    <td
+                      colSpan={3}
+                      style={{
+                        padding: "0.6rem 0.75rem",
+                        fontSize: "0.78rem",
+                        fontWeight: 800,
+                        color: "#22c55e",
+                      }}
+                    >
+                      GRAND TOTAL
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.6rem 0.75rem",
+                        textAlign: "center",
+                        fontWeight: 800,
+                        color: "#22c55e",
+                      }}
+                    >
+                      {reportData.reduce(
+                        (s, e) => s + (e.goodQty || e.receivedQty || 0),
+                        0,
+                      )}
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.6rem 0.75rem",
+                        textAlign: "center",
+                        fontWeight: 800,
+                        color: reportData.some((e) => (e.damagedQty || 0) > 0)
+                          ? "#ef4444"
+                          : "#22c55e",
+                      }}
+                    >
+                      {reportData.reduce((s, e) => s + (e.damagedQty || 0), 0)}
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.6rem 0.75rem",
+                        textAlign: "right",
+                        fontWeight: 800,
+                        color: "#22c55e",
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      ₱
+                      {reportData
+                        .reduce((s, e) => s + (e.totalCost || 0), 0)
+                        .toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>

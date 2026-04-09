@@ -1,30 +1,88 @@
 "use client";
 
 /**
- * STOCKS PAGE — Restructured to 3 tabs
+ * STOCKS PAGE
  *
- * [Current Stock]  [Movement History]  [Reports]
+ * SAP-Grade Inventory Module — Phase 3
  *
- * Current Stock tab: merges old Goods Stock + Actual Stock
- * Movement History tab: unified ledger of all stock movements
- * Reports tab: keeps existing InventoryReports.jsx
+ * Purpose: Manage stock/inventory levels
+ * - Goods Stock Overview (aggregated, with variant support)
+ * - Actual Stock (SAP MMBE-style: Unrestricted / Blocked / Batch FIFO view)
+ * - Stock-Out History (Goods Issue log)
  */
 
 import CustomDropdown from "@/app/components/CustomDropdown";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import GoodsIssueModal from "../GoodsIssueModal";
-import { genDocNumber, getStore, setStore } from "../utils";
+import StockReductionModal from "../../inventory-old/StockReductionModal";
+import ActualStockTab from "./ActualStockTab";
 import InventoryReports from "./InventoryReports";
-
-// DEPRECATED imports — kept for backward compatibility with existing data
-// ActualStockTab and StockOutHistoryTab are no longer rendered
-// import ActualStockTab from "./ActualStockTab";
-// import StockOutHistoryTab from "./StockOutHistoryTab";
+import StockOutHistoryTab from "./StockOutHistoryTab";
 
 // ── Storage Keys ───────────────────────────────────────────────────────────────
 const MATERIALS_KEY = "pmp_materials";
 const VENDORS_KEY = "pmp_vendors";
 const STOCK_OUT_KEY = "pmp_stock_out_log";
+
+// ── Storage Helpers ────────────────────────────────────────────────────────────
+function getStore(key) {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(key) || "[]");
+  } catch {
+    return [];
+  }
+}
+function setStore(key, data) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(key, JSON.stringify(data));
+}
+
+// ── Number Generation ──────────────────────────────────────────────────────────
+function genDocNumber(prefix, list) {
+  const year = new Date().getFullYear();
+  const seq = String((list.length || 0) + 1).padStart(4, "0");
+  return `${prefix}-${year}-${seq}`;
+}
+
+// ── Issue Type Config ──────────────────────────────────────────────────────────
+const ISSUE_TYPES = {
+  damage: {
+    label: "Damage",
+    color: "#ef4444",
+    bg: "rgba(239,68,68,0.1)",
+    border: "rgba(239,68,68,0.2)",
+  },
+  scrap: {
+    label: "Scrap",
+    color: "#f97316",
+    bg: "rgba(249,115,22,0.1)",
+    border: "rgba(249,115,22,0.2)",
+  },
+  production: {
+    label: "Production Use",
+    color: "#8b5cf6",
+    bg: "rgba(139,92,246,0.1)",
+    border: "rgba(139,92,246,0.2)",
+  },
+  lost: {
+    label: "Lost/Missing",
+    color: "#f59e0b",
+    bg: "rgba(245,158,11,0.1)",
+    border: "rgba(245,158,11,0.2)",
+  },
+  return: {
+    label: "Return to Vendor",
+    color: "#3b82f6",
+    bg: "rgba(59,130,246,0.1)",
+    border: "rgba(59,130,246,0.2)",
+  },
+  adjustment: {
+    label: "Adjustment",
+    color: "#9ca3af",
+    bg: "rgba(156,163,175,0.1)",
+    border: "rgba(156,163,175,0.2)",
+  },
+};
 
 // ── Shared Styles ──────────────────────────────────────────────────────────────
 const inputStyle = {
@@ -201,20 +259,7 @@ function StatusBadge({ stock, minStock, procurementType }) {
 }
 
 function IssueTypeBadge({ type }) {
-  const t = GOODS_ISSUE_TYPES.find((x) => x.id === type);
-  const cfg = t
-    ? {
-        label: t.label,
-        color: t.color,
-        bg: t.color + "1a",
-        border: t.color + "33",
-      }
-    : {
-        label: type,
-        color: "#9ca3af",
-        bg: "rgba(156,163,175,0.1)",
-        border: "rgba(156,163,175,0.2)",
-      };
+  const cfg = ISSUE_TYPES[type] || ISSUE_TYPES.adjustment;
   return (
     <span
       style={{
@@ -317,18 +362,8 @@ function StockOverviewTab({ materials, onIssueStock }) {
           childrenMap.set(child.parentId, []);
         childrenMap.get(child.parentId).push(child);
       });
-    // Materials with hasVariants but ZERO children → treat as standalone
-    const orphanParents = parents.filter(
-      (p) => !childrenMap.has(p.id) || childrenMap.get(p.id).length === 0,
-    );
-    const realParents = parents.filter(
-      (p) => childrenMap.has(p.id) && childrenMap.get(p.id).length > 0,
-    );
-    const standalone = [
-      ...materials.filter((m) => !m.hasVariants && !m.parentId),
-      ...orphanParents,
-    ];
-    return { parents: realParents, childrenMap, standalone };
+    const standalone = materials.filter((m) => !m.hasVariants && !m.parentId);
+    return { parents, childrenMap, standalone };
   }, [materials]);
 
   const toggleExpand = (id) => {
@@ -1097,340 +1132,14 @@ function StockOverviewTab({ materials, onIssueStock }) {
 
 // ACTUAL STOCK TAB — Moved to ActualStockTab.jsx
 
-// ══════════════════════════════════════════════════════════════════════════════
-// MOVEMENT HISTORY TAB — Unified ledger of all stock movements
-// ══════════════════════════════════════════════════════════════════════════════
-function MovementHistoryTab({ stockOuts, materials }) {
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("all");
-
-  const STOCK_IN_KEY = "pmp_stock_in_log";
-  const getStoreLocal = (key) => {
-    if (typeof window === "undefined") return [];
-    try {
-      return JSON.parse(localStorage.getItem(key) || "[]");
-    } catch {
-      return [];
-    }
-  };
-
-  const stockInLog = getStoreLocal(STOCK_IN_KEY);
-
-  // Build unified movement list
-  const movements = useMemo(() => {
-    const list = [];
-
-    // Stock In movements
-    stockInLog.forEach((entry) => {
-      list.push({
-        id: `si-${entry.invoiceNumber}-${entry.materialId}`,
-        date: entry.dateReceived,
-        ref: entry.invoiceNumber || "—",
-        materialName: entry.materialName,
-        sku: entry.sku || "",
-        type: "stock_in",
-        typeLabel: "Stock In",
-        qtyIn: entry.goodQty || entry.receivedQty || 0,
-        qtyOut: 0,
-        performedBy: "—",
-        color: "#22c55e",
-      });
-    });
-
-    // Stock Out movements
-    stockOuts.forEach((so) => {
-      const t = GOODS_ISSUE_TYPES.find((x) => x.id === so.issueType);
-      list.push({
-        id: so.id || `so-${so.materialId}-${so.dateIssued}`,
-        date: so.dateIssued || so.createdAt,
-        ref: "—",
-        materialName: so.materialName,
-        sku: so.sku || "",
-        type: so.issueType || "damage",
-        typeLabel: t ? t.label : so.issueType,
-        qtyIn: 0,
-        qtyOut: so.quantity || 0,
-        performedBy: so.performedBy || "—",
-        color: t ? t.color : "#ef4444",
-      });
-    });
-
-    // Sort by date desc
-    return list.sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [stockInLog, stockOuts]);
-
-  // Filter
-  const filtered = useMemo(() => {
-    return movements.filter((m) => {
-      const q = search.toLowerCase();
-      const matchSearch =
-        !q ||
-        m.materialName.toLowerCase().includes(q) ||
-        m.sku.toLowerCase().includes(q) ||
-        m.performedBy.toLowerCase().includes(q);
-
-      const matchType =
-        typeFilter === "all" ||
-        (typeFilter === "stock_in" && m.type === "stock_in") ||
-        (typeFilter === "outgoing" &&
-          ["manual_sale", "production_use", "transfer"].includes(m.type)) ||
-        (typeFilter === "writeoff" &&
-          ["damage", "scrap", "lost"].includes(m.type)) ||
-        (typeFilter === "return" && m.type === "rtv");
-
-      return matchSearch && matchType;
-    });
-  }, [movements, search, typeFilter]);
-
-  return (
-    <div>
-      {/* Filters */}
-      <div
-        style={{
-          display: "flex",
-          gap: "0.75rem",
-          marginBottom: "1rem",
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ position: "relative", flex: 1, minWidth: "200px" }}>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search movements..."
-            style={{
-              width: "100%",
-              padding: "0.6rem 1rem 0.6rem 2.5rem",
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid var(--border)",
-              borderRadius: "8px",
-              color: "#E5E2E1",
-              outline: "none",
-            }}
-          />
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            style={{
-              position: "absolute",
-              left: "0.75rem",
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "var(--gray)",
-              pointerEvents: "none",
-            }}
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
-          </svg>
-        </div>
-        <CustomDropdown
-          value={typeFilter}
-          onChange={setTypeFilter}
-          options={[
-            { value: "all", label: "All Movements" },
-            { value: "stock_in", label: "Stock In" },
-            { value: "outgoing", label: "Outgoing" },
-            { value: "writeoff", label: "Write-Off" },
-            { value: "return", label: "Return to Vendor" },
-          ]}
-          placeholder="All Movements"
-          style={{ minWidth: "150px" }}
-        />
-      </div>
-
-      {/* Table */}
-      <div
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: "12px",
-          overflow: "hidden",
-          background: "var(--dark)",
-        }}
-      >
-        {filtered.length === 0 ? (
-          <div
-            style={{
-              padding: "3rem",
-              textAlign: "center",
-              color: "var(--gray)",
-            }}
-          >
-            <svg
-              width="48"
-              height="48"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              style={{ margin: "0 auto 1rem", opacity: 0.5 }}
-            >
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-            </svg>
-            <h3
-              style={{
-                margin: "0 0 0.5rem",
-                color: "var(--white)",
-                fontSize: "1rem",
-              }}
-            >
-              No Movement History
-            </h3>
-            <p style={{ margin: 0, fontSize: "0.85rem" }}>
-              Stock movements will appear here chronologically.
-            </p>
-          </div>
-        ) : (
-          <div
-            style={{ overflowX: "auto", maxHeight: "60vh", overflowY: "auto" }}
-          >
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: "0.82rem",
-              }}
-            >
-              <thead
-                style={{
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 1,
-                  background: "rgba(0,0,0,0.5)",
-                }}
-              >
-                <tr style={{ borderBottom: "2px solid var(--border)" }}>
-                  <th style={thStyle}>Date</th>
-                  <th style={thStyle}>Material</th>
-                  <th style={{ ...thStyle, textAlign: "center" }}>Type</th>
-                  <th style={{ ...thStyle, textAlign: "center" }}>Qty In</th>
-                  <th style={{ ...thStyle, textAlign: "center" }}>Qty Out</th>
-                  <th style={thStyle}>Performed By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((m, idx) => (
-                  <tr
-                    key={m.id || idx}
-                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background =
-                        "rgba(255,255,255,0.02)")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.background = "transparent")
-                    }
-                  >
-                    <td
-                      style={{
-                        padding: "0.75rem 1rem",
-                        color: "var(--gray)",
-                        fontSize: "0.78rem",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {new Date(m.date).toLocaleDateString("en-PH")}
-                    </td>
-                    <td style={{ padding: "0.75rem 1rem" }}>
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          color: "#E5E2E1",
-                          fontSize: "0.85rem",
-                        }}
-                      >
-                        {m.materialName}
-                      </div>
-                      {m.sku && (
-                        <div
-                          style={{
-                            fontSize: "0.65rem",
-                            color: "var(--gray)",
-                            fontFamily: "monospace",
-                            marginTop: "0.1rem",
-                          }}
-                        >
-                          {m.sku}
-                        </div>
-                      )}
-                    </td>
-                    <td
-                      style={{ padding: "0.75rem 1rem", textAlign: "center" }}
-                    >
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "0.3rem",
-                          padding: "0.2rem 0.6rem",
-                          borderRadius: "6px",
-                          fontSize: "0.65rem",
-                          fontWeight: 700,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.05em",
-                          background: m.color + "1a",
-                          color: m.color,
-                          border: `1px solid ${m.color}33`,
-                        }}
-                      >
-                        {m.typeLabel}
-                      </span>
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.75rem 1rem",
-                        textAlign: "center",
-                        fontWeight: 700,
-                        color: m.qtyIn > 0 ? "#22c55e" : "var(--gray)",
-                      }}
-                    >
-                      {m.qtyIn > 0 ? `+${m.qtyIn}` : "—"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.75rem 1rem",
-                        textAlign: "center",
-                        fontWeight: 700,
-                        color: m.qtyOut > 0 ? "#ef4444" : "var(--gray)",
-                      }}
-                    >
-                      {m.qtyOut > 0 ? `-${m.qtyOut}` : "—"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.75rem 1rem",
-                        color: "#E5E2E1",
-                        fontSize: "0.82rem",
-                      }}
-                    >
-                      {m.performedBy}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function StocksPage() {
-  const [activeTab, setActiveTab] = useState("current");
+  const [activeTab, setActiveTab] = useState("goods");
   const [materials, setMaterials] = useState([]);
   const [stockOuts, setStockOuts] = useState([]);
-  const [showGoodsIssue, setShowGoodsIssue] = useState(false);
-  const [goodsIssueItem, setGoodsIssueItem] = useState(null);
+  const [showReductionModal, setShowReductionModal] = useState(false);
+  const [reductionItem, setReductionItem] = useState(null);
 
   const refresh = useCallback(() => {
     setMaterials(getStore(MATERIALS_KEY));
@@ -1460,104 +1169,136 @@ export default function StocksPage() {
     return oldest ? oldest.unitCost || 0 : 0;
   };
 
-  // ── Goods Issue Handler — from GoodsIssueModal ─────────────────────────
-  const handleGoodsIssueConfirm = (data) => {
-    const { issueType, performedBy, remarks, variants, totals } = data;
+  // ── Stock Reduction Handler (Old Modal → New Batch System) ─────────────────
+  const handleStockReduction = (data) => {
+    const {
+      reason,
+      remarks,
+      variants,
+      totals,
+      performedBy,
+      saleRef,
+      saleDate,
+      customer,
+    } = data;
     const now = new Date().toISOString();
+    const issueTypeMap = {
+      damaged: "damage",
+      writeoff: "scrap",
+      missing: "missing",
+      sales: "sale",
+    };
+    const issueType = issueTypeMap[reason] || "damage";
+
     const mats = getStore(MATERIALS_KEY);
     const log = getStore(STOCK_OUT_KEY);
 
-    for (const variant of variants) {
+    variants.forEach((variant) => {
       const qtyFulfilled = variant.qtyFulfilled;
-      if (qtyFulfilled <= 0) continue;
-
+      if (qtyFulfilled <= 0) return;
       const mat = mats.find((m) => m.id === variant.variantId);
-      if (!mat) continue;
+      if (!mat) return;
 
-      // Deduct from batches
-      if (data.batchMode === "fifo") {
-        const result = deductFromBatchesFIFO(mat.batches, qtyFulfilled);
-        if (!result.success) {
-          console.error("FIFO deduction failed:", result.error);
-          continue;
-        }
-      } else {
-        // Pick mode: manual batch deduction
-        for (const c of variant.batches) {
-          const batch = mat.batches.find((b) => b.batchId === c.batchId);
-          if (!batch) continue;
-          batch.remainingQty = Math.max(0, (batch.remainingQty || 0) - c.take);
-          if (batch.remainingQty === 0) batch.status = "exhausted";
-        }
+      const deductions = {};
+      variant.batches.forEach((b) => {
+        deductions[b.batchId] = b.take;
+      });
+      const currentBatches = [...(mat.batches || [])];
+      const updatedBatches = currentBatches.map((batch) => {
+        const deduct = deductions[batch.batchId];
+        if (!deduct) return batch;
+        const newRemaining = (batch.remainingQty || 0) - deduct;
+        return {
+          ...batch,
+          remainingQty: newRemaining,
+          // FIX 1: Track qtyDamaged when reason is 'damaged'
+          qtyDamaged:
+            reason === "damaged"
+              ? (batch.qtyDamaged || 0) + deduct
+              : batch.qtyDamaged || 0,
+          movements: [
+            ...(batch.movements || []),
+            {
+              type: issueType,
+              qty: -deduct,
+              remainingAfter: newRemaining,
+              reason:
+                remarks ||
+                (reason === "writeoff"
+                  ? "Write-off"
+                  : reason === "missing"
+                    ? "Missing"
+                    : "Damaged"),
+              date: now,
+            },
+          ],
+          status: newRemaining === 0 ? "exhausted" : "active",
+        };
+      });
+
+      const idx = mats.findIndex((m) => m.id === variant.variantId);
+      if (idx !== -1) {
+        mats[idx] = {
+          ...mats[idx],
+          stockQty: computeStockFromBatches(updatedBatches),
+          baseCost: computeAveCostFromBatches(updatedBatches),
+          batches: updatedBatches,
+          updatedAt: now,
+        };
       }
 
-      // Sync stockQty
-      mat.stockQty = mat.batches.reduce((s, b) => s + (b.remainingQty || 0), 0);
-      mat.updatedAt = now;
-
-      // If variant child, sync parent stockQty
-      if (mat.parentId) {
-        const parentIdx = mats.findIndex((m) => m.id === mat.parentId);
-        if (parentIdx !== -1) {
-          const parent = mats[parentIdx];
-          const siblings = mats.filter((m) => m.parentId === mat.parentId);
-          parent.stockQty = siblings.reduce(
-            (s, sib) =>
-              s +
-              (sib.batches || []).reduce(
-                (ss, b) => ss + (b.remainingQty || 0),
-                0,
-              ),
-            0,
-          );
-          parent.updatedAt = now;
-        }
-      }
-    }
-
-    setStore(MATERIALS_KEY, mats);
-    setMaterials(getStore(MATERIALS_KEY));
-
-    // Log to stock-out
-    for (const variant of variants) {
-      if (variant.qtyFulfilled <= 0) continue;
-      const mat = mats.find((m) => m.id === variant.variantId);
+      // FIX 5: Upgraded log entry format with audit fields
+      const batchBreakdown = variant.batches.map((b) => ({
+        batchId: b.batchId,
+        qty: b.take,
+        unitCost: b.unitCost || 0,
+        totalCost: b.totalCost || 0,
+      }));
       const unitCost =
-        variant.qtyFulfilled > 0
-          ? (variant.totalCostValue || 0) / variant.qtyFulfilled
-          : 0;
+        qtyFulfilled > 0 ? (variant.totalCostValue || 0) / qtyFulfilled : 0;
+      const sellingPrice = variant.sellingPrice || 0;
+      const totalRevenue = variant.totalRevenue || 0;
 
       log.push({
-        id: genDocNumber("GI"),
+        // FIX 5: Use genDocNumber for proper ID format
+        id: genDocNumber("GI", log),
         materialId: variant.variantId,
         materialName: variant.variantName,
         variantId: variant.variantId,
         variantName: variant.variantName,
         sku: variant.sku,
-        category: mat?.category || "",
-        uom: variant.uom || mat?.uom || "pcs",
+        category: variant.category || mat.category || "",
+        uom: variant.uom || mat.uom || "pcs",
         issueType,
-        quantity: variant.qtyFulfilled,
+        quantity: qtyFulfilled,
         unitCost,
-        totalCost: variant.qtyFulfilled * unitCost,
+        totalCost: qtyFulfilled * unitCost,
         performedBy: performedBy || "",
         notes: remarks || "",
-        batchBreakdown: variant.batches.map((b) => ({
-          batchId: b.batchId,
-          qty: b.take,
-          unitCost: b.unitCost || 0,
-          totalCost: b.totalCost || 0,
-        })),
-        previousStock: mat?.stockQty || 0,
-        newStock: mat?.stockQty || 0,
+        batchBreakdown,
+        // Sale-specific fields (only when issueType === 'sale')
+        ...(issueType === "sale"
+          ? {
+              saleRef: saleRef || null,
+              saleDate: saleDate || null,
+              customer: customer || null,
+              sellingPrice,
+              totalRevenue,
+              grossProfit: totalRevenue - (variant.totalCostValue || 0),
+            }
+          : {}),
+        previousStock: mat.stockQty || 0,
+        newStock: computeStockFromBatches(updatedBatches),
         totalLoss: variant.totalCostValue || 0,
         dateIssued: now,
         createdAt: now,
       });
-    }
+    });
 
+    setStore(MATERIALS_KEY, mats);
     setStore(STOCK_OUT_KEY, log);
-    setStockOuts(getStore(STOCK_OUT_KEY));
+    setShowReductionModal(false);
+    setReductionItem(null);
     refresh();
   };
 
@@ -1586,7 +1327,7 @@ export default function StocksPage() {
           </div>
         </div>
 
-        {/* Tab Switcher — 3 tabs only */}
+        {/* Tab Switcher */}
         <div
           style={{
             display: "flex",
@@ -1598,16 +1339,22 @@ export default function StocksPage() {
           }}
         >
           <button
-            style={tabStyle("current")}
-            onClick={() => setActiveTab("current")}
+            style={tabStyle("goods")}
+            onClick={() => setActiveTab("goods")}
           >
-            Current Stock
+            Goods Stock
           </button>
           <button
-            style={tabStyle("movement")}
-            onClick={() => setActiveTab("movement")}
+            style={tabStyle("actual")}
+            onClick={() => setActiveTab("actual")}
           >
-            Movement History
+            Actual Stock
+          </button>
+          <button
+            style={tabStyle("history")}
+            onClick={() => setActiveTab("history")}
+          >
+            Stock-Out History
           </button>
           <button
             style={tabStyle("reports")}
@@ -1619,37 +1366,35 @@ export default function StocksPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === "current" && (
+      {activeTab === "goods" && (
         <StockOverviewTab
           materials={materials}
           onIssueStock={() => {
-            if (materials.length === 0) return;
-            setGoodsIssueItem(
-              materials.find((m) => !m.parentId && (m.stockQty || 0) > 0) ||
-                materials[0],
-            );
-            setShowGoodsIssue(true);
+            setReductionItem(null);
+            setShowReductionModal(true);
           }}
         />
       )}
-      {activeTab === "movement" && (
-        <MovementHistoryTab stockOuts={stockOuts} materials={materials} />
+      {activeTab === "actual" && <ActualStockTab materials={materials} />}
+      {activeTab === "history" && (
+        <StockOutHistoryTab stockOuts={stockOuts} materials={materials} />
       )}
       {activeTab === "reports" && (
         <InventoryReports materials={materials} stockOuts={stockOuts} />
       )}
 
-      {/* Goods Issue Modal */}
-      {showGoodsIssue && goodsIssueItem && (
-        <GoodsIssueModal
-          isOpen={showGoodsIssue}
+      {/* Stock Reduction Modal (Old Inventory — FIFO + Pick Batch + Sales/Damage/Writeoff) */}
+      {showReductionModal && (
+        <StockReductionModal
+          isOpen={showReductionModal}
           onClose={() => {
-            setShowGoodsIssue(false);
-            setGoodsIssueItem(null);
+            setShowReductionModal(false);
+            setReductionItem(null);
           }}
-          onConfirm={handleGoodsIssueConfirm}
-          item={goodsIssueItem}
+          onConfirm={handleStockReduction}
+          item={reductionItem}
           inventory={materials}
+          masterlist={null}
         />
       )}
     </div>
