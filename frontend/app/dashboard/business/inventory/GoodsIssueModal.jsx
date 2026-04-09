@@ -1,43 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { GOODS_ISSUE_TYPES } from "./utils";
 
-// ── Issue Type Config ─────────────────────────────────────────────────────────
-const ISSUE_TYPES = {
-  damage: {
-    label: "Damage",
-    color: "#ef4444",
-    bg: "rgba(239,68,68,0.1)",
-    border: "rgba(239,68,68,0.2)",
-  },
-  scrap: {
-    label: "Scrap",
-    color: "#f97316",
-    bg: "rgba(249,115,22,0.1)",
-    border: "rgba(249,115,22,0.2)",
-  },
-  production: {
-    label: "Production Use",
-    color: "#8b5cf6",
-    bg: "rgba(139,92,246,0.1)",
-    border: "rgba(139,92,246,0.2)",
-  },
-  lost: {
-    label: "Lost/Missing",
-    color: "#f59e0b",
-    bg: "rgba(245,158,11,0.1)",
-    border: "rgba(245,158,11,0.2)",
-  },
-  adjustment: {
-    label: "Adjustment",
-    color: "#9ca3af",
-    bg: "rgba(156,163,175,0.1)",
-    border: "rgba(156,163,175,0.2)",
-  },
-};
+// Build badge lookup from GOODS_ISSUE_TYPES for backward rendering
+const ISSUE_TYPE_BADGE_MAP = {};
+GOODS_ISSUE_TYPES.forEach((t) => {
+  ISSUE_TYPE_BADGE_MAP[t.id] = {
+    label: t.label,
+    color: t.color,
+    bg: t.color + "1a",
+    border: t.color + "33",
+  };
+});
 
 function IssueTypeBadge({ type }) {
-  const cfg = ISSUE_TYPES[type] || ISSUE_TYPES.adjustment;
+  const cfg = ISSUE_TYPE_BADGE_MAP[type] || ISSUE_TYPE_BADGE_MAP.damage;
   return (
     <span
       style={{
@@ -618,10 +596,12 @@ export default function GoodsIssueModal({
     const sel = selectedIds.includes(variant.id);
     const qty = parseInt(variantQtys[variant.id]) || 0;
     const remaining = variant.stock - qty;
+    const hasNoStock = variant.stock === 0;
     const td = (center = false) => ({
       ...S.td(sel),
       textAlign: center ? "center" : "left",
       ...(idx === 0 ? { borderTop: "none" } : {}),
+      ...(hasNoStock ? { opacity: 0.4 } : {}),
     });
 
     const totalFromBatches =
@@ -637,24 +617,32 @@ export default function GoodsIssueModal({
         key={variant.sku || variant.id}
         style={{
           borderLeft: sel ? `3px solid ${GOLD}` : "3px solid transparent",
+          ...(hasNoStock ? { cursor: "not-allowed" } : {}),
         }}
+        title={hasNoStock ? "No stock available" : undefined}
       >
         <td style={td(true)}>
           <input
             type="checkbox"
             checked={sel}
-            onChange={() => toggleId(variant.id)}
+            onChange={() => !hasNoStock && toggleId(variant.id)}
+            disabled={hasNoStock}
             style={{
               width: "16px",
               height: "16px",
-              cursor: "pointer",
+              cursor: hasNoStock ? "not-allowed" : "pointer",
               accentColor: GOLD,
+              opacity: hasNoStock ? 0.4 : 1,
             }}
           />
         </td>
         <td style={td()}>
           <div
-            style={{ fontWeight: 700, color: "#E5E2E1", fontSize: "0.85rem" }}
+            style={{
+              fontWeight: 700,
+              color: hasNoStock ? "var(--gray)" : "#E5E2E1",
+              fontSize: "0.85rem",
+            }}
           >
             {variant.variantName}
           </div>
@@ -670,7 +658,14 @@ export default function GoodsIssueModal({
           </div>
         </td>
         <td style={td(true)}>
-          <span style={{ fontWeight: 700, color: GOLD }}>{variant.stock}</span>
+          <span
+            style={{
+              fontWeight: 700,
+              color: hasNoStock ? "#ef4444" : GOLD,
+            }}
+          >
+            {variant.stock}
+          </span>
           <span
             style={{
               fontSize: "0.7rem",
@@ -1192,7 +1187,7 @@ export default function GoodsIssueModal({
                 fontWeight: 700,
               }}
             >
-              Goods Issue
+              Issue Stock
             </div>
             <h2
               style={{
@@ -1202,7 +1197,7 @@ export default function GoodsIssueModal({
                 margin: 0,
               }}
             >
-              Issue Stock — {item.name}
+              {item.name}
             </h2>
             <div
               style={{
@@ -1221,23 +1216,8 @@ export default function GoodsIssueModal({
             style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}
           >
             <button
-              type="button"
-              style={S.modeBtn(batchMode === "fifo")}
-              onClick={() => setBatchMode("fifo")}
-            >
-              Auto FIFO
-            </button>
-            <button
-              type="button"
-              style={S.modeBtn(batchMode === "pick")}
-              onClick={() => setBatchMode("pick")}
-            >
-              Pick Batch
-            </button>
-            <button
               onClick={onClose}
               style={{
-                marginLeft: "0.5rem",
                 background: "rgba(255,255,255,0.05)",
                 border: "none",
                 borderRadius: "50%",
@@ -1276,20 +1256,40 @@ export default function GoodsIssueModal({
         <div style={S.body}>
           {/* LEFT */}
           <div style={S.left}>
+            {/* Batch Selection Mode Toggle — moved just above variant table */}
             <div
               style={{
-                fontSize: "0.75rem",
-                color: GOLD,
-                background: "rgba(212,168,67,0.06)",
-                border: "1px solid rgba(212,168,67,0.18)",
-                borderRadius: "8px",
-                padding: "0.625rem 0.875rem",
-                marginBottom: "1.25rem",
+                marginBottom: "1rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
               }}
             >
-              {batchMode === "fifo"
-                ? "Auto FIFO — system pulls from oldest batches first. Review the breakdown below."
-                : "Pick Batch — choose which batch(es) to pull from per variant."}
+              <span
+                style={{
+                  fontSize: "0.6rem",
+                  fontWeight: 700,
+                  color: "var(--gray)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                Batch Selection Mode:
+              </span>
+              <button
+                type="button"
+                style={S.modeBtn(batchMode === "fifo")}
+                onClick={() => setBatchMode("fifo")}
+              >
+                Auto FIFO
+              </button>
+              <button
+                type="button"
+                style={S.modeBtn(batchMode === "pick")}
+                onClick={() => setBatchMode("pick")}
+              >
+                Pick Batch
+              </button>
             </div>
 
             <div style={{ ...S.lbl, marginBottom: "0.625rem" }}>
@@ -1330,44 +1330,66 @@ export default function GoodsIssueModal({
 
           {/* RIGHT */}
           <div style={S.right}>
-            {/* Issue Type Grid */}
+            {/* Issue Type Grouped by Category */}
             <div style={{ marginBottom: "1rem" }}>
               <label style={S.lbl}>
                 Issue Type <span style={{ color: GOLD }}>*</span>
               </label>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "0.5rem",
-                }}
-              >
-                {Object.entries(ISSUE_TYPES).map(([key, cfg]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setIssueType(key)}
+              {Object.entries(ISSUE_TYPE_CATEGORIES).map(([catKey, catCfg]) => (
+                <div key={catKey} style={{ marginBottom: "0.75rem" }}>
+                  <div
                     style={{
-                      padding: "0.625rem 0.75rem",
-                      borderRadius: "8px",
-                      fontSize: "0.75rem",
+                      fontSize: "0.58rem",
                       fontWeight: 700,
-                      cursor: "pointer",
-                      textAlign: "center",
-                      border:
-                        issueType === key
-                          ? `2px solid ${cfg.color}`
-                          : "1px solid rgba(255,255,255,0.1)",
-                      background:
-                        issueType === key ? cfg.bg : "rgba(255,255,255,0.04)",
-                      color: issueType === key ? cfg.color : "var(--gray)",
-                      transition: "all 0.15s",
+                      color: "var(--gray)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.1em",
+                      marginBottom: "0.35rem",
+                      paddingBottom: "0.25rem",
+                      borderBottom: "1px solid rgba(255,255,255,0.06)",
                     }}
                   >
-                    {cfg.label}
-                  </button>
-                ))}
-              </div>
+                    ── {catCfg.label} ──
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "0.4rem",
+                    }}
+                  >
+                    {GOODS_ISSUE_TYPES.filter((t) => t.category === catKey).map(
+                      (t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setIssueType(t.id)}
+                          style={{
+                            padding: "0.55rem 0.6rem",
+                            borderRadius: "7px",
+                            fontSize: "0.7rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            textAlign: "center",
+                            border:
+                              issueType === t.id
+                                ? `2px solid ${t.color}`
+                                : "1px solid rgba(255,255,255,0.1)",
+                            background:
+                              issueType === t.id
+                                ? t.color + "1a"
+                                : "rgba(255,255,255,0.04)",
+                            color: issueType === t.id ? t.color : "var(--gray)",
+                            transition: "all 0.15s",
+                          }}
+                        >
+                          {t.label}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </div>
+              ))}
               <div
                 style={{
                   fontSize: "0.72rem",
@@ -1376,14 +1398,13 @@ export default function GoodsIssueModal({
                   minHeight: "2.4em",
                 }}
               >
-                {issueType === "damage" &&
-                  "Records damaged stock during handling or storage."}
-                {issueType === "scrap" &&
-                  "Permanently writes off unusable stock."}
-                {issueType === "production" &&
-                  "Stock consumed in production or manufacturing."}
-                {issueType === "lost" && "Stock missing or unaccounted for."}
-                {issueType === "adjustment" && "Manual stock correction."}
+                {(() => {
+                  const t = GOODS_ISSUE_TYPES.find((x) => x.id === issueType);
+                  const cat = t ? ISSUE_TYPE_CATEGORIES[t.category] : null;
+                  return cat
+                    ? `${cat.label}: ${cat.description}`
+                    : "Select an issue type.";
+                })()}
               </div>
             </div>
 
@@ -1513,7 +1534,7 @@ export default function GoodsIssueModal({
           >
             <div className="modal-header">
               <h2 className="modal-title modal-title-warning">
-                Confirm Goods Issue
+                Confirm Issue Stock
               </h2>
               <button
                 className="modal-close"

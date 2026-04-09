@@ -1,5 +1,9 @@
 "use client";
 
+// DEPRECATED — replaced by Current Stock tab in stocks/page.jsx
+// This file is kept for reference but is no longer rendered in the UI.
+// Safe to delete once the new Current Stock tab is fully validated.
+
 import CustomDropdown from "@/app/components/CustomDropdown";
 import React, { useEffect, useMemo, useState } from "react";
 
@@ -658,7 +662,7 @@ export default function ActualStockTab({ materials }) {
             <span className="summary-value" style={{ color: "#f59e0b" }}>
               {summaryCards.arrivalDamage}
             </span>
-            <span className="summary-label">Arrival Damage (RTV)</span>
+            <span className="summary-label">External Issues</span>
           </div>
         </div>
         <div className="summary-card">
@@ -666,7 +670,7 @@ export default function ActualStockTab({ materials }) {
             <span className="summary-value" style={{ color: "#ef4444" }}>
               {summaryCards.internalDamage}
             </span>
-            <span className="summary-label">Internal Damage</span>
+            <span className="summary-label">Internal Issues</span>
           </div>
         </div>
         <div className="summary-card">
@@ -696,7 +700,7 @@ export default function ActualStockTab({ materials }) {
                 maximumFractionDigits: 2,
               })}
             </span>
-            <span className="summary-label">Arrival Damage Value</span>
+            <span className="summary-label">External Issues Value</span>
           </div>
         </div>
         <div className="summary-card">
@@ -711,7 +715,7 @@ export default function ActualStockTab({ materials }) {
                 maximumFractionDigits: 2,
               })}
             </span>
-            <span className="summary-label">Internal Damage Value</span>
+            <span className="summary-label">Internal Issues Value</span>
           </div>
         </div>
       </div>
@@ -925,12 +929,12 @@ export default function ActualStockTab({ materials }) {
                 <th
                   style={{ ...thStyle, textAlign: "center", color: "#f59e0b" }}
                 >
-                  Arrival Dmg
+                  External Iss.
                 </th>
                 <th
                   style={{ ...thStyle, textAlign: "center", color: "#ef4444" }}
                 >
-                  Internal Dmg
+                  Internal Iss.
                 </th>
                 <th style={{ ...thStyle, textAlign: "center" }}>Total</th>
                 <th style={{ ...thStyle, textAlign: "right" }}>Unit Cost</th>
@@ -1369,7 +1373,7 @@ export default function ActualStockTab({ materials }) {
                                               textTransform: "uppercase",
                                             }}
                                           >
-                                            Arrival Dmg
+                                            External Iss.
                                           </th>
                                           <th
                                             style={{
@@ -1381,7 +1385,7 @@ export default function ActualStockTab({ materials }) {
                                               textTransform: "uppercase",
                                             }}
                                           >
-                                            Internal Dmg
+                                            Internal Iss.
                                           </th>
                                           <th
                                             style={{
@@ -2363,418 +2367,212 @@ export default function ActualStockTab({ materials }) {
                 : "No invoices match your search/filter."}
             </div>
           ) : (
-            <div
+            <table
               style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.5rem",
-                padding: "1rem",
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "0.85rem",
               }}
             >
-              {filteredInvoices.map((inv) => {
-                const isInvExpanded = expandedInvoice === inv.invoiceNo;
-                const invTotalGood = inv.items.reduce(
-                  (s, it) => s + it.good,
-                  0,
-                );
-                const invTotalDamaged = inv.items.reduce(
-                  (s, it) => s + it.damaged,
-                  0,
-                );
-                const invTotalValue = inv.items.reduce(
-                  (s, it) => s + it.value,
-                  0,
-                );
-                return (
-                  <div
-                    key={inv.invoiceNo}
-                    style={{
-                      background: "rgba(255,255,255,0.02)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: "12px",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {/* Invoice Header */}
-                    <div
-                      onClick={() =>
-                        setExpandedInvoice(isInvExpanded ? null : inv.invoiceNo)
-                      }
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "40px 1fr 1fr 100px 100px 100px",
-                        alignItems: "center",
-                        padding: "1rem 1.25rem",
-                        background: isInvExpanded
-                          ? "rgba(212,168,67,0.06)"
-                          : "rgba(0,0,0,0.2)",
-                        cursor: "pointer",
-                        userSelect: "none",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
+              <thead>
+                <tr
+                  style={{
+                    background: "rgba(0,0,0,0.3)",
+                    borderBottom: "2px solid var(--border)",
+                  }}
+                >
+                  <th style={thStyle}>Invoice</th>
+                  <th style={thStyle}>Material</th>
+                  <th style={thStyle}>Variant</th>
+                  <th style={{ ...thStyle, textAlign: "center" }}>Good</th>
+                  <th style={{ ...thStyle, textAlign: "center" }}>Damaged</th>
+                  <th style={{ ...thStyle, textAlign: "center" }}>Total</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredInvoices.map((inv) => {
+                  const invTotalGood = inv.items.reduce(
+                    (s, it) => s + it.good,
+                    0,
+                  );
+                  const invTotalDamaged = inv.items.reduce(
+                    (s, it) => s + it.damaged,
+                    0,
+                  );
+                  const invTotalValue = inv.items.reduce(
+                    (s, it) => s + it.value,
+                    0,
+                  );
+
+                  return (
+                    <React.Fragment key={inv.invoiceNo}>
+                      {inv.items.map((it, idx) => (
+                        <tr
+                          key={idx}
                           style={{
-                            transform: isInvExpanded ? "rotate(90deg)" : "none",
-                            transition: "transform 0.2s",
-                            color: isInvExpanded ? "#D4A843" : "var(--gray)",
+                            background:
+                              idx % 2 === 0
+                                ? "transparent"
+                                : "rgba(255,255,255,0.01)",
+                            borderBottom: "1px solid rgba(255,255,255,0.04)",
                           }}
                         >
-                          <path d="M9 18l6-6-6-6" />
-                        </svg>
-                      </div>
-                      <div>
-                        <div
+                          <td
+                            style={{
+                              padding: "0.875rem 1rem",
+                              color: "#E5E2E1",
+                              fontFamily: "monospace",
+                              fontSize: "0.8rem",
+                            }}
+                          >
+                            {inv.invoiceNo}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.875rem 1rem",
+                              color: "#E5E2E1",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {it.materialName}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.875rem 1rem",
+                              color: "#E5E2E1",
+                              fontSize: "0.8rem",
+                            }}
+                          >
+                            {it.variantName !== "—" ? it.variantName : ""}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.875rem 1rem",
+                              textAlign: "center",
+                              color: "#E5E2E1",
+                              fontWeight: 600,
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {it.good}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.875rem 1rem",
+                              textAlign: "center",
+                              color: it.damaged > 0 ? "#ef4444" : "#6b7280",
+                              fontWeight: 600,
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {it.damaged}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.875rem 1rem",
+                              textAlign: "center",
+                              color: "#E5E2E1",
+                              fontWeight: 600,
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {it.total}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.875rem 1rem",
+                              textAlign: "right",
+                              color: "#E5E2E1",
+                              fontWeight: 600,
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            ₱
+                            {it.value.toLocaleString("en-PH", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </td>
+                        </tr>
+                      ))}
+                      {/* Subtotal Row */}
+                      <tr
+                        style={{
+                          background: "rgba(212,168,67,0.08)",
+                          borderTop: "2px solid rgba(212,168,67,0.3)",
+                          borderBottom: "2px solid rgba(212,168,67,0.3)",
+                        }}
+                      >
+                        <td
+                          colSpan={3}
                           style={{
+                            padding: "0.875rem 1rem",
+                            fontSize: "0.78rem",
+                            color: "#D4A843",
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                          }}
+                        >
+                          SUBTOTAL: {inv.invoiceNo}
+                        </td>
+                        <td
+                          style={{
+                            padding: "0.875rem 1rem",
+                            textAlign: "center",
                             fontWeight: 700,
                             color: "#D4A843",
-                            fontSize: "0.85rem",
                             fontFamily: "monospace",
+                            fontSize: "0.85rem",
                           }}
                         >
-                          INV: {inv.invoiceNo}
-                        </div>
-                        <div
+                          {invTotalGood}
+                        </td>
+                        <td
                           style={{
-                            fontSize: "0.7rem",
-                            color: "var(--gray)",
-                            marginTop: "2px",
+                            padding: "0.875rem 1rem",
+                            textAlign: "center",
+                            fontWeight: 700,
+                            color: "#D4A843",
+                            fontFamily: "monospace",
+                            fontSize: "0.85rem",
                           }}
                         >
-                          {inv.vendorName}
-                        </div>
-                      </div>
-                      <div
-                        style={{ fontSize: "0.78rem", color: "var(--gray)" }}
-                      >
-                        {inv.dateReceived
-                          ? new Date(inv.dateReceived).toLocaleDateString(
-                              "en-PH",
-                            )
-                          : "—"}
-                      </div>
-                      <div
-                        style={{
-                          textAlign: "center",
-                          fontWeight: 700,
-                          color: "#22c55e",
-                          fontSize: "0.8rem",
-                        }}
-                      >
-                        {invTotalGood} pcs
-                      </div>
-                      <div
-                        style={{
-                          textAlign: "center",
-                          fontWeight: 700,
-                          color: invTotalDamaged > 0 ? "#ef4444" : "#6b7280",
-                          fontSize: "0.8rem",
-                        }}
-                      >
-                        {invTotalDamaged}
-                      </div>
-                      <div
-                        style={{
-                          textAlign: "right",
-                          fontWeight: 700,
-                          color: "#D4A843",
-                          fontFamily: "monospace",
-                          fontSize: "0.8rem",
-                        }}
-                      >
-                        ₱
-                        {invTotalValue.toLocaleString("en-PH", {
-                          minimumFractionDigits: 2,
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Expanded Items */}
-                    {isInvExpanded && (
-                      <div style={{ padding: "0.5rem 1.25rem 0.75rem" }}>
-                        <table
+                          {invTotalDamaged}
+                        </td>
+                        <td
                           style={{
-                            width: "100%",
-                            tableLayout: "fixed",
-                            fontSize: "0.78rem",
-                            borderCollapse: "collapse",
+                            padding: "0.875rem 1rem",
+                            textAlign: "center",
+                            fontWeight: 700,
+                            color: "#D4A843",
+                            fontFamily: "monospace",
+                            fontSize: "0.85rem",
                           }}
                         >
-                          <thead>
-                            <tr
-                              style={{
-                                background: "rgba(0,0,0,0.3)",
-                                borderBottom:
-                                  "1px solid rgba(255,255,255,0.06)",
-                              }}
-                            >
-                              <th
-                                style={{
-                                  padding: "0.5rem 0.75rem",
-                                  textAlign: "left",
-                                  color: "#D4A843",
-                                  fontWeight: 700,
-                                  fontSize: "0.6rem",
-                                  textTransform: "uppercase",
-                                  width: "25%",
-                                }}
-                              >
-                                Material
-                              </th>
-                              <th
-                                style={{
-                                  padding: "0.5rem 0.75rem",
-                                  textAlign: "left",
-                                  color: "#D4A843",
-                                  fontWeight: 700,
-                                  fontSize: "0.6rem",
-                                  textTransform: "uppercase",
-                                  width: "25%",
-                                }}
-                              >
-                                Variant
-                              </th>
-                              <th
-                                style={{
-                                  padding: "0.5rem 0.75rem",
-                                  textAlign: "center",
-                                  color: "#D4A843",
-                                  fontWeight: 700,
-                                  fontSize: "0.6rem",
-                                  textTransform: "uppercase",
-                                  width: "8%",
-                                }}
-                              >
-                                Good
-                              </th>
-                              <th
-                                style={{
-                                  padding: "0.5rem 0.75rem",
-                                  textAlign: "center",
-                                  color: "#D4A843",
-                                  fontWeight: 700,
-                                  fontSize: "0.6rem",
-                                  textTransform: "uppercase",
-                                  width: "10%",
-                                }}
-                              >
-                                Damaged
-                              </th>
-                              <th
-                                style={{
-                                  padding: "0.5rem 0.75rem",
-                                  textAlign: "center",
-                                  color: "#D4A843",
-                                  fontWeight: 700,
-                                  fontSize: "0.6rem",
-                                  textTransform: "uppercase",
-                                  width: "8%",
-                                }}
-                              >
-                                Total
-                              </th>
-                              <th
-                                style={{
-                                  padding: "0.5rem 0.75rem",
-                                  textAlign: "right",
-                                  color: "#D4A843",
-                                  fontWeight: 700,
-                                  fontSize: "0.6rem",
-                                  textTransform: "uppercase",
-                                  width: "12%",
-                                }}
-                              >
-                                Unit Cost
-                              </th>
-                              <th
-                                style={{
-                                  padding: "0.5rem 0.75rem",
-                                  textAlign: "right",
-                                  color: "#D4A843",
-                                  fontWeight: 700,
-                                  fontSize: "0.6rem",
-                                  textTransform: "uppercase",
-                                  width: "12%",
-                                }}
-                              >
-                                Value
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {inv.items.map((it, idx) => (
-                              <tr
-                                key={idx}
-                                style={{
-                                  background:
-                                    idx % 2 === 0
-                                      ? "transparent"
-                                      : "rgba(255,255,255,0.01)",
-                                  borderBottom:
-                                    "1px solid rgba(255,255,255,0.04)",
-                                }}
-                              >
-                                <td
-                                  style={{
-                                    padding: "0.5rem 0.75rem",
-                                    color: "#E5E2E1",
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  {it.materialName}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.5rem 0.75rem",
-                                    color: "#E5E2E1",
-                                  }}
-                                >
-                                  {it.variantName !== "—" ? it.variantName : ""}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.5rem 0.75rem",
-                                    textAlign: "center",
-                                    color: "#E5E2E1",
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  {it.good}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.5rem 0.75rem",
-                                    textAlign: "center",
-                                    color:
-                                      it.damaged > 0 ? "#ef4444" : "#6b7280",
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  {it.damaged}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.5rem 0.75rem",
-                                    textAlign: "center",
-                                    color: "#E5E2E1",
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  {it.total}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.5rem 0.75rem",
-                                    textAlign: "right",
-                                    color: "#D4A843",
-                                    fontFamily: "monospace",
-                                  }}
-                                >
-                                  ₱
-                                  {it.unitCost.toLocaleString("en-PH", {
-                                    minimumFractionDigits: 2,
-                                  })}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: "0.5rem 0.75rem",
-                                    textAlign: "right",
-                                    color: "#E5E2E1",
-                                    fontWeight: 600,
-                                    fontFamily: "monospace",
-                                  }}
-                                >
-                                  ₱
-                                  {it.value.toLocaleString("en-PH", {
-                                    minimumFractionDigits: 2,
-                                  })}
-                                </td>
-                              </tr>
-                            ))}
-                            <tr
-                              style={{
-                                background: "rgba(0,0,0,0.2)",
-                                borderTop: "1px solid rgba(255,255,255,0.08)",
-                              }}
-                            >
-                              <td
-                                colSpan={2}
-                                style={{
-                                  padding: "0.5rem 0.75rem",
-                                  fontSize: "0.72rem",
-                                  color: "var(--gray)",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                Invoice Total
-                              </td>
-                              <td
-                                style={{
-                                  padding: "0.5rem 0.75rem",
-                                  textAlign: "center",
-                                  fontWeight: 700,
-                                  color: "#22c55e",
-                                }}
-                              >
-                                {invTotalGood}
-                              </td>
-                              <td
-                                style={{
-                                  padding: "0.5rem 0.75rem",
-                                  textAlign: "center",
-                                  fontWeight: 700,
-                                  color:
-                                    invTotalDamaged > 0 ? "#ef4444" : "#6b7280",
-                                }}
-                              >
-                                {invTotalDamaged}
-                              </td>
-                              <td
-                                style={{
-                                  padding: "0.5rem 0.75rem",
-                                  textAlign: "center",
-                                  fontWeight: 700,
-                                  color: "#E5E2E1",
-                                }}
-                              >
-                                {invTotalGood + invTotalDamaged}
-                              </td>
-                              <td></td>
-                              <td
-                                style={{
-                                  padding: "0.5rem 0.75rem",
-                                  textAlign: "right",
-                                  fontWeight: 700,
-                                  color: "#D4A843",
-                                  fontFamily: "monospace",
-                                }}
-                              >
-                                ₱
-                                {invTotalValue.toLocaleString("en-PH", {
-                                  minimumFractionDigits: 2,
-                                })}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                          {invTotalGood + invTotalDamaged}
+                        </td>
+                        <td
+                          style={{
+                            padding: "0.875rem 1rem",
+                            textAlign: "right",
+                            fontWeight: 700,
+                            color: "#D4A843",
+                            fontFamily: "monospace",
+                            fontSize: "0.85rem",
+                          }}
+                        >
+                          ₱
+                          {invTotalValue.toLocaleString("en-PH", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                      </tr>
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
       )}

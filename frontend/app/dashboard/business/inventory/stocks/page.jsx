@@ -1,68 +1,30 @@
 "use client";
 
 /**
- * STOCKS PAGE
+ * STOCKS PAGE — Restructured to 3 tabs
  *
- * SAP-Grade Inventory Module — Phase 3
+ * [Current Stock]  [Movement History]  [Reports]
  *
- * Purpose: Manage stock/inventory levels
- * - Goods Stock Overview (aggregated, with variant support)
- * - Actual Stock (SAP MMBE-style: Unrestricted / Blocked / Batch FIFO view)
- * - Stock-Out History (Goods Issue log)
+ * Current Stock tab: merges old Goods Stock + Actual Stock
+ * Movement History tab: unified ledger of all stock movements
+ * Reports tab: keeps existing InventoryReports.jsx
  */
 
 import CustomDropdown from "@/app/components/CustomDropdown";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import GoodsIssueModal from "../GoodsIssueModal";
 import { genDocNumber, getStore, setStore } from "../utils";
-import ActualStockTab from "./ActualStockTab";
 import InventoryReports from "./InventoryReports";
-import StockOutHistoryTab from "./StockOutHistoryTab";
+
+// DEPRECATED imports — kept for backward compatibility with existing data
+// ActualStockTab and StockOutHistoryTab are no longer rendered
+// import ActualStockTab from "./ActualStockTab";
+// import StockOutHistoryTab from "./StockOutHistoryTab";
 
 // ── Storage Keys ───────────────────────────────────────────────────────────────
 const MATERIALS_KEY = "pmp_materials";
 const VENDORS_KEY = "pmp_vendors";
 const STOCK_OUT_KEY = "pmp_stock_out_log";
-
-// ── Issue Type Config ──────────────────────────────────────────────────────────
-const ISSUE_TYPES = {
-  damage: {
-    label: "Damage",
-    color: "#ef4444",
-    bg: "rgba(239,68,68,0.1)",
-    border: "rgba(239,68,68,0.2)",
-  },
-  scrap: {
-    label: "Scrap",
-    color: "#f97316",
-    bg: "rgba(249,115,22,0.1)",
-    border: "rgba(249,115,22,0.2)",
-  },
-  production: {
-    label: "Production Use",
-    color: "#8b5cf6",
-    bg: "rgba(139,92,246,0.1)",
-    border: "rgba(139,92,246,0.2)",
-  },
-  lost: {
-    label: "Lost/Missing",
-    color: "#f59e0b",
-    bg: "rgba(245,158,11,0.1)",
-    border: "rgba(245,158,11,0.2)",
-  },
-  return: {
-    label: "Return to Vendor",
-    color: "#3b82f6",
-    bg: "rgba(59,130,246,0.1)",
-    border: "rgba(59,130,246,0.2)",
-  },
-  adjustment: {
-    label: "Adjustment",
-    color: "#9ca3af",
-    bg: "rgba(156,163,175,0.1)",
-    border: "rgba(156,163,175,0.2)",
-  },
-};
 
 // ── Shared Styles ──────────────────────────────────────────────────────────────
 const inputStyle = {
@@ -239,7 +201,20 @@ function StatusBadge({ stock, minStock, procurementType }) {
 }
 
 function IssueTypeBadge({ type }) {
-  const cfg = ISSUE_TYPES[type] || ISSUE_TYPES.adjustment;
+  const t = GOODS_ISSUE_TYPES.find((x) => x.id === type);
+  const cfg = t
+    ? {
+        label: t.label,
+        color: t.color,
+        bg: t.color + "1a",
+        border: t.color + "33",
+      }
+    : {
+        label: type,
+        color: "#9ca3af",
+        bg: "rgba(156,163,175,0.1)",
+        border: "rgba(156,163,175,0.2)",
+      };
   return (
     <span
       style={{
@@ -1122,10 +1097,336 @@ function StockOverviewTab({ materials, onIssueStock }) {
 
 // ACTUAL STOCK TAB — Moved to ActualStockTab.jsx
 
+// ══════════════════════════════════════════════════════════════════════════════
+// MOVEMENT HISTORY TAB — Unified ledger of all stock movements
+// ══════════════════════════════════════════════════════════════════════════════
+function MovementHistoryTab({ stockOuts, materials }) {
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("all");
+
+  const STOCK_IN_KEY = "pmp_stock_in_log";
+  const getStoreLocal = (key) => {
+    if (typeof window === "undefined") return [];
+    try {
+      return JSON.parse(localStorage.getItem(key) || "[]");
+    } catch {
+      return [];
+    }
+  };
+
+  const stockInLog = getStoreLocal(STOCK_IN_KEY);
+
+  // Build unified movement list
+  const movements = useMemo(() => {
+    const list = [];
+
+    // Stock In movements
+    stockInLog.forEach((entry) => {
+      list.push({
+        id: `si-${entry.invoiceNumber}-${entry.materialId}`,
+        date: entry.dateReceived,
+        ref: entry.invoiceNumber || "—",
+        materialName: entry.materialName,
+        sku: entry.sku || "",
+        type: "stock_in",
+        typeLabel: "Stock In",
+        qtyIn: entry.goodQty || entry.receivedQty || 0,
+        qtyOut: 0,
+        performedBy: "—",
+        color: "#22c55e",
+      });
+    });
+
+    // Stock Out movements
+    stockOuts.forEach((so) => {
+      const t = GOODS_ISSUE_TYPES.find((x) => x.id === so.issueType);
+      list.push({
+        id: so.id || `so-${so.materialId}-${so.dateIssued}`,
+        date: so.dateIssued || so.createdAt,
+        ref: "—",
+        materialName: so.materialName,
+        sku: so.sku || "",
+        type: so.issueType || "damage",
+        typeLabel: t ? t.label : so.issueType,
+        qtyIn: 0,
+        qtyOut: so.quantity || 0,
+        performedBy: so.performedBy || "—",
+        color: t ? t.color : "#ef4444",
+      });
+    });
+
+    // Sort by date desc
+    return list.sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [stockInLog, stockOuts]);
+
+  // Filter
+  const filtered = useMemo(() => {
+    return movements.filter((m) => {
+      const q = search.toLowerCase();
+      const matchSearch =
+        !q ||
+        m.materialName.toLowerCase().includes(q) ||
+        m.sku.toLowerCase().includes(q) ||
+        m.performedBy.toLowerCase().includes(q);
+
+      const matchType =
+        typeFilter === "all" ||
+        (typeFilter === "stock_in" && m.type === "stock_in") ||
+        (typeFilter === "outgoing" &&
+          ["manual_sale", "production_use", "transfer"].includes(m.type)) ||
+        (typeFilter === "writeoff" &&
+          ["damage", "scrap", "lost"].includes(m.type)) ||
+        (typeFilter === "return" && m.type === "rtv");
+
+      return matchSearch && matchType;
+    });
+  }, [movements, search, typeFilter]);
+
+  return (
+    <div>
+      {/* Filters */}
+      <div
+        style={{
+          display: "flex",
+          gap: "0.75rem",
+          marginBottom: "1rem",
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ position: "relative", flex: 1, minWidth: "200px" }}>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search movements..."
+            style={{
+              width: "100%",
+              padding: "0.6rem 1rem 0.6rem 2.5rem",
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid var(--border)",
+              borderRadius: "8px",
+              color: "#E5E2E1",
+              outline: "none",
+            }}
+          />
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            style={{
+              position: "absolute",
+              left: "0.75rem",
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "var(--gray)",
+              pointerEvents: "none",
+            }}
+          >
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
+        </div>
+        <CustomDropdown
+          value={typeFilter}
+          onChange={setTypeFilter}
+          options={[
+            { value: "all", label: "All Movements" },
+            { value: "stock_in", label: "Stock In" },
+            { value: "outgoing", label: "Outgoing" },
+            { value: "writeoff", label: "Write-Off" },
+            { value: "return", label: "Return to Vendor" },
+          ]}
+          placeholder="All Movements"
+          style={{ minWidth: "150px" }}
+        />
+      </div>
+
+      {/* Table */}
+      <div
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: "12px",
+          overflow: "hidden",
+          background: "var(--dark)",
+        }}
+      >
+        {filtered.length === 0 ? (
+          <div
+            style={{
+              padding: "3rem",
+              textAlign: "center",
+              color: "var(--gray)",
+            }}
+          >
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              style={{ margin: "0 auto 1rem", opacity: 0.5 }}
+            >
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+            </svg>
+            <h3
+              style={{
+                margin: "0 0 0.5rem",
+                color: "var(--white)",
+                fontSize: "1rem",
+              }}
+            >
+              No Movement History
+            </h3>
+            <p style={{ margin: 0, fontSize: "0.85rem" }}>
+              Stock movements will appear here chronologically.
+            </p>
+          </div>
+        ) : (
+          <div
+            style={{ overflowX: "auto", maxHeight: "60vh", overflowY: "auto" }}
+          >
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "0.82rem",
+              }}
+            >
+              <thead
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                  background: "rgba(0,0,0,0.5)",
+                }}
+              >
+                <tr style={{ borderBottom: "2px solid var(--border)" }}>
+                  <th style={thStyle}>Date</th>
+                  <th style={thStyle}>Material</th>
+                  <th style={{ ...thStyle, textAlign: "center" }}>Type</th>
+                  <th style={{ ...thStyle, textAlign: "center" }}>Qty In</th>
+                  <th style={{ ...thStyle, textAlign: "center" }}>Qty Out</th>
+                  <th style={thStyle}>Performed By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((m, idx) => (
+                  <tr
+                    key={m.id || idx}
+                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        "rgba(255,255,255,0.02)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
+                  >
+                    <td
+                      style={{
+                        padding: "0.75rem 1rem",
+                        color: "var(--gray)",
+                        fontSize: "0.78rem",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {new Date(m.date).toLocaleDateString("en-PH")}
+                    </td>
+                    <td style={{ padding: "0.75rem 1rem" }}>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          color: "#E5E2E1",
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        {m.materialName}
+                      </div>
+                      {m.sku && (
+                        <div
+                          style={{
+                            fontSize: "0.65rem",
+                            color: "var(--gray)",
+                            fontFamily: "monospace",
+                            marginTop: "0.1rem",
+                          }}
+                        >
+                          {m.sku}
+                        </div>
+                      )}
+                    </td>
+                    <td
+                      style={{ padding: "0.75rem 1rem", textAlign: "center" }}
+                    >
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.3rem",
+                          padding: "0.2rem 0.6rem",
+                          borderRadius: "6px",
+                          fontSize: "0.65rem",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          background: m.color + "1a",
+                          color: m.color,
+                          border: `1px solid ${m.color}33`,
+                        }}
+                      >
+                        {m.typeLabel}
+                      </span>
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.75rem 1rem",
+                        textAlign: "center",
+                        fontWeight: 700,
+                        color: m.qtyIn > 0 ? "#22c55e" : "var(--gray)",
+                      }}
+                    >
+                      {m.qtyIn > 0 ? `+${m.qtyIn}` : "—"}
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.75rem 1rem",
+                        textAlign: "center",
+                        fontWeight: 700,
+                        color: m.qtyOut > 0 ? "#ef4444" : "var(--gray)",
+                      }}
+                    >
+                      {m.qtyOut > 0 ? `-${m.qtyOut}` : "—"}
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.75rem 1rem",
+                        color: "#E5E2E1",
+                        fontSize: "0.82rem",
+                      }}
+                    >
+                      {m.performedBy}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function StocksPage() {
-  const [activeTab, setActiveTab] = useState("goods");
+  const [activeTab, setActiveTab] = useState("current");
   const [materials, setMaterials] = useState([]);
   const [stockOuts, setStockOuts] = useState([]);
   const [showGoodsIssue, setShowGoodsIssue] = useState(false);
@@ -1285,7 +1586,7 @@ export default function StocksPage() {
           </div>
         </div>
 
-        {/* Tab Switcher */}
+        {/* Tab Switcher — 3 tabs only */}
         <div
           style={{
             display: "flex",
@@ -1297,22 +1598,16 @@ export default function StocksPage() {
           }}
         >
           <button
-            style={tabStyle("goods")}
-            onClick={() => setActiveTab("goods")}
+            style={tabStyle("current")}
+            onClick={() => setActiveTab("current")}
           >
-            Goods Stock
+            Current Stock
           </button>
           <button
-            style={tabStyle("actual")}
-            onClick={() => setActiveTab("actual")}
+            style={tabStyle("movement")}
+            onClick={() => setActiveTab("movement")}
           >
-            Actual Stock
-          </button>
-          <button
-            style={tabStyle("history")}
-            onClick={() => setActiveTab("history")}
-          >
-            Stock-Out History
+            Movement History
           </button>
           <button
             style={tabStyle("reports")}
@@ -1324,12 +1619,11 @@ export default function StocksPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === "goods" && (
+      {activeTab === "current" && (
         <StockOverviewTab
           materials={materials}
           onIssueStock={() => {
             if (materials.length === 0) return;
-            // Default to first material with stock, or let user pick
             setGoodsIssueItem(
               materials.find((m) => !m.parentId && (m.stockQty || 0) > 0) ||
                 materials[0],
@@ -1338,9 +1632,8 @@ export default function StocksPage() {
           }}
         />
       )}
-      {activeTab === "actual" && <ActualStockTab materials={materials} />}
-      {activeTab === "history" && (
-        <StockOutHistoryTab stockOuts={stockOuts} materials={materials} />
+      {activeTab === "movement" && (
+        <MovementHistoryTab stockOuts={stockOuts} materials={materials} />
       )}
       {activeTab === "reports" && (
         <InventoryReports materials={materials} stockOuts={stockOuts} />
