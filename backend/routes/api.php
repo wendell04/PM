@@ -127,6 +127,15 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/job-orders',             [JobOrderController::class, 'store']);
     Route::put('/admin/job-orders/{id}',         [JobOrderController::class, 'update']);
 
+<<<<<<< HEAD
+=======
+    // ─── Activity Logs ────────────────────────────────────────────────────────
+    Route::get('/admin/activity-logs',           [ActivityLogController::class, 'index']);
+    // ─── Design Approval ──────────────────────────────────────────────────────
+    Route::post('/admin/orders/{id}/approve-design', [OrderController::class, 'approveDesign']);
+    Route::post('/admin/orders/{id}/reject-design',  [OrderController::class, 'rejectDesign']);
+
+>>>>>>> 791e7dcf2c03345013e6bfb5feda8edb9743c8f8
     // ─── Audit Logs ───────────────────────────────────────────────────────────
     Route::get('/admin/audit-logs',              [AuditLogController::class, 'index']);
     Route::get('/admin/audit-logs/summary',      [AuditLogController::class, 'summary']);

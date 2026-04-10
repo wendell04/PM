@@ -73,6 +73,8 @@ class User extends Authenticatable
             'expires_at'     => $expiresAt,
             'tokenable_id'   => (string) $this->_id,
             'tokenable_type' => static::class,
+            'ip'             => request()->ip(),
+            'userAgent'      => request()->userAgent(),
         ]);
 
         return new class($token, $plainText) {

@@ -32,6 +32,10 @@ export default function OrderQuickViewModal({
   const [notesEdit, setNotesEdit]           = useState('');
   const [paymentEdit, setPaymentEdit]       = useState('');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [designAction, setDesignAction]     = useState(null); // 'approving' | 'rejecting' | null
+  const [designError, setDesignError]       = useState(null);
+  const [rejectReason, setRejectReason]     = useState('');
+  const [showRejectInput, setShowRejectInput] = useState(false);
 
   // Hoisted fetch order function using useAuth token
   const fetchOrder = useCallback(async () => {
@@ -130,6 +134,62 @@ export default function OrderQuickViewModal({
       setUpdateError(err.message || 'Failed to update status');
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleApproveDesign = async () => {
+    if (!orderId || designAction) return;
+    setDesignAction('approving');
+    setDesignError(null);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/admin/orders/${orderId}/approve-design`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.message || 'Failed to approve design');
+      }
+      setOrder(prev => prev ? { ...prev, designStatus: 'approved' } : null);
+      if (onStatusUpdated) onStatusUpdated();
+    } catch (err) {
+      setDesignError(err.message);
+    } finally {
+      setDesignAction(null);
+    }
+  };
+
+  const handleRejectDesign = async () => {
+    if (!orderId || designAction) return;
+    setDesignAction('rejecting');
+    setDesignError(null);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/admin/orders/${orderId}/reject-design`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ reason: rejectReason.trim() || null }),
+        }
+      );
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.message || 'Failed to reject design');
+      }
+      setOrder(prev => prev ? { ...prev, designStatus: 'rejected' } : null);
+      setShowRejectInput(false);
+      setRejectReason('');
+      if (onStatusUpdated) onStatusUpdated();
+    } catch (err) {
+      setDesignError(err.message);
+    } finally {
+      setDesignAction(null);
     }
   };
 
@@ -690,6 +750,201 @@ export default function OrderQuickViewModal({
                     </div>
                   </div>
                 </div>
+
+                {/* Design File Section */}
+                {(order.designFilePath || order.designNotes) && (
+                  <div>
+                    <h4
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        color: 'var(--gray)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '1px',
+                        marginBottom: '0.75rem',
+                      }}
+                    >
+                      Customer Design
+                    </h4>
+
+                    {/* Design status badge */}
+                    {order.designStatus && (
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '0.2rem 0.625rem',
+                          borderRadius: '999px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          background: order.designStatus === 'approved'
+                            ? 'rgba(74,222,128,0.12)'
+                            : order.designStatus === 'rejected'
+                            ? 'rgba(239,68,68,0.12)'
+                            : 'rgba(212,168,67,0.12)',
+                          color: order.designStatus === 'approved'
+                            ? '#4ade80'
+                            : order.designStatus === 'rejected'
+                            ? '#ef4444'
+                            : '#d4a843',
+                          border: `1px solid ${order.designStatus === 'approved'
+                            ? 'rgba(74,222,128,0.3)'
+                            : order.designStatus === 'rejected'
+                            ? 'rgba(239,68,68,0.3)'
+                            : 'rgba(212,168,67,0.3)'}`,
+                          textTransform: 'capitalize',
+                        }}>
+                          {order.designStatus === 'approved'
+                            ? '✓ Approved'
+                            : order.designStatus === 'rejected'
+                            ? '✗ Rejected'
+                            : '⏳ Pending Review'}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Design file link */}
+                    {order.designFilePath && (
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <a
+                          href={`${API_URL}/storage/${order.designFilePath}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.375rem',
+                            color: '#d4a843',
+                            fontSize: '0.85rem',
+                            fontWeight: 600,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" strokeWidth="2"
+                            strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                          </svg>
+                          View Design File
+                        </a>
+                      </div>
+                    )}
+
+                    {/* Design notes */}
+                    {order.designNotes && (
+                      <div style={{
+                        padding: '0.625rem 0.75rem',
+                        background: 'var(--dark)',
+                        borderRadius: '6px',
+                        fontSize: '0.8rem',
+                        color: 'var(--gray)',
+                        lineHeight: 1.5,
+                        marginBottom: '0.75rem',
+                      }}>
+                        {order.designNotes}
+                      </div>
+                    )}
+
+                    {/* Approve / Reject buttons — only when pending */}
+                    {mode === 'admin' &&
+                      (!order.designStatus || order.designStatus === 'pending_review') && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {designError && (
+                          <div style={{
+                            fontSize: '0.75rem',
+                            color: '#ef4444',
+                            padding: '0.375rem 0.5rem',
+                            background: 'rgba(239,68,68,0.08)',
+                            borderRadius: '4px',
+                          }}>
+                            {designError}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button
+                            onClick={handleApproveDesign}
+                            disabled={!!designAction}
+                            style={{
+                              flex: 1, padding: '0.5rem',
+                              background: designAction === 'approving'
+                                ? 'rgba(74,222,128,0.06)'
+                                : 'rgba(74,222,128,0.1)',
+                              border: '1px solid rgba(74,222,128,0.3)',
+                              borderRadius: '6px',
+                              color: '#4ade80',
+                              fontSize: '0.8rem',
+                              fontWeight: 700,
+                              cursor: designAction ? 'not-allowed' : 'pointer',
+                              opacity: designAction ? 0.6 : 1,
+                            }}
+                          >
+                            {designAction === 'approving' ? 'Approving...' : '✓ Approve'}
+                          </button>
+                          <button
+                            onClick={() => setShowRejectInput(v => !v)}
+                            disabled={!!designAction}
+                            style={{
+                              flex: 1, padding: '0.5rem',
+                              background: 'rgba(239,68,68,0.1)',
+                              border: '1px solid rgba(239,68,68,0.3)',
+                              borderRadius: '6px',
+                              color: '#ef4444',
+                              fontSize: '0.8rem',
+                              fontWeight: 700,
+                              cursor: designAction ? 'not-allowed' : 'pointer',
+                              opacity: designAction ? 0.6 : 1,
+                            }}
+                          >
+                            ✗ Reject
+                          </button>
+                        </div>
+
+                        {showRejectInput && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                            <textarea
+                              rows={2}
+                              placeholder="Reason for rejection (optional)"
+                              value={rejectReason}
+                              onChange={e => setRejectReason(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '0.5rem',
+                                background: 'var(--dark)',
+                                border: '1px solid rgba(239,68,68,0.3)',
+                                borderRadius: '6px',
+                                color: 'var(--white)',
+                                fontSize: '0.8rem',
+                                resize: 'vertical',
+                                outline: 'none',
+                                boxSizing: 'border-box',
+                                fontFamily: 'inherit',
+                              }}
+                            />
+                            <button
+                              onClick={handleRejectDesign}
+                              disabled={!!designAction}
+                              style={{
+                                padding: '0.5rem',
+                                background: '#ef4444',
+                                border: 'none',
+                                borderRadius: '6px',
+                                color: '#fff',
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                                cursor: designAction ? 'not-allowed' : 'pointer',
+                                opacity: designAction ? 0.6 : 1,
+                              }}
+                            >
+                              {designAction === 'rejecting'
+                                ? 'Rejecting...' : 'Confirm Rejection'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Tracking Section */}
                 <div>

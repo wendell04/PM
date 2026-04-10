@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use App\Models\ActivityLog;
+use App\Models\Notification;
 
 class OrderController extends Controller
 {
@@ -623,6 +624,169 @@ class OrderController extends Controller
             ));
         } catch (\Exception $e) {
             Log::error('OrderController@notifyOwner: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/approve-design
+     * Owner approves the customer's uploaded design.
+     */
+    public function approveDesign(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+                return $this->unauthorizedResponse();
+            }
+
+            $order = Order::find($id);
+            if (!$order) {
+                return $this->notFoundResponse('Order');
+            }
+
+            if (!$order->designFilePath && !$order->designNotes) {
+                return $this->errorResponse('This order has no design to approve.', 422);
+            }
+
+            $order->designStatus = 'approved';
+            $order->updatedAt    = now();
+            $order->save();
+
+            // Notify customer
+            try {
+                Notification::create([
+                    'user_id'    => (string) $order->userId,
+                    'type'       => 'design_approved',
+                    'title'      => 'Design Approved!',
+                    'message'    => 'Your design for order #' .
+                        strtoupper(substr((string) $order->_id, -8)) .
+                        ' has been approved. We\'ll begin production shortly.',
+                    'is_read'    => false,
+                    'data'       => [
+                        'orderId'      => (string) $order->_id,
+                        'designStatus' => 'approved',
+                    ],
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $notifErr) {
+                Log::warning('approveDesign: notification failed', [
+                    'error' => $notifErr->getMessage(),
+                ]);
+            }
+
+            // Log activity
+            try {
+                ActivityLog::create([
+                    'action'           => 'design_approved',
+                    'entityType'       => 'order',
+                    'entityId'         => (string) $order->_id,
+                    'description'      => 'Design approved for order #' .
+                        strtoupper(substr((string) $order->_id, -8)),
+                    'performedBy'      => trim("{$user->firstName} {$user->lastName}"),
+                    'performedByEmail' => $user->email ?? null,
+                    'metadata'         => ['orderId' => (string) $order->_id],
+                    'createdAt'        => now(),
+                ]);
+            } catch (\Exception $logErr) {
+                Log::warning('ActivityLog write failed (approveDesign)', [
+                    'error' => $logErr->getMessage(),
+                ]);
+            }
+
+            return $this->successResponse('Design approved.', $order);
+
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to approve design.');
+        }
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/reject-design
+     * Owner rejects the customer's uploaded design.
+     */
+    public function rejectDesign(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+                return $this->unauthorizedResponse();
+            }
+
+            $validated = $request->validate([
+                'reason' => 'nullable|string|max:500',
+            ]);
+
+            $order = Order::find($id);
+            if (!$order) {
+                return $this->notFoundResponse('Order');
+            }
+
+            if (!$order->designFilePath && !$order->designNotes) {
+                return $this->errorResponse('This order has no design to reject.', 422);
+            }
+
+            $order->designStatus = 'rejected';
+            $order->updatedAt    = now();
+            $order->save();
+
+            $reason = $validated['reason'] ?? null;
+
+            // Notify customer
+            try {
+                $message = 'Your design for order #' .
+                    strtoupper(substr((string) $order->_id, -8)) .
+                    ' needs revision.';
+                if ($reason) {
+                    $message .= ' Reason: ' . $reason;
+                }
+                Notification::create([
+                    'user_id'    => (string) $order->userId,
+                    'type'       => 'design_rejected',
+                    'title'      => 'Design Needs Revision',
+                    'message'    => $message,
+                    'is_read'    => false,
+                    'data'       => [
+                        'orderId'      => (string) $order->_id,
+                        'designStatus' => 'rejected',
+                        'reason'       => $reason,
+                    ],
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $notifErr) {
+                Log::warning('rejectDesign: notification failed', [
+                    'error' => $notifErr->getMessage(),
+                ]);
+            }
+
+            // Log activity
+            try {
+                ActivityLog::create([
+                    'action'           => 'design_rejected',
+                    'entityType'       => 'order',
+                    'entityId'         => (string) $order->_id,
+                    'description'      => 'Design rejected for order #' .
+                        strtoupper(substr((string) $order->_id, -8)) .
+                        ($reason ? '. Reason: ' . $reason : ''),
+                    'performedBy'      => trim("{$user->firstName} {$user->lastName}"),
+                    'performedByEmail' => $user->email ?? null,
+                    'metadata'         => [
+                        'orderId' => (string) $order->_id,
+                        'reason'  => $reason,
+                    ],
+                    'createdAt'        => now(),
+                ]);
+            } catch (\Exception $logErr) {
+                Log::warning('ActivityLog write failed (rejectDesign)', [
+                    'error' => $logErr->getMessage(),
+                ]);
+            }
+
+            return $this->successResponse('Design rejected.', $order);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to reject design.');
         }
     }
 }

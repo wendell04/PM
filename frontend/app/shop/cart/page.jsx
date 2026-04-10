@@ -322,7 +322,7 @@ export default function CartPage() {
                   </div>
 
                   {/* Thumbnail */}
-                  <Link href={`/shop/${item.product._id}`} className="cart-item-thumbnail">
+                  <Link href={`/shop/products/${item.product._id}`} className="cart-item-thumbnail">
                     {item.product.images?.[0]
                       ? <>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -340,7 +340,7 @@ export default function CartPage() {
 
                   {/* Info */}
                   <div className="cart-item-info">
-                    <Link href={`/shop/${item.product._id}`} className="cart-item-name">
+                    <Link href={`/shop/products/${item.product._id}`} className="cart-item-name">
                       {item.product.name}
                     </Link>
                     {item.variantName && (

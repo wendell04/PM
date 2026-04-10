@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
   || 'http://127.0.0.1:8000';
@@ -35,19 +36,21 @@ export default function AuditLogsPage() {
       if (filterEndDate) params.set('endDate', filterEndDate);
 
       const [logsRes, summaryRes] = await Promise.all([
-        fetch(
+        fetchWithTimeout(
           `${API_URL}/api/admin/audit-logs?${params}`,
           { headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
-          }}
+          }},
+          30000
         ),
-        fetch(
+        fetchWithTimeout(
           `${API_URL}/api/admin/audit-logs/summary?${params}`,
           { headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
-          }}
+          }},
+          30000
         ),
       ]);
 

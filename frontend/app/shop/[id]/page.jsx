@@ -67,11 +67,12 @@ export default function ProductDetailPage() {
 
   useEffect(() => {
     async function fetchProduct() {
-      if (!token) return;
       setLoading(true);
       try {
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
         const res = await fetchWithTimeout(`${API_URL}/api/products/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers,
         }, 10000);
         if (!res.ok) throw new Error('Not found');
         const data = await res.json();
@@ -90,12 +91,18 @@ export default function ProductDetailPage() {
     }
 
     fetchProduct();
-  }, [id, router, token]);
+  }, [id, router]);
 
   function handleAddToCart() {
     if (!product) return;
+    const priceForQty = resolvePrice(product, qty);
+    const productWithPrice = {
+      ...product,
+      flatPrice: priceForQty,
+      price: priceForQty,
+    };
     addToCart(
-      product,
+      productWithPrice,
       selectedVariant?.sku ?? selectedVariant?.name ?? null,
       selectedVariant?.name ?? null,
       qty
@@ -384,6 +391,55 @@ export default function ProductDetailPage() {
                 Add to Cart
               </>
             )}
+          </button>
+
+          {/* Place Order — direct checkout */}
+          <button
+            onClick={() => {
+              const payload = {
+                items: [{
+                  product: {
+                    _id:    product._id,
+                    name:   product.name,
+                    images: product.images ?? [],
+                  },
+                  variantId:   selectedVariant?.sku ?? selectedVariant?.name ?? null,
+                  variantName: selectedVariant?.name ?? null,
+                  qty,
+                  unitPrice:   resolvePrice(product, qty),
+                }],
+                notes: '',
+              };
+              sessionStorage.setItem('checkout_payload', JSON.stringify(payload));
+              router.push('/shop/checkout');
+            }}
+            style={{
+              width: '100%', padding: '0.85rem',
+              background: 'transparent',
+              border: '1px solid #d4a843',
+              borderRadius: '10px',
+              color: '#d4a843',
+              fontWeight: 700, fontSize: '0.95rem',
+              cursor: 'pointer',
+              transition: 'all 0.25s',
+              display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: '0.5rem',
+              marginTop: '0.75rem',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(212,168,67,0.1)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+              strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            Place Order
           </button>
 
           {/* Tags */}
