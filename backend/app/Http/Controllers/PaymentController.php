@@ -7,6 +7,7 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use App\Models\ActivityLog;
 
 class PaymentController extends Controller
@@ -51,8 +52,8 @@ class PaymentController extends Controller
                 'deliveryAddress.province'    => 'nullable|string|max:255',
                 'deliveryAddress.zip'         => 'nullable|string|max:10',
                 'deliveryAddress.phone'       => 'nullable|string|max:30',
+                'design_file'                 => 'nullable|file|mimes:jpeg,jpg,png,pdf|max:10240',
                 'design_notes'                => 'nullable|string|max:2000',
-                'design_file_path'            => 'nullable|string|max:1000',
             ]);
 
             // ── Resolve prices + build order items ────────────────────
@@ -96,6 +97,21 @@ class PaymentController extends Controller
                 ];
             }
 
+            // ── Handle design file upload ─────────────────────────────
+            $designFilePath = null;
+            if ($request->hasFile('design_file') && $request->file('design_file')->isValid()) {
+                try {
+                    $designFilePath = $request->file('design_file')
+                        ->store('designs', 'public');
+                } catch (\Exception $fileErr) {
+                    Log::warning('Design file upload failed', [
+                        'error'  => $fileErr->getMessage(),
+                        'userId' => (string) $user->_id,
+                    ]);
+                    // Non-fatal — order proceeds without file
+                }
+            }
+
             // ── Create order (paymentStatus: unpaid) ──────────────────
             $order = Order::create([
                 'userId'          => (string) $user->_id,
@@ -111,7 +127,7 @@ class PaymentController extends Controller
                 'notes'           => strip_tags($validated['notes'] ?? ''),
                 'deliveryAddress' => $validated['deliveryAddress'] ?? null,
                 'designNotes'     => $validated['design_notes'] ?? null,
-                'designFilePath'  => $validated['design_file_path'] ?? null,
+                'designFilePath'  => $designFilePath,
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
