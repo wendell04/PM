@@ -771,7 +771,7 @@ export default function ShopLayout({ children }) {
       storage.setItem('auth_token', token);
       storage.setItem('auth_user', JSON.stringify(userData));
       sessionStorage.setItem('pending_2fa', 'true');
-      router.push('/dashboard/2fa-challenge');
+      router.push('/shop/2fa-verify');
       return;
     }
 

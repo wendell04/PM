@@ -9,6 +9,7 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\JobOrderController;
 use App\Http\Controllers\AuditLogController;
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\SupplierController;
@@ -123,6 +124,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/job-orders/{id}',         [JobOrderController::class, 'show']);
     Route::post('/admin/job-orders',             [JobOrderController::class, 'store']);
     Route::put('/admin/job-orders/{id}',         [JobOrderController::class, 'update']);
+
+    // ─── Activity Logs ────────────────────────────────────────────────────────
+    Route::get('/admin/activity-logs',           [ActivityLogController::class, 'index']);
 
     // ─── Audit Logs ───────────────────────────────────────────────────────────
     Route::get('/admin/audit-logs',              [AuditLogController::class, 'index']);

@@ -38,10 +38,31 @@ function getDisplayPrice(product) {
 }
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
-function ProductCard({ product, onAddToCart }) {
+function ProductCard({ product, onAddToCart, flashSale }) {
   const [hovered, setHovered] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const hasImage = product.thumbnail || product.images?.length > 0;
+
+  // Flash sale countdown
+  const [timeLeft, setTimeLeft] = useState('');
+  useEffect(() => {
+    if (!flashSale?.endDate) return;
+    const calc = () => {
+      const diff = new Date(flashSale.endDate) - Date.now();
+      if (diff <= 0) { setTimeLeft('Ended'); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setTimeLeft(
+        h > 0
+          ? `${h}h ${m}m ${s}s`
+          : `${m}m ${s}s`
+      );
+    };
+    calc();
+    const id = setInterval(calc, 1000);
+    return () => clearInterval(id);
+  }, [flashSale?.endDate]);
 
   const handleAddToCart = (e) => {
     e.preventDefault();
@@ -84,6 +105,28 @@ function ProductCard({ product, onAddToCart }) {
             {product.category}
           </div>
 
+          {/* Flash sale badge */}
+          {flashSale && (
+            <div style={{
+              position: 'absolute',
+              top: '10px',
+              right: '10px',
+              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+              color: '#fff',
+              fontSize: '0.65rem',
+              fontWeight: 700,
+              padding: '3px 8px',
+              borderRadius: '6px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              zIndex: 2,
+            }}>
+              {flashSale.discountType === 'percentage'
+                ? `${flashSale.discountValue}% OFF`
+                : `₱${flashSale.discountValue} OFF`}
+            </div>
+          )}
+
           {/* Quick Add to Cart Button */}
           <button
             className={`shop-quick-add-btn ${isAdding ? 'adding' : ''}`}
@@ -117,9 +160,30 @@ function ProductCard({ product, onAddToCart }) {
           </p>
 
           <div className="shop-product-footer">
-            <span className="shop-product-price">
-              {getDisplayPrice(product)}
-            </span>
+            {flashSale && flashSale.discountedPrice != null ? (
+              <span style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                <span style={{
+                  fontSize: '0.75rem',
+                  color: '#666',
+                  textDecoration: 'line-through',
+                  lineHeight: 1,
+                }}>
+                  ₱{parseFloat(flashSale.originalPrice).toLocaleString()}
+                </span>
+                <span style={{
+                  fontSize: '1.05rem',
+                  fontWeight: 700,
+                  color: '#ef4444',
+                  lineHeight: 1,
+                }}>
+                  ₱{parseFloat(flashSale.discountedPrice).toLocaleString()}
+                </span>
+              </span>
+            ) : (
+              <span className="shop-product-price">
+                {getDisplayPrice(product)}
+              </span>
+            )}
 
             {product.variantGroups?.length > 0 && (
               <span className="shop-product-variants">
@@ -127,6 +191,30 @@ function ProductCard({ product, onAddToCart }) {
               </span>
             )}
           </div>
+
+          {flashSale && timeLeft && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.375rem',
+              marginTop: '0.5rem',
+              padding: '0.375rem 0.75rem',
+              background: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.2)',
+              borderRadius: '6px',
+              fontSize: '0.72rem',
+              color: '#ef4444',
+              fontWeight: 600,
+            }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              Ends in {timeLeft}
+            </div>
+          )}
         </div>
       </div>
     </Link>
@@ -149,6 +237,7 @@ export default function ShopPage() {
   const [banners, setBanners] = useState([]);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  const [flashSales, setFlashSales] = useState({});
   const { addToCart } = useCart();
   const carouselRef = useRef(null);
   const autoplayRef = useRef(null);
@@ -156,7 +245,29 @@ export default function ShopPage() {
   useEffect(() => {
     loadProducts();
     loadBanners();
+    loadFlashSales();
   }, []);
+
+  async function loadFlashSales() {
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/storefront/flash-sales`,
+        {},
+        30000
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const sales = Array.isArray(data?.data) ? data.data : [];
+      // Build productId → flashSale lookup map
+      const map = {};
+      sales.forEach(sale => {
+        if (sale.productId) map[sale.productId] = sale;
+      });
+      setFlashSales(map);
+    } catch {
+      // Non-fatal — shop works without flash sale data
+    }
+  }
 
   /**
    * Load all active banners from backend API
@@ -517,7 +628,12 @@ export default function ShopPage() {
       ) : (
         <div className="shop-products-grid">
           {filtered.map(product => (
-            <ProductCard key={product.id ?? product._id} product={product} onAddToCart={handleAddToCart} />
+            <ProductCard
+              key={product.id ?? product._id}
+              product={product}
+              onAddToCart={handleAddToCart}
+              flashSale={flashSales[product._id] ?? flashSales[product.id] ?? null}
+            />
           ))}
         </div>
       )}

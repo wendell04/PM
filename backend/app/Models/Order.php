@@ -22,9 +22,14 @@ class Order extends Model
         'shippingFee'        => 'float',
         'totalAmount'        => 'float',
         'targetCompletion'   => 'datetime',
-        'paymentDate'        => 'datetime',
-        'createdAt'          => 'datetime',
-        'updatedAt'          => 'datetime',
+        'paymentDate'          => 'datetime',
+        'designNotes'          => 'string',
+        'designFilePath'       => 'string',
+        'paymentMethod'        => 'string',
+        'paymongoPaymentId'    => 'string',
+        'paymongoReferenceNumber' => 'string',
+        'createdAt'            => 'datetime',
+        'updatedAt'            => 'datetime',
     ];
 
     protected $indexes = [

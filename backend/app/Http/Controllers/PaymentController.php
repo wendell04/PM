@@ -7,6 +7,7 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Models\ActivityLog;
 
 class PaymentController extends Controller
 {
@@ -50,6 +51,8 @@ class PaymentController extends Controller
                 'deliveryAddress.province'    => 'nullable|string|max:255',
                 'deliveryAddress.zip'         => 'nullable|string|max:10',
                 'deliveryAddress.phone'       => 'nullable|string|max:30',
+                'design_notes'                => 'nullable|string|max:2000',
+                'design_file_path'            => 'nullable|string|max:1000',
             ]);
 
             // ── Resolve prices + build order items ────────────────────
@@ -107,6 +110,8 @@ class PaymentController extends Controller
                 'paymentStatus'   => 'unpaid',
                 'notes'           => strip_tags($validated['notes'] ?? ''),
                 'deliveryAddress' => $validated['deliveryAddress'] ?? null,
+                'designNotes'     => $validated['design_notes'] ?? null,
+                'designFilePath'  => $validated['design_file_path'] ?? null,
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
@@ -249,13 +254,53 @@ class PaymentController extends Controller
             }
 
             if ($order->paymentStatus !== 'paid') {
-                $order->paymentStatus = 'paid';
-                $order->paymentDate   = now();
-                $order->updatedAt     = now();
+                // Extract payment metadata from webhook payload
+                $paymentAttrs  = $data['attributes'] ?? [];
+                $paymentMethod = $paymentAttrs['source']['type']
+                    ?? $paymentAttrs['payment_method_type']
+                    ?? null;
+                $paymentId     = $data['id'] ?? null;
+                $referenceNum  = $paymentAttrs['reference_number']
+                    ?? $paymentAttrs['external_reference_number']
+                    ?? null;
+
+                $order->paymentStatus           = 'paid';
+                $order->paymentDate             = now();
+                $order->paymentMethod           = $paymentMethod;
+                $order->paymongoPaymentId       = $paymentId;
+                $order->paymongoReferenceNumber = $referenceNum;
+                $order->updatedAt               = now();
                 $order->save();
 
+                // Log activity
+                try {
+                    ActivityLog::create([
+                        'action'           => 'payment_received',
+                        'entityType'       => 'order',
+                        'entityId'         => $orderId,
+                        'description'      => "Payment received for order #{$orderId}" .
+                            ($paymentMethod ? " via {$paymentMethod}" : ''),
+                        'performedBy'      => 'system',
+                        'performedByEmail' => null,
+                        'metadata'         => [
+                            'orderId'       => $orderId,
+                            'paymentMethod' => $paymentMethod,
+                            'paymentId'     => $paymentId,
+                            'referenceNum'  => $referenceNum,
+                            'amount'        => $order->totalAmount,
+                        ],
+                        'createdAt'        => now(),
+                    ]);
+                } catch (\Exception $logErr) {
+                    Log::warning('ActivityLog write failed (webhook)', [
+                        'error' => $logErr->getMessage(),
+                    ]);
+                }
+
                 Log::info('PayMongo webhook: order marked paid', [
-                    'orderId' => $orderId,
+                    'orderId'       => $orderId,
+                    'paymentMethod' => $paymentMethod,
+                    'paymentId'     => $paymentId,
                 ]);
             }
 

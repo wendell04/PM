@@ -13,6 +13,7 @@ use App\Models\Inventory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use App\Models\ActivityLog;
 
 class OrderController extends Controller
 {
@@ -251,6 +252,33 @@ class OrderController extends Controller
             $oldStatus = $order->orderStatus;
             $order->update($validated);
 
+            // Log activity if status changed
+            if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus) {
+                try {
+                    $adminUser = $request->user();
+                    ActivityLog::create([
+                        'action'           => 'order_status_changed',
+                        'entityType'       => 'order',
+                        'entityId'         => (string) $order->_id,
+                        'description'      => "Order status changed from {$oldStatus} to {$order->orderStatus}",
+                        'performedBy'      => $adminUser
+                            ? trim("{$adminUser->firstName} {$adminUser->lastName}")
+                            : 'admin',
+                        'performedByEmail' => $adminUser->email ?? null,
+                        'metadata'         => [
+                            'oldStatus' => $oldStatus,
+                            'newStatus' => $order->orderStatus,
+                            'orderId'   => (string) $order->_id,
+                        ],
+                        'createdAt'        => now(),
+                    ]);
+                } catch (\Exception $logErr) {
+                    Log::warning('ActivityLog write failed (adminUpdate)', [
+                        'error' => $logErr->getMessage(),
+                    ]);
+                }
+            }
+
             // Handle completion: Create sales records and deduct inventory
             if ($order->orderStatus === 'Delivered' && $oldStatus !== 'Delivered') {
                 $this->completeOrder($order);
@@ -464,6 +492,28 @@ class OrderController extends Controller
             $order->orderStatus = $validated['orderStatus'];
             $order->updatedAt = now();
             $order->save();
+
+            // Log activity
+            try {
+                ActivityLog::create([
+                    'action'           => 'order_status_changed',
+                    'entityType'       => 'order',
+                    'entityId'         => (string) $order->_id,
+                    'description'      => "Order status changed from {$oldStatus} to {$order->orderStatus}",
+                    'performedBy'      => $user->firstName . ' ' . $user->lastName,
+                    'performedByEmail' => $user->email ?? null,
+                    'metadata'         => [
+                        'oldStatus' => $oldStatus,
+                        'newStatus' => $order->orderStatus,
+                        'orderId'   => (string) $order->_id,
+                    ],
+                    'createdAt'        => now(),
+                ]);
+            } catch (\Exception $logErr) {
+                Log::warning('ActivityLog write failed (updateStatus)', [
+                    'error' => $logErr->getMessage(),
+                ]);
+            }
 
             // Notify customer on status change
             if ($oldStatus !== $order->orderStatus) {

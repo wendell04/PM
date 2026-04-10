@@ -7,6 +7,7 @@ use App\Models\Inventory;
 use MongoDB\BSON\Regex;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use App\Models\ActivityLog;
 use Illuminate\Support\Facades\Http;
 
 class ProductController extends Controller
@@ -377,6 +378,32 @@ class ProductController extends Controller
             $product->isPublished = !$product->isPublished;
             $product->updatedAt = now();
             $product->save();
+
+            // Log activity
+            try {
+                $adminUser = $request->user();
+                ActivityLog::create([
+                    'action'           => 'product_publish_toggled',
+                    'entityType'       => 'product',
+                    'entityId'         => (string) $product->_id,
+                    'description'      => "Product \"" . ($product->name ?? 'Unknown') . "\" " .
+                        ($product->isPublished ? 'published' : 'unpublished'),
+                    'performedBy'      => $adminUser
+                        ? trim("{$adminUser->firstName} {$adminUser->lastName}")
+                        : 'admin',
+                    'performedByEmail' => $adminUser->email ?? null,
+                    'metadata'         => [
+                        'productId'   => (string) $product->_id,
+                        'productName' => $product->name ?? null,
+                        'isPublished' => $product->isPublished,
+                    ],
+                    'createdAt'        => now(),
+                ]);
+            } catch (\Exception $logErr) {
+                Log::warning('ActivityLog write failed (togglePublish)', [
+                    'error' => $logErr->getMessage(),
+                ]);
+            }
 
             return $this->successResponse('Product publish status updated.', [
                 'isPublished' => $product->isPublished
