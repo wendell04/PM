@@ -670,22 +670,34 @@ function StockOverviewTab({ materials, onIssueStock }) {
                       <td style={{ padding: "0.875rem 1rem" }}>
                         <div
                           style={{
-                            fontWeight: 700,
-                            color: "#E5E2E1",
-                            fontSize: "0.875rem",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
                           }}
                         >
-                          {m.name}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "0.7rem",
-                            color: "var(--gray)",
-                            fontFamily: "monospace",
-                            marginTop: "0.15rem",
-                          }}
-                        >
-                          {m.sku || "—"}
+                          {/* Spacer to align standalone rows with parent rows that have ChevronIcon */}
+                          <div style={{ width: "14px", flexShrink: 0 }} />
+                          <div>
+                            <div
+                              style={{
+                                fontWeight: 700,
+                                color: "#E5E2E1",
+                                fontSize: "0.875rem",
+                              }}
+                            >
+                              {m.name}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: "0.7rem",
+                                color: "var(--gray)",
+                                fontFamily: "monospace",
+                                marginTop: "0.15rem",
+                              }}
+                            >
+                              {m.sku || "—"}
+                            </div>
+                          </div>
                         </div>
                       </td>
                       <td
