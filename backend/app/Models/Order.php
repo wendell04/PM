@@ -28,6 +28,7 @@ class Order extends Model
         'paymentMethod'        => 'string',
         'paymongoPaymentId'    => 'string',
         'paymongoReferenceNumber' => 'string',
+        'designStatus'             => 'string',
         'createdAt'            => 'datetime',
         'updatedAt'            => 'datetime',
     ];

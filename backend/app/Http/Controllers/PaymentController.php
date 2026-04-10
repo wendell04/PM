@@ -128,6 +128,7 @@ class PaymentController extends Controller
                 'deliveryAddress' => $validated['deliveryAddress'] ?? null,
                 'designNotes'     => $validated['design_notes'] ?? null,
                 'designFilePath'  => $designFilePath,
+                'designStatus'    => $designFilePath ? 'pending_review' : null,
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);

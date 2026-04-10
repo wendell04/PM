@@ -127,6 +127,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── Activity Logs ────────────────────────────────────────────────────────
     Route::get('/admin/activity-logs',           [ActivityLogController::class, 'index']);
+    // ─── Design Approval ──────────────────────────────────────────────────────
+    Route::post('/admin/orders/{id}/approve-design', [OrderController::class, 'approveDesign']);
+    Route::post('/admin/orders/{id}/reject-design',  [OrderController::class, 'rejectDesign']);
 
     // ─── Audit Logs ───────────────────────────────────────────────────────────
     Route::get('/admin/audit-logs',              [AuditLogController::class, 'index']);
