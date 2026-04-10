@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { GOODS_ISSUE_TYPES } from "./utils";
+import { GOODS_ISSUE_TYPES } from "../utils";
 
 // Build badge lookup from GOODS_ISSUE_TYPES for backward rendering
 const ISSUE_TYPE_BADGE_MAP = {};

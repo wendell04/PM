@@ -1,7 +1,19 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { formatPrice } from "../../utils/format";
+
+// ── Format Price ───────────────────────────────────────────────────────────────
+function formatPrice(val) {
+  const num =
+    typeof val === "string" ? parseFloat(val.replace(/,/g, "")) || 0 : val || 0;
+  return (
+    "₱" +
+    num.toLocaleString("en-PH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  );
+}
 
 // ── Integer Input ─────────────────────────────────────────────────────────────
 function IntegerInput({
@@ -16,6 +28,7 @@ function IntegerInput({
   qtyValue,
 }) {
   const handleChange = (e) => {
+    if (disabled) return;
     const val = e.target.value;
     if (val === "" || /^\d+$/.test(val)) {
       const numVal = val === "" ? 0 : parseInt(val, 10);
@@ -164,11 +177,21 @@ function VendorCombobox({
 
   const filtered = vendors.filter((v) => {
     const vItems = v.itemsSupplied || [];
-    if (vItems.length === 0) return true;
-    if (selectedCategories && selectedCategories.length > 0) {
-      return selectedCategories.some((cat) => vItems.includes(cat));
-    }
-    return true;
+    // Always show the currently selected vendor (so it doesn't disappear when switching)
+    if (value && v.id === value) return true;
+
+    // If no categories selected, show all vendors
+    if (!selectedCategories || selectedCategories.length === 0) return true;
+
+    // Extract category names from itemsSupplied (handle both strings and objects)
+    const itemNames = vItems
+      .map((item) =>
+        typeof item === "string" ? item : item?.name || item?.category || "",
+      )
+      .filter(Boolean);
+
+    // Show vendor if it supplies ANY of the selected material categories
+    return selectedCategories.some((cat) => itemNames.includes(cat));
   });
   const display =
     value === "" ? "General Merchandise" : vendorName || "General Merchandise";
@@ -215,40 +238,69 @@ function VendorCombobox({
               Local Market / Various Vendors
             </span>
           </button>
-          {filtered.map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              className={`combobox-item${value === v.id ? " active" : ""}`}
-              onClick={() => {
-                onChange(v.id, v.name);
-                setOpen(false);
-              }}
-            >
-              {v.name}
-              {v.itemsSupplied?.length > 0 ? (
-                <span
-                  style={{
-                    fontSize: "0.7rem",
-                    color: "var(--gray)",
-                    marginLeft: "0.5rem",
-                  }}
-                >
-                  ({v.itemsSupplied.join(", ")})
-                </span>
-              ) : (
-                <span
-                  style={{
-                    fontSize: "0.7rem",
-                    color: "var(--gray)",
-                    marginLeft: "0.5rem",
-                  }}
-                >
-                  (General)
-                </span>
-              )}
-            </button>
-          ))}
+          {filtered.map((v) => {
+            const vItems = v.itemsSupplied || [];
+            // Handle both string arrays and object arrays for itemsSupplied
+            const itemNames = vItems
+              .map((item) =>
+                typeof item === "string"
+                  ? item
+                  : item?.name || item?.category || "",
+              )
+              .filter(Boolean);
+
+            const matchesCategories =
+              selectedCategories && selectedCategories.length > 0
+                ? selectedCategories.some((cat) => itemNames.includes(cat))
+                : false;
+
+            return (
+              <button
+                key={v.id}
+                type="button"
+                className={`combobox-item${value === v.id ? " active" : ""}`}
+                onClick={() => {
+                  onChange(v.id, v.name);
+                  setOpen(false);
+                }}
+              >
+                {v.name}
+                {itemNames.length > 0 ? (
+                  <span
+                    style={{
+                      fontSize: "0.7rem",
+                      color: matchesCategories ? "#D4A843" : "var(--gray)",
+                      marginLeft: "0.5rem",
+                      fontWeight: matchesCategories ? 600 : 400,
+                    }}
+                  >
+                    ({itemNames.join(", ")})
+                    {matchesCategories && (
+                      <span
+                        style={{
+                          fontSize: "0.6rem",
+                          color: "#D4A843",
+                          marginLeft: "0.3rem",
+                        }}
+                      >
+                        ✓
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      fontSize: "0.7rem",
+                      color: "var(--gray)",
+                      marginLeft: "0.5rem",
+                    }}
+                  >
+                    (General)
+                  </span>
+                )}
+              </button>
+            );
+          })}
           <button
             type="button"
             className="combobox-item combobox-add"
@@ -261,6 +313,166 @@ function VendorCombobox({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Category Card (isolated to prevent cross-column expansion) ─────────────
+function CategoryCard({
+  group,
+  isExpanded,
+  onToggle,
+  selectedMaterials,
+  onToggleMaterial,
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: "12px",
+        overflow: "hidden",
+        background: "rgba(255,255,255,0.02)",
+      }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0.875rem 1rem",
+          background: "rgba(255,255,255,0.04)",
+          border: "none",
+          borderBottom: isExpanded
+            ? "1px solid rgba(255,255,255,0.05)"
+            : "1px solid rgba(255,255,255,0.02)",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
+          }}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            style={{
+              transition: "transform 0.2s",
+              transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+              color: "var(--gray)",
+            }}
+          >
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+          <div>
+            <div
+              style={{
+                fontWeight: 600,
+                color: "var(--white)",
+                fontSize: "1rem",
+              }}
+            >
+              {group.category}
+            </div>
+            <div
+              style={{
+                fontSize: "0.8rem",
+                color: "var(--gray)",
+                marginTop: "0.1rem",
+              }}
+            >
+              {group.materials.length} material
+              {group.materials.length !== 1 ? "s" : ""}
+            </div>
+          </div>
+        </div>
+      </button>
+      {isExpanded &&
+        group.materials.map((m, idx) => {
+          const isSelected = selectedMaterials.some((s) => s.id === m.id);
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => onToggleMaterial(m, isSelected)}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0.75rem 1rem 0.75rem 2.5rem",
+                background: isSelected
+                  ? "rgba(212,168,67,0.12)"
+                  : idx % 2 === 0
+                    ? "rgba(0,0,0,0.15)"
+                    : "transparent",
+                border: "none",
+                borderBottom: "1px solid rgba(255,255,255,0.03)",
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    color: isSelected ? "#D4A843" : "var(--white)",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  {m.name}
+                </div>
+                {m.hasVariants && (
+                  <div
+                    style={{
+                      fontSize: "0.65rem",
+                      color: "var(--gray)",
+                      marginTop: "0.1rem",
+                    }}
+                  >
+                    {m.variantCount || 0} variants
+                  </div>
+                )}
+              </div>
+              {isSelected && (
+                <div
+                  style={{
+                    width: "20px",
+                    height: "20px",
+                    borderRadius: "50%",
+                    background: "#D4A843",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    marginLeft: "0.5rem",
+                  }}
+                >
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#000"
+                    strokeWidth="3"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </div>
+              )}
+            </button>
+          );
+        })}
     </div>
   );
 }
@@ -335,7 +547,7 @@ export default function AddStockModal({
   const [materialTotalAmounts, setMaterialTotalAmounts] = useState({});
   const [infoModal, setInfoModal] = useState(null);
   const [showAddVendor, setShowAddVendor] = useState(false);
-  const [expandedCategories, setExpandedCategories] = useState(new Set());
+  const [expandedCategories, setExpandedCategories] = useState({});
 
   // ── Reset on open ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -345,7 +557,7 @@ export default function AddStockModal({
     setSelectedMaterials([]);
     setStockRowsByMaterial({});
     setApplyAllCost("");
-    setExpandedCategories(new Set());
+    setExpandedCategories({});
     setInvoice({
       vendorId: "",
       vendorName: "General Merchandise",
@@ -406,14 +618,59 @@ export default function AddStockModal({
     }
     setStep(2);
   };
+  const goNext = () => {
+    if (step === 1) {
+      handleGoToStep2();
+    } else if (step === 2) {
+      // Only auto-detect vendor if none is currently selected
+      if (!invoice.vendorId || invoice.vendorId === "") {
+        const selectedMaterialIds = Object.keys(stockRowsByMaterial);
+        const selectedMats = materials.filter((m) =>
+          selectedMaterialIds.includes(m.id),
+        );
+
+        // Find common preferred vendor
+        const vendorCounts = {};
+        selectedMats.forEach((m) => {
+          if (m.preferredVendorId) {
+            vendorCounts[m.preferredVendorId] =
+              (vendorCounts[m.preferredVendorId] || 0) + 1;
+          }
+        });
+
+        let defaultVendorId = "";
+        let defaultVendorName = "General Merchandise";
+
+        // If all materials have the same preferred vendor, use it
+        const vendorEntries = Object.entries(vendorCounts);
+        if (
+          vendorEntries.length === 1 &&
+          vendorEntries[0][1] === selectedMats.length
+        ) {
+          const commonVendorId = vendorEntries[0][0];
+          const commonVendor = vendors.find((v) => v.id === commonVendorId);
+          if (commonVendor) {
+            defaultVendorId = commonVendorId;
+            defaultVendorName = commonVendor.name;
+          }
+        }
+
+        setInvoice((prev) => ({
+          ...prev,
+          vendorId: defaultVendorId,
+          vendorName: defaultVendorName,
+        }));
+      }
+
+      setStep(3);
+    }
+  };
 
   const toggleCategory = (catName) => {
-    setExpandedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(catName)) next.delete(catName);
-      else next.add(catName);
-      return next;
-    });
+    setExpandedCategories((prev) => ({
+      ...prev,
+      [catName]: !prev[catName],
+    }));
   };
 
   // ── Filter & Group Materials ─────────────────────────────────────────────────
@@ -436,12 +693,15 @@ export default function AddStockModal({
   const groupedByCategory = useMemo(() => {
     const groups = {};
     filteredMaterials.forEach((m) => {
-      if (!groups[m.category])
-        groups[m.category] = { category: m.category, materials: [] };
-      groups[m.category].materials.push(m);
+      const cat = m.category || "Uncategorized";
+      if (!groups[cat]) groups[cat] = { category: cat, materials: [] };
+      const variantCount = m.hasVariants
+        ? materials.filter((c) => c.parentId === m.id).length
+        : 0;
+      groups[cat].materials.push({ ...m, variantCount });
     });
     return Object.values(groups);
-  }, [filteredMaterials]);
+  }, [filteredMaterials, materials]);
 
   // ── Generate rows ────────────────────────────────────────────────────────────
   const generateRows = (mat) => {
@@ -512,13 +772,15 @@ export default function AddStockModal({
   const totalGood = totalReceived - totalDamaged;
 
   const categoriesWithQty = useMemo(() => {
-    return selectedMaterials
+    const cats = selectedMaterials
       .filter((m) =>
         (stockRowsByMaterial[m.id] || []).some(
           (r) => (parseInt(r.qty) || 0) > 0,
         ),
       )
       .map((m) => m.category);
+    // Remove duplicates while preserving order
+    return [...new Set(cats)];
   }, [selectedMaterials, stockRowsByMaterial]);
 
   const totalInvoiceValue = useMemo(() => {
@@ -741,15 +1003,26 @@ export default function AddStockModal({
       const vendor = vendors.find((v) => v.id === invoice.vendorId);
       if (vendor) {
         const vItems = vendor.itemsSupplied || [];
+        // Check for duplicates properly (items can be strings or objects {name, uom})
+        const existingItemNames = vItems.map((item) =>
+          typeof item === "string"
+            ? item.toLowerCase()
+            : (item.name || "").toLowerCase(),
+        );
         const missingCats = categoriesWithQty.filter(
-          (cat) => !vItems.includes(cat),
+          (cat) => !existingItemNames.includes(cat.toLowerCase()),
         );
         if (missingCats.length > 0) {
           const updatedVendors = vendors.map((v) =>
             v.id === vendor.id
               ? {
                   ...v,
-                  itemsSupplied: [...new Set([...vItems, ...missingCats])],
+                  itemsSupplied: [
+                    ...new Set([
+                      ...vItems,
+                      ...missingCats.map((cat) => ({ name: cat, uom: "pcs" })),
+                    ]),
+                  ],
                 }
               : v,
           );
@@ -778,7 +1051,7 @@ export default function AddStockModal({
         className="modal-content"
         onClick={(e) => e.stopPropagation()}
         style={{
-          maxWidth: "1100px",
+          maxWidth: "1300px",
           width: "95%",
           height: "90vh",
           maxHeight: "90vh",
@@ -1043,12 +1316,32 @@ export default function AddStockModal({
             display: "flex",
             flexDirection: "column",
             minHeight: 0,
+            width: "100%",
+            alignItems: "stretch",
           }}
         >
           {/* ── STEP 1: Select Materials ─────────────────────────────────── */}
           {step === 1 && (
-            <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem 2rem" }}>
-              <div style={{ position: "relative", marginBottom: "1rem" }}>
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: "2rem 4rem",
+                width: "100%",
+                maxWidth: "1400px",
+                margin: "0 auto",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              {/* Search Bar - Full Width */}
+              <div
+                style={{
+                  position: "relative",
+                  marginBottom: "1.5rem",
+                  width: "100%",
+                }}
+              >
                 <svg
                   width="16"
                   height="16"
@@ -1072,236 +1365,131 @@ export default function AddStockModal({
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search materials by name, SKU, or category..."
+                  placeholder="Search categories or materials..."
                   style={{
                     width: "100%",
-                    padding: "0.75rem 1rem 0.75rem 2.5rem",
+                    padding: "0.875rem 1rem 0.875rem 2.75rem",
                     background: "rgba(255,255,255,0.06)",
                     border: "1px solid var(--border)",
                     borderRadius: "10px",
                     color: "var(--white)",
-                    fontSize: "0.875rem",
+                    fontSize: "0.9rem",
                     outline: "none",
                     boxSizing: "border-box",
                   }}
                 />
               </div>
-              <div
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: "10px",
-                  overflow: "hidden",
-                }}
-              >
-                {groupedByCategory.length === 0 ? (
+
+              {/* Two-Column Layout — explicitly separated */}
+              {groupedByCategory.length === 0 ? (
+                <div
+                  style={{
+                    padding: "3rem",
+                    textAlign: "center",
+                    color: "var(--gray)",
+                    fontSize: "0.875rem",
+                  }}
+                >
+                  {selectableMaterials.length === 0
+                    ? "No materials available. Add materials in Master Data first."
+                    : `No results for "${search}"`}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "1.25rem",
+                    width: "100%",
+                    alignItems: "start",
+                  }}
+                >
+                  {/* LEFT Column */}
                   <div
                     style={{
-                      padding: "2.5rem",
-                      textAlign: "center",
-                      color: "var(--gray)",
-                      fontSize: "0.875rem",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "1.25rem",
                     }}
                   >
-                    {selectableMaterials.length === 0
-                      ? "No materials available. Add materials in Master Data first."
-                      : `No results for "${search}"`}
-                  </div>
-                ) : (
-                  groupedByCategory.map((group) => (
-                    <div key={group.category}>
-                      <button
-                        type="button"
-                        onClick={() => toggleCategory(group.category)}
-                        style={{
-                          width: "100%",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          padding: "0.875rem 1rem",
-                          background: "rgba(255,255,255,0.04)",
-                          border: "none",
-                          borderBottom: "1px solid rgba(255,255,255,0.05)",
-                          cursor: "pointer",
-                          textAlign: "left",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.75rem",
+                    {groupedByCategory
+                      .filter((_, i) => i % 2 === 0)
+                      .map((group, groupIdx) => (
+                        <CategoryCard
+                          key={`left-${group.category}`}
+                          group={group}
+                          isExpanded={!!expandedCategories[group.category]}
+                          onToggle={() => toggleCategory(group.category)}
+                          selectedMaterials={selectedMaterials}
+                          onToggleMaterial={(m, isSelected) => {
+                            if (isSelected) {
+                              setSelectedMaterials((prev) =>
+                                prev.filter((s) => s.id !== m.id),
+                              );
+                              const n = { ...stockRowsByMaterial };
+                              delete n[m.id];
+                              setStockRowsByMaterial(n);
+                            } else {
+                              setSelectedMaterials([...selectedMaterials, m]);
+                              setStockRowsByMaterial({
+                                ...stockRowsByMaterial,
+                                [m.id]: generateRows(m),
+                              });
+                            }
                           }}
-                        >
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            style={{
-                              transition: "transform 0.2s",
-                              transform: expandedCategories.has(group.category)
-                                ? "rotate(90deg)"
-                                : "none",
-                              color: "var(--gray)",
-                            }}
-                          >
-                            <path d="M9 18l6-6-6-6" />
-                          </svg>
-                          <div>
-                            <div
-                              style={{
-                                fontWeight: 600,
-                                color: "var(--white)",
-                                fontSize: "0.85rem",
-                              }}
-                            >
-                              {group.category}
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "0.65rem",
-                                color: "var(--gray)",
-                                marginTop: "0.1rem",
-                              }}
-                            >
-                              {group.materials.length} material
-                              {group.materials.length !== 1 ? "s" : ""}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                      {expandedCategories.has(group.category) &&
-                        group.materials.map((m, idx) => {
-                          const isSelected = selectedMaterials.some(
-                            (s) => s.id === m.id,
-                          );
-                          return (
-                            <button
-                              key={m.id}
-                              type="button"
-                              onClick={() => {
-                                if (isSelected) {
-                                  setSelectedMaterials((prev) =>
-                                    prev.filter((s) => s.id !== m.id),
-                                  );
-                                  const n = { ...stockRowsByMaterial };
-                                  delete n[m.id];
-                                  setStockRowsByMaterial(n);
-                                } else {
-                                  setSelectedMaterials([
-                                    ...selectedMaterials,
-                                    m,
-                                  ]);
-                                  setStockRowsByMaterial({
-                                    ...stockRowsByMaterial,
-                                    [m.id]: generateRows(m),
-                                  });
-                                }
-                              }}
-                              style={{
-                                width: "100%",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                padding: "0.75rem 1rem 0.75rem 2.5rem",
-                                background: isSelected
-                                  ? "rgba(212,168,67,0.12)"
-                                  : idx % 2 === 0
-                                    ? "rgba(0,0,0,0.15)"
-                                    : "transparent",
-                                border: "none",
-                                borderBottom:
-                                  "1px solid rgba(255,255,255,0.03)",
-                                cursor: "pointer",
-                                textAlign: "left",
-                              }}
-                            >
-                              <div style={{ flex: 1 }}>
-                                <div
-                                  style={{
-                                    fontWeight: 600,
-                                    color: isSelected
-                                      ? "#D4A843"
-                                      : "var(--white)",
-                                    fontSize: "0.85rem",
-                                  }}
-                                >
-                                  {m.name}
-                                </div>
-                                {m.sku && (
-                                  <div
-                                    style={{
-                                      fontSize: "0.65rem",
-                                      color: "var(--gray)",
-                                      fontFamily: "monospace",
-                                      marginTop: "0.1rem",
-                                    }}
-                                  >
-                                    SKU: {m.sku}
-                                  </div>
-                                )}
-                                {m.hasVariants && (
-                                  <div
-                                    style={{
-                                      fontSize: "0.65rem",
-                                      color: "var(--gray)",
-                                      marginTop: "0.1rem",
-                                    }}
-                                  >
-                                    {
-                                      materials.filter(
-                                        (c) => c.parentId === m.id,
-                                      ).length
-                                    }{" "}
-                                    variants
-                                  </div>
-                                )}
-                              </div>
-                              {isSelected && (
-                                <div
-                                  style={{
-                                    width: "20px",
-                                    height: "20px",
-                                    borderRadius: "50%",
-                                    background: "#D4A843",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    flexShrink: 0,
-                                    marginLeft: "0.5rem",
-                                  }}
-                                >
-                                  <svg
-                                    width="11"
-                                    height="11"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="#000"
-                                    strokeWidth="3"
-                                  >
-                                    <polyline points="20 6 9 17 4 12" />
-                                  </svg>
-                                </div>
-                              )}
-                            </button>
-                          );
-                        })}
-                    </div>
-                  ))
-                )}
-              </div>
+                        />
+                      ))}
+                  </div>
+                  {/* RIGHT Column */}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "1.25rem",
+                    }}
+                  >
+                    {groupedByCategory
+                      .filter((_, i) => i % 2 === 1)
+                      .map((group, groupIdx) => (
+                        <CategoryCard
+                          key={`right-${group.category}`}
+                          group={group}
+                          isExpanded={!!expandedCategories[group.category]}
+                          onToggle={() => toggleCategory(group.category)}
+                          selectedMaterials={selectedMaterials}
+                          onToggleMaterial={(m, isSelected) => {
+                            if (isSelected) {
+                              setSelectedMaterials((prev) =>
+                                prev.filter((s) => s.id !== m.id),
+                              );
+                              const n = { ...stockRowsByMaterial };
+                              delete n[m.id];
+                              setStockRowsByMaterial(n);
+                            } else {
+                              setSelectedMaterials([...selectedMaterials, m]);
+                              setStockRowsByMaterial({
+                                ...stockRowsByMaterial,
+                                [m.id]: generateRows(m),
+                              });
+                            }
+                          }}
+                        />
+                      ))}
+                  </div>
+                </div>
+              )}
               {selectedMaterials.length === 0 && (
                 <p
                   style={{
+                    gridColumn: "1 / -1",
                     fontSize: "0.78rem",
                     color: "var(--gray)",
-                    marginTop: "0.875rem",
+                    marginTop: "0.5rem",
                     textAlign: "center",
                   }}
                 >
-                  Select one or more materials to receive.
+                  Select one or more materials to receive. All variant
+                  combinations will be shown automatically.
                 </p>
               )}
             </div>
@@ -1313,18 +1501,20 @@ export default function AddStockModal({
               style={{
                 flex: 1,
                 display: "grid",
-                gridTemplateColumns: "1fr 380px",
+                gridTemplateColumns: "1fr 420px",
                 minHeight: 0,
-                overflow: "hidden",
                 borderTop: "1px solid rgba(255,255,255,0.08)",
+                overflow: "hidden",
               }}
             >
-              {/* LEFT */}
+              {/* LEFT — Stock Entry Table */}
               <div
                 style={{
                   padding: "1.5rem 2rem",
                   overflowY: "auto",
                   background: "#0E0E0E",
+                  minHeight: 0,
+                  height: "100%",
                 }}
               >
                 <div
@@ -1382,12 +1572,19 @@ export default function AddStockModal({
                     </div>
                   </div>
                 </div>
+
+                {/* Multiple tables - one per material */}
                 {selectedMaterials.map((mat, mIdx) => {
                   const rows = stockRowsByMaterial[mat.id] || [];
-                  const matReceived = rows.reduce(
+                  const totalMaterialQty = rows.reduce(
                     (s, r) => s + (parseInt(r.qty) || 0),
                     0,
                   );
+                  const totalMaterialDamaged = rows.reduce(
+                    (s, r) => s + (parseInt(r.damaged) || 0),
+                    0,
+                  );
+
                   return (
                     <div
                       key={mat.id}
@@ -1398,6 +1595,7 @@ export default function AddStockModal({
                             : "1.25rem",
                       }}
                     >
+                      {/* Material Header */}
                       <div
                         style={{
                           display: "flex",
@@ -1447,11 +1645,14 @@ export default function AddStockModal({
                               color: "var(--gray)",
                             }}
                           >
-                            {rows.length} Variant{rows.length !== 1 ? "s" : ""}
-                            {matReceived > 0 ? ` • ${matReceived} pcs` : ""}
+                            {rows.length} Variant{rows.length !== 1 ? "s" : ""}{" "}
+                            {totalMaterialQty > 0 &&
+                              `• ${totalMaterialQty} pcs`}
                           </div>
                         </div>
                       </div>
+
+                      {/* Variant Table for this material */}
                       <div
                         style={{
                           background: "rgba(255,255,255,0.02)",
@@ -1462,7 +1663,11 @@ export default function AddStockModal({
                         }}
                       >
                         <table
-                          style={{ width: "100%", borderCollapse: "collapse" }}
+                          style={{
+                            width: "100%",
+                            borderCollapse: "collapse",
+                            tableLayout: "fixed",
+                          }}
                         >
                           <thead>
                             <tr
@@ -1476,70 +1681,45 @@ export default function AddStockModal({
                                 style={{
                                   padding: "0.875rem 1rem",
                                   textAlign: "left",
-                                  fontSize: "0.6rem",
+                                  fontSize: "0.65rem",
                                   fontWeight: 700,
                                   color: "var(--gray)",
                                   textTransform: "uppercase",
                                   letterSpacing: "0.08em",
+                                  width: "auto",
                                 }}
                               >
-                                Item
+                                Variant Name
                               </th>
                               <th
                                 style={{
                                   padding: "0.875rem 0.75rem",
                                   textAlign: "center",
-                                  fontSize: "0.6rem",
-                                  fontWeight: 700,
-                                  color: "var(--gray)",
-                                  textTransform: "uppercase",
-                                  letterSpacing: "0.08em",
-                                  width: "130px",
-                                }}
-                              >
-                                Qty Received
-                              </th>
-                              <th
-                                style={{
-                                  padding: "0.875rem 0.75rem",
-                                  textAlign: "center",
-                                  fontSize: "0.6rem",
-                                  fontWeight: 700,
-                                  color: "var(--gray)",
-                                  textTransform: "uppercase",
-                                  letterSpacing: "0.08em",
-                                  width: "130px",
-                                }}
-                              >
-                                Qty Received
-                              </th>
-                              <th
-                                style={{
-                                  padding: "0.875rem 0.75rem",
-                                  textAlign: "center",
-                                  fontSize: "0.6rem",
+                                  fontSize: "0.65rem",
                                   fontWeight: 700,
                                   color: "var(--gray)",
                                   textTransform: "uppercase",
                                   letterSpacing: "0.08em",
                                   width: "110px",
+                                  minWidth: "110px",
                                 }}
                               >
-                                Damaged
+                                Qty Received
                               </th>
                               <th
                                 style={{
                                   padding: "0.875rem 0.75rem",
                                   textAlign: "center",
-                                  fontSize: "0.6rem",
+                                  fontSize: "0.65rem",
                                   fontWeight: 700,
                                   color: "var(--gray)",
                                   textTransform: "uppercase",
                                   letterSpacing: "0.08em",
-                                  width: "160px",
+                                  width: "100px",
+                                  minWidth: "100px",
                                 }}
                               >
-                                Damage Type
+                                Damaged
                               </th>
                             </tr>
                           </thead>
@@ -1549,7 +1729,7 @@ export default function AddStockModal({
                               const d = parseInt(row.damaged) || 0;
                               return (
                                 <tr
-                                  key={row.materialId}
+                                  key={row.variantLabel}
                                   style={{
                                     background:
                                       idx % 2 === 0
@@ -1562,31 +1742,32 @@ export default function AddStockModal({
                                   <td style={{ padding: "1rem" }}>
                                     <div
                                       style={{
-                                        fontWeight: 600,
-                                        color: "#E5E2E1",
-                                        fontSize: "0.85rem",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "0.75rem",
                                       }}
                                     >
-                                      {row.variantLabel}
-                                    </div>
-                                    <div
-                                      style={{
-                                        fontSize: "0.6rem",
-                                        color: "var(--gray)",
-                                        fontFamily: "monospace",
-                                        marginTop: "0.1rem",
-                                      }}
-                                    >
-                                      SKU: {row.sku || "—"}
-                                    </div>
-                                    <div
-                                      style={{
-                                        fontSize: "0.58rem",
-                                        color: "var(--gray)",
-                                        marginTop: "0.15rem",
-                                      }}
-                                    >
-                                      Min Stock: {row.minStockLevel || "10"}
+                                      <div>
+                                        <div
+                                          style={{
+                                            fontWeight: 600,
+                                            color: "#E5E2E1",
+                                            fontSize: "0.85rem",
+                                          }}
+                                        >
+                                          {row.variantLabel}
+                                        </div>
+                                        <div
+                                          style={{
+                                            fontSize: "0.65rem",
+                                            color: "var(--gray)",
+                                            fontFamily: "monospace",
+                                            marginTop: "0.1rem",
+                                          }}
+                                        >
+                                          SKU: {row.sku || "—"}
+                                        </div>
+                                      </div>
                                     </div>
                                   </td>
                                   <td
@@ -1596,19 +1777,22 @@ export default function AddStockModal({
                                     }}
                                   >
                                     <IntegerInput
+                                      className="form-input"
                                       value={row.qty}
-                                      onChange={(val) => {
-                                        const n = [...rows];
-                                        n[idx] = { ...row, qty: val };
+                                      onChange={(e) => {
+                                        const newRows = [...rows];
+                                        newRows[idx] = {
+                                          ...row,
+                                          qty: e.target.value,
+                                        };
                                         setStockRowsByMaterial({
                                           ...stockRowsByMaterial,
-                                          [mat.id]: n,
+                                          [mat.id]: newRows,
                                         });
                                       }}
                                       min={0}
                                       max={99999}
                                       placeholder="0"
-                                      className="form-input"
                                       style={{
                                         textAlign: "center",
                                         width: "80px",
@@ -1620,7 +1804,6 @@ export default function AddStockModal({
                                           q > 0 ? "#D4A843" : "var(--gray)",
                                         fontWeight: 700,
                                         padding: "0.5rem",
-                                        fontSize: "0.9rem",
                                       }}
                                     />
                                   </td>
@@ -1631,98 +1814,44 @@ export default function AddStockModal({
                                     }}
                                   >
                                     <IntegerInput
+                                      className="form-input"
                                       value={row.damaged}
-                                      onChange={(val) => {
-                                        const n = [...rows];
-                                        n[idx] = { ...row, damaged: val };
+                                      onChange={(e) => {
+                                        const newRows = [...rows];
+                                        newRows[idx] = {
+                                          ...row,
+                                          damaged: e.target.value,
+                                        };
                                         setStockRowsByMaterial({
                                           ...stockRowsByMaterial,
-                                          [mat.id]: n,
+                                          [mat.id]: newRows,
                                         });
                                       }}
                                       min={0}
                                       max={99999}
                                       placeholder="0"
                                       qtyValue={row.qty}
-                                      className="form-input"
+                                      disabled={q === 0}
                                       style={{
                                         textAlign: "center",
                                         width: "80px",
-                                        background: "rgba(255,255,255,0.06)",
+                                        background:
+                                          q === 0
+                                            ? "rgba(255,255,255,0.02)"
+                                            : "rgba(255,255,255,0.06)",
                                         border:
-                                          "1px solid rgba(255,255,255,0.1)",
+                                          q === 0
+                                            ? "1px solid rgba(255,255,255,0.05)"
+                                            : "1px solid rgba(255,255,255,0.1)",
                                         borderRadius: "8px",
                                         color:
                                           d > 0 ? "#F87171" : "var(--gray)",
                                         fontWeight: 600,
                                         padding: "0.5rem",
-                                        fontSize: "0.9rem",
+                                        cursor:
+                                          q === 0 ? "not-allowed" : "auto",
                                       }}
                                     />
-                                  </td>
-                                  <td
-                                    style={{
-                                      padding: "1rem 0.75rem",
-                                      textAlign: "center",
-                                    }}
-                                  >
-                                    {d > 0 ? (
-                                      <select
-                                        value={row.damageType || ""}
-                                        onChange={(e) => {
-                                          const n = [...rows];
-                                          n[idx] = {
-                                            ...row,
-                                            damageType: e.target.value,
-                                          };
-                                          setStockRowsByMaterial({
-                                            ...stockRowsByMaterial,
-                                            [mat.id]: n,
-                                          });
-                                        }}
-                                        style={{
-                                          width: "100%",
-                                          padding: "0.5rem",
-                                          background: "rgba(255,255,255,0.06)",
-                                          border: !row.damageType
-                                            ? "1px solid #f59e0b"
-                                            : "1px solid rgba(255,255,255,0.1)",
-                                          borderRadius: "8px",
-                                          color: row.damageType
-                                            ? "#E5E2E1"
-                                            : "#f59e0b",
-                                          fontSize: "0.72rem",
-                                          fontWeight: 600,
-                                          outline: "none",
-                                          cursor: "pointer",
-                                        }}
-                                      >
-                                        <option value="" disabled>
-                                          Select type
-                                        </option>
-                                        {STOCK_IN_DAMAGE_TYPES.map((dt) => (
-                                          <option
-                                            key={dt.id}
-                                            value={dt.id}
-                                            style={{
-                                              background: "#1a1a1a",
-                                              color: "#E5E2E1",
-                                            }}
-                                          >
-                                            {dt.label}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    ) : (
-                                      <span
-                                        style={{
-                                          color: "var(--gray)",
-                                          fontSize: "0.7rem",
-                                        }}
-                                      >
-                                        —
-                                      </span>
-                                    )}
                                   </td>
                                 </tr>
                               );
@@ -1733,6 +1862,8 @@ export default function AddStockModal({
                     </div>
                   );
                 })}
+
+                {/* Summary Cards */}
                 <div
                   style={{
                     display: "grid",
@@ -1797,7 +1928,7 @@ export default function AddStockModal({
                         letterSpacing: "0.08em",
                       }}
                     >
-                      Stock Wastage – Damaged Upon Arrival
+                      Stock Wastage - Damaged Upon Arrival
                     </div>
                     <div
                       style={{
@@ -1820,13 +1951,16 @@ export default function AddStockModal({
                   </div>
                 </div>
               </div>
-              {/* RIGHT — Invoice Preview placeholder */}
+
+              {/* RIGHT — Invoice Details Preview */}
               <div
                 style={{
-                  padding: "1.5rem 1.5rem",
+                  padding: "1.5rem 2rem",
                   background: "#131313",
                   borderLeft: "1px solid rgba(255,255,255,0.08)",
                   overflowY: "auto",
+                  minHeight: 0,
+                  height: "100%",
                 }}
               >
                 <div
@@ -1878,6 +2012,7 @@ export default function AddStockModal({
                     </div>
                   </div>
                 </div>
+
                 <div
                   style={{
                     display: "flex",
@@ -1899,7 +2034,7 @@ export default function AddStockModal({
                         marginBottom: "0.5rem",
                       }}
                     >
-                      Vendor
+                      Supplier
                     </label>
                     <div
                       style={{
@@ -1977,6 +2112,7 @@ export default function AddStockModal({
                     </div>
                   </div>
                 </div>
+
                 <div
                   style={{
                     marginTop: "2rem",
@@ -1994,7 +2130,7 @@ export default function AddStockModal({
                     fill="none"
                     stroke="#D4A843"
                     strokeWidth="2"
-                    style={{ margin: "0 auto 0.5rem", display: "block" }}
+                    style={{ margin: "0 auto 0.5rem" }}
                   >
                     <circle cx="12" cy="12" r="10" />
                     <path d="M12 16v-4M12 8h.01" />
@@ -2019,9 +2155,8 @@ export default function AddStockModal({
               style={{
                 flex: 1,
                 display: "grid",
-                gridTemplateColumns: "1fr 380px",
+                gridTemplateColumns: "1fr 420px",
                 minHeight: 0,
-                overflow: "hidden",
                 borderTop: "1px solid rgba(255,255,255,0.08)",
               }}
             >
@@ -2031,6 +2166,8 @@ export default function AddStockModal({
                   padding: "1.5rem 2rem",
                   overflowY: "auto",
                   background: "#0E0E0E",
+                  minHeight: 0,
+                  height: "100%",
                 }}
               >
                 <div
@@ -2454,6 +2591,8 @@ export default function AddStockModal({
                   background: "#131313",
                   borderLeft: "1px solid rgba(255,255,255,0.08)",
                   overflowY: "auto",
+                  minHeight: 0,
+                  height: "100%",
                 }}
               >
                 <div
@@ -2534,7 +2673,11 @@ export default function AddStockModal({
                       }
                       vendors={vendors}
                       selectedCategories={categoriesWithQty}
-                      onAddNew={() => setShowAddVendor(true)}
+                      onAddNew={() => {
+                        if (onAddVendor) {
+                          onAddVendor(categoriesWithQty);
+                        }
+                      }}
                     />
                     {categoriesWithQty.length > 0 && (
                       <div

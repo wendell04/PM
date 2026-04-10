@@ -3,6 +3,8 @@
 import CustomDropdown from "@/app/components/CustomDropdown";
 import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
+import BOMCardList from "./BOMCardList";
+import BOMFormModal from "./BOMFormModal";
 
 // ── LocalStorage Keys ──────────────────────────────────────────────────────────
 const MATERIALS_KEY = "pmp_materials";
@@ -934,6 +936,11 @@ function MaterialMasterTab({
   const [showAddModal, setShowAddModal] = useState(false);
   const [editMaterial, setEditMaterial] = useState(null);
   const [viewMaterial, setViewMaterial] = useState(null);
+  const [infoModal, setInfoModal] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+  });
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     title: "",
@@ -945,8 +952,63 @@ function MaterialMasterTab({
   const [showCategoryInput, setShowCategoryInput] = useState(false);
 
   useEffect(() => {
-    setVendors(getVendors());
-  }, []);
+    let vendorsData = getVendors();
+
+    // Cleanup: Remove duplicate items from itemsSupplied (fix existing data)
+    vendorsData = vendorsData.map((v) => {
+      const items = v.itemsSupplied || [];
+      if (items.length === 0) return v;
+
+      const seen = new Set();
+      const deduped = [];
+      items.forEach((item) => {
+        const name = (
+          typeof item === "string" ? item : item.name || ""
+        ).toLowerCase();
+        if (!seen.has(name)) {
+          seen.add(name);
+          deduped.push(
+            typeof item === "string" ? { name: item, uom: "pcs" } : item,
+          );
+        }
+      });
+
+      return deduped.length !== items.length
+        ? { ...v, itemsSupplied: deduped }
+        : v;
+    });
+
+    // Save cleaned data if duplicates were found
+    const hasDuplicates = vendorsData.some((v, i) => {
+      const origItems = getVendors()[i]?.itemsSupplied || [];
+      return v.itemsSupplied?.length !== origItems?.length;
+    });
+
+    if (hasDuplicates) {
+      saveVendors(vendorsData);
+    }
+
+    setVendors(vendorsData);
+
+    // Listen for storage events from other tabs AND focus events for same-tab navigation
+    const handleStorageChange = (e) => {
+      if (e.key === MATERIALS_KEY) {
+        onMaterialsChange(getMaterials());
+      }
+    };
+
+    // Refetch materials when tab gains focus (user navigates back from purchasing)
+    const handleFocus = () => {
+      onMaterialsChange(getMaterials());
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [onMaterialsChange]);
 
   // ── Batch Helper: Compute stock from batches ──────────────────────────────
   const getStockQty = (material) => {
@@ -979,13 +1041,21 @@ function MaterialMasterTab({
       setShowCategoryInput(false);
       return;
     }
-    // Add to all vendors' itemsSupplied
-    const updatedVendors = vendors.map((v) => ({
-      ...v,
-      itemsSupplied: v.itemsSupplied.includes(trimmed)
-        ? v.itemsSupplied
-        : [...(v.itemsSupplied || []), trimmed],
-    }));
+    // Add to all vendors' itemsSupplied - check for duplicates properly (items are objects {name, uom})
+    const updatedVendors = vendors.map((v) => {
+      const items = v.itemsSupplied || [];
+      const alreadyExists = items.some(
+        (item) =>
+          (typeof item === "string" ? item : item.name).toLowerCase() ===
+          trimmed.toLowerCase(),
+      );
+      return {
+        ...v,
+        itemsSupplied: alreadyExists
+          ? items
+          : [...items, { name: trimmed, uom: "pcs" }],
+      };
+    });
     setVendors(updatedVendors);
     saveVendors(updatedVendors);
     if (onVendorsChange) onVendorsChange(updatedVendors);
@@ -1894,6 +1964,12 @@ function MaterialMasterTab({
         message={confirmModal.message}
         confirmLabel="Delete"
         confirmClass="btn-danger"
+      />
+      <InfoModal
+        isOpen={infoModal.isOpen}
+        onClose={() => setInfoModal({ isOpen: false, title: "", message: "" })}
+        title={infoModal.title}
+        message={infoModal.message}
       />
 
       {/* Category Input Modal */}
@@ -6519,15 +6595,62 @@ function BOMTab() {
     setMaterials(getMaterials());
   }, []);
 
+  // Helper function to generate abbreviation from material name
+  const abbreviateMaterial = (name) => {
+    if (!name) return "";
+    const parts = name.split(/[-\s]+/);
+
+    let abbr = "";
+    for (const part of parts) {
+      if (part.length === 0) continue;
+      if (
+        ["a", "an", "the", "of", "for", "with", "in", "on"].includes(
+          part.toLowerCase(),
+        )
+      )
+        continue;
+      abbr += part[0].toUpperCase();
+      if (abbr.length >= 4) break;
+    }
+
+    const numbers = name.match(/\d+/g);
+    if (numbers && abbr.length > 0) {
+      abbr += numbers[0].substring(0, 3);
+    }
+
+    return abbr || name.substring(0, 4).toUpperCase();
+  };
+
+  // Helper function to generate SKU on-the-fly from BOM components
+  const generateBomSku = (bom) => {
+    if (!bom || !bom.components || bom.components.length === 0)
+      return "BOM-NEW";
+
+    const materialNames = bom.components
+      .map((c) => {
+        const mat = materials.find((m) => m.id === c.materialId);
+        return mat?.name || "";
+      })
+      .filter((name) => name);
+
+    if (materialNames.length === 0) return "BOM-NEW";
+
+    const abbreviations = materialNames.map((name) => abbreviateMaterial(name));
+    const combined = abbreviations.join("-");
+
+    return `BOM-${combined}`;
+  };
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return boms.filter(
       (b) =>
         !q ||
         b.productName.toLowerCase().includes(q) ||
-        (b.sku || "").toLowerCase().includes(q),
+        generateBomSku(b).toLowerCase().includes(q) ||
+        (b.variantGroup || "").toLowerCase().includes(q),
     );
-  }, [boms, search]);
+  }, [boms, search, materials]);
 
   const handleDelete = (id) => {
     setConfirmModal({
@@ -6550,19 +6673,122 @@ function BOMTab() {
   };
 
   const handleSave = (bom) => {
+    // Auto-calculate total cost from components using FIFO cost
+    const totalCost = (bom.components || []).reduce((sum, c) => {
+      const mat = materials.find((m) => m.id === c.materialId);
+      // Use FIFO cost - simulate consuming from oldest batches first
+      if (!mat || !mat.batches || mat.batches.length === 0) {
+        return sum + (mat?.baseCost || 0) * (c.qty || 1);
+      }
+
+      const activeBatches = mat.batches
+        .filter((b) => (b.remainingQty || 0) > 0)
+        .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
+      if (activeBatches.length === 0) {
+        return sum + (mat?.baseCost || 0) * (c.qty || 1);
+      }
+
+      let remaining = c.qty || 1;
+      let batchCost = 0;
+
+      for (const batch of activeBatches) {
+        if (remaining <= 0) break;
+        const take = Math.min(remaining, batch.remainingQty || 0);
+        batchCost += take * (batch.unitCost || 0);
+        remaining -= take;
+      }
+
+      // If backorder, use average for remaining
+      if (remaining > 0) {
+        const totalQty = activeBatches.reduce(
+          (s, b) => s + (b.remainingQty || 0),
+          0,
+        );
+        const totalValue = activeBatches.reduce(
+          (s, b) => s + (b.remainingQty || 0) * (b.unitCost || 0),
+          0,
+        );
+        const avgCost = totalQty > 0 ? totalValue / totalQty : 0;
+        batchCost += remaining * avgCost;
+      }
+
+      return sum + batchCost;
+    }, 0);
+
     let updated;
     if (editBOM) {
-      updated = boms.map((b) => (b.id === bom.id ? bom : b));
+      updated = boms.map((b) => (b.id === bom.id ? { ...bom, totalCost } : b));
     } else {
       updated = [
         ...boms,
         {
           ...bom,
+          totalCost,
           id: `bom-${Date.now()}`,
           createdAt: new Date().toISOString(),
         },
       ];
     }
+    setBOMs(updated);
+    saveBOMs(updated);
+    setShowAddModal(false);
+    setEditBOM(null);
+  };
+
+  // Handler for batch-saving multiple BOMs at once (from "Add All Variants")
+  const handleSaveBatch = (newBOMs) => {
+    const processedBOMs = newBOMs.map((b) => {
+      // Calculate total cost from components using FIFO cost
+      const totalCost = (b.components || []).reduce((sum, c) => {
+        const mat = materials.find((m) => m.id === c.materialId);
+        // Use FIFO cost - simulate consuming from oldest batches first
+        if (!mat || !mat.batches || mat.batches.length === 0) {
+          return sum + (mat?.baseCost || 0) * (c.qty || 1);
+        }
+
+        const activeBatches = mat.batches
+          .filter((b) => (b.remainingQty || 0) > 0)
+          .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
+        if (activeBatches.length === 0) {
+          return sum + (mat?.baseCost || 0) * (c.qty || 1);
+        }
+
+        let remaining = c.qty || 1;
+        let batchCost = 0;
+
+        for (const batch of activeBatches) {
+          if (remaining <= 0) break;
+          const take = Math.min(remaining, batch.remainingQty || 0);
+          batchCost += take * (batch.unitCost || 0);
+          remaining -= take;
+        }
+
+        // If backorder, use average for remaining
+        if (remaining > 0) {
+          const totalQty = activeBatches.reduce(
+            (s, b) => s + (b.remainingQty || 0),
+            0,
+          );
+          const totalValue = activeBatches.reduce(
+            (s, b) => s + (b.remainingQty || 0) * (b.unitCost || 0),
+            0,
+          );
+          const avgCost = totalQty > 0 ? totalValue / totalQty : 0;
+          batchCost += remaining * avgCost;
+        }
+
+        return sum + batchCost;
+      }, 0);
+
+      return {
+        ...b,
+        totalCost,
+        id: `bom-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        createdAt: new Date().toISOString(),
+      };
+    });
+
+    const updated = [...boms, ...processedBOMs];
     setBOMs(updated);
     saveBOMs(updated);
     setShowAddModal(false);
@@ -6597,15 +6823,7 @@ function BOMTab() {
 
   return (
     <div>
-      <div className="inventory-summary" style={{ marginBottom: "1.5rem" }}>
-        <div className="summary-card">
-          <div className="summary-content">
-            <span className="summary-value">{boms.length}</span>
-            <span className="summary-label">Total BOMs</span>
-          </div>
-        </div>
-      </div>
-
+      {/* Toolbar */}
       <div className="inventory-toolbar" style={{ marginBottom: "1rem" }}>
         <div className="search-wrapper" style={{ maxWidth: "300px" }}>
           <span className="search-icon">
@@ -6654,194 +6872,26 @@ function BOMTab() {
         </button>
       </div>
 
-      <div
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: "12px",
-          overflow: "hidden",
-          background: "var(--dark)",
+      <BOMCardList
+        boms={filtered}
+        materials={materials}
+        search=""
+        onEdit={(b) => {
+          setEditBOM(b);
+          setShowAddModal(true);
         }}
-      >
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "0.85rem",
-          }}
-        >
-          <thead>
-            <tr
-              style={{
-                background: "rgba(0,0,0,0.3)",
-                borderBottom: "2px solid var(--border)",
-              }}
-            >
-              <th
-                style={{
-                  padding: "0.875rem 1rem",
-                  textAlign: "left",
-                  color: "var(--gray)",
-                  fontWeight: 700,
-                  fontSize: "0.65rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                }}
-              >
-                Product
-              </th>
-              <th
-                style={{
-                  padding: "0.875rem 1rem",
-                  textAlign: "center",
-                  color: "var(--gray)",
-                  fontWeight: 700,
-                  fontSize: "0.65rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                }}
-              >
-                Components
-              </th>
-              <th
-                style={{
-                  padding: "0.875rem 1rem",
-                  textAlign: "right",
-                  color: "var(--gray)",
-                  fontWeight: 700,
-                  fontSize: "0.65rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                }}
-              >
-                Total Cost
-              </th>
-              <th
-                style={{
-                  padding: "0.875rem 1rem",
-                  textAlign: "center",
-                  color: "var(--gray)",
-                  fontWeight: 700,
-                  fontSize: "0.65rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                  width: "100px",
-                }}
-              >
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  style={{
-                    padding: "3rem",
-                    textAlign: "center",
-                    color: "var(--gray)",
-                  }}
-                >
-                  {boms.length === 0
-                    ? 'No BOMs yet. Click "Add BOM" to define product recipes.'
-                    : "No BOMs match your search."}
-                </td>
-              </tr>
-            ) : (
-              filtered.map((b) => {
-                const totalCost = (b.components || []).reduce((sum, c) => {
-                  const mat = materials.find((m) => m.id === c.materialId);
-                  return sum + (mat?.baseCost || 0) * (c.qty || 1);
-                }, 0);
-                return (
-                  <tr
-                    key={b.id}
-                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
-                  >
-                    <td style={{ padding: "0.875rem 1rem" }}>
-                      <div style={{ fontWeight: 700, color: "#E5E2E1" }}>
-                        {b.productName}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.7rem",
-                          color: "var(--gray)",
-                          fontFamily: "monospace",
-                        }}
-                      >
-                        {b.sku || "—"}
-                      </div>
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.875rem 1rem",
-                        textAlign: "center",
-                        color: "#E5E2E1",
-                      }}
-                    >
-                      {(b.components || []).length} items
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.875rem 1rem",
-                        textAlign: "right",
-                        fontWeight: 700,
-                        color: "#D4A843",
-                      }}
-                    >
-                      ₱
-                      {totalCost.toLocaleString("en-PH", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td
-                      style={{ padding: "0.875rem 1rem", textAlign: "center" }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "0.35rem",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <button
-                          onClick={() => {
-                            setEditBOM(b);
-                            setShowAddModal(true);
-                          }}
-                          style={{
-                            background: "rgba(255,255,255,0.05)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "6px",
-                            padding: "0.4rem",
-                            cursor: "pointer",
-                            color: "var(--gray)",
-                          }}
-                        >
-                          <EditIcon />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(b.id)}
-                          style={{
-                            background: "rgba(239,68,68,0.1)",
-                            border: "1px solid rgba(239,68,68,0.2)",
-                            borderRadius: "6px",
-                            padding: "0.4rem",
-                            cursor: "pointer",
-                            color: "#f87171",
-                          }}
-                        >
-                          <TrashIcon />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+        onDelete={handleDelete}
+        onDuplicate={(b) => {
+          setEditBOM({
+            ...b,
+            id: undefined,
+            productName: `${b.productName} (Copy)`,
+            sku: "",
+            createdAt: new Date().toISOString(),
+          });
+          setShowAddModal(true);
+        }}
+      />
 
       {showAddModal && (
         <BOMFormModal
@@ -6852,6 +6902,7 @@ function BOMTab() {
             setEditBOM(null);
           }}
           onSave={handleSave}
+          onSaveBatch={handleSaveBatch}
         />
       )}
       <ConfirmModal
@@ -6870,316 +6921,6 @@ function BOMTab() {
         confirmLabel="Delete"
         confirmClass="btn-danger"
       />
-    </div>
-  );
-}
-
-function BOMFormModal({ bom, materials, onClose, onSave }) {
-  const [form, setForm] = useState({
-    productName: "",
-    sku: "",
-    components: [],
-  });
-  const [errors, setErrors] = useState({});
-  useEffect(() => {
-    if (bom)
-      setForm({
-        productName: bom.productName || "",
-        sku: bom.sku || "",
-        components: bom.components || [],
-      });
-  }, [bom]);
-  const addComponent = () =>
-    setForm((p) => ({
-      ...p,
-      components: [...p.components, { materialId: "", qty: 1 }],
-    }));
-  const removeComponent = (idx) =>
-    setForm((p) => ({
-      ...p,
-      components: p.components.filter((_, i) => i !== idx),
-    }));
-  const updateComponent = (idx, field, value) =>
-    setForm((p) => {
-      const comps = [...p.components];
-      comps[idx] = { ...comps[idx], [field]: value };
-      return { ...p, components: comps };
-    });
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const newErrors = {};
-    if (!form.productName.trim())
-      newErrors.productName = "Product name is required";
-    if (form.components.length === 0)
-      newErrors.components = "Add at least one component";
-    const emptyComponent = form.components.some((c) => !c.materialId);
-    if (emptyComponent)
-      newErrors.material = "Please select a material for all components";
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-    setErrors({});
-    onSave({ ...bom, ...form });
-  };
-  const inputStyle = {
-    width: "100%",
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.1)",
-    borderRadius: "8px",
-    color: "#E5E2E1",
-    padding: "0.625rem 0.75rem",
-    fontSize: "0.85rem",
-    outline: "none",
-  };
-
-  return (
-    <div className="modal-overlay">
-      <div
-        className="modal-content"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: "640px" }}
-      >
-        <div className="modal-header">
-          <h2 className="modal-title">{bom ? "Edit BOM" : "Add BOM"}</h2>
-          <button className="modal-close" onClick={onClose}>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <form onSubmit={handleSubmit}>
-          <div
-            className="modal-body"
-            style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
-          >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 1fr",
-                gap: "1rem",
-              }}
-            >
-              <div>
-                <label className="form-label">
-                  Product Name <span className="required">*</span>
-                </label>
-                <input
-                  type="text"
-                  style={{
-                    ...inputStyle,
-                    borderColor: errors.productName ? "#ef4444" : undefined,
-                  }}
-                  value={form.productName}
-                  onChange={(e) => {
-                    setForm((p) => ({
-                      ...p,
-                      productName: e.target.value.slice(0, 100),
-                    }));
-                    if (errors.productName)
-                      setErrors((er) => ({ ...er, productName: "" }));
-                  }}
-                  placeholder="Custom Mug 11oz"
-                  required
-                  maxLength={100}
-                />
-                {errors.productName && (
-                  <span
-                    style={{
-                      fontSize: "0.72rem",
-                      color: "#ef4444",
-                      marginTop: "0.2rem",
-                      display: "block",
-                    }}
-                  >
-                    {errors.productName}
-                  </span>
-                )}
-              </div>
-              <div>
-                <label className="form-label">SKU</label>
-                <input
-                  type="text"
-                  style={inputStyle}
-                  value={form.sku}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      sku: e.target.value
-                        .replace(/[^A-Za-z0-9\-]/g, "")
-                        .slice(0, 50),
-                    }))
-                  }
-                  placeholder="Auto"
-                  maxLength={50}
-                />
-              </div>
-            </div>
-            <div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "0.75rem",
-                }}
-              >
-                <div>
-                  <label className="form-label" style={{ margin: 0 }}>
-                    Components / Recipe <span className="required">*</span>
-                  </label>
-                  {errors.material && (
-                    <span
-                      style={{
-                        fontSize: "0.72rem",
-                        color: "#ef4444",
-                        display: "block",
-                      }}
-                    >
-                      {errors.material}
-                    </span>
-                  )}
-                  {errors.components && (
-                    <span
-                      style={{
-                        fontSize: "0.72rem",
-                        color: "#ef4444",
-                        display: "block",
-                      }}
-                    >
-                      {errors.components}
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={addComponent}
-                  style={{
-                    background: "rgba(212,168,67,0.15)",
-                    border: "1px solid rgba(212,168,67,0.3)",
-                    borderRadius: "6px",
-                    padding: "0.3rem 0.75rem",
-                    color: "#D4A843",
-                    fontSize: "0.75rem",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  + Add Component
-                </button>
-              </div>
-              {form.components.length === 0 ? (
-                <div
-                  style={{
-                    padding: "1.5rem",
-                    textAlign: "center",
-                    color: "var(--gray)",
-                    fontSize: "0.8rem",
-                    background: "rgba(255,255,255,0.02)",
-                    borderRadius: "8px",
-                    border: "1px dashed rgba(255,255,255,0.1)",
-                  }}
-                >
-                  No components added yet.
-                </div>
-              ) : (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.5rem",
-                  }}
-                >
-                  {form.components.map((comp, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 80px 36px",
-                        gap: "0.5rem",
-                        alignItems: "center",
-                      }}
-                    >
-                      <div
-                        style={{
-                          border: errors.material
-                            ? "1px solid #ef4444"
-                            : "none",
-                          borderRadius: "8px",
-                        }}
-                      >
-                        <CustomDropdown
-                          value={comp.materialId}
-                          onChange={(val) => {
-                            updateComponent(idx, "materialId", val);
-                            if (errors.material)
-                              setErrors((er) => ({ ...er, material: "" }));
-                          }}
-                          options={[
-                            { value: "", label: "Select material..." },
-                            ...materials
-                              .filter((m) => !m.parentId)
-                              .map((m) => ({ value: m.id, label: m.name })),
-                          ]}
-                          placeholder="Select material..."
-                        />
-                      </div>
-                      <IntegerInput
-                        style={inputStyle}
-                        value={comp.qty}
-                        onChange={(e) =>
-                          updateComponent(idx, "qty", e.target.value)
-                        }
-                        min={0}
-                        placeholder="1"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeComponent(idx)}
-                        style={{
-                          background: "rgba(239,68,68,0.1)",
-                          border: "none",
-                          borderRadius: "6px",
-                          padding: "0.4rem",
-                          cursor: "pointer",
-                          color: "#f87171",
-                          fontSize: "0.8rem",
-                        }}
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="modal-actions">
-            <button type="button" className="btn-secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button type="submit" className="btn-primary">
-              {bom ? "Save Changes" : "Add BOM"}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }
@@ -7280,7 +7021,7 @@ export default function MasterDataPage() {
             Vendor Master
           </button>
           <button style={tabStyle("bom")} onClick={() => setActiveTab("bom")}>
-            BOM
+            Bill of Materials
           </button>
         </div>
       </div>

@@ -115,50 +115,57 @@ export default function ActualStockTab({ materials }) {
         .map(
           (it) => `
         <tr>
-          <td style="padding:6px 10px;border-bottom:1px solid #eee;color:#333;font-size:12px;">${it.materialName}</td>
-          <td style="padding:6px 10px;border-bottom:1px solid #eee;color:#555;font-size:12px;">${it.variantName !== "—" ? it.variantName : ""}</td>
-          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-size:12px;">${it.good}</td>
-          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-size:12px;">${it.damaged}</td>
-          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-size:12px;">${it.total}</td>
-          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-family:monospace;">₱${it.unitCost.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</td>
-          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-family:monospace;">₱${it.value.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;color:#333;font-size:12px;vertical-align:top;">${it.materialName}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;color:#555;font-size:12px;vertical-align:top;">${it.variantName !== "—" ? it.variantName : ""}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;font-size:12px;">${it.good}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;font-size:12px;">${it.damaged}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;font-size:12px;font-weight:600;">${it.total}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-family:monospace;white-space:nowrap;">₱${it.unitCost.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-family:monospace;white-space:nowrap;font-weight:600;">₱${it.value.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</td>
         </tr>
       `,
         )
         .join("");
+
+      const invTotalGood = inv.items.reduce((s, it) => s + it.good, 0);
+      const invTotalDamaged = inv.items.reduce((s, it) => s + it.damaged, 0);
+      const invTotalQty = inv.items.reduce((s, it) => s + it.total, 0);
+      const invTotalValue = inv.items.reduce((s, it) => s + it.value, 0);
+
       rows += `
-        <tr style="background:#f9fafb;">
-          <td colspan="7" style="padding:10px;font-weight:700;font-size:13px;color:#111;border-bottom:2px solid #ddd;">
+        <tr style="background:#fff;">
+          <td colspan="7" style="padding:12px 10px 8px 10px;font-weight:700;font-size:13px;color:#111;border-bottom:1px solid #ddd;">
             ${inv.invoiceNo} — ${inv.vendorName} (${new Date(inv.dateReceived).toLocaleDateString("en-PH")})
           </td>
         </tr>
         ${itemRows}
-        <tr>
-          <td colspan="3" style="padding:6px 10px;font-size:11px;color:#666;font-weight:600;border-bottom:1px solid #eee;">Invoice Total:</td>
-          <td style="padding:6px 10px;text-align:right;font-size:12px;font-weight:700;border-bottom:1px solid #eee;">${inv.items.reduce((s, it) => s + it.good, 0)} good</td>
-          <td style="padding:6px 10px;text-align:right;font-size:12px;border-bottom:1px solid #eee;">${inv.items.reduce((s, it) => s + it.damaged, 0)} damaged</td>
-          <td style="padding:6px 10px;text-align:right;font-size:12px;font-weight:700;border-bottom:1px solid #eee;">${inv.items.reduce((s, it) => s + it.total, 0)}</td>
-          <td style="padding:6px 10px;border-bottom:1px solid #eee;"></td>
-          <td style="padding:6px 10px;text-align:right;font-size:12px;font-weight:700;font-family:monospace;border-bottom:1px solid #eee;">₱${inv.items.reduce((s, it) => s + it.value, 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</td>
+        <tr style="background:#fafafa;">
+          <td colspan="2" style="padding:8px 10px;font-size:11px;color:#666;font-weight:600;border-bottom:2px solid #ddd;">Invoice Total:</td>
+          <td style="padding:8px 10px;text-align:center;font-size:12px;font-weight:700;border-bottom:2px solid #ddd;">${invTotalGood} good</td>
+          <td style="padding:8px 10px;text-align:center;font-size:11px;border-bottom:2px solid #ddd;vertical-align:bottom;">${invTotalDamaged} damaged</td>
+          <td style="padding:8px 10px;text-align:center;font-size:12px;font-weight:700;border-bottom:2px solid #ddd;">${invTotalQty}</td>
+          <td style="padding:8px 10px;border-bottom:2px solid #ddd;"></td>
+          <td style="padding:8px 10px;text-align:right;font-size:12px;font-weight:700;font-family:monospace;border-bottom:2px solid #ddd;white-space:nowrap;">₱${invTotalValue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</td>
         </tr>
       `;
     });
 
     const html = `<!DOCTYPE html><html><head><title>Batch Inventory Report</title>
-      <style>@page{size:letter;margin:1in}body{font-family:Segoe UI,Arial,sans-serif;margin:0;color:#111}h1{font-size:18px;margin:0}h2{font-size:13px;color:#666;margin:4px 0 16px}table{width:100%;border-collapse:collapse}th{padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#666;text-transform:uppercase;background:#f3f4f6;border-bottom:2px solid #ddd}
-      .summary{display:flex;gap:24px;margin-bottom:16px;padding:12px;background:#f9fafb;border-radius:8px}.summary-item{font-size:13px}.summary-label{color:#666;font-size:10px;text-transform:uppercase;font-weight:700}.summary-value{font-weight:700;font-family:monospace}
+      <style>@page{size:letter;margin:1in}body{font-family:Segoe UI,Arial,sans-serif;margin:0;color:#111;padding:20px}h1{font-size:18px;margin:0 0 4px 0}h2{font-size:13px;color:#666;margin:0 0 20px 0;font-weight:500}table{width:100%;border-collapse:collapse;margin-top:20px}th{padding:10px;text-align:left;font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.05em;border-bottom:2px solid #ddd;background:#fff}
+      .summary{display:flex;gap:32px;margin-bottom:24px;padding:16px 20px;background:#f9fafb;border-radius:6px}.summary-item{font-size:13px}.summary-label{color:#666;font-size:10px;text-transform:uppercase;font-weight:700;display:block;margin-bottom:2px}.summary-value{font-weight:700;font-family:monospace;font-size:14px}
       </style></head><body>
-      <h1>PERSONALIZE ME PRINTS</h1><h2>Batch Inventory Report — By Invoice | Generated: ${now}</h2>
+      <h1 style="font-weight:800;letter-spacing:-0.02em;">PERSONALIZE ME PRINTS</h1>
+      <h2>Batch Inventory Report — By Invoice | Generated: ${now}</h2>
       <div class="summary">
-        <div class="summary-item"><span class="summary-label">Total Good</span><br><span class="summary-value">${totalGood} pcs</span></div>
-        <div class="summary-item"><span class="summary-label">Total Damaged</span><br><span class="summary-value">${totalDamaged} pcs</span></div>
-        <div class="summary-item"><span class="summary-label">Total Value</span><br><span class="summary-value">₱${totalValue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span></div>
-        <div class="summary-item"><span class="summary-label">Invoices</span><br><span class="summary-value">${data.length}</span></div>
+        <div class="summary-item"><span class="summary-label">Total Good</span><span class="summary-value">${totalGood} pcs</span></div>
+        <div class="summary-item"><span class="summary-label">Total Damaged</span><span class="summary-value">${totalDamaged} pcs</span></div>
+        <div class="summary-item"><span class="summary-label">Total Value</span><span class="summary-value">₱${totalValue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span></div>
+        <div class="summary-item"><span class="summary-label">Invoices</span><span class="summary-value">${data.length}</span></div>
       </div>
       <table><thead><tr>
-        <th>Material</th><th>Variant</th>
-        <th style="text-align:right">Good</th><th style="text-align:right">Damaged</th><th style="text-align:right">Total</th>
-        <th style="text-align:right">Unit Cost</th><th style="text-align:right">Value</th>
+        <th style="width:15%">Material</th><th style="width:20%">Variant</th>
+        <th style="text-align:center;width:10%">Good</th><th style="text-align:center;width:10%">Damaged</th><th style="text-align:center;width:10%">Total</th>
+        <th style="text-align:right;width:12%">Unit Cost</th><th style="text-align:right;width:13%">Value</th>
       </tr></thead><tbody>${rows}</tbody></table>
       </body></html>`;
 
@@ -170,7 +177,7 @@ export default function ActualStockTab({ materials }) {
     }, 500);
   };
 
-  // Summary cards: Total Goods Stock, Total Actual Stock, Total Waste, Total Goods Value, Total Waste Value, Backorders
+  // Summary cards: Total Goods Stock, Total Actual Stock, Total Waste, Total Goods Value, Total Waste Value, Backorders - OPTIMIZED
   const summaryCards = useMemo(() => {
     let totalStock = 0,
       outOfStock = 0,
@@ -186,56 +193,55 @@ export default function ActualStockTab({ materials }) {
     let arrivalDamageValue = 0,
       internalDamageValue = 0;
 
+    // Pre-build children map to avoid repeated .filter() calls
+    const childrenMap = new Map();
     materials.forEach((m) => {
-      if (m.parentId) return; // Skip children - only process parent materials
+      if (m.parentId) {
+        if (!childrenMap.has(m.parentId)) {
+          childrenMap.set(m.parentId, []);
+        }
+        childrenMap.get(m.parentId).push(m);
+      }
+    });
+
+    // Process only parent materials
+    materials.forEach((m) => {
+      if (m.parentId) return; // Skip children
 
       // Add In Transit from pending POs
       totalInTransit += inTransitMap[m.id] || 0;
 
-      const batches = m.batches || [];
-      const hasChildren = m.hasVariants;
+      const hasChildren = m.hasVariants && childrenMap.has(m.id);
 
-      // For parents with variants, aggregate stock from children
       if (hasChildren) {
-        const children = materials.filter((child) => child.parentId === m.id);
+        // For parents with variants, aggregate stock from children
+        const children = childrenMap.get(m.id);
         let parentGoodStock = 0,
           parentDamaged = 0;
 
         children.forEach((child) => {
           const childBatches = child.batches || [];
-          // Backward compatibility: check both qtyGood and goodQty
-          const childGood = childBatches.reduce(
-            (s, b) => s + (b.qtyGood || b.goodQty || 0),
-            0,
-          );
-          // Backward compatibility: check both qtyDamaged and damagedQty
-          const childDamaged = childBatches.reduce(
-            (s, b) => s + (b.qtyDamaged || b.damagedQty || 0),
-            0,
-          );
-          parentGoodStock += childGood;
-          parentDamaged += childDamaged;
-          totalWaste += childDamaged;
 
-          // Split arrival vs internal damage
           childBatches.forEach((b) => {
-            const damagedQty = b.qtyDamaged || b.damagedQty || 0;
-            const cost = b.unitCost || 0;
-            if (b.damageType === "arrival") {
-              arrivalDamage += damagedQty;
-              arrivalDamageValue += damagedQty * cost;
-            } else {
-              internalDamage += damagedQty;
-              internalDamageValue += damagedQty * cost;
-            }
-            totalInventoryLoss += damagedQty * cost;
-          });
-
-          // Calculate costs from children batches
-          childBatches.forEach((b) => {
+            const good = b.qtyGood || b.goodQty || 0;
+            const damaged = b.qtyDamaged || b.damagedQty || 0;
             const remaining = b.remainingQty || 0;
             const cost = b.unitCost || 0;
+
+            parentGoodStock += good;
+            parentDamaged += damaged;
+            totalWaste += damaged;
             totalGoodsCost += remaining * cost;
+            totalInventoryLoss += damaged * cost;
+
+            // Split arrival vs internal damage
+            if (b.damageType === "arrival") {
+              arrivalDamage += damaged;
+              arrivalDamageValue += damaged * cost;
+            } else {
+              internalDamage += damaged;
+              internalDamageValue += damaged * cost;
+            }
           });
         });
 
@@ -254,16 +260,31 @@ export default function ActualStockTab({ materials }) {
           lowStock++;
       } else {
         // For standalone materials (no variants), use their own batches
-        // Backward compatibility: check both qtyGood and goodQty
-        const goodStock = batches.reduce(
-          (s, b) => s + (b.qtyGood || b.goodQty || 0),
-          0,
-        );
-        // Backward compatibility: check both qtyDamaged and damagedQty
-        const damaged = batches.reduce(
-          (s, b) => s + (b.qtyDamaged || b.damagedQty || 0),
-          0,
-        );
+        const batches = m.batches || [];
+        let goodStock = 0;
+        let damaged = 0;
+
+        batches.forEach((b) => {
+          const good = b.qtyGood || b.goodQty || 0;
+          const dmg = b.qtyDamaged || b.damagedQty || 0;
+          const remaining = b.remainingQty || 0;
+          const cost = b.unitCost || 0;
+
+          goodStock += good;
+          damaged += dmg;
+          totalGoodsCost += remaining * cost;
+          totalInventoryLoss += dmg * cost;
+
+          // Split arrival vs internal damage
+          if (b.damageType === "arrival") {
+            arrivalDamage += dmg;
+            arrivalDamageValue += dmg * cost;
+          } else {
+            internalDamage += dmg;
+            internalDamageValue += dmg * cost;
+          }
+        });
+
         const total = goodStock + damaged;
         totalStock += goodStock;
         totalActualStock += total;
@@ -277,21 +298,6 @@ export default function ActualStockTab({ materials }) {
           m.procurementType !== "on-demand"
         )
           lowStock++;
-
-        batches.forEach((b) => {
-          const remaining = b.remainingQty || 0;
-          const damagedQty = b.qtyDamaged || b.damagedQty || 0;
-          const cost = b.unitCost || 0;
-          if (b.damageType === "arrival") {
-            arrivalDamage += damagedQty;
-            arrivalDamageValue += damagedQty * cost;
-          } else {
-            internalDamage += damagedQty;
-            internalDamageValue += damagedQty * cost;
-          }
-          totalInventoryLoss += damagedQty * cost;
-          totalGoodsCost += remaining * cost;
-        });
       }
     });
 
@@ -327,103 +333,78 @@ export default function ActualStockTab({ materials }) {
     ),
   ];
 
-  // Build invoice groups from all active batches
+  // Build invoice groups from all active batches - OPTIMIZED O(n) instead of O(n³)
   const invoiceGroups = useMemo(() => {
     const map = {};
-    const processedChildIds = new Set();
-    // Only iterate parent materials to avoid double-counting variant children
-    materials
-      .filter((m) => !m.parentId)
-      .forEach((m) => {
-        const hasChildren = m.hasVariants;
-        if (hasChildren) {
-          const children = materials.filter((c) => c.parentId === m.id);
-          children.forEach((child) => {
-            processedChildIds.add(child.id);
-            (child.batches || []).forEach((b) => {
-              if ((b.remainingQty || 0) <= 0 && (b.qtyDamaged || 0) <= 0)
-                return;
-              const inv = b.invoiceNumber || b.invoiceNo || "No Invoice";
-              if (!map[inv]) {
-                map[inv] = {
-                  invoiceNo: inv,
-                  vendorName: b.vendorName || "—",
-                  dateReceived: b.dateReceived || b.createdAt || "",
-                  items: [],
-                };
-              }
-              const good = b.qtyGood || b.remainingQty || 0;
-              const damaged = b.qtyDamaged || b.damagedQty || 0;
-              map[inv].items.push({
-                materialName: m.name,
-                variantName: child.name,
-                uom: child.uom || m.uom || "pcs",
-                good,
-                damaged,
-                total: good + damaged,
-                unitCost: b.unitCost || 0,
-                value: (good + damaged) * (b.unitCost || 0),
-              });
-            });
-          });
-        } else {
-          (m.batches || []).forEach((b) => {
-            if ((b.remainingQty || 0) <= 0 && (b.qtyDamaged || 0) <= 0) return;
-            const inv = b.invoiceNumber || b.invoiceNo || "No Invoice";
-            if (!map[inv]) {
-              map[inv] = {
-                invoiceNo: inv,
-                vendorName: b.vendorName || "—",
-                dateReceived: b.dateReceived || b.createdAt || "",
-                items: [],
-              };
-            }
-            const good = b.qtyGood || b.remainingQty || 0;
-            const damaged = b.qtyDamaged || b.damagedQty || 0;
-            map[inv].items.push({
-              materialName: m.name,
-              variantName: "—",
-              uom: m.uom || "pcs",
-              good,
-              damaged,
-              total: good + damaged,
-              unitCost: b.unitCost || 0,
-              value: (good + damaged) * (b.unitCost || 0),
-            });
-          });
+    // Pre-build parent lookup map to avoid repeated .find() calls
+    const parentMap = new Map();
+    materials.forEach((m) => {
+      if (!m.parentId) {
+        parentMap.set(m.id, m);
+      }
+    });
+
+    // Single pass through all materials
+    materials.forEach((m) => {
+      const batches = m.batches || [];
+      if (batches.length === 0) return;
+
+      // Determine material name and variant name
+      let materialName, variantName, uom;
+
+      if (m.parentId) {
+        // This is a child/variant material
+        const parent = parentMap.get(m.parentId);
+        materialName = parent ? parent.name : m.name;
+        variantName = m.name;
+        uom = m.uom || (parent ? parent.uom : "pcs");
+      } else if (m.hasVariants) {
+        // Parent with variants - skip, children will be processed
+        return;
+      } else {
+        // Standalone material (no variants)
+        materialName = m.name;
+        variantName = "—";
+        uom = m.uom || "pcs";
+      }
+
+      // Process batches
+      batches.forEach((b) => {
+        const good = b.qtyGood || b.remainingQty || 0;
+        const damaged = b.qtyDamaged || b.damagedQty || 0;
+        const arrivalDamaged = b.damageType === "arrival" ? damaged : 0;
+        const internalDamaged = b.damageType !== "arrival" ? damaged : 0;
+
+        // Skip empty batches
+        if (good <= 0 && damaged <= 0) return;
+
+        const inv = b.invoiceNumber || b.invoiceNo || "No Invoice";
+
+        // Create invoice group if not exists
+        if (!map[inv]) {
+          map[inv] = {
+            invoiceNo: inv,
+            vendorName: b.vendorName || "—",
+            dateReceived: b.dateReceived || b.createdAt || "",
+            items: [],
+          };
         }
-      });
-    // Also iterate child materials that might have batches but weren't linked to a parent with hasVariants
-    materials
-      .filter((m) => m.parentId && !processedChildIds.has(m.id))
-      .forEach((child) => {
-        (child.batches || []).forEach((b) => {
-          if ((b.remainingQty || 0) <= 0 && (b.qtyDamaged || 0) <= 0) return;
-          const inv = b.invoiceNumber || b.invoiceNo || "No Invoice";
-          if (!map[inv]) {
-            map[inv] = {
-              invoiceNo: inv,
-              vendorName: b.vendorName || "—",
-              dateReceived: b.dateReceived || b.createdAt || "",
-              items: [],
-            };
-          }
-          const good = b.qtyGood || b.remainingQty || 0;
-          const damaged = b.qtyDamaged || b.damagedQty || 0;
-          // Find parent name if available
-          const parent = materials.find((p) => p.id === child.parentId);
-          map[inv].items.push({
-            materialName: parent ? parent.name : child.name,
-            variantName: child.name,
-            uom: child.uom || "pcs",
-            good,
-            damaged,
-            total: good + damaged,
-            unitCost: b.unitCost || 0,
-            value: (good + damaged) * (b.unitCost || 0),
-          });
+
+        map[inv].items.push({
+          materialName,
+          variantName,
+          uom,
+          good,
+          damaged,
+          arrivalDamaged,
+          internalDamaged,
+          total: good + damaged,
+          unitCost: b.unitCost || 0,
+          value: (good + damaged) * (b.unitCost || 0),
         });
       });
+    });
+
     // Sort by date descending
     return Object.values(map).sort(
       (a, b) => new Date(b.dateReceived) - new Date(a.dateReceived),
@@ -446,15 +427,181 @@ export default function ActualStockTab({ materials }) {
     });
   }, [materials, categoryFilter, search]);
 
-  // Filter invoice groups (invoice view)
+  // OPTIMIZED: Pre-compute material stats to avoid heavy calculations in render
+  const materialStatsMap = useMemo(() => {
+    const statsMap = new Map();
+
+    // Pre-build children map
+    const childrenMap = new Map();
+    materials.forEach((m) => {
+      if (m.parentId) {
+        if (!childrenMap.has(m.parentId)) {
+          childrenMap.set(m.parentId, []);
+        }
+        childrenMap.get(m.parentId).push(m);
+      }
+    });
+
+    // Compute stats for each parent material
+    filtered.forEach((mat) => {
+      const hasChildren = mat.hasVariants && childrenMap.has(mat.id);
+      let batches, goodStock, damaged, arrivalDamaged, internalDamaged;
+      let totalStock, avgCost, goodsValue;
+
+      if (hasChildren) {
+        const children = childrenMap.get(mat.id);
+        const allChildrenBatches = children.flatMap(
+          (child) => child.batches || [],
+        );
+        batches = allChildrenBatches;
+
+        goodStock = 0;
+        damaged = 0;
+        arrivalDamaged = 0;
+        internalDamaged = 0;
+        let totalQty = 0;
+        let totalVal = 0;
+
+        allChildrenBatches.forEach((b) => {
+          const good = b.qtyGood || 0;
+          const dmg = b.qtyDamaged || 0;
+          const remaining = b.remainingQty || 0;
+          const cost = b.unitCost || 0;
+
+          goodStock += good;
+          damaged += dmg;
+          totalQty += remaining;
+          totalVal += remaining * cost;
+
+          if (b.damageType === "arrival") {
+            arrivalDamaged += dmg;
+          } else {
+            internalDamaged += dmg;
+          }
+        });
+
+        totalStock = goodStock + damaged;
+        avgCost = totalQty > 0 ? totalVal / totalQty : mat.baseCost || 0;
+        goodsValue = goodStock * avgCost;
+      } else {
+        batches = mat.batches || [];
+        goodStock = 0;
+        damaged = 0;
+        arrivalDamaged = 0;
+        internalDamaged = 0;
+        let totalQty = 0;
+        let totalVal = 0;
+
+        batches.forEach((b) => {
+          const good = b.qtyGood || 0;
+          const dmg = b.qtyDamaged || 0;
+          const remaining = b.remainingQty || 0;
+          const cost = b.unitCost || 0;
+
+          goodStock += good;
+          damaged += dmg;
+          totalQty += remaining;
+          totalVal += remaining * cost;
+
+          if (b.damageType === "arrival") {
+            arrivalDamaged += dmg;
+          } else {
+            internalDamaged += dmg;
+          }
+        });
+
+        totalStock = goodStock + damaged;
+        avgCost = totalQty > 0 ? totalVal / totalQty : mat.baseCost || 0;
+        goodsValue = goodStock * avgCost;
+      }
+
+      // Pre-compute children stats if hasVariants
+      let childrenStats = [];
+      if (hasChildren) {
+        const children = childrenMap.get(mat.id);
+        childrenStats = children.map((child) => {
+          const childBatches = child.batches || [];
+          let childGood = 0;
+          let childDamaged = 0;
+          let childArrivalDamaged = 0;
+          let childInternalDamaged = 0;
+          let childTotalQty = 0;
+          let childTotalVal = 0;
+
+          childBatches.forEach((b) => {
+            const good = b.qtyGood || 0;
+            const dmg = b.qtyDamaged || 0;
+            const remaining = b.remainingQty || 0;
+            const cost = b.unitCost || 0;
+
+            childGood += good;
+            childDamaged += dmg;
+            childTotalQty += remaining;
+            childTotalVal += remaining * cost;
+
+            if (b.damageType === "arrival") {
+              childArrivalDamaged += dmg;
+            } else {
+              childInternalDamaged += dmg;
+            }
+          });
+
+          const childTotal = childGood + childDamaged;
+          const childAvgCost =
+            childTotalQty > 0
+              ? childTotalVal / childTotalQty
+              : child.baseCost || 0;
+          const childGoodsValue = childGood * childAvgCost;
+
+          return {
+            id: child.id,
+            name: child.name,
+            sku: child.sku || "",
+            uom: child.uom || mat.uom || "pcs",
+            batches: childBatches,
+            goodStock: childGood,
+            damaged: childDamaged,
+            arrivalDamaged: childArrivalDamaged,
+            internalDamaged: childInternalDamaged,
+            totalStock: childTotal,
+            avgCost: childAvgCost,
+            goodsValue: childGoodsValue,
+          };
+        });
+      }
+
+      statsMap.set(mat.id, {
+        batches,
+        goodStock,
+        damaged,
+        arrivalDamaged,
+        internalDamaged,
+        totalStock,
+        avgCost,
+        goodsValue,
+        hasChildren,
+        childrenStats,
+      });
+    });
+
+    return statsMap;
+  }, [filtered, materials]);
+
+  // OPTIMIZED: Pre-build material category lookup for invoice filtering
+  const materialCategoryMap = useMemo(() => {
+    const map = new Map();
+    materials.forEach((m) => map.set(m.name, m.category));
+    return map;
+  }, [materials]);
+
+  // Filter invoice groups (invoice view) - OPTIMIZED
   const filteredInvoices = useMemo(() => {
     let groups = invoiceGroups;
     if (categoryFilter) {
       groups = groups.filter((inv) =>
-        inv.items.some((it) => {
-          const mat = materials.find((m) => m.name === it.materialName);
-          return mat && mat.category === categoryFilter;
-        }),
+        inv.items.some(
+          (it) => materialCategoryMap.get(it.materialName) === categoryFilter,
+        ),
       );
     }
     if (search) {
@@ -467,12 +614,19 @@ export default function ActualStockTab({ materials }) {
             (it) =>
               it.materialName.toLowerCase().includes(q) ||
               it.variantName.toLowerCase().includes(q) ||
-              it.sku.toLowerCase().includes(q),
+              (it.sku || "").toLowerCase().includes(q),
           ),
       );
     }
-    return groups;
-  }, [invoiceGroups, categoryFilter, search, materials]);
+
+    // Pre-compute invoice totals to avoid recalculating in render
+    return groups.map((inv) => ({
+      ...inv,
+      invTotalGood: inv.items.reduce((s, it) => s + it.good, 0),
+      invTotalDamaged: inv.items.reduce((s, it) => s + it.damaged, 0),
+      invTotalValue: inv.items.reduce((s, it) => s + it.value, 0),
+    }));
+  }, [invoiceGroups, categoryFilter, search, materialCategoryMap]);
 
   // ── CSV Preview Data ────────────────────────────────────────────────────
   const csvPreviewData = useMemo(() => {
@@ -651,7 +805,7 @@ export default function ActualStockTab({ materials }) {
         </div>
         <div className="summary-card">
           <div className="summary-content">
-            <span className="summary-value">
+            <span className="summary-value" style={{ color: "#D4A843" }}>
               {summaryCards.totalActualStock}
             </span>
             <span className="summary-label">Total Actual Stock</span>
@@ -662,7 +816,7 @@ export default function ActualStockTab({ materials }) {
             <span className="summary-value" style={{ color: "#f59e0b" }}>
               {summaryCards.arrivalDamage}
             </span>
-            <span className="summary-label">External Issues</span>
+            <span className="summary-label">Bad Orders</span>
           </div>
         </div>
         <div className="summary-card">
@@ -670,7 +824,7 @@ export default function ActualStockTab({ materials }) {
             <span className="summary-value" style={{ color: "#ef4444" }}>
               {summaryCards.internalDamage}
             </span>
-            <span className="summary-label">Internal Issues</span>
+            <span className="summary-label">Waste/Adjustment</span>
           </div>
         </div>
         <div className="summary-card">
@@ -692,30 +846,15 @@ export default function ActualStockTab({ materials }) {
           <div className="summary-content">
             <span
               className="summary-value"
-              style={{ color: "#f59e0b", fontSize: "1rem" }}
-            >
-              ₱
-              {summaryCards.arrivalDamageValue.toLocaleString("en-PH", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
-            </span>
-            <span className="summary-label">External Issues Value</span>
-          </div>
-        </div>
-        <div className="summary-card">
-          <div className="summary-content">
-            <span
-              className="summary-value"
               style={{ color: "#ef4444", fontSize: "1rem" }}
             >
               ₱
-              {summaryCards.internalDamageValue.toLocaleString("en-PH", {
+              {summaryCards.totalInventoryLoss.toLocaleString("en-PH", {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
             </span>
-            <span className="summary-label">Internal Issues Value</span>
+            <span className="summary-label">Total Loss</span>
           </div>
         </div>
       </div>
@@ -929,16 +1068,20 @@ export default function ActualStockTab({ materials }) {
                 <th
                   style={{ ...thStyle, textAlign: "center", color: "#f59e0b" }}
                 >
-                  External Iss.
+                  Bad Order
                 </th>
                 <th
                   style={{ ...thStyle, textAlign: "center", color: "#ef4444" }}
                 >
-                  Internal Iss.
+                  Waste/Adjust
                 </th>
                 <th style={{ ...thStyle, textAlign: "center" }}>Total</th>
-                <th style={{ ...thStyle, textAlign: "right" }}>Unit Cost</th>
                 <th style={{ ...thStyle, textAlign: "right" }}>Goods Value</th>
+                <th
+                  style={{ ...thStyle, textAlign: "right", color: "#ef4444" }}
+                >
+                  Loss Value
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -959,99 +1102,22 @@ export default function ActualStockTab({ materials }) {
                 </tr>
               ) : (
                 paginatedItems.map((mat) => {
-                  // For parents with variants, aggregate stock from children
-                  const hasChildren = mat.hasVariants;
-                  let batches,
-                    goodStock,
-                    damaged,
-                    arrivalDamaged,
-                    internalDamaged,
-                    totalStock,
-                    avgCost,
-                    goodsValue,
-                    children;
+                  // Use pre-computed stats instead of recalculating in render
+                  const stats = materialStatsMap.get(mat.id) || {};
+                  const {
+                    batches = [],
+                    goodStock = 0,
+                    damaged = 0,
+                    arrivalDamaged = 0,
+                    internalDamaged = 0,
+                    totalStock = 0,
+                    avgCost = 0,
+                    goodsValue = 0,
+                    hasChildren = false,
+                    childrenStats = [],
+                  } = stats;
 
-                  if (hasChildren) {
-                    // Get all children batches
-                    children = materials.filter(
-                      (child) => child.parentId === mat.id,
-                    );
-                    const allChildrenBatches = children.flatMap(
-                      (child) => child.batches || [],
-                    );
-                    batches = allChildrenBatches;
-                    goodStock = allChildrenBatches.reduce(
-                      (s, b) => s + (b.qtyGood || 0),
-                      0,
-                    );
-                    damaged = allChildrenBatches.reduce(
-                      (s, b) => s + (b.qtyDamaged || 0),
-                      0,
-                    );
-                    arrivalDamaged = allChildrenBatches.reduce(
-                      (s, b) =>
-                        s +
-                        (b.damageType === "arrival" ? b.qtyDamaged || 0 : 0),
-                      0,
-                    );
-                    internalDamaged = allChildrenBatches.reduce(
-                      (s, b) =>
-                        s +
-                        (b.damageType === "arrival" ? 0 : b.qtyDamaged || 0),
-                      0,
-                    );
-                    totalStock = goodStock + damaged;
-                    // FIX 4: Weighted average cost (not simple average)
-                    const totalQty4 = allChildrenBatches.reduce(
-                      (s, b) => s + (b.remainingQty || 0),
-                      0,
-                    );
-                    const totalVal4 = allChildrenBatches.reduce(
-                      (s, b) => s + (b.remainingQty || 0) * (b.unitCost || 0),
-                      0,
-                    );
-                    avgCost =
-                      totalQty4 > 0 ? totalVal4 / totalQty4 : mat.baseCost || 0;
-                    goodsValue = goodStock * avgCost;
-                  } else {
-                    // Standalone material - use its own batches
-                    batches = mat.batches || [];
-                    goodStock = batches.reduce(
-                      (s, b) => s + (b.qtyGood || 0),
-                      0,
-                    );
-                    damaged = batches.reduce(
-                      (s, b) => s + (b.qtyDamaged || 0),
-                      0,
-                    );
-                    arrivalDamaged = batches.reduce(
-                      (s, b) =>
-                        s +
-                        (b.damageType === "arrival" ? b.qtyDamaged || 0 : 0),
-                      0,
-                    );
-                    internalDamaged = batches.reduce(
-                      (s, b) =>
-                        s +
-                        (b.damageType === "arrival" ? 0 : b.qtyDamaged || 0),
-                      0,
-                    );
-                    totalStock = goodStock + damaged;
-                    // FIX 4: Weighted average cost (not simple average)
-                    const totalQty4s = batches.reduce(
-                      (s, b) => s + (b.remainingQty || 0),
-                      0,
-                    );
-                    const totalVal4s = batches.reduce(
-                      (s, b) => s + (b.remainingQty || 0) * (b.unitCost || 0),
-                      0,
-                    );
-                    avgCost =
-                      totalQty4s > 0
-                        ? totalVal4s / totalQty4s
-                        : mat.baseCost || 0;
-                    goodsValue = goodStock * avgCost;
-                  }
+                  const children = childrenStats; // Use pre-computed children
 
                   const isExpanded = expandedMaterial === mat.id;
                   // Variant parents should always be expandable to show children
@@ -1231,16 +1297,6 @@ export default function ActualStockTab({ materials }) {
                           style={{
                             padding: "0.875rem 1rem",
                             textAlign: "right",
-                            color: "#D4A843",
-                            fontFamily: "monospace",
-                          }}
-                        >
-                          ₱{avgCost.toFixed(2)}
-                        </td>
-                        <td
-                          style={{
-                            padding: "0.875rem 1rem",
-                            textAlign: "right",
                             fontWeight: 700,
                             color: "#E5E2E1",
                             fontFamily: "monospace",
@@ -1248,6 +1304,23 @@ export default function ActualStockTab({ materials }) {
                         >
                           ₱
                           {goodsValue.toLocaleString("en-PH", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td
+                          style={{
+                            padding: "0.875rem 1rem",
+                            textAlign: "right",
+                            fontWeight: 700,
+                            color: "#ef4444",
+                            fontFamily: "monospace",
+                          }}
+                        >
+                          ₱
+                          {(
+                            (arrivalDamaged + internalDamaged) *
+                            avgCost
+                          ).toLocaleString("en-PH", {
                             minimumFractionDigits: 2,
                           })}
                         </td>
@@ -1373,7 +1446,7 @@ export default function ActualStockTab({ materials }) {
                                               textTransform: "uppercase",
                                             }}
                                           >
-                                            External Iss.
+                                            Bad Order
                                           </th>
                                           <th
                                             style={{
@@ -1385,7 +1458,7 @@ export default function ActualStockTab({ materials }) {
                                               textTransform: "uppercase",
                                             }}
                                           >
-                                            Internal Iss.
+                                            Waste/Adjust
                                           </th>
                                           <th
                                             style={{
@@ -1403,84 +1476,31 @@ export default function ActualStockTab({ materials }) {
                                             style={{
                                               padding: "0.4rem 0.6rem",
                                               textAlign: "right",
-                                              color: "#D4A843",
+                                              color: "#ef4444",
                                               fontWeight: 700,
                                               fontSize: "0.6rem",
                                               textTransform: "uppercase",
                                             }}
                                           >
-                                            Unit Cost
-                                          </th>
-                                          <th
-                                            style={{
-                                              padding: "0.4rem 0.6rem",
-                                              textAlign: "center",
-                                              color: "#D4A843",
-                                              fontWeight: 700,
-                                              fontSize: "0.6rem",
-                                              textTransform: "uppercase",
-                                            }}
-                                          >
-                                            Status
+                                            Loss Value
                                           </th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {children.map((child, cIdx) => {
-                                          const childBatches =
-                                            child.batches || [];
-                                          const childGood = childBatches.reduce(
-                                            (s, b) => s + (b.qtyGood || 0),
-                                            0,
-                                          );
-                                          const childDamaged =
-                                            childBatches.reduce(
-                                              (s, b) => s + (b.qtyDamaged || 0),
-                                              0,
-                                            );
+                                          // Use pre-computed child stats
+                                          const childGood = child.goodStock;
+                                          const childDamaged = child.damaged;
                                           const childArrivalDamaged =
-                                            childBatches.reduce(
-                                              (s, b) =>
-                                                s +
-                                                (b.damageType === "arrival"
-                                                  ? b.qtyDamaged || 0
-                                                  : 0),
-                                              0,
-                                            );
+                                            child.arrivalDamaged;
                                           const childInternalDamaged =
-                                            childBatches.reduce(
-                                              (s, b) =>
-                                                s +
-                                                (b.damageType === "arrival"
-                                                  ? 0
-                                                  : b.qtyDamaged || 0),
-                                              0,
-                                            );
-                                          const childTotal =
-                                            childGood + childDamaged;
-                                          const childCost =
-                                            childBatches.length > 0
-                                              ? (() => {
-                                                  const cq =
-                                                    childBatches.reduce(
-                                                      (s, b) =>
-                                                        s +
-                                                        (b.remainingQty || 0),
-                                                      0,
-                                                    );
-                                                  const cv =
-                                                    childBatches.reduce(
-                                                      (s, b) =>
-                                                        s +
-                                                        (b.remainingQty || 0) *
-                                                          (b.unitCost || 0),
-                                                      0,
-                                                    );
-                                                  return cq > 0
-                                                    ? cv / cq
-                                                    : child.baseCost || 0;
-                                                })()
-                                              : child.baseCost || 0;
+                                            child.internalDamaged;
+                                          const childTotal = child.totalStock;
+                                          const childCost = child.avgCost;
+                                          const childGoodsValue =
+                                            child.goodsValue;
+                                          const childBatches = child.batches;
+
                                           let childStatus = "No Batches";
                                           let childStatusColor = "#6b7280";
                                           if (
@@ -1658,31 +1678,19 @@ export default function ActualStockTab({ materials }) {
                                                   style={{
                                                     padding: "0.4rem 0.6rem",
                                                     textAlign: "right",
-                                                    color: "#D4A843",
+                                                    fontWeight: 600,
+                                                    color: "#ef4444",
                                                     fontFamily: "monospace",
                                                   }}
                                                 >
-                                                  ₱{childCost.toFixed(2)}
-                                                </td>
-                                                <td
-                                                  style={{
-                                                    padding: "0.4rem 0.6rem",
-                                                    textAlign: "center",
-                                                  }}
-                                                >
-                                                  <span
-                                                    style={{
-                                                      fontSize: "0.65rem",
-                                                      fontWeight: 700,
-                                                      color: childStatusColor,
-                                                      background: `${childStatusColor}15`,
-                                                      padding: "0.1rem 0.4rem",
-                                                      borderRadius: "4px",
-                                                      border: `1px solid ${childStatusColor}30`,
-                                                    }}
-                                                  >
-                                                    {childStatus}
-                                                  </span>
+                                                  ₱
+                                                  {(
+                                                    (childArrivalDamaged +
+                                                      childInternalDamaged) *
+                                                    childCost
+                                                  ).toLocaleString("en-PH", {
+                                                    minimumFractionDigits: 2,
+                                                  })}
                                                 </td>
                                               </tr>
                                               {/* Expanded: Batch Breakdown for this child */}
@@ -2385,25 +2393,34 @@ export default function ActualStockTab({ materials }) {
                   <th style={thStyle}>Material</th>
                   <th style={thStyle}>Variant</th>
                   <th style={{ ...thStyle, textAlign: "center" }}>Good</th>
-                  <th style={{ ...thStyle, textAlign: "center" }}>Damaged</th>
+                  <th
+                    style={{
+                      ...thStyle,
+                      textAlign: "center",
+                      color: "#f59e0b",
+                    }}
+                  >
+                    Bad Order
+                  </th>
+                  <th
+                    style={{
+                      ...thStyle,
+                      textAlign: "center",
+                      color: "#ef4444",
+                    }}
+                  >
+                    Waste/Adjust
+                  </th>
                   <th style={{ ...thStyle, textAlign: "center" }}>Total</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>Value</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredInvoices.map((inv) => {
-                  const invTotalGood = inv.items.reduce(
-                    (s, it) => s + it.good,
-                    0,
-                  );
-                  const invTotalDamaged = inv.items.reduce(
-                    (s, it) => s + it.damaged,
-                    0,
-                  );
-                  const invTotalValue = inv.items.reduce(
-                    (s, it) => s + it.value,
-                    0,
-                  );
+                  // Use pre-computed invoice totals
+                  const invTotalGood = inv.invTotalGood;
+                  const invTotalDamaged = inv.invTotalDamaged;
+                  const invTotalValue = inv.invTotalValue;
 
                   return (
                     <React.Fragment key={inv.invoiceNo}>
@@ -2461,12 +2478,25 @@ export default function ActualStockTab({ materials }) {
                             style={{
                               padding: "0.875rem 1rem",
                               textAlign: "center",
-                              color: it.damaged > 0 ? "#ef4444" : "#6b7280",
+                              color:
+                                it.arrivalDamaged > 0 ? "#f59e0b" : "#6b7280",
                               fontWeight: 600,
                               fontFamily: "monospace",
                             }}
                           >
-                            {it.damaged}
+                            {it.arrivalDamaged || 0}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.875rem 1rem",
+                              textAlign: "center",
+                              color:
+                                it.internalDamaged > 0 ? "#ef4444" : "#6b7280",
+                              fontWeight: 600,
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {it.internalDamaged || 0}
                           </td>
                           <td
                             style={{
@@ -2533,12 +2563,30 @@ export default function ActualStockTab({ materials }) {
                             padding: "0.875rem 1rem",
                             textAlign: "center",
                             fontWeight: 700,
-                            color: "#D4A843",
+                            color: "#f59e0b",
                             fontFamily: "monospace",
                             fontSize: "0.85rem",
                           }}
                         >
-                          {invTotalDamaged}
+                          {inv.items.reduce(
+                            (s, it) => s + (it.arrivalDamaged || 0),
+                            0,
+                          )}
+                        </td>
+                        <td
+                          style={{
+                            padding: "0.875rem 1rem",
+                            textAlign: "center",
+                            fontWeight: 700,
+                            color: "#ef4444",
+                            fontFamily: "monospace",
+                            fontSize: "0.85rem",
+                          }}
+                        >
+                          {inv.items.reduce(
+                            (s, it) => s + (it.internalDamaged || 0),
+                            0,
+                          )}
                         </td>
                         <td
                           style={{
