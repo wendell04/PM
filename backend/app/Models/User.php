@@ -31,13 +31,13 @@ class User extends Authenticatable
         'reset_code_expires_at',
         'lastLogin',
         'avatar',
-        'addresses', // NEW: Address book - array of saved addresses
+        'addresses', // Address book - array of saved addresses
         'device_tokens',
         'last_login_at',
     ];
 
     protected $casts = [
-        'addresses'     => 'array', // Cast addresses field to array
+        'addresses'     => 'array',
         'device_tokens' => 'array',
         'last_login_at' => 'datetime',
     ];

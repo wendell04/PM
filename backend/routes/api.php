@@ -9,12 +9,11 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\JobOrderController;
 use App\Http\Controllers\AuditLogController;
-use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\BannerController;
-use App\Http\Controllers\AddressController; // NEW: Address Book controller
+use App\Http\Controllers\AddressController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\TwoFactorController;
 use App\Http\Controllers\SessionController;
@@ -34,14 +33,14 @@ Route::post('/verify-reset-token', [AuthController::class, 'verifyResetToken'])-
 Route::post('/send-reset-code', [AuthController::class, 'sendResetCode'])->middleware('throttle:5,1');
 Route::post('/verify-reset-code', [AuthController::class, 'verifyResetCode'])->middleware('throttle:10,1');
 Route::post('/reset-password',  [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
-Route::post('/contact',         [AuthController::class, 'contact'])->middleware('throttle:5,1'); // Contact form
+Route::post('/contact',         [AuthController::class, 'contact'])->middleware('throttle:5,1');
 
 // ─── Auth (Protected — any logged-in user) ───────────────────────────────────
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-// ─── Products (Public — any logged-in customer can browse) ───────────────────
+// ─── Products (Public — no auth required) ────────────────────────────────────
 Route::get('/products/search', [ProductController::class, 'search'])
     ->middleware('throttle:60,1');
 Route::get('/products',             [ProductController::class, 'index']);
@@ -114,9 +113,12 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/inventory/{id}/adjust-stock', [InventoryController::class, 'adjustStock']);
     Route::delete('/admin/inventory/{id}',       [InventoryController::class, 'destroy']);
 
-    // ─── Orders (Admin) ───────────────────────────────────────────────────────
-    Route::get('/admin/orders',                  [OrderController::class, 'adminIndex']);
-    Route::put('/admin/orders/{id}',             [OrderController::class, 'adminUpdate']);
+    // ─── Orders (Admin) — SECURITY: only admin can list/view all orders ───────
+    Route::get('/orders',               [OrderController::class, 'index']);
+    Route::get('/orders/{id}',          [OrderController::class, 'show']);
+    Route::patch('/orders/{id}/status', [OrderController::class, 'updateStatus']);
+    Route::put('/admin/orders/{id}',    [OrderController::class, 'adminUpdate']);
+    Route::get('/admin/orders',         [OrderController::class, 'adminIndex']);
 
     // ─── Job Orders ───────────────────────────────────────────────────────────
     Route::get('/admin/job-orders',              [JobOrderController::class, 'index']);
@@ -124,9 +126,6 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/job-orders/{id}',         [JobOrderController::class, 'show']);
     Route::post('/admin/job-orders',             [JobOrderController::class, 'store']);
     Route::put('/admin/job-orders/{id}',         [JobOrderController::class, 'update']);
-
-    // ─── Activity Logs ────────────────────────────────────────────────────────
-    Route::get('/admin/activity-logs',           [ActivityLogController::class, 'index']);
 
     // ─── Audit Logs ───────────────────────────────────────────────────────────
     Route::get('/admin/audit-logs',              [AuditLogController::class, 'index']);
@@ -156,19 +155,14 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::delete('/admin/flash-sales/{id}',      [FlashSaleController::class, 'destroy']);
     Route::patch('/admin/flash-sales/{id}/toggle', [FlashSaleController::class, 'toggle']);
 
-    // ─── Order Requests ──────────────────────────────────────────────────────
+    // ─── Order Requests (Admin) ───────────────────────────────────────────────
     Route::get('/admin/order-requests',              [OrderRequestController::class, 'index']);
     Route::get('/admin/order-requests/{id}',         [OrderRequestController::class, 'show']);
     Route::patch('/admin/order-requests/{id}/status', [OrderRequestController::class, 'updateStatus']);
 });
 
-// ─── Orders API (Admin Only — protected) ─────────────────────────────────────
+// ─── Order Requests (Customer) ───────────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/orders',               [OrderController::class, 'index']);
-    Route::get('/orders/{id}',          [OrderController::class, 'show']);
-    Route::patch('/orders/{id}/status', [OrderController::class, 'updateStatus']);
-
-    // ─── Order Requests (Customer) ───────────────────────────────────────────
     Route::post('/order-requests',                [OrderRequestController::class, 'store']);
     Route::get('/my/order-requests',              [OrderRequestController::class, 'myRequests']);
     Route::post('/order-requests/upload-design',  [OrderRequestController::class, 'uploadDesign']);
@@ -178,7 +172,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/shop/order-requests/{id}',       [ShopOrderRequestController::class, 'show']);
 });
 
-// ─── Storefront Banners (Public — no auth required) ──────────────────────────
+// ─── Storefront (Public — no auth required) ───────────────────────────────────
 Route::get('/storefront/banners',                [BannerController::class, 'storefront']);
 Route::get('/storefront/flash-sales',            [FlashSaleController::class, 'storefront']);
 
