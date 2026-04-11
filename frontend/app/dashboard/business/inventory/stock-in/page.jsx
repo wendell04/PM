@@ -619,7 +619,7 @@ function ConfirmSaveModal({
                 border: "rgba(255,255,255,0.08)",
               },
               {
-                label: "Damaged",
+                label: "Bad Orders",
                 value: `${totalDamaged}`,
                 color: "#F87171",
                 bg: "rgba(248,113,113,0.06)",
@@ -1381,12 +1381,45 @@ export default function StockInPage() {
     let totalGoodAll = 0,
       totalDamagedAll = 0;
 
+    // Load existing bad orders
+    const badOrdersKey = "pmp_bad_orders";
+    let badOrders = [];
+    try {
+      badOrders = JSON.parse(localStorage.getItem(badOrdersKey) || "[]");
+    } catch {
+      badOrders = [];
+    }
+
     stockData.forEach((entry) => {
       const received = entry.receivedQty || 0;
       const damaged = entry.damagedQty || 0;
       const good = entry.goodQty || 0;
       totalGoodAll += good;
       totalDamagedAll += damaged;
+
+      // Save bad orders with categories
+      if (entry.badOrders && entry.badOrders.length > 0) {
+        entry.badOrders.forEach((bo) => {
+          badOrders.push({
+            id: `BO-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            type: bo.type, // damaged, shortage, defective, wrong_item
+            label: bo.label, // Human-readable label
+            materialId: entry.materialId,
+            materialName: entry.materialName,
+            sku: entry.sku || "",
+            qty: bo.qty,
+            unitCost: bo.unitCost,
+            totalValue: bo.totalValue,
+            vendorId: entry.vendorId || null,
+            vendorName: entry.vendorName || "General Merchandise",
+            invoiceNumber: entry.invoiceNumber || "",
+            deliveryDate: entry.dateReceived?.split("T")[0] || "",
+            status: "pending", // pending, replaced, credited, cancelled
+            createdAt: new Date().toISOString(),
+            resolvedAt: null,
+          });
+        });
+      }
 
       const unitCost = entry.unitCost || 0;
       const matIdx = allMats.findIndex((m) => m.id === entry.materialId);
@@ -1462,6 +1495,11 @@ export default function StockInPage() {
     setStore(MATERIALS_KEY, allMats);
     siLog.push(...entries);
     setStore(STOCK_IN_KEY, siLog);
+
+    // Save bad orders
+    if (badOrders.length > 0) {
+      localStorage.setItem(badOrdersKey, JSON.stringify(badOrders));
+    }
 
     refreshData();
     closeWizard();

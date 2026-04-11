@@ -586,17 +586,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
             fontWeight: 700,
           }}
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-          >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          Goods Issue
+          Stock Adjustment
         </button>
       </div>
 
@@ -1194,13 +1184,14 @@ export default function StocksPage() {
       customer,
     } = data;
     const now = new Date().toISOString();
+    // Map old reasons to new GOODS_ISSUE_TYPES
     const issueTypeMap = {
+      sales: "manual_sale",
       damaged: "damage",
       writeoff: "scrap",
-      missing: "missing",
-      sales: "sale",
+      missing: "lost",
     };
-    const issueType = issueTypeMap[reason] || "damage";
+    const issueType = issueTypeMap[reason] || "adjustment";
 
     const mats = getStore(MATERIALS_KEY);
     const log = getStore(STOCK_OUT_KEY);
@@ -1208,8 +1199,17 @@ export default function StocksPage() {
     variants.forEach((variant) => {
       const qtyFulfilled = variant.qtyFulfilled;
       if (qtyFulfilled <= 0) return;
-      const mat = mats.find((m) => m.id === variant.variantId);
-      if (!mat) return;
+
+      // Find material by variantId OR sku
+      let mat = mats.find((m) => m.id === variant.variantId);
+      if (!mat) {
+        // Fallback: find by SKU
+        mat = mats.find((m) => m.sku === variant.sku);
+      }
+      if (!mat) {
+        console.warn("Material not found for variant:", variant.variantId, variant.sku);
+        return;
+      }
 
       const deductions = {};
       variant.batches.forEach((b) => {
@@ -1240,7 +1240,9 @@ export default function StocksPage() {
                   ? "Write-off"
                   : reason === "missing"
                     ? "Missing"
-                    : "Damaged"),
+                    : reason === "sales"
+                      ? "Sale"
+                      : "Damaged"),
               date: now,
             },
           ],
@@ -1248,7 +1250,7 @@ export default function StocksPage() {
         };
       });
 
-      const idx = mats.findIndex((m) => m.id === variant.variantId);
+      const idx = mats.findIndex((m) => m.id === mat.id);
       if (idx !== -1) {
         mats[idx] = {
           ...mats[idx],
@@ -1274,22 +1276,22 @@ export default function StocksPage() {
       log.push({
         // FIX 5: Use genDocNumber for proper ID format
         id: genDocNumber("GI", log),
-        materialId: variant.variantId,
-        materialName: variant.variantName,
-        variantId: variant.variantId,
-        variantName: variant.variantName,
-        sku: variant.sku,
+        materialId: mat.id,
+        materialName: mat.name || variant.variantName,
+        variantId: mat.id,
+        variantName: variant.variantName || mat.name,
+        sku: variant.sku || mat.sku,
         category: variant.category || mat.category || "",
         uom: variant.uom || mat.uom || "pcs",
         issueType,
-        quantity: qtyFulfilled,
+        quantity: -qtyFulfilled,
         unitCost,
         totalCost: qtyFulfilled * unitCost,
         performedBy: performedBy || "",
         notes: remarks || "",
         batchBreakdown,
-        // Sale-specific fields (only when issueType === 'sale')
-        ...(issueType === "sale"
+        // Sale-specific fields (only when issueType === 'manual_sale')
+        ...(issueType === "manual_sale"
           ? {
               saleRef: saleRef || null,
               saleDate: saleDate || null,
@@ -1395,7 +1397,7 @@ export default function StocksPage() {
         <InventoryReports materials={materials} stockOuts={stockOuts} />
       )}
 
-      {/* Stock Reduction Modal (Old Inventory — FIFO + Pick Batch + Sales/Damage/Writeoff) */}
+      {/* Stock Adjustment Modal (Old Inventory — FIFO + Pick Batch + Sales/Damage/Writeoff) */}
       {showReductionModal && (
         <StockReductionModal
           isOpen={showReductionModal}

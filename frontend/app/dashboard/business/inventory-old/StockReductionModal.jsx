@@ -1,8 +1,94 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 
-// ── Single ₱ helper — avoids ₱₱ when formatPrice already adds the symbol ─────
+// ── Custom Dropdown Component (Dark Theme) ────────────────────────────────────
+function CustomDropdown({ value, onChange, options, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const [dropdownStyle, setDropdownStyle] = useState({});
+
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  // Update dropdown position when opened
+  useEffect(() => {
+    if (open && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: 'fixed',
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 99999,
+      });
+    }
+  }, [open]);
+
+  const selected = options.find(o => o.value === value);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%',
+          padding: '0.75rem 1rem',
+          background: 'rgba(255,255,255,0.06)',
+          border: open ? '1px solid rgba(212,168,67,0.5)' : '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '8px',
+          color: selected ? '#E5E2E1' : 'var(--gray)',
+          fontSize: '0.85rem',
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          boxSizing: 'border-box',
+        }}
+      >
+        <span>{selected ? selected.label : placeholder}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </div>
+      {open && (
+        <div style={{
+          ...dropdownStyle,
+          background: '#1A1A1A',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '8px',
+          maxHeight: '240px',
+          overflowY: 'auto',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+        }}>
+          {options.map(opt => (
+            <div
+              key={opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              style={{
+                padding: '0.625rem 1rem',
+                color: opt.value === value ? '#D4A843' : '#E5E2E1',
+                background: opt.value === value ? 'rgba(212,168,67,0.12)' : 'transparent',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                borderBottom: '1px solid rgba(255,255,255,0.04)',
+              }}
+              onMouseEnter={e => { if (opt.value !== value) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+              onMouseLeave={e => { if (opt.value !== value) e.currentTarget.style.background = 'transparent'; }}
+            >
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Single  helper — avoids ₱₱ when formatPrice already adds the symbol ─────
 function peso(amount) {
   return `₱${Number(amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -92,6 +178,11 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
   const [pending, setPending]               = useState(null);
   const [completedSale, setCompletedSale]   = useState(null);
   const [infoModal, setInfoModal]           = useState(null);
+  const [selectedMaterialId, setSelectedMaterialId] = useState(''); // For material selector when no item pre-selected
+  const [selectedItem, setSelectedItem]     = useState(item); // Internal item state
+
+  // Sync internal item when prop changes
+  useEffect(() => { setSelectedItem(item); }, [item]);
 
   const isSale = reason === 'sales';
 
@@ -161,28 +252,28 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
 
   // Load variants - only from ACTIVE inventory items
   useEffect(() => {
-    if (!isOpen || !item) return;
-    
+    if (!isOpen || !selectedItem) return;
+
     // Only include ACTIVE inventory items (archived items cannot have stock reduced)
     // Match by: 1) Same masterlistProductName, OR 2) Same category + similar name, OR 3) SKU prefix match
     const src = (inventory || []).filter(inv => {
       if (inv.isActive === false) return false;
-      
+
       // Match 1: Same masterlistProductName (most reliable!)
-      if (item.masterlistProductName && inv.masterlistProductName === item.masterlistProductName) {
+      if (selectedItem.masterlistProductName && inv.masterlistProductName === selectedItem.masterlistProductName) {
         return true;
       }
-      
+
       // Match 2: Same category + name contains same base
-      if (inv.category === item.category) {
+      if (inv.category === selectedItem.category) {
         const invName = inv.name.toLowerCase();
-        const itemName = item.name.toLowerCase();
+        const itemName = selectedItem.name.toLowerCase();
         // Check if inventory item name contains the parent item name
         if (invName.includes(itemName) || itemName.includes(invName)) return true;
       }
       
       // Match 3: SKU prefix (first 3 parts)
-      const a = item.sku?.split('-').slice(0,3).join('-'), b = inv.sku?.split('-').slice(0,3).join('-');
+      const a = selectedItem.sku?.split('-').slice(0,3).join('-'), b = inv.sku?.split('-').slice(0,3).join('-');
       if (a && b && a === b) return true;
       
       return false;
@@ -202,13 +293,17 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
       return acc;
     }, {});
     const res = Object.values(grouped);
-    setVariants(res.length > 0 ? res : [{ id: item.id, variantName: item.name, sku: item.sku, stock: item.stockQty||0, batches: Array.isArray(item.batches) ? item.batches.filter(b=>(b.remainingQty||0)>0).sort((a,b)=>new Date(a.dateReceived)-new Date(b.dateReceived)) : [] }]);
-  }, [isOpen, item, inventory]);
+    setVariants(res.length > 0 ? res : [{ id: selectedItem.id, variantName: selectedItem.name, sku: selectedItem.sku, stock: selectedItem.stockQty||0, batches: Array.isArray(selectedItem.batches) ? selectedItem.batches.filter(b=>(b.remainingQty||0)>0).sort((a,b)=>new Date(a.dateReceived)-new Date(b.dateReceived)) : [] }]);
+  }, [isOpen, selectedItem, inventory]);
 
   // Reset on open
   useEffect(() => {
-    if (isOpen) { setBatchMode('fifo'); setReason('sales'); setPriceMode('unit'); setSaleDate(new Date().toISOString().split('T')[0]); setCustomer(''); setRemarks(''); setSelectedIds([]); setVariantQtys({}); setUnitPrices({}); setTotalAmounts({}); setPickedBatches({}); setShowConfirm(false); setShowReceipt(false); setPending(null); setCompletedSale(null); }
-  }, [isOpen]);
+    if (isOpen) {
+      setBatchMode('fifo'); setReason('sales'); setPriceMode('unit'); setSaleDate(new Date().toISOString().split('T')[0]); setCustomer(''); setRemarks(''); setSelectedIds([]); setVariantQtys({}); setUnitPrices({}); setTotalAmounts({}); setPickedBatches({}); setShowConfirm(false); setShowReceipt(false); setPending(null); setCompletedSale(null); setSelectedMaterialId('');
+      // If no item pre-selected, start with material selector
+      if (!item) setSelectedItem(null);
+    }
+  }, [isOpen, item]);
 
   // Clear appropriate state when switching batch modes
   useEffect(() => {
@@ -336,11 +431,6 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
     catch (err) { setInfoModal({title:'Error',message:err.message||'Failed to process. Please try again.'}); }
   };
 
-  if (!isOpen || !item) return null;
-
-  const baseName   = extractBaseProductName(item.name);
-  const totalStock = variants.reduce((s,v)=>s+v.stock, 0);
-
   // ── Styles ────────────────────────────────────────────────────────────────
   const S = {
     overlay:    { position:'fixed', inset:0, background:'rgba(0,0,0,0.78)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 },
@@ -360,6 +450,63 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
     fifoTh:     { padding:'0.6rem 0.75rem', fontSize:'0.6rem', fontWeight:700, color:'var(--gray)', textTransform:'uppercase', letterSpacing:'0.08em', background:'rgba(0,0,0,0.3)', borderBottom:'1px solid rgba(255,255,255,0.06)' },
     summaryBox: { padding:'1rem', borderRadius:'10px', marginTop:'1rem', background:'rgba(212,168,67,0.07)', border:'1px solid rgba(212,168,67,0.2)' },
   };
+
+  if (!isOpen) return null;
+
+  // If no item pre-selected and none selected internally, show material selector
+  if (!selectedItem) {
+    const availableMaterials = (inventory || []).filter(inv => inv.isActive !== false);
+    return (
+      <div style={{...S.overlay, zIndex: 9999}} onClick={onClose}>
+        <div style={{...S.modal, maxWidth:'500px', width:'95%', position:'relative', zIndex: 10000}} onClick={e=>e.stopPropagation()}>
+          <div style={S.header}>
+            <div>
+              <div style={{fontSize:'0.62rem',color:'#D4A843',textTransform:'uppercase',letterSpacing:'0.2em',marginBottom:'0.35rem',fontWeight:600}}>Stock Adjustment</div>
+              <h2 style={{fontSize:'1.25rem',fontWeight:700,color:'#E5E2E1',margin:0}}>Select Material</h2>
+            </div>
+            <button onClick={onClose} style={{background:'rgba(255,255,255,0.05)',border:'none',borderRadius:'50%',width:'40px',height:'40px',cursor:'pointer',color:'var(--gray)',display:'flex',alignItems:'center',justifyContent:'center'}}
+              onMouseEnter={e=>{e.currentTarget.style.background='rgba(239,68,68,0.15)';e.currentTarget.style.color='#ef4444';}}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div style={{padding:'1.5rem 2rem',overflowY:'auto',maxHeight:'60vh'}}>
+            <label style={{display:'block',fontSize:'0.72rem',color:'var(--gray)',fontWeight:600,textTransform:'uppercase',marginBottom:'0.5rem',letterSpacing:'0.08em'}}>Choose a material to adjust</label>
+            <CustomDropdown
+              value={selectedMaterialId}
+              onChange={setSelectedMaterialId}
+              placeholder="— Select a material —"
+              options={[
+                { value: '', label: '— Select a material —' },
+                ...availableMaterials
+                  .filter(m => !m.hasVariants || (inventory || []).filter(c => c.parentId === m.id).length === 0)
+                  .map(m => ({
+                    value: m.id,
+                    label: `${m.name} (${m.category}) — ${m.stockQty} pcs`
+                  }))
+              ]}
+            />
+            {selectedMaterialId && (
+              <button
+                type="button"
+                onClick={() => {
+                  const mat = availableMaterials.find(m => m.id === selectedMaterialId);
+                  if (mat) {
+                    setSelectedItem(mat); // Set internal state and proceed to variant selection
+                  }
+                }}
+                style={{width:'100%',padding:'0.75rem',marginTop:'1rem',background:'linear-gradient(135deg,#FFDF9F 0%,#D4A843 100%)',border:'none',borderRadius:'8px',color:'#000',fontWeight:700,fontSize:'0.85rem',cursor:'pointer'}}
+              >
+                Continue
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const baseName   = extractBaseProductName(selectedItem.name);
+  const totalStock = variants.reduce((s,v)=>s+v.stock, 0);
 
   // ── Variant row ───────────────────────────────────────────────────────────
   const renderRow = (variant, idx) => {
@@ -579,15 +726,15 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div style={S.overlay} onClick={onClose}>
-      <div style={S.modal} onClick={e=>e.stopPropagation()}>
+    <div style={{...S.overlay, overflowY: 'auto'}} onClick={onClose}>
+      <div style={{...S.modal, maxWidth:'900px', width:'95%'}} onClick={e=>e.stopPropagation()}>
 
         {/* HEADER */}
         <div style={S.header}>
           <div>
             <div style={{ fontSize:'0.6rem', color:GOLD, textTransform:'uppercase', letterSpacing:'0.2em', marginBottom:'0.3rem', fontWeight:700 }}>Inventory Management</div>
             <h2 style={{ fontSize:'1.4rem', fontWeight:700, color:'#E5E2E1', margin:0 }}>Reduce Stock — {baseName}</h2>
-            <div style={{ fontSize:'0.78rem', color:'var(--gray)', marginTop:'0.35rem' }}>{item.category} · Current stock: <strong style={{ color:GOLD }}>{totalStock} pcs</strong></div>
+            <div style={{ fontSize:'0.78rem', color:'var(--gray)', marginTop:'0.35rem' }}>{selectedItem.category} · Current stock: <strong style={{ color:GOLD }}>{totalStock} pcs</strong></div>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:'0.625rem' }}>
             <button type="button" style={S.modeBtn(batchMode==='fifo')} onClick={()=>setBatchMode('fifo')}>FIFO</button>
@@ -601,7 +748,7 @@ export default function StockReductionModal({ isOpen, onClose, onConfirm, item, 
         </div>
 
         {/* BODY */}
-        <div style={S.body}>
+        <div style={{...S.body, overflow: 'visible'}}>
 
           {/* LEFT */}
           <div style={S.left}>

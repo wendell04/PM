@@ -2,6 +2,15 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
+// ── DAMAGE TYPES FOR BAD ORDERS ──────────────────────────────────────────────
+// These are the bad order categories that get created during stock-in
+export const DAMAGE_TYPES = [
+  { id: "damaged", label: "Damaged" },
+  { id: "shortage", label: "Shortage" },
+  { id: "defective", label: "Defective" },
+  { id: "wrong_item", label: "Wrong Item Shipped" },
+];
+
 // ── Format Price ───────────────────────────────────────────────────────────────
 function formatPrice(val) {
   const num =
@@ -548,6 +557,8 @@ export default function AddStockModal({
   const [infoModal, setInfoModal] = useState(null);
   const [showAddVendor, setShowAddVendor] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState({});
+  const [issuePopoverOpen, setIssuePopoverOpen] = useState(false);
+  const [issuePopoverTarget, setIssuePopoverTarget] = useState(null); // { materialId, rowIndex }
 
   // ── Reset on open ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -713,8 +724,7 @@ export default function AddStockModal({
           sku: mat.sku || "",
           uom: mat.uom || "pcs",
           qty: "",
-          damaged: "",
-          damageType: "",
+          damageIssues: { damaged: "", shortage: "", defective: "", wrong_item: "" },
           unitCost:
             mat.baseCost != null && mat.baseCost > 0
               ? String(mat.baseCost)
@@ -732,8 +742,7 @@ export default function AddStockModal({
           sku: mat.sku || "",
           uom: mat.uom || "pcs",
           qty: "",
-          damaged: "",
-          damageType: "",
+          damageIssues: { damaged: "", shortage: "", defective: "", wrong_item: "" },
           unitCost:
             mat.baseCost != null && mat.baseCost > 0
               ? String(mat.baseCost)
@@ -748,8 +757,7 @@ export default function AddStockModal({
       sku: c.sku || "",
       uom: c.uom || mat.uom || "pcs",
       qty: "",
-      damaged: "",
-      damageType: "",
+      damageIssues: { damaged: "", shortage: "", defective: "", wrong_item: "" },
       unitCost:
         c.baseCost != null && c.baseCost > 0
           ? String(c.baseCost)
@@ -760,6 +768,185 @@ export default function AddStockModal({
     }));
   };
 
+  // ── Bad Order Issues Popover ───────────────────────────────────────────────
+  // Clickable popover to specify damage types when entering bad orders
+  function BadOrderIssuesPopover({
+    isOpen,
+    onClose,
+    damageIssues,
+    onChange,
+    qtyReceived,
+  }) {
+    if (!isOpen) return null;
+
+    const totalBO = Object.values(damageIssues).reduce(
+      (s, v) => s + (parseInt(v) || 0),
+      0,
+    );
+
+    const handleChange = (type, val) => {
+      const num = val === "" ? 0 : parseInt(val) || 0;
+      const othersTotal = Object.entries(damageIssues)
+        .filter(([k]) => k !== type)
+        .reduce((s, [, v]) => s + (parseInt(v) || 0), 0);
+      const remaining = qtyReceived - othersTotal;
+      if (num > remaining) return;
+      onChange({ ...damageIssues, [type]: val });
+    };
+
+    return (
+      <div
+        className="modal-overlay"
+        style={{ zIndex: 9999 }}
+        onClick={onClose}
+      >
+        <div
+          className="modal-content"
+          onClick={(e) => e.stopPropagation()}
+          style={{ maxWidth: "380px", width: "90%" }}
+        >
+          <div className="modal-header">
+            <h2 className="modal-title" style={{ fontSize: "0.95rem" }}>
+              Bad Order Issues ({qtyReceived} units received)
+            </h2>
+            <button className="modal-close" onClick={onClose}>
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="modal-body">
+            {totalBO > qtyReceived && (
+              <p
+                style={{
+                  color: "#ef4444",
+                  fontSize: "0.78rem",
+                  marginBottom: "0.75rem",
+                  fontWeight: 600,
+                }}
+              >
+                Total issues cannot exceed received quantity.
+              </p>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              {DAMAGE_TYPES.map((dt) => {
+                const val = damageIssues[dt.id] || "";
+                const num = parseInt(val) || 0;
+                const othersTotal = Object.entries(damageIssues)
+                  .filter(([k]) => k !== dt.id)
+                  .reduce((s, [, v]) => s + (parseInt(v) || 0), 0);
+                const maxAllow = qtyReceived - othersTotal;
+                return (
+                  <div key={dt.id}>
+                    <label
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        fontSize: "0.78rem",
+                        color: "#E5E2E1",
+                        fontWeight: 600,
+                        marginBottom: "0.35rem",
+                      }}
+                    >
+                      <span>{dt.label}</span>
+                      {num > 0 && (
+                        <span
+                          style={{
+                            fontSize: "0.65rem",
+                            color: "#D4A843",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {num} unit{num !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </label>
+                    <IntegerInput
+                      value={val}
+                      onChange={(e) => handleChange(dt.id, e.target.value)}
+                      min={0}
+                      max={maxAllow}
+                      placeholder="0"
+                      className="form-input"
+                      style={{
+                        width: "100%",
+                        background: "rgba(255,255,255,0.06)",
+                        border:
+                          num > 0
+                            ? "1px solid rgba(212,168,67,0.4)"
+                            : "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: "8px",
+                        color: num > 0 ? "#E5E2E1" : "var(--gray)",
+                        padding: "0.5rem 0.75rem",
+                        fontSize: "0.85rem",
+                        textAlign: "center",
+                        fontWeight: 700,
+                        outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "0.75rem",
+                background: "rgba(248,113,113,0.06)",
+                border: "1px solid rgba(248,113,113,0.2)",
+                borderRadius: "8px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "0.7rem",
+                  color: "var(--gray)",
+                  textTransform: "uppercase",
+                  fontWeight: 600,
+                }}
+              >
+                Total Bad Orders
+              </span>
+              <span
+                style={{
+                  fontSize: "1.1rem",
+                  fontWeight: 800,
+                  color: totalBO > 0 ? "#F87171" : "var(--gray)",
+                }}
+              >
+                {totalBO}{" "}
+                <span style={{ fontSize: "0.7rem", fontWeight: 500 }}>
+                  units
+                </span>
+              </span>
+            </div>
+          </div>
+          <div className="modal-actions" style={{ justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={onClose}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Derived totals ───────────────────────────────────────────────────────────
   const totalReceived = selectedMaterials.reduce((sum, m) => {
     const rows = stockRowsByMaterial[m.id] || [];
@@ -767,7 +954,10 @@ export default function AddStockModal({
   }, 0);
   const totalDamaged = selectedMaterials.reduce((sum, m) => {
     const rows = stockRowsByMaterial[m.id] || [];
-    return sum + rows.reduce((s, r) => s + (parseInt(r.damaged) || 0), 0);
+    return sum + rows.reduce((s, r) => {
+      const issues = r.damageIssues || {};
+      return s + Object.values(issues).reduce((ss, v) => ss + (parseInt(v) || 0), 0);
+    }, 0);
   }, 0);
   const totalGood = totalReceived - totalDamaged;
 
@@ -826,10 +1016,9 @@ export default function AddStockModal({
       return (
         sum +
         rows.reduce((s, r) => {
-          const good = Math.max(
-            0,
-            (parseInt(r.qty) || 0) - (parseInt(r.damaged) || 0),
-          );
+          const issues = r.damageIssues || {};
+          const totalBO = Object.values(issues).reduce((ss, v) => ss + (parseInt(v) || 0), 0);
+          const good = Math.max(0, (parseInt(r.qty) || 0) - totalBO);
           const cost =
             mode === "total" ? unitCost : parseFloat(r.unitCost) || 0;
           return s + good * cost;
@@ -856,14 +1045,18 @@ export default function AddStockModal({
         mode === "total" && totalQty > 0
           ? (parseFloat(totalAmt.replace(/,/g, "")) || 0) / totalQty
           : 0;
-      return rows
-        .filter((r) => (parseInt(r.damaged) || 0) > 0)
-        .map((r) => {
-          const d = parseInt(r.damaged) || 0;
-          const c =
-            mode === "total" ? productUnitCost : parseFloat(r.unitCost) || 0;
-          return `${d}×${formatPrice(c)}=${formatPrice(d * c)}`;
-        });
+      return rows.flatMap((r) => {
+        const issues = r.damageIssues || {};
+        return Object.entries(issues)
+          .filter(([, v]) => (parseInt(v) || 0) > 0)
+          .map(([type, v]) => {
+            const d = parseInt(v) || 0;
+            const c =
+              mode === "total" ? productUnitCost : parseFloat(r.unitCost) || 0;
+            const label = DAMAGE_TYPES.find((dt) => dt.id === type)?.label || type;
+            return `${d}x${label}(${formatPrice(d * c)})`;
+          });
+      });
     });
     return parts.join("  ");
   }, [
@@ -882,13 +1075,17 @@ export default function AddStockModal({
       (stockRowsByMaterial[m.id] || []).some((r) => (parseInt(r.qty) || 0) > 0),
     );
     if (!hasQty) return false;
-    // Validate: if damaged > 0, damageType must be selected
+    // Validate: total damageIssues cannot exceed qty received
     for (const m of selectedMaterials) {
       const rows = stockRowsByMaterial[m.id] || [];
       for (const r of rows) {
-        if ((parseInt(r.damaged) || 0) > 0 && !r.damageType) {
-          return false;
-        }
+        const issues = r.damageIssues || {};
+        const totalIssues = Object.values(issues).reduce(
+          (s, v) => s + (parseInt(v) || 0),
+          0,
+        );
+        const qty = parseInt(r.qty) || 0;
+        if (totalIssues > qty) return false;
       }
     }
     return true;
@@ -919,16 +1116,9 @@ export default function AddStockModal({
       return;
     }
     if (!step2Valid()) {
-      const hasMissingDamageType = selectedMaterials.some((m) =>
-        (stockRowsByMaterial[m.id] || []).some(
-          (r) => (parseInt(r.damaged) || 0) > 0 && !r.damageType,
-        ),
-      );
       setInfoModal({
         title: "Validation Error",
-        message: hasMissingDamageType
-          ? "Select a damage type for all damaged items before proceeding."
-          : "Enter received quantity for at least one item.",
+        message: "Enter received quantity for at least one item.",
       });
       return;
     }
@@ -939,23 +1129,6 @@ export default function AddStockModal({
           "Complete all required invoice fields (invoice number, delivery date, and cost).",
       });
       return;
-    }
-
-    // Validate damage types before submit
-    for (const mat of selectedMaterials) {
-      const rows = (stockRowsByMaterial[mat.id] || []).filter(
-        (r) => (parseInt(r.qty) || 0) > 0,
-      );
-      for (const r of rows) {
-        const damaged = parseInt(r.damaged) || 0;
-        if (damaged > 0 && !r.damageType) {
-          setInfoModal({
-            title: "Validation Error",
-            message: `Select damage type for "${r.variantLabel}" before proceeding.`,
-          });
-          return;
-        }
-      }
     }
 
     const stockData = selectedMaterials.flatMap((mat) => {
@@ -972,10 +1145,31 @@ export default function AddStockModal({
 
       return rows.map((r) => {
         const received = parseInt(r.qty) || 0;
-        const damaged = parseInt(r.damaged) || 0;
-        const good = received - damaged;
+        const issues = r.damageIssues || {};
+        const totalBO = Object.values(issues).reduce(
+          (s, v) => s + (parseInt(v) || 0),
+          0,
+        );
+        const good = received - totalBO;
         const unitCost =
           mode === "total" ? computedUnitCost : parseFloat(r.unitCost) || 0;
+
+        // Build badOrders array from damageIssues
+        const badOrders = [];
+        Object.entries(issues).forEach(([type, val]) => {
+          const qty = parseInt(val) || 0;
+          if (qty > 0) {
+            const label = DAMAGE_TYPES.find((dt) => dt.id === type)?.label || type;
+            badOrders.push({
+              type,
+              label,
+              qty,
+              unitCost,
+              totalValue: qty * unitCost,
+            });
+          }
+        });
+
         return {
           materialId: r.materialId,
           materialName: r.variantLabel,
@@ -984,9 +1178,8 @@ export default function AddStockModal({
           vendorId: invoice.vendorId || null,
           vendorName: invoice.vendorName || "General Merchandise",
           receivedQty: received,
-          damagedQty: damaged,
-          damageType: r.damageType || null,
           goodQty: good,
+          badOrders,
           unitCost,
           effectiveUnitCost: good > 0 ? (received * unitCost) / good : unitCost,
           totalPaid: received * unitCost,
@@ -1715,18 +1908,35 @@ export default function AddStockModal({
                                   color: "var(--gray)",
                                   textTransform: "uppercase",
                                   letterSpacing: "0.08em",
-                                  width: "100px",
-                                  minWidth: "100px",
+                                  width: "120px",
+                                  minWidth: "120px",
                                 }}
                               >
-                                Damaged
+                                Issues / BO
+                                <span
+                                  style={{
+                                    display: "block",
+                                    fontSize: "0.55rem",
+                                    fontWeight: 400,
+                                    color: "var(--gray)",
+                                    textTransform: "none",
+                                    marginTop: "0.15rem",
+                                  }}
+                                >
+                                  Damaged, Shortage, etc.
+                                </span>
                               </th>
                             </tr>
                           </thead>
                           <tbody>
                             {rows.map((row, idx) => {
                               const q = parseInt(row.qty) || 0;
-                              const d = parseInt(row.damaged) || 0;
+                              const issues = row.damageIssues || {};
+                              const totalBO = Object.values(issues).reduce(
+                                (s, v) => s + (parseInt(v) || 0),
+                                0,
+                              );
+                              const hasIssues = totalBO > 0;
                               return (
                                 <tr
                                   key={row.variantLabel}
@@ -1813,45 +2023,76 @@ export default function AddStockModal({
                                       textAlign: "center",
                                     }}
                                   >
-                                    <IntegerInput
-                                      className="form-input"
-                                      value={row.damaged}
-                                      onChange={(e) => {
-                                        const newRows = [...rows];
-                                        newRows[idx] = {
-                                          ...row,
-                                          damaged: e.target.value,
-                                        };
-                                        setStockRowsByMaterial({
-                                          ...stockRowsByMaterial,
-                                          [mat.id]: newRows,
-                                        });
-                                      }}
-                                      min={0}
-                                      max={99999}
-                                      placeholder="0"
-                                      qtyValue={row.qty}
+                                    <button
+                                      type="button"
                                       disabled={q === 0}
+                                      onClick={() => {
+                                        setIssuePopoverTarget({ materialId: mat.id, rowIndex: idx });
+                                        setIssuePopoverOpen(true);
+                                      }}
                                       style={{
-                                        textAlign: "center",
-                                        width: "80px",
-                                        background:
-                                          q === 0
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        gap: "0.35rem",
+                                        width: "100px",
+                                        padding: "0.5rem 0.6rem",
+                                        background: hasIssues
+                                          ? "rgba(248,113,113,0.12)"
+                                          : q === 0
                                             ? "rgba(255,255,255,0.02)"
                                             : "rgba(255,255,255,0.06)",
-                                        border:
-                                          q === 0
+                                        border: hasIssues
+                                          ? "1px solid rgba(248,113,113,0.3)"
+                                          : q === 0
                                             ? "1px solid rgba(255,255,255,0.05)"
                                             : "1px solid rgba(255,255,255,0.1)",
                                         borderRadius: "8px",
-                                        color:
-                                          d > 0 ? "#F87171" : "var(--gray)",
-                                        fontWeight: 600,
-                                        padding: "0.5rem",
-                                        cursor:
-                                          q === 0 ? "not-allowed" : "auto",
+                                        color: hasIssues
+                                          ? "#F87171"
+                                          : q === 0
+                                            ? "var(--gray)"
+                                            : "var(--gray-light)",
+                                        fontWeight: 700,
+                                        fontSize: "0.85rem",
+                                        cursor: q === 0 ? "not-allowed" : "pointer",
+                                        transition: "all 0.15s",
                                       }}
-                                    />
+                                      onMouseEnter={(e) => {
+                                        if (q > 0) {
+                                          e.currentTarget.style.borderColor =
+                                            "rgba(212,168,67,0.4)";
+                                          e.currentTarget.style.background =
+                                            "rgba(212,168,67,0.08)";
+                                        }
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.borderColor = hasIssues
+                                          ? "rgba(248,113,113,0.3)"
+                                          : q === 0
+                                            ? "rgba(255,255,255,0.05)"
+                                            : "rgba(255,255,255,0.1)";
+                                        e.currentTarget.style.background = hasIssues
+                                          ? "rgba(248,113,113,0.12)"
+                                          : q === 0
+                                            ? "rgba(255,255,255,0.02)"
+                                            : "rgba(255,255,255,0.06)";
+                                      }}
+                                    >
+                                      <span>{totalBO || "0"}</span>
+                                      {q > 0 && (
+                                        <svg
+                                          width="12"
+                                          height="12"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2.5"
+                                        >
+                                          <path d="M12 5v14M5 12h14" />
+                                        </svg>
+                                      )}
+                                    </button>
                                   </td>
                                 </tr>
                               );
@@ -1928,7 +2169,7 @@ export default function AddStockModal({
                         letterSpacing: "0.08em",
                       }}
                     >
-                      Stock Wastage - Damaged Upon Arrival
+                      Bad Orders
                     </div>
                     <div
                       style={{
@@ -2235,7 +2476,10 @@ export default function AddStockModal({
                     0,
                   );
                   const matDmg = rows.reduce(
-                    (s, r) => s + (parseInt(r.damaged) || 0),
+                    (s, r) => {
+                      const issues = r.damageIssues || {};
+                      return s + Object.values(issues).reduce((ss, v) => ss + (parseInt(v) || 0), 0);
+                    },
                     0,
                   );
                   const matGood = matQty - matDmg;
@@ -2359,7 +2603,7 @@ export default function AddStockModal({
                                   width: "60px",
                                 }}
                               >
-                                Dmg
+                                BO
                               </th>
                             </tr>
                           </thead>
@@ -2409,13 +2653,19 @@ export default function AddStockModal({
                                     padding: "0.625rem 0.5rem",
                                     textAlign: "center",
                                     color:
-                                      (parseInt(row.damaged) || 0) > 0
-                                        ? "#F87171"
-                                        : "var(--gray)",
+                                      (() => {
+                                        const issues = row.damageIssues || {};
+                                        const total = Object.values(issues).reduce((s, v) => s + (parseInt(v) || 0), 0);
+                                        return total > 0 ? "#F87171" : "var(--gray)";
+                                      })()
+                                    ,
                                     fontWeight: 600,
                                   }}
                                 >
-                                  {parseInt(row.damaged) || 0}
+                                  {(() => {
+                                    const issues = row.damageIssues || {};
+                                    return Object.values(issues).reduce((s, v) => s + (parseInt(v) || 0), 0);
+                                  })()}
                                 </td>
                               </tr>
                             ))}
@@ -2477,7 +2727,7 @@ export default function AddStockModal({
                                 textTransform: "uppercase",
                               }}
                             >
-                              Damaged
+                              Bad Orders
                             </div>
                             <div
                               style={{
@@ -2560,7 +2810,7 @@ export default function AddStockModal({
                         letterSpacing: "0.08em",
                       }}
                     >
-                      Damaged
+                      Bad Orders
                     </div>
                     <div
                       style={{
@@ -3327,6 +3577,7 @@ export default function AddStockModal({
                 {totalInvoiceValue > 0 && (
                   <div
                     style={{
+                      marginTop: "1rem",
                       padding: "1rem",
                       background: "rgba(212,168,67,0.08)",
                       border: "1px solid rgba(212,168,67,0.25)",
@@ -3753,6 +4004,37 @@ export default function AddStockModal({
           </div>
         </div>
       </div>
+
+      <BadOrderIssuesPopover
+        isOpen={issuePopoverOpen}
+        onClose={() => {
+          setIssuePopoverOpen(false);
+          setIssuePopoverTarget(null);
+        }}
+        damageIssues={
+          issuePopoverTarget
+            ? stockRowsByMaterial[issuePopoverTarget.materialId]?.[issuePopoverTarget.rowIndex]?.damageIssues || { damaged: "", shortage: "", defective: "", wrong_item: "" }
+            : { damaged: "", shortage: "", defective: "", wrong_item: "" }
+        }
+        onChange={(newIssues) => {
+          if (!issuePopoverTarget) return;
+          const matRows = stockRowsByMaterial[issuePopoverTarget.materialId] || [];
+          const updatedRows = [...matRows];
+          updatedRows[issuePopoverTarget.rowIndex] = {
+            ...updatedRows[issuePopoverTarget.rowIndex],
+            damageIssues: newIssues,
+          };
+          setStockRowsByMaterial({
+            ...stockRowsByMaterial,
+            [issuePopoverTarget.materialId]: updatedRows,
+          });
+        }}
+        qtyReceived={
+          issuePopoverTarget
+            ? parseInt(stockRowsByMaterial[issuePopoverTarget.materialId]?.[issuePopoverTarget.rowIndex]?.qty) || 0
+            : 0
+        }
+      />
 
       <InfoModal
         isOpen={!!infoModal}
