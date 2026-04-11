@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
@@ -17,15 +18,15 @@ export default function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [designUrl, setDesignUrl] = useState('');
   const [designNotes, setDesignNotes] = useState('');
-  const [uploadingDesign, setUploadingDesign] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState(null);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
+  // Design preview: URL.createObjectURL only; file upload happens at checkout.
   const [flashSale, setFlashSale] = useState(null);
 
   const params = useParams();
   const router = useRouter();
   const { token, currentUser } = useAuth();
+  const { addToCart } = useCart();
+  const [hoveredBtn, setHoveredBtn] = useState(null);
+  const [addedToCart, setAddedToCart] = useState(false);
   const id = params?.id;
 
   // Fetch product
@@ -197,68 +198,87 @@ export default function ProductDetailPage() {
     })}`;
   }
 
-  // Design upload
-  async function handleDesignUpload(file) {
-    if (!file || !token) return;
-    if (file.size > 10 * 1024 * 1024) {
-      setSubmitError('File too large. Maximum size is 10MB.');
-      return;
-    }
-    setUploadingDesign(true);
-    const form = new FormData();
-    form.append('design', file);
-    try {
-      const res = await fetchWithTimeout(`${API_URL}/api/order-requests/upload-design`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      }, 30000);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Upload failed');
-      setDesignUrl(data.url);
-    } catch (err) {
-      setSubmitError(err.message);
-    } finally {
-      setUploadingDesign(false);
-    }
+  // Design upload removed — users attach design files at checkout via FormData.
+  // Legacy order-request submit removed — flow is cart + checkout.
+
+  // Serialize { [group.id]: value } → "group: value, group: value" or null
+  function resolveVariantName(variants) {
+    if (!variants || Object.keys(variants).length === 0) return null;
+    return Object.entries(variants)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(', ');
   }
 
-  // Submit order request
-  async function handleSubmit() {
+  // Add to cart — stays on page
+  async function handleAddToCart() {
     if (!token) {
-      router.push('/shop/login');
+      window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }));
       return;
     }
     if (!product) return;
-
-    setSubmitting(true);
-    setSubmitError(null);
-
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/order-requests`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          productId: product.id ?? product._id,
-          quantity,
-          selectedVariants,
+      await addToCart(
+        {
+          ...product,
           designUrl: designUrl || null,
           designNotes: designNotes || null,
-        }),
-      }, 15000);
-      const data = await res.json();
-      if (!res.ok) {
-        setSubmitError(data.message || 'Submission failed.');
-        return;
-      }
-      setSubmitSuccess(true);
-    } catch {
-      setSubmitError('Network error. Please try again.');
-    } finally {
-      setSubmitting(false);
+          flatPrice: unitPrice ?? product.flatPrice ?? product.price ?? 0,
+        },
+        quantity,
+        null,
+        resolveVariantName(selectedVariants)
+      );
+      setAddedToCart(true);
+      setTimeout(() => setAddedToCart(false), 2500);
+    } catch (err) {
+      console.error('[handleAddToCart]', err);
+    }
+  }
+
+  // Add to cart then redirect to checkout
+  async function handleAddToCartAndCheckout() {
+    if (!token) {
+      window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }));
+      return;
+    }
+    if (!product) return;
+    try {
+      const resolvedPrice = unitPrice ?? product.flatPrice ?? product.price ?? 0;
+      await addToCart(
+        {
+          ...product,
+          designUrl: designUrl || null,
+          designNotes: designNotes || null,
+          flatPrice: resolvedPrice,
+        },
+        quantity,
+        null,
+        resolveVariantName(selectedVariants)
+      );
+      // Write checkout_payload so checkout page can read it
+      const payload = {
+        items: [{
+          product: {
+            _id:    product._id ?? product.id,
+            name:   product.subCategoryName || product.name,
+            images: [
+              ...(product.thumbnail ? [product.thumbnail] : []),
+              ...(product.images || []),
+            ].filter(Boolean),
+          },
+          variantId:   null,
+          variantName: resolveVariantName(selectedVariants),
+          qty:         quantity,
+          unitPrice:   resolvedPrice,
+          designUrl:   designUrl || null,
+        }],
+        notes:      designNotes || '',
+        designUrl:  designUrl || null,
+      };
+      sessionStorage.setItem('checkout_payload', JSON.stringify(payload));
+      router.push('/shop/checkout');
+    } catch (err) {
+      console.error('[handleAddToCartAndCheckout]', err);
     }
   }
 
@@ -341,70 +361,7 @@ export default function ProductDetailPage() {
         </div>
       )}
 
-      {/* SUCCESS STATE */}
-      {submitSuccess && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 1000,
-          background: 'rgba(0,0,0,0.7)',
-          display: 'flex', alignItems: 'center',
-          justifyContent: 'center', padding: '1rem',
-        }}>
-          <div style={{
-            background: 'var(--dark)',
-            border: '1px solid var(--border)',
-            borderRadius: '16px', padding: '2.5rem',
-            maxWidth: '420px', width: '100%',
-            textAlign: 'center',
-          }}>
-            <div style={{ marginBottom: '1rem' }}>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>
-            </div>
-            <h2 style={{
-              fontFamily: "'Outfit', sans-serif",
-              fontSize: '1.25rem', fontWeight: 700,
-              color: 'var(--white)',
-              marginBottom: '0.75rem' }}>
-              Order Request Submitted!
-            </h2>
-            <p style={{ color: 'var(--gray)',
-              fontSize: '0.9rem',
-              marginBottom: '1.5rem',
-              lineHeight: 1.6 }}>
-              We received your request. Our team will
-              review it and confirm the final price
-              shortly. Check your Order History for
-              updates.
-            </p>
-            <div style={{ display: 'flex', gap: '0.75rem',
-              justifyContent: 'center' }}>
-              <button
-                onClick={() => router.push(
-                  '/shop/profile?tab=orders')}
-                style={{
-                  background: 'var(--gold)', color: '#000',
-                  border: 'none', borderRadius: '8px',
-                  padding: '0.625rem 1.25rem',
-                  fontWeight: 700, cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}>
-                View My Orders
-              </button>
-              <button
-                onClick={() => router.back()}
-                style={{
-                  background: 'var(--dark2)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '8px',
-                  padding: '0.625rem 1.25rem',
-                  color: 'var(--gray)', cursor: 'pointer',
-                  fontSize: '0.875rem',
-                }}>
-                Back to Shop
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* order-request success overlay removed — flow now uses cart + checkout */}
 
       {/* PRODUCT DETAIL */}
       {!loading && !error && product && (
@@ -563,7 +520,7 @@ export default function ProductDetailPage() {
                     <div style={{ fontSize: '0.82rem',
                       color: 'var(--gray)',
                       marginTop: '0.25rem' }}>
-                      {formatPeso(unitPrice)} per item
+                      {formatPeso(unitPrice)} / pc
                     </div>
                   )}
                 </div>
@@ -575,7 +532,7 @@ export default function ProductDetailPage() {
                     && ` – ${formatPeso(priceRange.max)}`}
                   <span style={{ fontSize: '0.8rem',
                     color: 'var(--gray)',
-                    fontWeight: 400 }}> per item</span>
+                    fontWeight: 400 }}> / pc</span>
                 </div>
               ) : null}
             </div>
@@ -803,6 +760,9 @@ export default function ProductDetailPage() {
                     borderRadius: '8px',
                     color: 'var(--white)',
                     fontSize: '0.95rem', fontWeight: 700,
+                    MozAppearance: 'textfield',
+                    WebkitAppearance: 'none',
+                    appearance: 'textfield',
                   }}
                 />
                 <button
@@ -868,19 +828,15 @@ export default function ProductDetailPage() {
                 <label style={{
                   display: 'block',
                   padding: '1rem',
-                  border: `2px dashed ${uploadingDesign
-                    ? 'var(--gold)' : 'var(--border)'}`,
+                  border: '2px dashed var(--border)',
                   borderRadius: '8px',
                   textAlign: 'center',
-                  cursor: uploadingDesign
-                    ? 'wait' : 'pointer',
+                  cursor: 'pointer',
                   color: 'var(--gray)',
                   fontSize: '0.85rem',
                   transition: 'border-color 0.2s',
                 }}>
-                  {uploadingDesign
-                    ? 'Uploading...'
-                    : 'Click to upload design file'}
+                  Click to upload design file
                   <div style={{ fontSize: '0.75rem',
                     marginTop: '0.25rem',
                     color: 'var(--gray)', opacity: 0.7 }}>
@@ -888,10 +844,13 @@ export default function ProductDetailPage() {
                   </div>
                   <input type="file" style={{ display: 'none' }}
                     accept=".jpg,.jpeg,.png,.pdf,.ai,.psd,.svg"
-                    disabled={uploadingDesign}
                     onChange={e => {
                       const f = e.target.files?.[0];
-                      if (f) handleDesignUpload(f);
+                      if (f) {
+                        // Store URL via URL.createObjectURL for preview only.
+                        // Actual upload happens at checkout via FormData.
+                        setDesignUrl(URL.createObjectURL(f));
+                      }
                     }}
                   />
                 </label>
@@ -935,66 +894,129 @@ export default function ProductDetailPage() {
               />
             </div>
 
-            {/* Submit error */}
-            {submitError && (
-              <div style={{
-                padding: '0.75rem 1rem',
-                background: 'rgba(239,68,68,0.1)',
-                border: '1px solid rgba(239,68,68,0.3)',
-                borderRadius: '8px', color: '#ef4444',
-                fontSize: '0.85rem',
-              }}>
-                {submitError}
-              </div>
-            )}
+            {/* Inline submit errors removed — handled at checkout */}
 
-            {/* Submit button */}
-            <button
-              onClick={handleSubmit}
-              disabled={submitting || uploadingDesign
-                || product.stockStatus === 'out-of-stock'}
-              style={{
-                background: submitting
-                  ? 'rgba(212,168,67,0.5)'
-                  : product.stockStatus === 'out-of-stock'
-                  ? 'rgba(107,114,128,0.3)'
-                  : 'var(--gold)',
-                color: product.stockStatus === 'out-of-stock'
-                  ? 'var(--gray)' : '#000',
-                border: 'none', borderRadius: '10px',
-                padding: '0.875rem 1.5rem',
-                fontWeight: 800, fontSize: '1rem',
-                cursor: submitting || uploadingDesign
-                  || product.stockStatus === 'out-of-stock'
-                  ? 'not-allowed' : 'pointer',
-                width: '100%',
-                fontFamily: "'Outfit', sans-serif",
-              }}>
-              {submitting
-                ? 'Submitting...'
-                : product.stockStatus === 'out-of-stock'
-                ? 'Out of Stock'
-                : token
-                ? (<><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:'6px',flexShrink:0}}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Place Order</>)
-                : (<><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:'6px',flexShrink:0}}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Login to Order</>)}
-            </button>
+            {/* Action buttons */}
+            {token ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
 
-            {/* Guest hint */}
-            {!token && (
-              <p style={{ textAlign: 'center',
-                fontSize: '0.8rem', color: 'var(--gray)',
-                margin: 0 }}>
-                You need to{' '}
+                {/* Add to Cart */}
                 <button
-                  onClick={() => router.push('/shop/login')}
-                  style={{ background: 'none', border: 'none',
-                    color: 'var(--gold)', cursor: 'pointer',
-                    fontSize: '0.8rem', fontWeight: 700,
-                    padding: 0 }}>
-                  log in
+                  onClick={handleAddToCart}
+                  onMouseEnter={() => setHoveredBtn('cart')}
+                  onMouseLeave={() => setHoveredBtn(null)}
+                  disabled={product.stockStatus === 'out-of-stock'}
+                  style={{
+                    background: product.stockStatus === 'out-of-stock'
+                      ? 'rgba(107,114,128,0.3)'
+                      : addedToCart
+                      ? 'rgba(74,222,128,0.2)'
+                      : hoveredBtn === 'cart'
+                      ? 'rgba(212,168,67,0.25)'
+                      : 'rgba(212,168,67,0.15)',
+                    color: product.stockStatus === 'out-of-stock'
+                      ? 'var(--gray)'
+                      : addedToCart
+                      ? '#4ade80'
+                      : 'var(--gold)',
+                    border: product.stockStatus === 'out-of-stock'
+                      ? '1px solid rgba(107,114,128,0.3)'
+                      : '1px solid var(--gold)',
+                    borderRadius: '10px',
+                    padding: '0.875rem 1.5rem',
+                    fontWeight: 800, fontSize: '1rem',
+                    cursor: product.stockStatus === 'out-of-stock'
+                      ? 'not-allowed' : 'pointer',
+                    width: '100%',
+                    fontFamily: "'Outfit', sans-serif",
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                  {product.stockStatus === 'out-of-stock' ? 'Out of Stock' : (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                        strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
+                        {addedToCart ? (
+                          <polyline points="20 6 9 17 4 12"/>
+                        ) : (
+                          <>
+                            <circle cx="9" cy="21" r="1"/>
+                            <circle cx="20" cy="21" r="1"/>
+                            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                          </>
+                        )}
+                      </svg>
+                      {addedToCart ? 'Added to Cart!' : 'Add to Cart'}
+                    </>
+                  )}
                 </button>
-                {' '}to submit an order request.
-              </p>
+
+                {/* Proceed to Checkout */}
+                <button
+                  onClick={handleAddToCartAndCheckout}
+                  onMouseEnter={() => setHoveredBtn('checkout')}
+                  onMouseLeave={() => setHoveredBtn(null)}
+                  disabled={product.stockStatus === 'out-of-stock'}
+                  style={{
+                    background: product.stockStatus === 'out-of-stock'
+                      ? 'rgba(107,114,128,0.3)'
+                      : hoveredBtn === 'checkout'
+                      ? 'var(--gold-hover, #e6b800)'
+                      : 'var(--gold)',
+                    color: product.stockStatus === 'out-of-stock'
+                      ? 'var(--gray)' : '#000',
+                    border: 'none', borderRadius: '10px',
+                    padding: '0.875rem 1.5rem',
+                    fontWeight: 800, fontSize: '1rem',
+                    cursor: product.stockStatus === 'out-of-stock'
+                      ? 'not-allowed' : 'pointer',
+                    width: '100%',
+                    fontFamily: "'Outfit', sans-serif",
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                  {product.stockStatus === 'out-of-stock' ? 'Out of Stock'
+                    : (
+                      <>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                          strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        Proceed to Checkout
+                      </>
+                    )}
+                </button>
+
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }))}
+                  style={{
+                    background: 'var(--gold)',
+                    color: '#000',
+                    border: 'none', borderRadius: '10px',
+                    padding: '0.875rem 1.5rem',
+                    fontWeight: 800, fontSize: '1rem',
+                    cursor: 'pointer',
+                    width: '100%',
+                    fontFamily: "'Outfit', sans-serif",
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                    strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                  Login to Order
+                </button>
+                <p style={{ textAlign: 'center', fontSize: '0.8rem',
+                  color: 'var(--gray)', margin: 0 }}>
+                  You need to log in to add items to your cart.
+                </p>
+              </div>
             )}
           </div>
         </div>

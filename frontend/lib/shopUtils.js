@@ -1,0 +1,80 @@
+/**
+ * Shared utilities for shop-facing pages.
+ * Import from here instead of defining locally in each page.
+ */
+
+export const STATUS_MAP = {
+  // orderStatus values (orders-history / OrderController)
+  Pending:          { label: 'Pending',        color: 'var(--warning, #d4a843)' },
+  'In Production':  { label: 'In Production',  color: 'var(--info, #3b82f6)'    },
+  'For Delivery':   { label: 'For Delivery',   color: '#a78bfa'                  },
+  Delivered:        { label: 'Delivered',      color: 'var(--success, #22c55e)' },
+  Returned:         { label: 'Returned',       color: '#f97316'                  },
+  Cancelled:        { label: 'Cancelled',      color: 'var(--danger, #ef4444)'  },
+  Refunded:         { label: 'Refunded',       color: 'var(--gray)'             },
+  // joStatus values (JobOrderController)
+  Queued:           { label: 'Queued',         color: 'var(--warning, #d4a843)' },
+  'In Progress':    { label: 'In Progress',    color: 'var(--info, #3b82f6)'    },
+  Completed:        { label: 'Completed',      color: 'var(--success, #22c55e)' },
+  // order-request statuses (orders / OrderRequestController)
+  pending_review:   { label: 'Pending Review', color: 'var(--warning, #d4a843)' },
+  confirmed:        { label: 'Confirmed',      color: 'var(--info, #3b82f6)'    },
+  processing:       { label: 'Processing',     color: '#8b5cf6'                  },
+  ready:            { label: 'Ready',          color: 'var(--success, #22c55e)' },
+  delivered:        { label: 'Delivered',      color: 'var(--success, #22c55e)' },
+  cancelled:        { label: 'Cancelled',      color: 'var(--danger, #ef4444)'  },
+};
+
+/**
+ * Inline status badge — usable in both 'use client' pages and server components.
+ * Returns a <span> — no external dependencies.
+ */
+export function StatusBadge({ status }) {
+  const s = STATUS_MAP[status] || { label: status ?? '—', color: 'var(--gray)' };
+  return (
+    <span style={{
+      display: 'inline-block',
+      background: `${s.color}22`,
+      color: s.color,
+      borderRadius: '999px',
+      padding: '0.25rem 0.75rem',
+      fontSize: '0.75rem',
+      fontWeight: 700,
+    }}>
+      {s.label}
+    </span>
+  );
+}
+
+/**
+ * Format a date string as "Jan 1, 2025"
+ */
+export function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
+}
+
+/**
+ * Format a date string as "Jan 1, 2025, 02:30 PM"
+ */
+export function formatTimestamp(dateStr) {
+  if (!dateStr) return '—';
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+/**
+ * Format a number as Philippine Peso with 2 decimal places.
+ * Returns '—' for null/undefined, not null, so it is always safe to render.
+ */
+export function formatPeso(n) {
+  if (n == null) return '—';
+  return `₱${Number(n).toLocaleString('en-PH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}

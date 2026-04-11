@@ -5,47 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fetchMyOrders, fetchMyOrder } from '@/lib/orderTrackingApi';
 import { useAuth } from '@/contexts/AuthContext';
-
-const STATUS_MAP = {
-  pending_review: { label: 'Pending Review', color: 'var(--warning, #d4a843)' },
-  confirmed: { label: 'Confirmed', color: 'var(--info, #3b82f6)' },
-  processing: { label: 'Processing', color: 'var(--primary, #8b5cf6)' },
-  ready: { label: 'Ready', color: 'var(--success, #22c55e)' },
-  delivered: { label: 'Delivered', color: 'var(--success, #22c55e)' },
-  cancelled: { label: 'Cancelled', color: 'var(--danger, #ef4444)' },
-};
-
-function StatusBadge({ status }) {
-  const s = STATUS_MAP[status] || { label: status, color: 'var(--gray)' };
-  return (
-    <span style={{
-      display: 'inline-block',
-      background: `${s.color}22`,
-      color: s.color,
-      borderRadius: '999px',
-      padding: '0.25rem 0.75rem',
-      fontSize: '0.75rem',
-      fontWeight: 700,
-    }}>
-      {s.label}
-    </span>
-  );
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function formatTimestamp(dateStr) {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-function formatPeso(n) {
-  if (n == null) return null;
-  return `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+import { StatusBadge, formatDate, formatTimestamp, formatPeso } from '@/lib/shopUtils';
 
 function SkeletonRow() {
   return (
@@ -98,6 +58,11 @@ export default function ShopOrdersPage() {
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState(null);
 
+  // Cancel dialog
+  const [cancelTarget, setCancelTarget]   = useState(null);
+  const [cancelling, setCancelling]       = useState(false);
+  const [cancelError, setCancelError]     = useState(null);
+
   const loadOrders = useCallback(async () => {
     if (!token) {
       setLoading(false);
@@ -142,6 +107,37 @@ export default function ShopOrdersPage() {
     setModalError(null);
   }
 
+  const cancelOrder = async () => {
+    if (!cancelTarget || !token) return;
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+      const res = await fetch(
+        `${API_URL}/api/order-requests/my/${cancelTarget._id ?? cancelTarget.id}/cancel`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+            'ngrok-skip-browser-warning': '1',
+          },
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setCancelError(data.message || 'Failed to cancel order request.');
+        return;
+      }
+      setCancelTarget(null);
+      loadOrders();
+    } catch (err) {
+      setCancelError(err.message || 'Failed to cancel order request.');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--darker, #0f0f0f)', padding: '2rem 1rem' }}>
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
@@ -155,8 +151,8 @@ export default function ShopOrdersPage() {
 
         {/* Header */}
         <div style={{ marginBottom: '2rem' }}>
-          <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.5rem', fontWeight: 700, color: 'var(--white, #f5f5f5)' }}>My Orders</h1>
-          <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.9rem' }}>Track your custom print requests</p>
+          <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.5rem', fontWeight: 700, color: 'var(--white, #f5f5f5)' }}>Order Requests</h1>
+          <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.9rem' }}>Track your custom print quote requests</p>
         </div>
 
         {/* Loading */}
@@ -205,7 +201,26 @@ export default function ShopOrdersPage() {
                     : <span style={{ fontSize: '0.8rem', color: 'var(--text-muted, #666)' }}>Price pending confirmation</span>
                   }
                 </div>
-                <button onClick={() => openDetail(order)} style={{ background: 'var(--gold, #d4a843)', color: '#000', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>View Details</button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button onClick={() => openDetail(order)} style={{ background: 'var(--gold, #d4a843)', color: '#000', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>View Details</button>
+                  {order.status === 'pending_review' && (
+                    <button
+                      onClick={() => setCancelTarget(order)}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--danger, #ef4444)',
+                        background: 'transparent',
+                        color: 'var(--danger, #ef4444)',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -292,6 +307,87 @@ export default function ShopOrdersPage() {
             {/* Footer */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '1rem 1.5rem', borderTop: '1px solid var(--border)' }}>
               <button onClick={closeDetail} style={{ background: 'var(--dark, #0f0f0f)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.625rem 1.25rem', color: 'var(--gray)', fontSize: '0.875rem', cursor: 'pointer' }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Confirmation Dialog */}
+      {cancelTarget && (
+        <div
+          onClick={() => { if (!cancelling) { setCancelTarget(null); setCancelError(null); } }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            background: 'rgba(0,0,0,0.75)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '16px',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--dark2, #161616)',
+              border: '1px solid var(--border)',
+              borderRadius: '16px',
+              padding: '24px',
+              width: '100%',
+              maxWidth: '420px',
+            }}
+          >
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem', fontWeight: 700, color: 'var(--white)' }}>
+              Cancel Order Request?
+            </h3>
+            <p style={{ margin: '0 0 20px', fontSize: '0.875rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+              Are you sure you want to cancel order request{' '}
+              <strong style={{ color: 'var(--white)' }}>
+                #{(cancelTarget._id ?? cancelTarget.id)?.slice(-8).toUpperCase()}
+              </strong>?
+              This action cannot be undone.
+            </p>
+            {cancelError && (
+              <div style={{
+                marginBottom: '16px',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: 'rgba(239,68,68,0.08)',
+                border: '1px solid var(--danger, #ef4444)',
+                color: 'var(--danger, #ef4444)',
+                fontSize: '0.8rem',
+              }}>
+                {cancelError}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => { setCancelTarget(null); setCancelError(null); }}
+                disabled={cancelling}
+                style={{
+                  padding: '10px 20px', borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--dark, #0f0f0f)',
+                  color: 'var(--gray)', fontSize: '0.875rem',
+                  cursor: cancelling ? 'not-allowed' : 'pointer',
+                  opacity: cancelling ? 0.5 : 1,
+                }}
+              >
+                Keep Request
+              </button>
+              <button
+                onClick={cancelOrder}
+                disabled={cancelling}
+                style={{
+                  padding: '10px 20px', borderRadius: '8px',
+                  border: 'none',
+                  background: cancelling
+                    ? 'rgba(239,68,68,0.4)'
+                    : 'var(--danger, #ef4444)',
+                  color: '#fff', fontSize: '0.875rem',
+                  fontWeight: 700,
+                  cursor: cancelling ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {cancelling ? 'Cancelling...' : 'Yes, Cancel'}
+              </button>
             </div>
           </div>
         </div>

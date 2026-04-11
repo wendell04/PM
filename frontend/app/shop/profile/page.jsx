@@ -9,6 +9,7 @@ import AddressBook from '../../../components/profile/AddressBook'; // NEW: Addre
 import { fetchMyOrders } from '../../../lib/ordersApi';
 import { fetchMyOrders as fetchMyOrderRequests } from '../../../lib/orderTrackingApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { StatusBadge } from '@/lib/shopUtils';
 import OrderQuickViewModal from '../../../components/orders/OrderQuickViewModal';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -428,35 +429,10 @@ export default function CustomerProfilePage() {
     }
   };
 
-  const getStatusBadgeStyle = (status) => {
-    const base = {
-      fontSize: '0.7rem',
-      fontWeight: 600,
-      padding: '0.25rem 0.625rem',
-      borderRadius: '999px',
-      display: 'inline-block',
-      textTransform: 'uppercase',
-      letterSpacing: '0.5px',
-    };
-    switch (status) {
-      case 'Pending':
-        return { ...base, background: 'rgba(212,168,67,0.15)', color: 'var(--gold)', border: '1px solid rgba(212,168,67,0.3)' };
-      case 'In Production':
-        return { ...base, background: 'rgba(212,168,67,0.1)', color: 'var(--gold)', border: '1px solid rgba(212,168,67,0.2)' };
-      case 'Ready':
-        return { ...base, background: 'rgba(74,222,128,0.12)', color: 'var(--green)', border: '1px solid rgba(74,222,128,0.3)' };
-      case 'Completed':
-        return { ...base, background: 'rgba(212,168,67,0.15)', color: 'var(--gold)', border: '1px solid rgba(212,168,67,0.3)' };
-      case 'Cancelled':
-        return { ...base, background: 'rgba(239,68,68,0.15)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.3)' };
-      default:
-        return { ...base, background: 'rgba(255,255,255,0.05)', color: 'var(--gray)', border: '1px solid var(--border)' };
-    }
-  };
-
   const formatMemberSince = (dateStr) => {
     if (!dateStr) return 'Member since Recently';
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return 'Member since Recently';
     return `Member since ${date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
   };
 
@@ -696,7 +672,7 @@ export default function CustomerProfilePage() {
 
             {/* Member Since */}
             <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-              {formatMemberSince(currentUser?.lastLogin || currentUser?.createdAt)}
+              {formatMemberSince(currentUser?.createdAt || currentUser?.lastLogin)}
             </div>
           </div>
 
@@ -914,26 +890,7 @@ export default function CustomerProfilePage() {
                         }}>
                           {getOrderId(order)}
                         </span>
-                        <span style={{
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          padding: '2px 10px',
-                          borderRadius: '999px',
-                          background:
-                            order.orderStatus === 'Completed' || order.status === 'Completed'
-                              ? 'rgba(212,168,67,0.15)'
-                            : order.orderStatus === 'Cancelled' || order.status === 'Cancelled'
-                              ? 'rgba(239,68,68,0.15)'
-                            : 'rgba(212,168,67,0.15)',
-                          color:
-                            order.orderStatus === 'Completed' || order.status === 'Completed'
-                              ? 'var(--green)'
-                            : order.orderStatus === 'Cancelled' || order.status === 'Cancelled'
-                              ? 'var(--red)'
-                            : 'var(--gold)',
-                        }}>
-                          {order.orderStatus || order.status || 'Processing'}
-                        </span>
+                        <StatusBadge status={order.orderStatus || order.status} />
                       </div>
                     ))
                   )}
@@ -1802,8 +1759,8 @@ export default function CustomerProfilePage() {
               <div>
                 {/* Header row */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-                  <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--white)' }}>Recent Orders</h2>
-                  <Link href="/shop/orders" style={{ color: 'var(--gold)', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 600 }}>View All Orders →</Link>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--white)' }}>Recent Order Requests</h2>
+                  <Link href="/shop/orders" style={{ color: 'var(--gold)', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 600 }}>View All →</Link>
                 </div>
 
                 {/* Loading */}
@@ -1837,39 +1794,20 @@ export default function CustomerProfilePage() {
                 {/* Order rows */}
                 {!widgetLoading && !widgetError && recentOrders.length > 0 && (
                   <div>
-                    {recentOrders.map((order, idx) => {
-                      const statusColors = {
-                        pending_review: { bg: 'rgba(212,168,67,0.15)', color: 'var(--gold)' },
-                        confirmed: { bg: 'rgba(59,130,246,0.15)', color: '#3b82f6' },
-                        processing: { bg: 'rgba(139,92,246,0.15)', color: '#8b5cf6' },
-                        ready: { bg: 'rgba(34,197,94,0.15)', color: 'var(--green)' },
-                        delivered: { bg: 'rgba(34,197,94,0.15)', color: 'var(--green)' },
-                        cancelled: { bg: 'rgba(239,68,68,0.15)', color: 'var(--red)' },
-                      };
-                      const sc = statusColors[order.status] || { bg: 'rgba(255,255,255,0.05)', color: 'var(--gray)' };
-                      const statusLabels = {
-                        pending_review: 'Pending Review',
-                        confirmed: 'Confirmed',
-                        processing: 'Processing',
-                        ready: 'Ready',
-                        delivered: 'Delivered',
-                        cancelled: 'Cancelled',
-                      };
-                      return (
-                        <div key={order._id ?? order.id ?? `order-row-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.875rem 0', borderBottom: idx < recentOrders.length - 1 ? '1px solid var(--border)' : 'none', flexWrap: 'wrap', gap: '0.5rem' }}>
-                          <div>
-                            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--white)' }}>{order._id?.slice(-8).toUpperCase()}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.125rem' }}>{order.productName || '—'}</div>
-                          </div>
-                          <div style={{ textAlign: 'right' }}>
-                            <span style={{ display: 'inline-block', background: sc.bg, color: sc.color, borderRadius: '999px', padding: '0.2rem 0.625rem', fontSize: '0.7rem', fontWeight: 700 }}>{statusLabels[order.status] || order.status}</span>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.25rem' }}>{order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</div>
-                          </div>
+                    {recentOrders.map((order, idx) => (
+                      <div key={order._id ?? order.id ?? `order-row-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.875rem 0', borderBottom: idx < recentOrders.length - 1 ? '1px solid var(--border)' : 'none', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--white)' }}>{order._id?.slice(-8).toUpperCase()}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.125rem' }}>{order.productName || '—'}</div>
                         </div>
-                      );
-                    })}
+                        <div style={{ textAlign: 'right' }}>
+                          <StatusBadge status={order.status} />
+                          <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.25rem' }}>{order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</div>
+                        </div>
+                      </div>
+                    ))}
                     <div style={{ marginTop: '1rem' }}>
-                      <Link href="/shop/orders" style={{ display: 'block', width: '100%', textAlign: 'center', padding: '0.625rem 1rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 600 }}>View All Orders</Link>
+                      <Link href="/shop/orders" style={{ display: 'block', width: '100%', textAlign: 'center', padding: '0.625rem 1rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 600 }}>View All Order Requests</Link>
                     </div>
                   </div>
                 )}

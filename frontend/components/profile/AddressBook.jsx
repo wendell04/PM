@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext'; // NEW: Auth hook
+import { useAuth } from '../../contexts/AuthContext';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -56,7 +57,7 @@ export default function AddressBook() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/addresses`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/addresses`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -75,7 +76,7 @@ export default function AddressBook() {
 
   const validateForm = () => {
     const errors = {};
-    if (!formData.label.trim()) errors.label = 'Label is required';
+    // label is optional — no validation required
     if (!formData.house_number.trim()) errors.house_number = 'House/Unit No. is required';
     if (!formData.street.trim()) errors.street = 'Street is required';
     if (!formData.barangay.trim()) errors.barangay = 'Barangay is required';
@@ -109,7 +110,7 @@ export default function AddressBook() {
         : `${API_URL}/api/addresses`;
       const method = editingAddress ? 'PUT' : 'POST';
 
-      const res = await fetch(url, {
+      const res = await fetchWithTimeout(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -155,7 +156,7 @@ export default function AddressBook() {
     setError(null);
 
     try {
-      const res = await fetch(`${API_URL}/api/addresses/${id}`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/addresses/${id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -181,7 +182,7 @@ export default function AddressBook() {
     setError(null);
 
     try {
-      const res = await fetch(`${API_URL}/api/addresses/${id}/default`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/addresses/${id}/default`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -324,7 +325,7 @@ export default function AddressBook() {
             <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
-          <span style={{ flex: 1 }}>Unable to load addresses. Please refresh the page or try again later.</span>
+          <span style={{ flex: 1 }}>{error}</span>
           <button
             onClick={fetchAddresses}
             style={{
@@ -361,7 +362,7 @@ export default function AddressBook() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.4rem' }}>
-                Label <span style={{ color: 'var(--red)' }}>*</span>
+                Label <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional)</span>
               </label>
               <input
                 type="text"
@@ -445,7 +446,7 @@ export default function AddressBook() {
 
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.4rem' }}>
-                Subdivision <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional)</span>
+                Subdivision / Village <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional)</span>
               </label>
               <input
                 type="text"

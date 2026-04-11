@@ -57,6 +57,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // ─── Orders (Customer) ────────────────────────────────────────────────────
     Route::get('/orders/my',             [OrderController::class, 'myOrders']);
     Route::get('/orders/my/{id}',        [OrderController::class, 'myOrderShow']);
+    Route::post('/orders/my/{id}/cancel',[OrderController::class, 'cancelMyOrder']);
     Route::post('/orders',               [OrderController::class, 'store']);
 
     // ─── Cart ─────────────────────────────────────────────────────────────────
@@ -127,15 +128,12 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/job-orders',             [JobOrderController::class, 'store']);
     Route::put('/admin/job-orders/{id}',         [JobOrderController::class, 'update']);
 
-<<<<<<< HEAD
-=======
     // ─── Activity Logs ────────────────────────────────────────────────────────
     Route::get('/admin/activity-logs',           [ActivityLogController::class, 'index']);
     // ─── Design Approval ──────────────────────────────────────────────────────
     Route::post('/admin/orders/{id}/approve-design', [OrderController::class, 'approveDesign']);
     Route::post('/admin/orders/{id}/reject-design',  [OrderController::class, 'rejectDesign']);
 
->>>>>>> 791e7dcf2c03345013e6bfb5feda8edb9743c8f8
     // ─── Audit Logs ───────────────────────────────────────────────────────────
     Route::get('/admin/audit-logs',              [AuditLogController::class, 'index']);
     Route::get('/admin/audit-logs/summary',      [AuditLogController::class, 'summary']);
@@ -175,6 +173,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/order-requests',                [OrderRequestController::class, 'store']);
     Route::get('/my/order-requests',              [OrderRequestController::class, 'myRequests']);
     Route::post('/order-requests/upload-design',  [OrderRequestController::class, 'uploadDesign']);
+    Route::post('/order-requests/my/{id}/cancel', [ShopOrderRequestController::class, 'cancel']);
 
     // ─── Shop Order Tracking (Customer) ──────────────────────────────────────
     Route::get('/shop/order-requests',            [ShopOrderRequestController::class, 'index']);

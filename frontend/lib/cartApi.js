@@ -27,7 +27,7 @@ export async function fetchCart(token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout — cold Laravel boot needs headroom
 
     if (!response.ok) {
       if (response.status === 401) {

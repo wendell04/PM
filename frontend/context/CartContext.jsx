@@ -39,7 +39,7 @@ export function CartProvider({ children }) {
               const guestItems = JSON.parse(guestCart);
               if (guestItems?.length > 0) {
                 const merged = await mergeCart(guestItems, token);
-                setCartItems(merged?.items || []);
+                setCartItems(((merged?.data ?? merged)?.items || []).filter(Boolean));
                 localStorage.removeItem(GUEST_CART_KEY);
                 return;
               }
@@ -48,7 +48,7 @@ export function CartProvider({ children }) {
             }
           }
           const cart = await fetchCart(token);
-          setCartItems(cart?.items || []);
+          setCartItems(((cart?.data ?? cart)?.items || []).filter(Boolean));
         } else {
           // Guest user - load from localStorage
           const stored = localStorage.getItem(GUEST_CART_KEY);
@@ -56,7 +56,7 @@ export function CartProvider({ children }) {
         }
       } catch (error) {
         console.error('Failed to load cart:', error);
-        setCartItems([]);
+        // Do not wipe cartItems on network/timeout failure — preserve existing state
       } finally {
         setIsCartLoading(false);
         setIsInitialized(true);
@@ -72,8 +72,11 @@ export function CartProvider({ children }) {
   const saveCart = useCallback(async (items) => {
     try {
       if (isLoggedIn()) {
-        // Sync to backend for logged in users
-        await syncCart(items, token);
+        if (items.length === 0) {
+          await clearCartApi(token);
+        } else {
+          await syncCart(items, token);
+        }
       } else {
         // Save to localStorage for guests
         localStorage.setItem(GUEST_CART_KEY, JSON.stringify(items));
@@ -94,11 +97,11 @@ export function CartProvider({ children }) {
       const newItem = {
         productId: product._id || product.id,
         productName: product.name,
-        variantId,
-        variantName,
-        qty: parseInt(qty),
+        ...(variantId != null ? { variantId: String(variantId) } : {}),
+        ...(variantName != null ? { variantName: String(variantName) } : {}),
+        qty: Math.max(1, parseInt(qty) || 1),
         unitPrice: product.flatPrice || product.price || 0,
-        lineTotal: (product.flatPrice || product.price || 0) * parseInt(qty),
+        lineTotal: (product.flatPrice || product.price || 0) * Math.max(1, parseInt(qty) || 1),
         image: product.thumbnail || product.images?.[0] || null,
       };
 
@@ -140,6 +143,25 @@ export function CartProvider({ children }) {
       await saveCart(updatedItems);
     } catch (error) {
       console.error('Failed to remove from cart:', error);
+      throw error;
+    } finally {
+      setIsCartLoading(false);
+    }
+  }, [cartItems, saveCart]);
+
+  const bulkRemove = useCallback(async (toRemove) => {
+    // toRemove: array of { productId, variantId }
+    setIsCartLoading(true);
+    try {
+      const updatedItems = cartItems.filter(item =>
+        !toRemove.some(r =>
+          r.productId === item.productId &&
+          (r.variantId || null) === (item.variantId || null)
+        )
+      );
+      await saveCart(updatedItems);
+    } catch (error) {
+      console.error('[bulkRemove]', error);
       throw error;
     } finally {
       setIsCartLoading(false);
@@ -219,6 +241,7 @@ export function CartProvider({ children }) {
     isCartLoading,
     addToCart,
     removeFromCart,
+    bulkRemove,
     updateQty,
     clearCart,
     cartCount,

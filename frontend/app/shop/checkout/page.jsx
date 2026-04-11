@@ -29,6 +29,7 @@ export default function CheckoutPage() {
   const [mounted, setMounted] = useState(false);
   const [designFile, setDesignFile] = useState(null);
   const [designNotes, setDesignNotes] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cod');
 
   // ── EFFECT: Load cart payload from sessionStorage ──
   useEffect(() => {
@@ -57,7 +58,7 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (mounted && token === null) {
-      router.replace('/');
+      router.replace('/shop');
     }
   }, [mounted, token, router]);
 
@@ -123,6 +124,12 @@ export default function CheckoutPage() {
       return;
     }
 
+    // Minimum ₱100 only applies to online payment (PayMongo requirement)
+    if (paymentMethod === 'online' && total < 100) {
+      setError('Minimum order amount is ₱100.00 for online payment. Please add more items or choose Cash on Delivery.');
+      return;
+    }
+
     setError(null);
     setPlacing(true);
 
@@ -156,9 +163,9 @@ export default function CheckoutPage() {
         formData.append('items', JSON.stringify(orderItems));
         formData.append('notes', notes);
         formData.append('deliveryAddress', JSON.stringify(deliveryAddress));
+        formData.append('paymentMethod', paymentMethod);
         fetchBody = formData;
         fetchHeaders = {
-          // Do NOT set Content-Type — browser sets it automatically with boundary
           Authorization: `Bearer ${token}`,
         };
       } else {
@@ -167,6 +174,7 @@ export default function CheckoutPage() {
           notes,
           deliveryAddress,
           design_notes: designNotes || null,
+          paymentMethod,
         });
         fetchHeaders = {
           'Content-Type': 'application/json',
@@ -174,19 +182,37 @@ export default function CheckoutPage() {
         };
       }
 
-      const res = await fetchWithTimeout(`${API_URL}/api/payment/create-link`, {
-        method: 'POST',
-        headers: fetchHeaders,
-        body: fetchBody,
-      }, 20000);
+      if (paymentMethod === 'cod') {
+        // COD path — POST to OrderController::store, no PayMongo
+        const res = await fetchWithTimeout(`${API_URL}/api/orders`, {
+          method: 'POST',
+          headers: fetchHeaders,
+          body: fetchBody,
+        }, 20000);
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to create payment link.');
-      const { checkoutUrl } = data.data ?? data;
-      if (!checkoutUrl) throw new Error('No payment URL returned. Please try again.');
-      // Clear checkout session before leaving
-      sessionStorage.removeItem('checkout_payload');
-      window.location.href = checkoutUrl;
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Failed to place order.');
+        const orderId = (data.data?._id ?? data.data?.id ?? data._id ?? data.id);
+        if (!orderId) throw new Error('Order created but no ID returned. Please check your orders.');
+        sessionStorage.removeItem('checkout_payload');
+        window.location.href = `/shop/payment-success?id=${orderId}&method=cod`;
+
+      } else {
+        // Online payment path — POST to PaymentController::createLink
+        const res = await fetchWithTimeout(`${API_URL}/api/payment/create-link`, {
+          method: 'POST',
+          headers: fetchHeaders,
+          body: fetchBody,
+        }, 20000);
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Failed to create payment link.');
+        const { checkoutUrl } = data.data ?? data;
+        if (!checkoutUrl) throw new Error('No payment URL returned. Please try again.');
+        // Do NOT remove checkout_payload here — PayMongo redirect may be abandoned.
+        // checkout_payload is cleared by payment-success page on confirmed payment.
+        window.location.href = checkoutUrl;
+      }
 
     } catch (err) {
       setError(err.message);
@@ -516,15 +542,69 @@ export default function CheckoutPage() {
 
       {/* SECTION 6 — Payment Method */}
       <div className="checkout-card">
-        <div className="checkout-payment-row">
-          <div className="checkout-payment-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="2" y="6" width="20" height="12" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
-            </svg>
-          </div>
+        <div className="checkout-section-label" style={{ marginBottom: '0.75rem' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="2" y="6" width="20" height="12" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+          </svg>
+          Payment Method
+        </div>
+
+        {/* COD Option */}
+        <div
+          onClick={() => setPaymentMethod('cod')}
+          style={{
+            display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+            padding: '1rem', borderRadius: '10px', cursor: 'pointer',
+            border: `1px solid ${paymentMethod === 'cod' ? 'var(--gold)' : 'rgba(255,255,255,0.07)'}`,
+            background: paymentMethod === 'cod' ? 'rgba(212,168,67,0.06)' : '#1a1a1a',
+            marginBottom: '0.75rem', transition: 'all 0.2s',
+          }}
+        >
+          <div style={{
+            width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0, marginTop: '2px',
+            border: `2px solid ${paymentMethod === 'cod' ? 'var(--gold)' : 'var(--gray)'}`,
+            background: paymentMethod === 'cod' ? 'var(--gold)' : 'transparent',
+            transition: 'all 0.2s',
+          }} />
           <div>
-            <div className="checkout-payment-label">GCash · PayMaya · Credit / Debit Card</div>
-            <div className="checkout-payment-subtext">You will be redirected to a secure PayMongo payment page to complete your payment.</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.2rem' }}>
+              Cash on Delivery
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+              Pay when your order arrives. Our team will contact you to confirm delivery details.
+            </div>
+          </div>
+        </div>
+
+        {/* Online Payment Option */}
+        <div
+          onClick={() => setPaymentMethod('online')}
+          style={{
+            display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+            padding: '1rem', borderRadius: '10px', cursor: 'pointer',
+            border: `1px solid ${paymentMethod === 'online' ? 'var(--gold)' : 'rgba(255,255,255,0.07)'}`,
+            background: paymentMethod === 'online' ? 'rgba(212,168,67,0.06)' : '#1a1a1a',
+            transition: 'all 0.2s',
+          }}
+        >
+          <div style={{
+            width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0, marginTop: '2px',
+            border: `2px solid ${paymentMethod === 'online' ? 'var(--gold)' : 'var(--gray)'}`,
+            background: paymentMethod === 'online' ? 'var(--gold)' : 'transparent',
+            transition: 'all 0.2s',
+          }} />
+          <div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.2rem' }}>
+              Online Payment
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+              GCash · PayMaya · Credit / Debit Card — via secure PayMongo payment page.
+              {total < 100 && (
+                <span style={{ color: 'var(--danger, #ef4444)', display: 'block', marginTop: '0.25rem' }}>
+                  ⚠ Minimum ₱100.00 required for online payment.
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -541,7 +621,7 @@ export default function CheckoutPage() {
 
       <button
         onClick={handlePlaceOrder}
-        disabled={placing || !selectedAddress || items.length === 0}
+        disabled={placing || !selectedAddress || items.length === 0 || (paymentMethod === 'online' && total < 100)}
         className="checkout-place-btn"
       >
         {placing ? (
@@ -564,7 +644,9 @@ export default function CheckoutPage() {
       </button>
 
       <p className="checkout-disclaimer">
-        By placing this order, you agree to our terms. Payment is arranged separately after confirmation.
+        {paymentMethod === 'cod'
+          ? 'By placing this order, you agree to our terms. You will pay upon delivery.'
+          : 'By placing this order, you agree to our terms. You will be redirected to complete payment securely.'}
       </p>
 
       {/* ADDRESS PICKER MODAL */}

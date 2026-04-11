@@ -14,7 +14,7 @@ class StoreAddressRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'label'        => ['required', 'string', 'max:50'],
+            'label'        => ['nullable', 'string', 'max:50'],
             'house_number' => ['required', 'string', 'max:100'],
             'street'       => ['required', 'string', 'max:100'],
             'subdivision'  => ['nullable', 'string', 'max:100'],

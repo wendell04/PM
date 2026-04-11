@@ -79,11 +79,9 @@ class AuthController extends Controller
                 return $this->errorResponse('Please provide a valid email address.', 422);
             }
 
-            // Check for common typos in email domains
-            $commonDomains = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com'];
-            if (!in_array($domain, $commonDomains) && !checkdnsrr($domain, 'MX')) {
-                return $this->errorResponse('The email domain does not appear to be valid. Please check your email address.', 422);
-            }
+            // Domain whitelist and DNS MX lookup removed — they blocked legitimate
+            // institutional/subdomain emails (e.g. novaliches.sti.edu.ph).
+            // Disposable domain check above is sufficient protection.
 
             // Delete any unverified accounts with this email
             User::where('email', $request->email)->where('is_verified', false)->delete();
@@ -247,6 +245,25 @@ class AuthController extends Controller
             $user->verification_code = null;
             $user->verification_code_expires_at = null;
             $user->verification_attempts = 0;
+
+            // Create default Address Book entry from registration address
+            // so the checkout page has an address to use immediately.
+            if (empty($user->addresses) && !empty($user->address)) {
+                $user->addresses = [[
+                    'id'           => Str::uuid()->toString(),
+                    'label'        => 'Home',
+                    'house_number' => '',
+                    'street'       => $user->address,
+                    'subdivision'  => '',
+                    'barangay'     => '',
+                    'city'         => '',
+                    'province'     => '',
+                    'zip'          => '',
+                    'phone'        => $user->phoneNumber ?? '',
+                    'is_default'   => true,
+                ]];
+            }
+
             $user->save();
 
             // Send welcome email

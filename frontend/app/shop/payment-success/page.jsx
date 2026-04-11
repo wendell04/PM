@@ -12,6 +12,13 @@ export default function PaymentSuccessPage() {
   const router        = useRouter();
   const { token }     = useAuth();
   const orderId       = searchParams.get('id');
+  const method        = searchParams.get('method'); // 'cod' or null (online)
+  const isCod         = method === 'cod';
+
+  // Clear checkout payload on confirmed success (online payment lands here after PayMongo)
+  useEffect(() => {
+    sessionStorage.removeItem('checkout_payload');
+  }, []);
 
   const [order,   setOrder]   = useState(null);
   const [loading, setLoading] = useState(true);
@@ -94,7 +101,7 @@ export default function PaymentSuccessPage() {
           color: 'var(--white)',
           marginBottom: '8px',
         }}>
-          Payment Successful
+          {isCod ? 'Order Placed!' : 'Payment Successful'}
         </h1>
 
         <p style={{
@@ -103,8 +110,9 @@ export default function PaymentSuccessPage() {
           marginBottom: '32px',
           lineHeight: 1.6,
         }}>
-          Thank you for your order. We&apos;ve received your payment
-          and will begin processing shortly.
+          {isCod
+            ? "Thank you for your order. Our team will contact you to confirm delivery and payment details."
+            : "Thank you for your order. We've received your payment and will begin processing shortly."}
         </p>
 
         {loading && (
@@ -153,7 +161,7 @@ export default function PaymentSuccessPage() {
               marginBottom: '8px',
             }}>
               <span style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>
-                Amount Paid
+                {isCod ? 'Order Total' : 'Amount Paid'}
               </span>
               <span style={{ color: 'var(--gold)', fontSize: '0.85rem', fontWeight: 600 }}>
                 ₱{Number(order.totalAmount ?? 0).toLocaleString('en-PH', {

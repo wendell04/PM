@@ -52,7 +52,7 @@ class PaymentController extends Controller
                 'deliveryAddress.province'    => 'nullable|string|max:255',
                 'deliveryAddress.zip'         => 'nullable|string|max:10',
                 'deliveryAddress.phone'       => 'nullable|string|max:30',
-                'design_file'                 => 'nullable|file|mimes:jpeg,jpg,png,pdf|max:10240',
+                'design_file'                 => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:10240',
                 'design_notes'                => 'nullable|string|max:2000',
             ]);
 
@@ -337,8 +337,14 @@ class PaymentController extends Controller
      */
     private function resolvePrice(Product $product, int $qty, ?string $variantId): ?float
     {
+        // flatPrice takes priority
         if (!empty($product->flatPrice)) {
             return (float) $product->flatPrice;
+        }
+
+        // Fall back to plain price field (priceType: fixed)
+        if (!empty($product->price)) {
+            return (float) $product->price;
         }
 
         if ($variantId && !empty($product->variantPrices)) {

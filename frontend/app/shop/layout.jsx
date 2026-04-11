@@ -1,10 +1,12 @@
 'use client';
+// TwoFactorModal imported for inline 2FA — no page redirect needed
+import TwoFactorModal from '@/components/auth/TwoFactorModal';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CartContext, useCart as useGlobalCart } from '../../context/CartContext';
-import { fetchCart, syncCart, mergeCart } from '@/lib/cartApi';
+import { useCart as useGlobalCart } from '../../context/CartContext';
+import { syncCart, mergeCart } from '@/lib/cartApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { forgotPassword, sendResetCode, verifyResetCode, resetPassword } from '@/lib/authApi';
 import {
@@ -34,35 +36,40 @@ function getUser() {
 // ─── Cart Conversion Helpers ──────────────────────────────────────────────────
 // Convert MongoDB format → Layout format
 function toLayoutItem(item) {
+  const qty = Math.max(1, parseInt(item.qty) || 1);
+  const unitPrice = item.unitPrice || 0;
   return {
     product: {
       _id: item.productId,
       name: item.productName,
       image: item.image,
       thumbnail: item.image,
-      price: item.unitPrice,
-      flatPrice: item.unitPrice,
+      price: unitPrice,
+      flatPrice: unitPrice,
     },
     variantId: item.variantId || null,
     variantName: item.variantName || null,
-    qty: item.qty,
-    unitPrice: item.unitPrice,
-    lineTotal: item.lineTotal || (item.qty * item.unitPrice),
+    qty,
+    unitPrice,
+    lineTotal: item.lineTotal || (qty * unitPrice),
   };
 }
 
 // Convert Layout format → MongoDB format
 function toMongoItem(item) {
-  return {
+  const unitPrice = item.unitPrice || item.product?.flatPrice || item.product?.price || 0;
+  const qty = Math.max(1, parseInt(item.qty) || 1);
+  const mongo = {
     productId: item.product?.id ?? item.product?._id ?? item.productId,
     productName: item.product?.name || item.productName,
-    variantId: item.variantId || null,
-    variantName: item.variantName || null,
-    qty: item.qty,
-    unitPrice: item.unitPrice || item.product?.flatPrice || item.product?.price || 0,
-    lineTotal: item.lineTotal || (item.qty * (item.unitPrice || item.product?.flatPrice || item.product?.price || 0)),
+    qty,
+    unitPrice,
+    lineTotal: qty * unitPrice,
     image: item.product?.image || item.product?.thumbnail || item.image || null,
   };
+  if (item.variantId) mongo.variantId = String(item.variantId);
+  if (item.variantName) mongo.variantName = String(item.variantName);
+  return mongo;
 }
 
 // ─── Login Form Component ─────────────────────────────────────────────────────
@@ -651,7 +658,7 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
 // ─── Layout ───────────────────────────────────────────────────────────────────
 export default function ShopLayout({ children }) {
   const router = useRouter();
-  const { setCartItems } = useGlobalCart();
+  const { setCartItems, cartCount: globalCartCount } = useGlobalCart();
   const [user, setUser]       = useState(null);
   const [cart, setCart]       = useState([]);
   const [cartInitialized, setCartInitialized] = useState(false);
@@ -660,7 +667,20 @@ export default function ShopLayout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen]       = useState(false);
+  const [authModalSubtitle, setAuthModalSubtitle] = useState('');
+  const [twoFaOpen, setTwoFaOpen]               = useState(false);
+  const [twoFaToken, setTwoFaToken]       = useState(null);
+  const [twoFaEmail, setTwoFaEmail]       = useState('');
+  const [twoFaRole, setTwoFaRole]         = useState('');
+
+  // Call this instead of setAuthModalOpen(true) when login is
+  // triggered by a protected action so we can redirect after login.
+  const openAuthModalWithRedirect = (returnPath) => {
+    if (returnPath) sessionStorage.setItem('pre_login_redirect', returnPath);
+    setAuthModalOpen(true);
+  };
+
   const [authModalType, setAuthModalType] = useState('login'); // 'login' or 'register'
   const [authModalInstanceKey, setAuthModalInstanceKey] = useState(0);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
@@ -691,6 +711,23 @@ export default function ShopLayout({ children }) {
     const u = getUser();
     setUser(u);
 
+    // Auto-open login modal if session expired or user just logged out
+    const sessionExpired = sessionStorage.getItem('sessionExpired');
+    const justLoggedOut  = sessionStorage.getItem('justLoggedOut');
+    if (sessionExpired) {
+      sessionStorage.removeItem('sessionExpired');
+      setAuthModalType('login');
+      setAuthModalSubtitle('Your session expired. Please sign in again.');
+      setAuthModalOpen(true);
+      setAuthModalInstanceKey(k => k + 1);
+    } else if (justLoggedOut) {
+      sessionStorage.removeItem('justLoggedOut');
+      setAuthModalType('login');
+      setAuthModalSubtitle('You have been signed out.');
+      setAuthModalOpen(true);
+      setAuthModalInstanceKey(k => k + 1);
+    }
+
     // Listen for avatar/profile updates from other components
     const handleUserUpdate = () => {
       setUser(getUser());
@@ -700,44 +737,24 @@ export default function ShopLayout({ children }) {
     });
     window.addEventListener('pmp_user_updated', handleUserUpdate);
 
-    // Load cart from appropriate source
-    const token = getToken();
-    if (token && u) {
-      // Logged in user - fetch cart from MongoDB
-      fetchCart(getToken())
-        .then(cartData => {
-          const mongoItems = cartData?.items || [];
-          const layoutItems = mongoItems.map(toLayoutItem);
-          setCart(layoutItems);
-          setCartItems(mongoItems);
-          setCartInitialized(true);
-          // Process any items added before init
-          processPendingAdds();
-        })
-        .catch(() => {
-          setCart([]);
-          setCartItems([]);
-          setCartInitialized(true);
-          processPendingAdds();
-        });
-    } else {
-      // Guest user - load from localStorage (matches CartContext GUEST_CART_KEY)
-      try {
-        const saved = localStorage.getItem('pmp_guest_cart');
-        if (saved) {
-          const mongoItems = JSON.parse(saved);
-          const layoutItems = mongoItems.map(toLayoutItem);
-          setCart(layoutItems);
-          setCartItems(mongoItems);
-        }
-      } catch {}
-      setCartInitialized(true);
-      processPendingAdds();
-    }
+    // Cart is managed entirely by CartContext — no fetch needed here
+    setCartInitialized(true);
+    processPendingAdds();
+
+    // Listen for auth modal open requests from child pages
+    const handleOpenAuth = (e) => {
+      const type = e.detail?.type ?? 'login';
+      setAuthModalType(type);
+      const returnPath = e.detail?.returnPath ?? `${window.location.pathname}${window.location.search}`;
+      openAuthModalWithRedirect(returnPath);
+      setAuthModalInstanceKey(k => k + 1);
+    };
+    window.addEventListener('pmp_open_auth', handleOpenAuth);
 
     return () => {
       window.removeEventListener('storage', handleUserUpdate);
       window.removeEventListener('pmp_user_updated', handleUserUpdate);
+      window.removeEventListener('pmp_open_auth', handleOpenAuth);
     };
   }, []);
 
@@ -771,7 +788,18 @@ export default function ShopLayout({ children }) {
       storage.setItem('auth_token', token);
       storage.setItem('auth_user', JSON.stringify(userData));
       sessionStorage.setItem('pending_2fa', 'true');
-      router.push('/shop/2fa-verify');
+      // Save redirect destination for after 2FA
+      const currentPath = window.location.pathname;
+      const returnTo = (currentPath === '/shop/2fa-verify' || currentPath === '/')
+        ? '/shop'
+        : currentPath;
+      sessionStorage.setItem('post_2fa_redirect', returnTo);
+      // Show inline modal — no page navigation
+      setTwoFaToken(token);
+      setTwoFaEmail(userData.email || '');
+      setTwoFaRole(userData.role || '');
+      setAuthModalOpen(false);
+      setTwoFaOpen(true);
       return;
     }
 
@@ -781,6 +809,7 @@ export default function ShopLayout({ children }) {
 
     // Redirect admin/owner to dashboard
     if (userData.role === 'admin' || userData.role === 'business') {
+      sessionStorage.removeItem('pre_login_redirect');
       router.push('/dashboard/business');
       return;
     }
@@ -798,7 +827,7 @@ export default function ShopLayout({ children }) {
         if (guestItems && guestItems.length > 0) {
           const mergedCart = await mergeCart(guestItems, getToken());
           // Update both cart systems
-          const mongoItems = mergedCart?.items || [];
+          const mongoItems = (mergedCart?.data ?? mergedCart)?.items || [];
           const layoutItems = mongoItems.map(toLayoutItem);
           setCart(layoutItems);        // local display
           setCartItems(mongoItems);    // cart badge
@@ -808,6 +837,13 @@ export default function ShopLayout({ children }) {
     } catch (err) {
       console.warn('Cart merge failed:', err);
       // Don't block login if merge fails
+    }
+
+    // Navigate to pre-login destination after cart merge completes
+    const pendingRedirect = sessionStorage.getItem('pre_login_redirect');
+    if (pendingRedirect) {
+      sessionStorage.removeItem('pre_login_redirect');
+      router.push(pendingRedirect);
     }
   };
 
@@ -836,7 +872,7 @@ export default function ShopLayout({ children }) {
         if (guestItems && guestItems.length > 0) {
           const mergedCart = await mergeCart(guestItems, getToken());
           // Update both cart systems
-          const mongoItems = mergedCart?.items || [];
+          const mongoItems = (mergedCart?.data ?? mergedCart)?.items || [];
           const layoutItems = mongoItems.map(toLayoutItem);
           setCart(layoutItems);        // local display
           setCartItems(mongoItems);    // cart badge
@@ -953,6 +989,9 @@ export default function ShopLayout({ children }) {
   useEffect(() => {
     // Skip sync before cart is initialized
     if (!cartInitialized) return;
+
+    // Skip sync if local cart is empty — CartContext owns the real data
+    if (cart.length === 0) return;
 
     // Convert to MongoDB format
     const mongoItems = cart.map(toMongoItem);
@@ -1155,7 +1194,7 @@ export default function ShopLayout({ children }) {
       await fetchWithTimeout(`${API_URL}/api/logout`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
-      }, 10000);
+      }, 30000);
     } catch {}
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
@@ -1169,7 +1208,7 @@ export default function ShopLayout({ children }) {
   if (!mounted) return null;
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQty, clearCart: clearCartLocal, cartCount }}>
+    <>
       <div className="shop-wrapper">
         {/* ── Navbar ── */}
         <nav className={`shop-navbar ${scrolled ? 'scrolled' : ''}`}>
@@ -1187,14 +1226,14 @@ export default function ShopLayout({ children }) {
                 </Link>
               )}
 
-              {/* Logo - Navigates to landing page */}
-              <Link href="/" className="shop-navbar-logo">
+              {/* Logo - Not clickable */}
+              <div className="shop-navbar-logo">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/logos/PersonalizeMe logo.png" alt="Personalize Me Prints" className="shop-navbar-logo-img" />
                 <div className="shop-navbar-logo-text">
                   PERSONALIZE <span>ME</span><br />PRINTS
                 </div>
-              </Link>
+              </div>
             </div>
 
             {/* Right side */}
@@ -1207,9 +1246,9 @@ export default function ShopLayout({ children }) {
                   <circle cx="20" cy="21" r="1"/>
                   <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
                 </svg>
-                {cartCount > 0 && (
+                {globalCartCount > 0 && (
                   <span className="shop-navbar-cart-badge">
-                    {cartCount > 99 ? '99+' : cartCount}
+                    {globalCartCount > 99 ? '99+' : globalCartCount}
                   </span>
                 )}
               </Link>
@@ -1388,13 +1427,13 @@ export default function ShopLayout({ children }) {
                               <line x1="16" y1="13" x2="8" y2="13"/>
                               <line x1="16" y1="17" x2="8" y2="17"/>
                             </svg>
-                            My Orders
+                            Order Requests
                           </Link>
                           <Link href="/shop/orders-history" className="shop-navbar-menu-item" onClick={() => setMenuOpen(false)}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
-                            Order History
+                            My Orders
                           </Link>
                           <button onClick={handleLogout} className="shop-navbar-menu-item shop-navbar-logout">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1431,16 +1470,16 @@ export default function ShopLayout({ children }) {
 
         {/* ── Auth Modal (Same as Landing Page) ── */}
         {authModalOpen && (
-          <div className="auth-overlay" onClick={() => { setAuthModalOpen(false); setAuthModalInstanceKey(k => k + 1); }} style={{ zIndex: 1000 }}>
+          <div className="auth-overlay" onClick={() => { setAuthModalOpen(false); setAuthModalSubtitle(''); setAuthModalInstanceKey(k => k + 1); }} style={{ zIndex: 1000 }}>
             <div className="auth-modal" onClick={e => e.stopPropagation()}>
               <div className="auth-modal-header">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="auth-modal-logo"/>
                 <div>
                   <h2>{authModalType === 'login' ? 'Welcome Back' : 'Create Account'}</h2>
-                  <p>{authModalType === 'login' ? 'Sign in to continue shopping' : 'Join Personalize Me Prints'}</p>
+                  <p>{authModalSubtitle || (authModalType === 'login' ? 'Sign in to continue shopping' : 'Join Personalize Me Prints')}</p>
                 </div>
-                <button className="auth-close" onClick={() => { setAuthModalOpen(false); setAuthModalInstanceKey(k => k + 1); }}>
+                <button className="auth-close" onClick={() => { setAuthModalOpen(false); setAuthModalSubtitle(''); setAuthModalInstanceKey(k => k + 1); }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
@@ -1459,6 +1498,30 @@ export default function ShopLayout({ children }) {
               </div>
             </div>
           </div>
+        )}
+
+        {twoFaOpen && twoFaToken && (
+          <TwoFactorModal
+            token={twoFaToken}
+            userEmail={twoFaEmail}
+            userRole={twoFaRole}
+            onSuccess={(redirectTo) => {
+              setTwoFaOpen(false);
+              setTwoFaToken(null);
+              // Reload user from storage after successful 2FA
+              const raw = sessionStorage.getItem('auth_user') || localStorage.getItem('auth_user');
+              if (raw) {
+                try { setUser(JSON.parse(raw)); } catch { /* ignore */ }
+              }
+              router.push(redirectTo);
+            }}
+            onBack={() => {
+              setTwoFaOpen(false);
+              setTwoFaToken(null);
+              sessionStorage.removeItem('pending_2fa');
+              sessionStorage.removeItem('post_2fa_redirect');
+            }}
+          />
         )}
 
         {/* ── Forgot Password Modal — 3 Step Flow ── */}
@@ -1695,13 +1758,12 @@ export default function ShopLayout({ children }) {
           display: flex;
           align-items: center;
           gap: 0.75rem;
-          cursor: pointer;
+          cursor: default;
           text-decoration: none;
         }
 
         .shop-navbar-logo:hover {
-          opacity: 0.85;
-          transition: opacity 0.2s;
+          opacity: 1;
         }
 
         .shop-navbar-logo-img {
@@ -2127,6 +2189,6 @@ export default function ShopLayout({ children }) {
           }
         }
       `}</style>
-    </CartContext.Provider>
+    </>
   );
 }

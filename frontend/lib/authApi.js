@@ -56,7 +56,7 @@ export async function login(credentials) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(credentials),
-    }, 10000); // 10 second timeout
+    }, 30000); // 30 second timeout
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -118,7 +118,7 @@ export async function verifyEmail(data) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -146,7 +146,7 @@ export async function resendVerificationEmail(data) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -174,7 +174,7 @@ export async function forgotPassword(data) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -202,7 +202,7 @@ export async function verifyResetToken(data) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -230,7 +230,7 @@ export async function sendResetCode(data) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -258,7 +258,7 @@ export async function verifyResetCode(data) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -286,7 +286,7 @@ export async function resetPassword(data) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -314,7 +314,7 @@ export async function contact(data) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -346,7 +346,7 @@ export async function getCurrentUser(token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       if (response.status === 401) {
@@ -378,7 +378,7 @@ export async function updateProfile(token, profileData) {
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(profileData),
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -414,7 +414,7 @@ export async function updatePassword(token, passwordData) {
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(passwordData),
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -452,7 +452,7 @@ export async function sendTwoFactorOtp(token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -486,7 +486,7 @@ export async function verifyTwoFactorOtp(token, payload) {
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -517,7 +517,7 @@ export async function rememberDevice(token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -547,7 +547,7 @@ export async function checkDevice(token, payload) {
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
-    }, 10000);
+    }, 30000);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -575,7 +575,7 @@ export async function sendOtp(token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000);
+    }, 30000);
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       if (response.status === 423) {
@@ -606,7 +606,7 @@ export async function verifyOtp(token, code) {
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ code }),
-    }, 10000);
+    }, 30000);
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       if (response.status === 423) {

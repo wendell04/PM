@@ -7,6 +7,8 @@ import {
     useEffect
 } from 'react';
 
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 const AuthContext = createContext(null);
@@ -51,28 +53,40 @@ export function AuthProvider({children}) {
                 if (!stored || !storedToken) return;
 
                 const user = JSON.parse(stored);
-                const res = await fetch(`${API_URL}/api/user`, {
+                const res = await fetchWithTimeout(`${API_URL}/api/user`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${storedToken}`,
                     },
-                });
+                }, 8000); // 8s cap — faster than default 30s for auth check on refresh
 
-                if (!res.ok) throw new Error('Token invalid');
+                if (res.status === 401) {
+                    // Token is genuinely invalid — clear and redirect
+                    sessionStorage.setItem('sessionExpired', 'true');
+                    localStorage.removeItem('auth_token');
+                    localStorage.removeItem('auth_user');
+                    sessionStorage.removeItem('auth_token');
+                    sessionStorage.removeItem('auth_user');
+                    setCurrentUser(null);
+                    setToken(null);
+                    window.location.href = '/';
+                    return;
+                }
+
+                if (!res.ok) {
+                    // Non-401 failure (network error, 500, timeout) —
+                    // keep existing session, do not log out
+                    return;
+                }
 
                 const userData = await res.json();
                 setCurrentUser(userData.user ?? userData);
                 setToken(storedToken);
             } catch {
-                sessionStorage.setItem('sessionExpired', 'true');
-                localStorage.removeItem('auth_token');
-                localStorage.removeItem('auth_user');
-                sessionStorage.removeItem('auth_token');
-                sessionStorage.removeItem('auth_user');
-                setCurrentUser(null);
-                setToken(null);
-                window.location.href = '/';
+                // Network failure or timeout on refresh —
+                // do NOT clear storage or redirect
+                // User was already populated from storage above
             } finally {
                 setIsLoading(false);
             }
@@ -162,9 +176,8 @@ export function AuthProvider({children}) {
             sessionStorage.removeItem('auth_user');
             setCurrentUser(null);
             setToken(null);
-            // Redirect based on which app was active
-            const isAdmin = window.location.pathname.includes('/dashboard');
-            window.location.href = isAdmin ? '/' : '/shop';
+            // Always redirect to landing page — no dedicated admin login route exists
+            window.location.href = '/';
         }
     };
 

@@ -13,6 +13,7 @@ use App\Models\Inventory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use App\Models\ActivityLog;
 use App\Models\Notification;
 
@@ -48,22 +49,25 @@ class OrderController extends Controller
             }
 
             $validated = $request->validate([
-                'items'                      => 'required|array|min:1',
-                'items.*.productId'          => 'required|string',
-                'items.*.variantId'          => 'nullable|string',
-                'items.*.variantName'        => 'nullable|string',
-                'items.*.qty'                => 'required|integer|min:1',
-                'notes'                      => 'nullable|string|max:1000',
-                'deliveryAddress'            => 'nullable|array',
-                'deliveryAddress.label'      => 'nullable|string|max:100',
+                'items'                       => 'required|array|min:1',
+                'items.*.productId'           => 'required|string',
+                'items.*.variantId'           => 'nullable|string',
+                'items.*.variantName'         => 'nullable|string',
+                'items.*.qty'                 => 'required|integer|min:1',
+                'notes'                       => 'nullable|string|max:1000',
+                'paymentMethod'               => 'nullable|string|in:cod,online',
+                'deliveryAddress'             => 'nullable|array',
+                'deliveryAddress.label'       => 'nullable|string|max:100',
                 'deliveryAddress.house_number'=> 'nullable|string|max:100',
-                'deliveryAddress.street'     => 'nullable|string|max:255',
-                'deliveryAddress.subdivision'=> 'nullable|string|max:255',
-                'deliveryAddress.barangay'   => 'nullable|string|max:255',
-                'deliveryAddress.city'       => 'nullable|string|max:255',
-                'deliveryAddress.province'   => 'nullable|string|max:255',
-                'deliveryAddress.zip'        => 'nullable|string|max:10',
-                'deliveryAddress.phone'      => 'nullable|string|max:30',
+                'deliveryAddress.street'      => 'nullable|string|max:255',
+                'deliveryAddress.subdivision' => 'nullable|string|max:255',
+                'deliveryAddress.barangay'    => 'nullable|string|max:255',
+                'deliveryAddress.city'        => 'nullable|string|max:255',
+                'deliveryAddress.province'    => 'nullable|string|max:255',
+                'deliveryAddress.zip'         => 'nullable|string|max:10',
+                'deliveryAddress.phone'       => 'nullable|string|max:30',
+                'design_file'                 => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:10240',
+                'design_notes'                => 'nullable|string|max:2000',
             ]);
 
             // Build order items with pricing (no transaction wrapper for MongoDB compatibility)
@@ -102,6 +106,22 @@ class OrderController extends Controller
                 ];
             }
 
+            // Handle design file upload (non-fatal)
+            $designFilePath = null;
+            if ($request->hasFile('design_file') && $request->file('design_file')->isValid()) {
+                try {
+                    $designFilePath = $request->file('design_file')
+                        ->store('designs', 'public');
+                } catch (\Exception $fileErr) {
+                    Log::warning('OrderController@store: design file upload failed', [
+                        'error'  => $fileErr->getMessage(),
+                        'userId' => (string) $user->_id,
+                    ]);
+                }
+            }
+
+            $paymentMethod = $validated['paymentMethod'] ?? 'cod';
+
             $order = Order::create([
                 'userId'          => (string) $user->_id,
                 'userSnapshot'    => [
@@ -113,8 +133,12 @@ class OrderController extends Controller
                 'totalAmount'     => $totalAmount,
                 'orderStatus'     => 'Pending',
                 'paymentStatus'   => 'unpaid',
+                'paymentMethod'   => $paymentMethod,
                 'notes'           => strip_tags($validated['notes'] ?? ''),
                 'deliveryAddress' => $validated['deliveryAddress'] ?? null,
+                'designNotes'     => $validated['design_notes'] ?? null,
+                'designFilePath'  => $designFilePath,
+                'designStatus'    => $designFilePath ? 'pending_review' : null,
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
@@ -787,6 +811,101 @@ class OrderController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to reject design.');
+        }
+    }
+
+    /**
+     * POST /api/orders/my/{id}/cancel
+     * Customer cancels their own order — only allowed when Pending.
+     */
+    public function cancelMyOrder(Request $request, $id)
+    {
+        try {
+            $user = $this->getAuthUser($request);
+            if (!$user) {
+                return $this->unauthorizedResponse();
+            }
+
+            $order = Order::where('_id', $id)
+                          ->where('userId', (string) $user->_id)
+                          ->first();
+
+            if (!$order) {
+                return $this->notFoundResponse('Order');
+            }
+
+            if ($order->orderStatus !== 'Pending') {
+                return $this->errorResponse(
+                    'This order can no longer be cancelled. Only Pending orders can be cancelled.',
+                    422
+                );
+            }
+
+            $order->orderStatus = 'Cancelled';
+            $order->updatedAt   = now();
+            $order->save();
+
+            // Email notification to customer
+            try {
+                $customerEmail = $order->userSnapshot['email'] ?? null;
+                $customerName  = $order->userSnapshot['name'] ?? '';
+                $firstName     = explode(' ', trim($customerName))[0] ?? 'Customer';
+                if ($customerEmail) {
+                    Mail::to($customerEmail)->send(new OrderStatusMail(
+                        firstName:   $firstName,
+                        orderId:     (string) $order->_id,
+                        newStatus:   'Cancelled',
+                        totalAmount: (float) ($order->totalAmount ?? 0)
+                    ));
+                }
+            } catch (\Exception $e) {
+                Log::error('cancelMyOrder: Failed to send cancellation email', [
+                    'order_id' => (string) $order->_id,
+                    'error'    => $e->getMessage(),
+                ]);
+            }
+
+            // In-app notification to customer
+            try {
+                Notification::create([
+                    'user_id'    => (string) $order->userId,
+                    'type'       => 'order_cancelled',
+                    'title'      => 'Order Cancelled',
+                    'message'    => 'Your order #' .
+                        strtoupper(substr((string) $order->_id, -8)) .
+                        ' has been cancelled.',
+                    'is_read'    => false,
+                    'data'       => ['orderId' => (string) $order->_id],
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('cancelMyOrder: notification failed', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            // Activity log
+            try {
+                ActivityLog::create([
+                    'action'           => 'order_cancelled_by_customer',
+                    'entityType'       => 'order',
+                    'entityId'         => (string) $order->_id,
+                    'description'      => 'Order cancelled by customer.',
+                    'performedBy'      => trim("{$user->firstName} {$user->lastName}"),
+                    'performedByEmail' => $user->email ?? null,
+                    'metadata'         => ['orderId' => (string) $order->_id],
+                    'createdAt'        => now(),
+                ]);
+            } catch (\Exception $logErr) {
+                Log::warning('ActivityLog write failed (cancelMyOrder)', [
+                    'error' => $logErr->getMessage(),
+                ]);
+            }
+
+            return $this->successResponse('Order cancelled successfully.', $order);
+
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to cancel order.');
         }
     }
 }

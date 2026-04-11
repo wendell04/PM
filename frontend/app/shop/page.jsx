@@ -239,6 +239,24 @@ export default function ShopPage() {
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const [flashSales, setFlashSales] = useState({});
   const { addToCart } = useCart();
+
+  // Read logged-in user for greeting
+  const [shopUser, setShopUser] = useState(null);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('auth_user')
+        || sessionStorage.getItem('auth_user');
+      setShopUser(raw ? JSON.parse(raw) : null);
+    } catch { setShopUser(null); }
+  }, []);
+
+  const getGreeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
+  };
+
   const carouselRef = useRef(null);
   const autoplayRef = useRef(null);
 
@@ -338,7 +356,7 @@ export default function ShopPage() {
   }
 
   const handleAddToCart = (product) => {
-    addToCart(product, null, null, 1);
+    addToCart(product, 1, null, null);
     setToast({ message: `${product.name} added to cart!`, type: 'success' });
     setTimeout(() => setToast(null), 2000);
   };
@@ -474,10 +492,35 @@ export default function ShopPage() {
         </div>
       )}
 
+      {/* Greeting bar */}
+      <div style={{
+        marginBottom: '1rem',
+        padding: '0.75rem 1rem',
+        background: 'rgba(212,168,67,0.06)',
+        border: '1px solid rgba(212,168,67,0.15)',
+        borderRadius: '10px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+      }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+          stroke="var(--gold)" strokeWidth="2" strokeLinecap="round"
+          strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+        </svg>
+        <span style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 500 }}>
+          {shopUser?.firstName
+            ? <>{getGreeting()}, <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{shopUser.firstName}</span>! Welcome back.</>
+            : <>Welcome to <span style={{ color: 'var(--gold)', fontWeight: 700 }}>Personalize Me Prints</span>! Browse our products below.</>
+          }
+        </span>
+      </div>
+
       {/* Search + Filter bar */}
       <div className="shop-filter-bar">
         {/* Search */}
-        <div ref={searchRef} style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
+        <div ref={searchRef} style={{ position: 'relative', width: '320px', flexShrink: 0 }}>
           <div className="shop-search-wrapper">
             <svg className="shop-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -571,17 +614,55 @@ export default function ShopPage() {
           )}
         </div>
 
-        {/* Category pills */}
-        <div className="shop-category-pills">
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setCategory(cat)}
-              className={`shop-category-pill ${category === cat ? 'active' : ''}`}
-            >
-              {cat}
-            </button>
-          ))}
+        {/* Category dropdown */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <select
+            value={category}
+            onChange={e => setCategory(e.target.value)}
+            style={{
+              padding: '0.75rem 2.5rem 0.75rem 1rem',
+              background: '#1a1a1a',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '10px',
+              color: category === 'All' ? '#888' : '#d4a843',
+              fontSize: '0.9rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              outline: 'none',
+              appearance: 'none',
+              WebkitAppearance: 'none',
+              minWidth: '160px',
+              transition: 'border-color 0.2s',
+            }}
+            onFocus={e => e.target.style.borderColor = 'rgba(212,168,67,0.5)'}
+            onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+          >
+            {categories.map(cat => (
+              <option
+                key={cat}
+                value={cat}
+                style={{ background: '#1a1a1a', color: '#f5f5f5' }}
+              >
+                {cat}
+              </option>
+            ))}
+          </select>
+          {/* Chevron icon */}
+          <svg
+            width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke={category === 'All' ? '#888' : '#d4a843'}
+            strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            style={{
+              position: 'absolute',
+              right: '10px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              pointerEvents: 'none',
+              flexShrink: 0,
+            }}
+          >
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
         </div>
       </div>
 
@@ -1055,7 +1136,7 @@ export default function ShopPage() {
         .shop-filter-bar {
           display: flex;
           gap: 1rem;
-          flex-wrap: wrap;
+          flex-wrap: nowrap;
           margin-bottom: 1.5rem;
           align-items: center;
         }
@@ -1093,36 +1174,6 @@ export default function ShopPage() {
 
         .shop-search-input::placeholder {
           color: #666;
-        }
-
-        .shop-category-pills {
-          display: flex;
-          gap: 0.5rem;
-          flex-wrap: wrap;
-        }
-
-        .shop-category-pill {
-          padding: 0.5rem 1.25rem;
-          border-radius: 24px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          background: transparent;
-          color: #888;
-          font-size: 0.85rem;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-          white-space: nowrap;
-        }
-
-        .shop-category-pill:hover {
-          background: rgba(255, 255, 255, 0.05);
-          color: #aaa;
-        }
-
-        .shop-category-pill.active {
-          border-color: #d4a843;
-          background: rgba(212, 168, 67, 0.15);
-          color: #d4a843;
         }
 
         /* Results Count */
@@ -1556,10 +1607,6 @@ export default function ShopPage() {
 
           .shop-search-wrapper {
             min-width: 100%;
-          }
-
-          .shop-category-pills {
-            justify-content: center;
           }
 
           .shop-products-grid {

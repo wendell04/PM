@@ -10,6 +10,13 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
+// Mirrors layout’s openAuthModalWithRedirect — cart cannot import shop layout, so we dispatch the same event.
+function openAuthModalWithRedirect(returnPath) {
+  window.dispatchEvent(new CustomEvent('pmp_open_auth', {
+    detail: { type: 'login', returnPath },
+  }));
+}
+
 function resolvePrice(product, qty) {
   const tiers = product.priceTiers ?? [];
   if (tiers.length > 0) {
@@ -51,12 +58,26 @@ function LoginRequiredModal({ isOpen, onClose }) {
         </div>
 
         <div className="modal-actions" style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
-          <Link href="/#login" className="btn-primary" onClick={onClose} style={{ flex: 1 }}>
+          <button
+            className="btn-primary"
+            style={{ flex: 1 }}
+            onClick={() => {
+              onClose();
+              openAuthModalWithRedirect('/shop/checkout');
+            }}
+          >
             Login
-          </Link>
-          <Link href="/#register" className="btn-secondary" onClick={onClose} style={{ flex: 1, background: 'var(--gold)', borderColor: 'var(--gold)', color: '#000' }}>
+          </button>
+          <button
+            className="btn-secondary"
+            style={{ flex: 1, background: 'var(--gold)', borderColor: 'var(--gold)', color: '#000' }}
+            onClick={() => {
+              onClose();
+              window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'register' } }));
+            }}
+          >
             Register
-          </Link>
+          </button>
         </div>
       </div>
     </div>
@@ -65,23 +86,31 @@ function LoginRequiredModal({ isOpen, onClose }) {
 
 export default function CartPage() {
   const router = useRouter();
-  const { cart, updateQty, removeFromCart, clearCart } = useCart();
+  const { cartItems, isCartLoading, updateQty, removeFromCart, bulkRemove, clearCart } = useCart();
   const { token } = useAuth();
 
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [notes, setNotes] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
   const [removingId, setRemovingId] = useState(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   // Re-compute unit prices based on current qty
-  const enrichedCart = useMemo(() => cart.map(item => ({
-    ...item,
-    unitPrice: resolvePrice(item.product, item.qty),
-    lineTotal: resolvePrice(item.product, item.qty) * item.qty,
-  })), [cart]);
+  const enrichedCart = useMemo(() => (cartItems || []).map(item => {
+    const qty = Math.max(1, parseInt(item.qty) || 1);
+    const unitPrice = item.unitPrice || 0;
+    return {
+      ...item,
+      qty,
+      unitPrice,
+      lineTotal: item.lineTotal || (qty * unitPrice),
+      product: item.product ?? {
+        _id: item.productId,
+        name: item.productName,
+        images: item.image ? [item.image] : [],
+      },
+    };
+  }), [cartItems]);
 
   // Toggle select item
   const toggleSelectItem = (key) => {
@@ -108,10 +137,10 @@ export default function CartPage() {
   const selectedTotal = selectedCartItems.reduce((sum, i) => sum + i.lineTotal, 0);
 
   const handleRemoveItem = (productId, variantId, index) => {
-    const key = `${productId}_${variantId}`;
+    const key = `${productId}_${variantId ?? 'none'}`;
     setRemovingId(key);
     const timer = setTimeout(() => {
-      removeFromCart(productId, variantId);
+      removeFromCart(productId, variantId ?? null);
       setSelectedItems(prev => {
         const newSet = new Set(prev);
         newSet.delete(index);
@@ -122,12 +151,13 @@ export default function CartPage() {
     return () => clearTimeout(timer);
   };
 
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (selectedItems.size === 0) return;
-    const itemsToRemove = Array.from(selectedItems).map(i => enrichedCart[i]);
-    itemsToRemove.forEach(item => {
-      removeFromCart(item.product._id, item.variantId);
-    });
+    const toRemove = Array.from(selectedItems).map(i => ({
+      productId: enrichedCart[i].productId,
+      variantId: enrichedCart[i].variantId ?? null,
+    }));
+    await bulkRemove(toRemove);
     setSelectedItems(new Set());
   };
 
@@ -140,7 +170,7 @@ export default function CartPage() {
         const guestItems = enrichedCart.map(i => ({
           productId:   i.product._id,
           productName: i.product.name,
-          images:      i.product.images ?? [],
+          image:       i.product.images?.[0] ?? i.image ?? null,
           variantId:   i.variantId   ?? null,
           variantName: i.variantName ?? null,
           qty:         i.qty,
@@ -181,39 +211,10 @@ export default function CartPage() {
     router.push('/shop/checkout');
   }
 
-  // ── Success screen ──────────────────────────────────────────────────────────
-  if (success) {
-    return (
-      <div className="cart-success-state">
-        <div className="cart-success-icon">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
-            stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
-        </div>
-        <h2 className="cart-success-title">Order Placed!</h2>
-        <p className="cart-success-text">
-          Your order has been received. The owner will confirm it shortly.
-        </p>
-        {typeof success === 'string' && success !== 'success' && (
-          <p className="cart-order-id">
-            Order ID: <span>{success}</span>
-          </p>
-        )}
-        <div className="cart-actions">
-          <Link href="/shop/orders" className="cart-view-orders-btn">
-            View My Orders
-          </Link>
-          <Link href="/shop" className="cart-continue-btn">
-            Continue Shopping
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  {/* success state removed — order placement now redirects to /shop/payment-success */}
 
   // ── Empty cart ──────────────────────────────────────────────────────────────
-  if (cart.length === 0) {
+  if (!isCartLoading && enrichedCart.length === 0) {
     return (
       <div style={{
         display: 'flex',
@@ -272,7 +273,7 @@ export default function CartPage() {
         </Link>
         <span className="cart-divider">/</span>
         <h1 className="cart-title">
-          Shopping Cart ({cart.length} item{cart.length !== 1 ? 's' : ''})
+          Shopping Cart ({enrichedCart.length} item{enrichedCart.length !== 1 ? 's' : ''})
         </h1>
       </div>
 
@@ -305,7 +306,7 @@ export default function CartPage() {
           {/* Items List - Shopee Style */}
           <div className="cart-items-list">
             {enrichedCart.map((item, idx) => {
-              const key = `${item.product._id}_${item.variantId}`;
+              const key = `${item.productId}_${item.variantId ?? 'none'}`;
               const isRemoving = removingId === key;
               const isSelected = selectedItems.has(idx);
 
@@ -349,7 +350,7 @@ export default function CartPage() {
                       </div>
                     )}
                     <div className="cart-item-price">
-                      ₱{item.unitPrice.toLocaleString()} / pc
+                      ₱{Number(item.unitPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / pc
                     </div>
                   </div>
 
@@ -357,7 +358,7 @@ export default function CartPage() {
                   <div className="cart-item-qty">
                     <div className="cart-qty-stepper">
                       <button
-                        onClick={() => updateQty(item.product._id, item.variantId, item.qty - 1)}
+                        onClick={() => updateQty(item.productId, item.variantId ?? null, item.qty - 1)}
                         className="cart-qty-btn"
                         disabled={item.qty <= 1}
                       >
@@ -368,13 +369,13 @@ export default function CartPage() {
                         value={item.qty}
                         onChange={(e) => {
                           const val = parseInt(e.target.value) || 1;
-                          if (val >= 1) updateQty(item.product._id, item.variantId, val);
+                          if (val >= 1) updateQty(item.productId, item.variantId ?? null, val);
                         }}
                         className="cart-qty-input"
                         min="1"
                       />
                       <button
-                        onClick={() => updateQty(item.product._id, item.variantId, item.qty + 1)}
+                        onClick={() => updateQty(item.productId, item.variantId ?? null, item.qty + 1)}
                         className="cart-qty-btn"
                       >
                         +
@@ -384,12 +385,12 @@ export default function CartPage() {
 
                   {/* Line Total */}
                   <div className="cart-item-total">
-                    <div className="cart-total-amount">₱{item.lineTotal.toLocaleString()}</div>
+                    <div className="cart-total-amount">₱{Number(item.lineTotal).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                   </div>
 
                   {/* Remove Button */}
                   <button
-                    onClick={() => handleRemoveItem(item.product._id, item.variantId, idx)}
+                    onClick={() => handleRemoveItem(item.productId, item.variantId ?? null, idx)}
                     className="cart-remove-btn"
                     title="Remove item"
                   >
@@ -405,15 +406,7 @@ export default function CartPage() {
             })}
           </div>
 
-          {/* Continue Shopping */}
-          <div className="cart-continue-shopping">
-            <Link href="/shop" className="cart-continue-link">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
-              </svg>
-              Continue Shopping
-            </Link>
-          </div>
+          {/* removed duplicate Continue Shopping — Back to Shop in header serves this purpose */}
         </div>
 
         {/* Order Summary Panel */}
@@ -432,7 +425,7 @@ export default function CartPage() {
             {/* Subtotal */}
             <div className="cart-summary-row">
               <span>Subtotal</span>
-              <span>₱{selectedTotal.toLocaleString()}</span>
+              <span>₱{Number(selectedTotal).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
 
             {/* Shipping */}
@@ -447,7 +440,7 @@ export default function CartPage() {
             {/* Total */}
             <div className="cart-summary-total">
               <span>Total</span>
-              <span className="cart-total-price">₱{selectedTotal.toLocaleString()}</span>
+              <span className="cart-total-price">₱{Number(selectedTotal).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
 
             {/* Order Notes */}

@@ -40,11 +40,15 @@ class TwoFactorController extends Controller
                                ->first();
 
             if ($existing) {
-                $secondsSinceSent = now()->diffInSeconds($existing->created_at, false);
+                $secondsSinceSent = max(0, (int) now()->diffInSeconds($existing->created_at, true));
+                if ($secondsSinceSent < 2) {
+                    // Duplicate mount call (React Strict Mode) — OTP already sent, return silently
+                    return response()->json(['message' => 'OTP sent.'], 200);
+                }
                 if ($secondsSinceSent < 30) {
                     return response()->json([
-                        'message'          => 'Please wait before requesting a new code.',
-                        'retry_after'      => 30 - (int) $secondsSinceSent,
+                        'message'     => 'Please wait before requesting a new code.',
+                        'retry_after' => max(0, 30 - $secondsSinceSent),
                     ], 429);
                 }
             }
