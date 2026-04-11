@@ -53,7 +53,6 @@ function ChevronIcon({ open }) {
 // ══════════════════════════════════════════════════════════════════════════════
 export default function ActualStockTab({ materials }) {
   const [expandedMaterial, setExpandedMaterial] = useState(null);
-  const [expandedChild, setExpandedChild] = useState(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [viewMode, setViewMode] = useState("product");
@@ -62,6 +61,116 @@ export default function ActualStockTab({ materials }) {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [pendingPOs, setPendingPOs] = useState([]);
+  // Date range filter (default to This Month)
+  const [dateRange, setDateRange] = useState("thisMonth");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  // Load bad orders from storage
+  const [badOrders, setBadOrders] = useState([]);
+  const [badOrdersRefreshKey, setBadOrdersRefreshKey] = useState(0);
+
+  // Load bad orders - re-runs when refreshKey changes
+  useEffect(() => {
+    try {
+      const bo = JSON.parse(localStorage.getItem("pmp_bad_orders") || "[]");
+      setBadOrders(bo);
+    } catch {
+      setBadOrders([]);
+    }
+  }, [badOrdersRefreshKey]);
+
+  // Listen for storage changes (when bad orders are saved in same/different tab)
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === "pmp_bad_orders") {
+        try {
+          const bo = JSON.parse(e.newValue || "[]");
+          setBadOrders(bo);
+        } catch {
+          setBadOrders([]);
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
+  // Also poll every 2 seconds to catch same-tab changes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      try {
+        const bo = JSON.parse(localStorage.getItem("pmp_bad_orders") || "[]");
+        setBadOrders((prev) => {
+          // Only update if the data actually changed
+          if (JSON.stringify(prev) !== JSON.stringify(bo)) {
+            return bo;
+          }
+          return prev;
+        });
+      } catch {
+        // ignore
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Compute date range based on selection
+  useEffect(() => {
+    const now = new Date();
+    let from = "";
+    let to = "";
+    switch (dateRange) {
+      case "today":
+        from = now.toISOString().split("T")[0];
+        to = from;
+        break;
+      case "thisWeek": {
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        from = startOfWeek.toISOString().split("T")[0];
+        to = now.toISOString().split("T")[0];
+        break;
+      }
+      case "thisMonth": {
+        from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+        to = now.toISOString().split("T")[0];
+        break;
+      }
+      case "thisYear": {
+        from = new Date(now.getFullYear(), 0, 1).toISOString().split("T")[0];
+        to = now.toISOString().split("T")[0];
+        break;
+      }
+      case "custom":
+        // Keep existing dateFrom/dateTo values
+        return;
+      default:
+        // allTime - no filter
+        setDateFrom("");
+        setDateTo("");
+        return;
+    }
+    setDateFrom(from);
+    setDateTo(to);
+  }, [dateRange]);
+
+  // Create bad orders map by material ID
+  const badOrdersMap = useMemo(() => {
+    const map = {};
+    badOrders.forEach((bo) => {
+      if (!map[bo.materialId]) {
+        map[bo.materialId] = {
+          total: 0,
+          byType: {},
+        };
+      }
+      map[bo.materialId].total += bo.qty || 0;
+      map[bo.materialId].byType[bo.type] =
+        (map[bo.materialId].byType[bo.type] || 0) + (bo.qty || 0);
+    });
+    return map;
+  }, [badOrders]);
 
   // Load pending POs for In Transit calculation
   useEffect(() => {
@@ -95,8 +204,12 @@ export default function ActualStockTab({ materials }) {
       (s, inv) => s + inv.items.reduce((ss, it) => ss + it.good, 0),
       0,
     );
-    const totalDamaged = data.reduce(
-      (s, inv) => s + inv.items.reduce((ss, it) => ss + it.damaged, 0),
+    const totalBadOrder = data.reduce(
+      (s, inv) => s + inv.items.reduce((ss, it) => ss + (it.badOrder || 0), 0),
+      0,
+    );
+    const totalWaste = data.reduce(
+      (s, inv) => s + inv.items.reduce((ss, it) => ss + (it.internalDamaged || 0), 0),
       0,
     );
     const totalValue = data.reduce(
@@ -118,7 +231,8 @@ export default function ActualStockTab({ materials }) {
           <td style="padding:8px 10px;border-bottom:1px solid #eee;color:#333;font-size:12px;vertical-align:top;">${it.materialName}</td>
           <td style="padding:8px 10px;border-bottom:1px solid #eee;color:#555;font-size:12px;vertical-align:top;">${it.variantName !== "—" ? it.variantName : ""}</td>
           <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;font-size:12px;">${it.good}</td>
-          <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;font-size:12px;">${it.damaged}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;font-size:12px;color:#f59e0b;">${it.badOrder || 0}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;font-size:12px;color:#ef4444;">${it.internalDamaged || 0}</td>
           <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;font-size:12px;font-weight:600;">${it.total}</td>
           <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-family:monospace;white-space:nowrap;">₱${it.unitCost.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</td>
           <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-family:monospace;white-space:nowrap;font-weight:600;">₱${it.value.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</td>
@@ -128,13 +242,14 @@ export default function ActualStockTab({ materials }) {
         .join("");
 
       const invTotalGood = inv.items.reduce((s, it) => s + it.good, 0);
-      const invTotalDamaged = inv.items.reduce((s, it) => s + it.damaged, 0);
+      const invTotalBadOrder = inv.items.reduce((s, it) => s + (it.badOrder || 0), 0);
+      const invTotalWaste = inv.items.reduce((s, it) => s + (it.internalDamaged || 0), 0);
       const invTotalQty = inv.items.reduce((s, it) => s + it.total, 0);
       const invTotalValue = inv.items.reduce((s, it) => s + it.value, 0);
 
       rows += `
         <tr style="background:#fff;">
-          <td colspan="7" style="padding:12px 10px 8px 10px;font-weight:700;font-size:13px;color:#111;border-bottom:1px solid #ddd;">
+          <td colspan="8" style="padding:12px 10px 8px 10px;font-weight:700;font-size:13px;color:#111;border-bottom:1px solid #ddd;">
             ${inv.invoiceNo} — ${inv.vendorName} (${new Date(inv.dateReceived).toLocaleDateString("en-PH")})
           </td>
         </tr>
@@ -142,7 +257,8 @@ export default function ActualStockTab({ materials }) {
         <tr style="background:#fafafa;">
           <td colspan="2" style="padding:8px 10px;font-size:11px;color:#666;font-weight:600;border-bottom:2px solid #ddd;">Invoice Total:</td>
           <td style="padding:8px 10px;text-align:center;font-size:12px;font-weight:700;border-bottom:2px solid #ddd;">${invTotalGood} good</td>
-          <td style="padding:8px 10px;text-align:center;font-size:11px;border-bottom:2px solid #ddd;vertical-align:bottom;">${invTotalDamaged} damaged</td>
+          <td style="padding:8px 10px;text-align:center;font-size:11px;border-bottom:2px solid #ddd;color:#f59e0b;font-weight:600;">${invTotalBadOrder} BO</td>
+          <td style="padding:8px 10px;text-align:center;font-size:11px;border-bottom:2px solid #ddd;color:#ef4444;font-weight:600;">${invTotalWaste} waste</td>
           <td style="padding:8px 10px;text-align:center;font-size:12px;font-weight:700;border-bottom:2px solid #ddd;">${invTotalQty}</td>
           <td style="padding:8px 10px;border-bottom:2px solid #ddd;"></td>
           <td style="padding:8px 10px;text-align:right;font-size:12px;font-weight:700;font-family:monospace;border-bottom:2px solid #ddd;white-space:nowrap;">₱${invTotalValue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</td>
@@ -158,18 +274,19 @@ export default function ActualStockTab({ materials }) {
       <h2>Batch Inventory Report — By Invoice | Generated: ${now}</h2>
       <div class="summary">
         <div class="summary-item"><span class="summary-label">Total Good</span><span class="summary-value">${totalGood} pcs</span></div>
-        <div class="summary-item"><span class="summary-label">Total Damaged</span><span class="summary-value">${totalDamaged} pcs</span></div>
+        <div class="summary-item"><span class="summary-label">Total Bad Order</span><span class="summary-value" style="color:#f59e0b">${totalBadOrder} pcs</span></div>
+        <div class="summary-item"><span class="summary-label">Total Waste</span><span class="summary-value" style="color:#ef4444">${totalWaste} pcs</span></div>
         <div class="summary-item"><span class="summary-label">Total Value</span><span class="summary-value">₱${totalValue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span></div>
         <div class="summary-item"><span class="summary-label">Invoices</span><span class="summary-value">${data.length}</span></div>
       </div>
       <table><thead><tr>
-        <th style="width:15%">Material</th><th style="width:20%">Variant</th>
-        <th style="text-align:center;width:10%">Good</th><th style="text-align:center;width:10%">Damaged</th><th style="text-align:center;width:10%">Total</th>
-        <th style="text-align:right;width:12%">Unit Cost</th><th style="text-align:right;width:13%">Value</th>
+        <th style="width:12%">Material</th><th style="width:18%">Variant</th>
+        <th style="text-align:center;width:8%">Good</th><th style="text-align:center;width:8%;color:#f59e0b">Bad Order</th><th style="text-align:center;width:8%;color:#ef4444">Waste/Adjust</th><th style="text-align:center;width:8%">Total</th>
+        <th style="text-align:right;width:10%">Unit Cost</th><th style="text-align:right;width:11%">Value</th>
       </tr></thead><tbody>${rows}</tbody></table>
       </body></html>`;
 
-    const w = window.open("", "_blank", "width=900,height=700");
+    const w = window.open("", "_blank", "width=1100,height=700");
     w.document.write(html);
     w.document.close();
     setTimeout(() => {
@@ -177,7 +294,13 @@ export default function ActualStockTab({ materials }) {
     }, 500);
   };
 
-  // Summary cards: Total Goods Stock, Total Actual Stock, Total Waste, Total Goods Value, Total Waste Value, Backorders - OPTIMIZED
+  // Summary cards: Total Goods Stock, Total Actual Stock, Total Waste, Total Goods Value, Total Loss Value, Backorders - OPTIMIZED
+  // FIX: Total Goods Stock and Total Goods Value should ONLY include good/usable stock, NOT bad orders
+  // Summary cards: Total Goods Stock, Total Actual Stock, Total Waste, Total Goods Value, Total Loss Value, Backorders
+  // FIX: Total Goods Stock = good stock ONLY (exclude bad orders)
+  // FIX: Total Goods Value = value of good stock ONLY (exclude bad orders)
+  // FIX: Total Loss = pending bad orders value only
+  // FIX: Total Actual Stock = good stock ONLY (bad orders are NOT actual stock)
   const summaryCards = useMemo(() => {
     let totalStock = 0,
       outOfStock = 0,
@@ -217,21 +340,25 @@ export default function ActualStockTab({ materials }) {
         // For parents with variants, aggregate stock from children
         const children = childrenMap.get(m.id);
         let parentGoodStock = 0,
-          parentDamaged = 0;
+          parentDamaged = 0,
+          parentBadOrderQty = 0;
 
         children.forEach((child) => {
+          const childBadOrder = badOrdersMap[child.id]?.total || 0;
+          parentBadOrderQty += childBadOrder;
           const childBatches = child.batches || [];
 
           childBatches.forEach((b) => {
             const good = b.qtyGood || b.goodQty || 0;
             const damaged = b.qtyDamaged || b.damagedQty || 0;
-            const remaining = b.remainingQty || 0;
             const cost = b.unitCost || 0;
 
             parentGoodStock += good;
             parentDamaged += damaged;
             totalWaste += damaged;
-            totalGoodsCost += remaining * cost;
+            // FIX: Goods cost = only GOOD stock (exclude damaged/bad orders)
+            totalGoodsCost += good * cost;
+            // Loss = ALL damage (arrival + internal + pending bad orders)
             totalInventoryLoss += damaged * cost;
 
             // Split arrival vs internal damage
@@ -245,9 +372,10 @@ export default function ActualStockTab({ materials }) {
           });
         });
 
-        const parentTotal = parentGoodStock + parentDamaged;
+        // FIX: Total Goods = good stock only (what can be sold)
         totalStock += parentGoodStock;
-        totalActualStock += parentTotal;
+        // FIX: Total Actual = good stock + bad orders (total physical inventory)
+        totalActualStock += parentGoodStock + parentBadOrderQty;
 
         const minStock = m.minStock || 10;
         if (parentGoodStock === 0 && m.procurementType !== "on-demand")
@@ -267,12 +395,13 @@ export default function ActualStockTab({ materials }) {
         batches.forEach((b) => {
           const good = b.qtyGood || b.goodQty || 0;
           const dmg = b.qtyDamaged || b.damagedQty || 0;
-          const remaining = b.remainingQty || 0;
           const cost = b.unitCost || 0;
 
           goodStock += good;
           damaged += dmg;
-          totalGoodsCost += remaining * cost;
+          // FIX: Goods cost = only GOOD stock (exclude damaged/bad orders)
+          totalGoodsCost += good * cost;
+          // Loss = ALL damage
           totalInventoryLoss += dmg * cost;
 
           // Split arrival vs internal damage
@@ -285,9 +414,11 @@ export default function ActualStockTab({ materials }) {
           }
         });
 
-        const total = goodStock + damaged;
+        // FIX: Total Goods = good stock only (what can be sold)
         totalStock += goodStock;
-        totalActualStock += total;
+        // FIX: Total Actual = good stock + bad orders (total physical inventory)
+        const standAloneBO = badOrdersMap[m.id]?.total || 0;
+        totalActualStock += goodStock + standAloneBO;
         totalWaste += damaged;
 
         const minStock = m.minStock || 10;
@@ -307,13 +438,21 @@ export default function ActualStockTab({ materials }) {
       .filter((bo) => bo.status === "pending")
       .reduce((sum, bo) => sum + (bo.qty || 0), 0);
 
+    // FIX: Total Loss = pending bad orders value only (not batch damage)
+    let badOrderLossValue = 0;
+    badOrders.forEach((bo) => {
+      if (bo.status === "pending") {
+        badOrderLossValue += bo.totalValue || 0;
+      }
+    });
+
     return {
       totalStock,
       outOfStock,
       lowStock,
       totalGoodsCost,
       totalActualStock,
-      totalInventoryLoss,
+      totalInventoryLoss: badOrderLossValue,
       totalInTransit,
       totalWaste,
       totalBackorders,
@@ -322,7 +461,7 @@ export default function ActualStockTab({ materials }) {
       arrivalDamageValue,
       internalDamageValue,
     };
-  }, [materials, inTransitMap]);
+  }, [materials, inTransitMap, badOrders]);
 
   const categories = [
     ...new Set(
@@ -400,7 +539,8 @@ export default function ActualStockTab({ materials }) {
           internalDamaged,
           total: good + damaged,
           unitCost: b.unitCost || 0,
-          value: (good + damaged) * (b.unitCost || 0),
+          value: good * (b.unitCost || 0), // FIX: Value only for good stock (exclude damaged)
+          badOrder: badOrdersMap[m.id]?.total || 0,
         });
       });
     });
@@ -409,7 +549,7 @@ export default function ActualStockTab({ materials }) {
     return Object.values(map).sort(
       (a, b) => new Date(b.dateReceived) - new Date(a.dateReceived),
     );
-  }, [materials]);
+  }, [materials, badOrdersMap]);
 
   // Filter parent materials (product view)
   const filtered = useMemo(() => {
@@ -446,7 +586,7 @@ export default function ActualStockTab({ materials }) {
     filtered.forEach((mat) => {
       const hasChildren = mat.hasVariants && childrenMap.has(mat.id);
       let batches, goodStock, damaged, arrivalDamaged, internalDamaged;
-      let totalStock, avgCost, goodsValue;
+      let totalStock, avgCost, goodsValue, parentBadOrderQty = 0;
 
       if (hasChildren) {
         const children = childrenMap.get(mat.id);
@@ -462,16 +602,21 @@ export default function ActualStockTab({ materials }) {
         let totalQty = 0;
         let totalVal = 0;
 
+        // Calculate bad orders from children batches
+        children.forEach((child) => {
+          const childBO = badOrdersMap[child.id]?.total || 0;
+          parentBadOrderQty += childBO;
+        });
+
         allChildrenBatches.forEach((b) => {
           const good = b.qtyGood || 0;
           const dmg = b.qtyDamaged || 0;
-          const remaining = b.remainingQty || 0;
           const cost = b.unitCost || 0;
 
           goodStock += good;
           damaged += dmg;
-          totalQty += remaining;
-          totalVal += remaining * cost;
+          totalQty += good; // FIX: Only good stock for avg cost
+          totalVal += good * cost; // FIX: Only good stock value
 
           if (b.damageType === "arrival") {
             arrivalDamaged += dmg;
@@ -482,7 +627,7 @@ export default function ActualStockTab({ materials }) {
 
         totalStock = goodStock + damaged;
         avgCost = totalQty > 0 ? totalVal / totalQty : mat.baseCost || 0;
-        goodsValue = goodStock * avgCost;
+        goodsValue = goodStock * avgCost; // FIX: Only good stock value
       } else {
         batches = mat.batches || [];
         goodStock = 0;
@@ -495,13 +640,12 @@ export default function ActualStockTab({ materials }) {
         batches.forEach((b) => {
           const good = b.qtyGood || 0;
           const dmg = b.qtyDamaged || 0;
-          const remaining = b.remainingQty || 0;
           const cost = b.unitCost || 0;
 
           goodStock += good;
           damaged += dmg;
-          totalQty += remaining;
-          totalVal += remaining * cost;
+          totalQty += good; // FIX: Only good stock for avg cost
+          totalVal += good * cost; // FIX: Only good stock value
 
           if (b.damageType === "arrival") {
             arrivalDamaged += dmg;
@@ -531,13 +675,12 @@ export default function ActualStockTab({ materials }) {
           childBatches.forEach((b) => {
             const good = b.qtyGood || 0;
             const dmg = b.qtyDamaged || 0;
-            const remaining = b.remainingQty || 0;
             const cost = b.unitCost || 0;
 
             childGood += good;
             childDamaged += dmg;
-            childTotalQty += remaining;
-            childTotalVal += remaining * cost;
+            childTotalQty += good; // FIX: Only good stock
+            childTotalVal += good * cost; // FIX: Only good stock value
 
             if (b.damageType === "arrival") {
               childArrivalDamaged += dmg;
@@ -581,11 +724,12 @@ export default function ActualStockTab({ materials }) {
         goodsValue,
         hasChildren,
         childrenStats,
+        badOrderQty: hasChildren ? parentBadOrderQty : (badOrdersMap[mat.id]?.total || 0),
       });
     });
 
     return statsMap;
-  }, [filtered, materials]);
+  }, [filtered, materials, badOrdersMap]);
 
   // OPTIMIZED: Pre-build material category lookup for invoice filtering
   const materialCategoryMap = useMemo(() => {
@@ -619,14 +763,29 @@ export default function ActualStockTab({ materials }) {
       );
     }
 
+    // Date filter
+    if (dateFrom || dateTo) {
+      const from = dateFrom ? new Date(dateFrom) : null;
+      const to = dateTo ? new Date(dateTo) : null;
+      if (to) to.setHours(23, 59, 59, 999);
+      groups = groups.filter((inv) => {
+        const invDate = inv.dateReceived ? new Date(inv.dateReceived) : null;
+        if (!invDate) return false;
+        if (from && invDate < from) return false;
+        if (to && invDate > to) return false;
+        return true;
+      });
+    }
+
     // Pre-compute invoice totals to avoid recalculating in render
     return groups.map((inv) => ({
       ...inv,
       invTotalGood: inv.items.reduce((s, it) => s + it.good, 0),
       invTotalDamaged: inv.items.reduce((s, it) => s + it.damaged, 0),
+      invTotalBadOrder: inv.items.reduce((s, it) => s + (it.badOrder || 0), 0),
       invTotalValue: inv.items.reduce((s, it) => s + it.value, 0),
     }));
-  }, [invoiceGroups, categoryFilter, search, materialCategoryMap]);
+  }, [invoiceGroups, categoryFilter, search, materialCategoryMap, dateFrom, dateTo]);
 
   // ── CSV Preview Data ────────────────────────────────────────────────────
   const csvPreviewData = useMemo(() => {
@@ -814,7 +973,7 @@ export default function ActualStockTab({ materials }) {
         <div className="summary-card">
           <div className="summary-content">
             <span className="summary-value" style={{ color: "#f59e0b" }}>
-              {summaryCards.arrivalDamage}
+              {badOrders.filter((bo) => bo.status === "pending").reduce((sum, bo) => sum + (bo.qty || 0), 0)}
             </span>
             <span className="summary-label">Bad Orders</span>
           </div>
@@ -961,6 +1120,84 @@ export default function ActualStockTab({ materials }) {
         {/* Print + CSV Buttons (only for invoice view) */}
         {viewMode === "invoice" && (
           <>
+            {/* Date Range Dropdown */}
+            <CustomDropdown
+              value={dateRange}
+              onChange={(val) => {
+                setDateRange(val);
+                setCurrentPage(1);
+              }}
+              options={[
+                { value: "allTime", label: "All Time" },
+                { value: "today", label: "Today" },
+                { value: "thisWeek", label: "This Week" },
+                { value: "thisMonth", label: "This Month" },
+                { value: "thisYear", label: "This Year" },
+                { value: "custom", label: "Custom Range" },
+              ]}
+              placeholder="Date Range"
+              style={{ minWidth: "130px" }}
+            />
+            {/* Custom date inputs (only shown when custom range selected) */}
+            {dateRange === "custom" && (
+              <>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => {
+                    setDateFrom(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  style={{
+                    padding: "0.5rem 0.75rem",
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "8px",
+                    color: "#E5E2E1",
+                    fontSize: "0.78rem",
+                    outline: "none",
+                    colorScheme: "dark",
+                  }}
+                />
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => {
+                    setDateTo(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  style={{
+                    padding: "0.5rem 0.75rem",
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "8px",
+                    color: "#E5E2E1",
+                    fontSize: "0.78rem",
+                    outline: "none",
+                    colorScheme: "dark",
+                  }}
+                />
+              </>
+            )}
+            <button
+              onClick={() => {
+                setDateFrom("");
+                setDateTo("");
+                setCurrentPage(1);
+              }}
+              style={{
+                padding: "0.5rem 0.75rem",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "8px",
+                color: "#E5E2E1",
+                fontSize: "0.78rem",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Clear
+            </button>
             <button
               onClick={() => setShowCSVPreview(true)}
               style={{
@@ -1120,8 +1357,8 @@ export default function ActualStockTab({ materials }) {
                   const children = childrenStats; // Use pre-computed children
 
                   const isExpanded = expandedMaterial === mat.id;
-                  // Variant parents should always be expandable to show children
-                  const shouldShowChevron = hasChildren || batches.length > 0;
+                  // Only products with variants are expandable; standalone items are flat rows
+                  const shouldShowChevron = hasChildren;
 
                   return (
                     <React.Fragment key={mat.id}>
@@ -1238,11 +1475,11 @@ export default function ActualStockTab({ materials }) {
                             padding: "0.875rem 1rem",
                             textAlign: "center",
                             fontWeight: 700,
-                            color: arrivalDamaged > 0 ? "#f59e0b" : "#6b7280",
+                            color: stats.badOrderQty > 0 ? "#f59e0b" : "#6b7280",
                             fontFamily: "monospace",
                           }}
                         >
-                          {arrivalDamaged}{" "}
+                          {stats.badOrderQty}{" "}
                           <span
                             style={{
                               color: "var(--gray)",
@@ -1282,7 +1519,7 @@ export default function ActualStockTab({ materials }) {
                             fontFamily: "monospace",
                           }}
                         >
-                          {totalStock}{" "}
+                          {goodStock + stats.badOrderQty}{" "}
                           <span
                             style={{
                               color: "var(--gray)",
@@ -1318,730 +1555,80 @@ export default function ActualStockTab({ materials }) {
                         >
                           ₱
                           {(
-                            (arrivalDamaged + internalDamaged) *
-                            avgCost
+                            (() => {
+                              // For parent rows with children, aggregate children's loss values
+                              if (hasChildren && children && children.length > 0) {
+                                return children.reduce((sum, child) => {
+                                  const childPendingBO = badOrders.filter(
+                                    (bo) =>
+                                      bo.materialId === child.id &&
+                                      bo.status === "pending",
+                                  );
+                                  return sum + childPendingBO.reduce(
+                                    (s, bo) => s + (bo.totalValue || 0),
+                                    0,
+                                  );
+                                }, 0);
+                              }
+                              // For standalone materials, use direct material ID
+                              const pendingBO = badOrders.filter(
+                                (bo) =>
+                                  bo.materialId === mat.id &&
+                                  bo.status === "pending",
+                              );
+                              return pendingBO.reduce(
+                                (sum, bo) => sum + (bo.totalValue || 0),
+                                0,
+                              );
+                            })()
                           ).toLocaleString("en-PH", {
                             minimumFractionDigits: 2,
                           })}
                         </td>
                       </tr>
-                      {/* Expanded: Variant Children or Batch Details */}
-                      {isExpanded && shouldShowChevron && (
+                      {/* Expanded: Variant Children */}
+                      {isExpanded && hasChildren && (
                         <tr>
                           <td
-                            colSpan={8}
+                            colSpan={9}
                             style={{
                               padding: 0,
                               background: "rgba(0,0,0,0.2)",
                             }}
                           >
-                            {hasChildren ? (
-                              // Show children variants as sub-rows
+                            <div
+                              style={{
+                                padding: "0.75rem 1.25rem 0.75rem 3rem",
+                              }}
+                            >
                               <div
                                 style={{
-                                  padding: "0.75rem 1.25rem 0.75rem 3rem",
+                                  fontSize: "0.62rem",
+                                  color: "#D4A843",
+                                  textTransform: "uppercase",
+                                  marginBottom: "0.6rem",
+                                  fontWeight: 700,
+                                  letterSpacing: "0.08em",
                                 }}
                               >
-                                <div
-                                  style={{
-                                    fontSize: "0.62rem",
-                                    color: "#D4A843",
-                                    textTransform: "uppercase",
-                                    marginBottom: "0.6rem",
-                                    fontWeight: 700,
-                                    letterSpacing: "0.08em",
-                                  }}
-                                >
-                                  Variant Children ({(children || []).length})
-                                </div>
-                                {(children || []).length === 0 ? (
-                                  <div
-                                    style={{
-                                      padding: "1rem",
-                                      textAlign: "center",
-                                      color: "var(--gray)",
-                                      fontSize: "0.8rem",
-                                    }}
-                                  >
-                                    No variants found.
-                                  </div>
-                                ) : (
-                                  <div
-                                    style={{
-                                      border:
-                                        "1px solid rgba(255,255,255,0.06)",
-                                      borderRadius: "8px",
-                                      overflow: "hidden",
-                                    }}
-                                  >
-                                    <table
-                                      style={{
-                                        width: "100%",
-                                        fontSize: "0.75rem",
-                                        borderCollapse: "collapse",
-                                      }}
-                                    >
-                                      <thead>
-                                        <tr
-                                          style={{
-                                            background: "rgba(0,0,0,0.3)",
-                                            borderBottom:
-                                              "1px solid rgba(255,255,255,0.06)",
-                                          }}
-                                        >
-                                          <th
-                                            style={{
-                                              padding: "0.4rem 0.6rem",
-                                              textAlign: "center",
-                                              color: "#D4A843",
-                                              fontWeight: 700,
-                                              fontSize: "0.6rem",
-                                              textTransform: "uppercase",
-                                              width: "30px",
-                                            }}
-                                          ></th>
-                                          <th
-                                            style={{
-                                              padding: "0.4rem 0.6rem",
-                                              textAlign: "left",
-                                              color: "#D4A843",
-                                              fontWeight: 700,
-                                              fontSize: "0.6rem",
-                                              textTransform: "uppercase",
-                                            }}
-                                          >
-                                            SKU
-                                          </th>
-                                          <th
-                                            style={{
-                                              padding: "0.4rem 0.6rem",
-                                              textAlign: "left",
-                                              color: "#D4A843",
-                                              fontWeight: 700,
-                                              fontSize: "0.6rem",
-                                              textTransform: "uppercase",
-                                            }}
-                                          >
-                                            Variant
-                                          </th>
-                                          <th
-                                            style={{
-                                              padding: "0.4rem 0.6rem",
-                                              textAlign: "center",
-                                              color: "#D4A843",
-                                              fontWeight: 700,
-                                              fontSize: "0.6rem",
-                                              textTransform: "uppercase",
-                                            }}
-                                          >
-                                            Good
-                                          </th>
-                                          <th
-                                            style={{
-                                              padding: "0.4rem 0.6rem",
-                                              textAlign: "center",
-                                              color: "#f59e0b",
-                                              fontWeight: 700,
-                                              fontSize: "0.6rem",
-                                              textTransform: "uppercase",
-                                            }}
-                                          >
-                                            Bad Order
-                                          </th>
-                                          <th
-                                            style={{
-                                              padding: "0.4rem 0.6rem",
-                                              textAlign: "center",
-                                              color: "#ef4444",
-                                              fontWeight: 700,
-                                              fontSize: "0.6rem",
-                                              textTransform: "uppercase",
-                                            }}
-                                          >
-                                            Waste/Adjust
-                                          </th>
-                                          <th
-                                            style={{
-                                              padding: "0.4rem 0.6rem",
-                                              textAlign: "center",
-                                              color: "#D4A843",
-                                              fontWeight: 700,
-                                              fontSize: "0.6rem",
-                                              textTransform: "uppercase",
-                                            }}
-                                          >
-                                            Total
-                                          </th>
-                                          <th
-                                            style={{
-                                              padding: "0.4rem 0.6rem",
-                                              textAlign: "right",
-                                              color: "#ef4444",
-                                              fontWeight: 700,
-                                              fontSize: "0.6rem",
-                                              textTransform: "uppercase",
-                                            }}
-                                          >
-                                            Loss Value
-                                          </th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {children.map((child, cIdx) => {
-                                          // Use pre-computed child stats
-                                          const childGood = child.goodStock;
-                                          const childDamaged = child.damaged;
-                                          const childArrivalDamaged =
-                                            child.arrivalDamaged;
-                                          const childInternalDamaged =
-                                            child.internalDamaged;
-                                          const childTotal = child.totalStock;
-                                          const childCost = child.avgCost;
-                                          const childGoodsValue =
-                                            child.goodsValue;
-                                          const childBatches = child.batches;
-
-                                          let childStatus = "No Batches";
-                                          let childStatusColor = "#6b7280";
-                                          if (
-                                            childBatches.length > 0 &&
-                                            childGood === 0 &&
-                                            childDamaged > 0
-                                          ) {
-                                            childStatus = "All Damaged";
-                                            childStatusColor = "#ef4444";
-                                          } else if (
-                                            childBatches.length > 0 &&
-                                            childGood === 0
-                                          ) {
-                                            childStatus = "Out of Stock";
-                                          } else if (
-                                            childGood > 0 &&
-                                            childGood < (child.minStock || 10)
-                                          ) {
-                                            childStatus = "Low Stock";
-                                          } else if (childGood > 0) {
-                                            childStatus = "Healthy";
-                                            childStatusColor = "#6b7280";
-                                          }
-                                          const childIsExpanded =
-                                            expandedChild === child.id;
-                                          const childHasBatches =
-                                            childBatches.length > 0;
-                                          return (
-                                            <React.Fragment key={child.id}>
-                                              <tr
-                                                onClick={() =>
-                                                  childHasBatches &&
-                                                  setExpandedChild(
-                                                    childIsExpanded
-                                                      ? null
-                                                      : child.id,
-                                                  )
-                                                }
-                                                style={{
-                                                  background:
-                                                    cIdx % 2 === 0
-                                                      ? "transparent"
-                                                      : "rgba(255,255,255,0.01)",
-                                                  borderBottom: childIsExpanded
-                                                    ? "none"
-                                                    : "1px solid rgba(255,255,255,0.04)",
-                                                  cursor: childHasBatches
-                                                    ? "pointer"
-                                                    : "default",
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                  if (
-                                                    !childIsExpanded &&
-                                                    childHasBatches
-                                                  )
-                                                    e.currentTarget.style.background =
-                                                      "rgba(255,255,255,0.03)";
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                  if (!childIsExpanded)
-                                                    e.currentTarget.style.background =
-                                                      cIdx % 2 === 0
-                                                        ? "transparent"
-                                                        : "rgba(255,255,255,0.01)";
-                                                }}
-                                              >
-                                                <td
-                                                  style={{
-                                                    padding: "0.4rem 0.6rem",
-                                                    textAlign: "center",
-                                                  }}
-                                                >
-                                                  {childHasBatches ? (
-                                                    <button
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setExpandedChild(
-                                                          childIsExpanded
-                                                            ? null
-                                                            : child.id,
-                                                        );
-                                                      }}
-                                                      style={{
-                                                        background: "none",
-                                                        border: "none",
-                                                        cursor: "pointer",
-                                                        color: childIsExpanded
-                                                          ? "#D4A843"
-                                                          : "var(--gray)",
-                                                        padding: 0,
-                                                      }}
-                                                    >
-                                                      <ChevronIcon
-                                                        open={childIsExpanded}
-                                                      />
-                                                    </button>
-                                                  ) : (
-                                                    <span
-                                                      style={{
-                                                        color: "var(--gray)",
-                                                        fontSize: "0.65rem",
-                                                      }}
-                                                    >
-                                                      —
-                                                    </span>
-                                                  )}
-                                                </td>
-                                                <td
-                                                  style={{
-                                                    padding: "0.4rem 0.6rem",
-                                                    color: "var(--gray)",
-                                                    fontFamily: "monospace",
-                                                    fontSize: "0.72rem",
-                                                  }}
-                                                >
-                                                  {child.sku || "—"}
-                                                </td>
-                                                <td
-                                                  style={{
-                                                    padding: "0.4rem 0.6rem",
-                                                    color: "#E5E2E1",
-                                                    fontSize: "0.72rem",
-                                                    fontWeight: 600,
-                                                  }}
-                                                >
-                                                  {child.name}
-                                                </td>
-                                                <td
-                                                  style={{
-                                                    padding: "0.4rem 0.6rem",
-                                                    textAlign: "center",
-                                                    color: "#E5E2E1",
-                                                    fontWeight: 600,
-                                                  }}
-                                                >
-                                                  {childGood}
-                                                </td>
-                                                <td
-                                                  style={{
-                                                    padding: "0.4rem 0.6rem",
-                                                    textAlign: "center",
-                                                    color:
-                                                      childArrivalDamaged > 0
-                                                        ? "#f59e0b"
-                                                        : "#6b7280",
-                                                    fontWeight: 600,
-                                                  }}
-                                                >
-                                                  {childArrivalDamaged}
-                                                </td>
-                                                <td
-                                                  style={{
-                                                    padding: "0.4rem 0.6rem",
-                                                    textAlign: "center",
-                                                    color:
-                                                      childInternalDamaged > 0
-                                                        ? "#ef4444"
-                                                        : "#6b7280",
-                                                    fontWeight: 600,
-                                                  }}
-                                                >
-                                                  {childInternalDamaged}
-                                                </td>
-                                                <td
-                                                  style={{
-                                                    padding: "0.4rem 0.6rem",
-                                                    textAlign: "center",
-                                                    color: "#E5E2E1",
-                                                    fontWeight: 600,
-                                                  }}
-                                                >
-                                                  {childTotal}
-                                                </td>
-                                                <td
-                                                  style={{
-                                                    padding: "0.4rem 0.6rem",
-                                                    textAlign: "right",
-                                                    fontWeight: 600,
-                                                    color: "#ef4444",
-                                                    fontFamily: "monospace",
-                                                  }}
-                                                >
-                                                  ₱
-                                                  {(
-                                                    (childArrivalDamaged +
-                                                      childInternalDamaged) *
-                                                    childCost
-                                                  ).toLocaleString("en-PH", {
-                                                    minimumFractionDigits: 2,
-                                                  })}
-                                                </td>
-                                              </tr>
-                                              {/* Expanded: Batch Breakdown for this child */}
-                                              {childIsExpanded &&
-                                                childHasBatches && (
-                                                  <tr>
-                                                    <td
-                                                      colSpan={8}
-                                                      style={{
-                                                        padding:
-                                                          "0.5rem 1.25rem 0.75rem 2rem",
-                                                        background:
-                                                          "rgba(0,0,0,0.3)",
-                                                      }}
-                                                    >
-                                                      <div
-                                                        style={{
-                                                          fontSize: "0.6rem",
-                                                          color: "#D4A843",
-                                                          textTransform:
-                                                            "uppercase",
-                                                          marginBottom:
-                                                            "0.4rem",
-                                                          fontWeight: 700,
-                                                          letterSpacing:
-                                                            "0.08em",
-                                                        }}
-                                                      >
-                                                        Batch Breakdown —{" "}
-                                                        {child.name}
-                                                      </div>
-                                                      <table
-                                                        style={{
-                                                          width: "100%",
-                                                          fontSize: "0.7rem",
-                                                          borderCollapse:
-                                                            "collapse",
-                                                          border:
-                                                            "1px solid rgba(255,255,255,0.06)",
-                                                          borderRadius: "6px",
-                                                          overflow: "hidden",
-                                                        }}
-                                                      >
-                                                        <thead>
-                                                          <tr
-                                                            style={{
-                                                              background:
-                                                                "rgba(0,0,0,0.3)",
-                                                              borderBottom:
-                                                                "1px solid rgba(255,255,255,0.06)",
-                                                            }}
-                                                          >
-                                                            <th
-                                                              style={{
-                                                                padding:
-                                                                  "0.3rem 0.5rem",
-                                                                textAlign:
-                                                                  "left",
-                                                                color:
-                                                                  "#D4A843",
-                                                                fontWeight: 700,
-                                                                fontSize:
-                                                                  "0.55rem",
-                                                                textTransform:
-                                                                  "uppercase",
-                                                              }}
-                                                            >
-                                                              Invoice
-                                                            </th>
-                                                            <th
-                                                              style={{
-                                                                padding:
-                                                                  "0.3rem 0.5rem",
-                                                                textAlign:
-                                                                  "center",
-                                                                color:
-                                                                  "#D4A843",
-                                                                fontWeight: 700,
-                                                                fontSize:
-                                                                  "0.55rem",
-                                                                textTransform:
-                                                                  "uppercase",
-                                                              }}
-                                                            >
-                                                              Date
-                                                            </th>
-                                                            <th
-                                                              style={{
-                                                                padding:
-                                                                  "0.3rem 0.5rem",
-                                                                textAlign:
-                                                                  "center",
-                                                                color:
-                                                                  "#D4A843",
-                                                                fontWeight: 700,
-                                                                fontSize:
-                                                                  "0.55rem",
-                                                                textTransform:
-                                                                  "uppercase",
-                                                              }}
-                                                            >
-                                                              Good
-                                                            </th>
-                                                            <th
-                                                              style={{
-                                                                padding:
-                                                                  "0.3rem 0.5rem",
-                                                                textAlign:
-                                                                  "center",
-                                                                color:
-                                                                  "#D4A843",
-                                                                fontWeight: 700,
-                                                                fontSize:
-                                                                  "0.55rem",
-                                                                textTransform:
-                                                                  "uppercase",
-                                                              }}
-                                                            >
-                                                              Damaged
-                                                            </th>
-                                                            <th
-                                                              style={{
-                                                                padding:
-                                                                  "0.3rem 0.5rem",
-                                                                textAlign:
-                                                                  "center",
-                                                                color:
-                                                                  "#D4A843",
-                                                                fontWeight: 700,
-                                                                fontSize:
-                                                                  "0.55rem",
-                                                                textTransform:
-                                                                  "uppercase",
-                                                              }}
-                                                            >
-                                                              Actual
-                                                            </th>
-                                                            <th
-                                                              style={{
-                                                                padding:
-                                                                  "0.3rem 0.5rem",
-                                                                textAlign:
-                                                                  "right",
-                                                                color:
-                                                                  "#D4A843",
-                                                                fontWeight: 700,
-                                                                fontSize:
-                                                                  "0.55rem",
-                                                                textTransform:
-                                                                  "uppercase",
-                                                              }}
-                                                            >
-                                                              Unit Cost
-                                                            </th>
-                                                            <th
-                                                              style={{
-                                                                padding:
-                                                                  "0.3rem 0.5rem",
-                                                                textAlign:
-                                                                  "right",
-                                                                color:
-                                                                  "#D4A843",
-                                                                fontWeight: 700,
-                                                                fontSize:
-                                                                  "0.55rem",
-                                                                textTransform:
-                                                                  "uppercase",
-                                                              }}
-                                                            >
-                                                              Value
-                                                            </th>
-                                                          </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                          {childBatches.map(
-                                                            (b, bIdx) => {
-                                                              const bg =
-                                                                b.qtyGood || 0;
-                                                              const bd =
-                                                                b.qtyDamaged ||
-                                                                b.damagedQty ||
-                                                                0;
-                                                              const ba =
-                                                                bg + bd;
-                                                              return (
-                                                                <tr
-                                                                  key={`${b.batchId || b.invoiceNumber || ""}-${bIdx}`}
-                                                                  style={{
-                                                                    background:
-                                                                      bIdx %
-                                                                        2 ===
-                                                                      0
-                                                                        ? "transparent"
-                                                                        : "rgba(255,255,255,0.01)",
-                                                                    borderBottom:
-                                                                      "1px solid rgba(255,255,255,0.03)",
-                                                                  }}
-                                                                >
-                                                                  <td
-                                                                    style={{
-                                                                      padding:
-                                                                        "0.3rem 0.5rem",
-                                                                      color:
-                                                                        "var(--gray)",
-                                                                      fontSize:
-                                                                        "0.68rem",
-                                                                    }}
-                                                                  >
-                                                                    {b.invoiceNumber ||
-                                                                      "—"}
-                                                                  </td>
-                                                                  <td
-                                                                    style={{
-                                                                      padding:
-                                                                        "0.3rem 0.5rem",
-                                                                      textAlign:
-                                                                        "center",
-                                                                      color:
-                                                                        "var(--gray)",
-                                                                    }}
-                                                                  >
-                                                                    {b.dateReceived
-                                                                      ? new Date(
-                                                                          b.dateReceived,
-                                                                        ).toLocaleDateString(
-                                                                          "en-PH",
-                                                                        )
-                                                                      : "—"}
-                                                                  </td>
-                                                                  <td
-                                                                    style={{
-                                                                      padding:
-                                                                        "0.3rem 0.5rem",
-                                                                      textAlign:
-                                                                        "center",
-                                                                      color:
-                                                                        "#E5E2E1",
-                                                                      fontWeight: 600,
-                                                                    }}
-                                                                  >
-                                                                    {bg}
-                                                                  </td>
-                                                                  <td
-                                                                    style={{
-                                                                      padding:
-                                                                        "0.3rem 0.5rem",
-                                                                      textAlign:
-                                                                        "center",
-                                                                      color:
-                                                                        bd > 0
-                                                                          ? "#ef4444"
-                                                                          : "#6b7280",
-                                                                      fontWeight: 600,
-                                                                    }}
-                                                                  >
-                                                                    {bd}
-                                                                  </td>
-                                                                  <td
-                                                                    style={{
-                                                                      padding:
-                                                                        "0.3rem 0.5rem",
-                                                                      textAlign:
-                                                                        "center",
-                                                                      color:
-                                                                        "#E5E2E1",
-                                                                      fontWeight: 600,
-                                                                    }}
-                                                                  >
-                                                                    {ba}
-                                                                  </td>
-                                                                  <td
-                                                                    style={{
-                                                                      padding:
-                                                                        "0.3rem 0.5rem",
-                                                                      textAlign:
-                                                                        "right",
-                                                                      color:
-                                                                        "#D4A843",
-                                                                      fontFamily:
-                                                                        "monospace",
-                                                                    }}
-                                                                  >
-                                                                    ₱
-                                                                    {(
-                                                                      b.unitCost ||
-                                                                      0
-                                                                    ).toFixed(
-                                                                      2,
-                                                                    )}
-                                                                  </td>
-                                                                  <td
-                                                                    style={{
-                                                                      padding:
-                                                                        "0.3rem 0.5rem",
-                                                                      textAlign:
-                                                                        "right",
-                                                                      color:
-                                                                        "#E5E2E1",
-                                                                      fontWeight: 600,
-                                                                      fontFamily:
-                                                                        "monospace",
-                                                                    }}
-                                                                  >
-                                                                    ₱
-                                                                    {(
-                                                                      ba *
-                                                                      (b.unitCost ||
-                                                                        0)
-                                                                    ).toFixed(
-                                                                      2,
-                                                                    )}
-                                                                  </td>
-                                                                </tr>
-                                                              );
-                                                            },
-                                                          )}
-                                                        </tbody>
-                                                      </table>
-                                                    </td>
-                                                  </tr>
-                                                )}
-                                            </React.Fragment>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                )}
+                                Variant Children ({(children || []).length})
                               </div>
-                            ) : // Standalone material: show batch breakdown
-                            batches.length > 0 ? (
-                              <div
-                                style={{
-                                  padding: "0.75rem 1.25rem 0.75rem 3rem",
-                                }}
-                              >
+                              {(children || []).length === 0 ? (
                                 <div
                                   style={{
-                                    fontSize: "0.62rem",
-                                    color: "#D4A843",
-                                    textTransform: "uppercase",
-                                    marginBottom: "0.6rem",
-                                    fontWeight: 700,
-                                    letterSpacing: "0.08em",
+                                    padding: "1rem",
+                                    textAlign: "center",
+                                    color: "var(--gray)",
+                                    fontSize: "0.8rem",
                                   }}
                                 >
-                                  Batch Breakdown
+                                  No variants found.
                                 </div>
+                              ) : (
                                 <div
                                   style={{
-                                    border: "1px solid rgba(255,255,255,0.06)",
+                                    border:
+                                      "1px solid rgba(255,255,255,0.06)",
                                     borderRadius: "8px",
                                     overflow: "hidden",
                                   }}
@@ -2071,19 +1658,19 @@ export default function ActualStockTab({ materials }) {
                                             textTransform: "uppercase",
                                           }}
                                         >
-                                          Invoice
+                                          SKU
                                         </th>
                                         <th
                                           style={{
                                             padding: "0.4rem 0.6rem",
-                                            textAlign: "center",
+                                            textAlign: "left",
                                             color: "#D4A843",
                                             fontWeight: 700,
                                             fontSize: "0.6rem",
                                             textTransform: "uppercase",
                                           }}
                                         >
-                                          Date
+                                          Variant
                                         </th>
                                         <th
                                           style={{
@@ -2101,13 +1688,25 @@ export default function ActualStockTab({ materials }) {
                                           style={{
                                             padding: "0.4rem 0.6rem",
                                             textAlign: "center",
-                                            color: "#D4A843",
+                                            color: "#f59e0b",
                                             fontWeight: 700,
                                             fontSize: "0.6rem",
                                             textTransform: "uppercase",
                                           }}
                                         >
-                                          Damaged / Others
+                                          Bad Order
+                                        </th>
+                                        <th
+                                          style={{
+                                            padding: "0.4rem 0.6rem",
+                                            textAlign: "center",
+                                            color: "#ef4444",
+                                            fontWeight: 700,
+                                            fontSize: "0.6rem",
+                                            textTransform: "uppercase",
+                                          }}
+                                        >
+                                          Waste/Adjust
                                         </th>
                                         <th
                                           style={{
@@ -2119,7 +1718,7 @@ export default function ActualStockTab({ materials }) {
                                             textTransform: "uppercase",
                                           }}
                                         >
-                                          Actual
+                                          Total
                                         </th>
                                         <th
                                           style={{
@@ -2131,34 +1730,42 @@ export default function ActualStockTab({ materials }) {
                                             textTransform: "uppercase",
                                           }}
                                         >
-                                          Unit Cost
+                                          Goods Value
                                         </th>
                                         <th
                                           style={{
                                             padding: "0.4rem 0.6rem",
                                             textAlign: "right",
-                                            color: "#D4A843",
+                                            color: "#ef4444",
                                             fontWeight: 700,
                                             fontSize: "0.6rem",
                                             textTransform: "uppercase",
                                           }}
                                         >
-                                          Value
+                                          Loss Value
                                         </th>
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {batches.map((b, idx) => {
-                                        const good = b.qtyGood || 0;
-                                        const damaged =
-                                          b.qtyDamaged || b.damagedQty || 0;
-                                        const actual = good + damaged;
+                                      {children.map((child, cIdx) => {
+                                        const childGood = child.goodStock;
+                                        const childDamaged = child.damaged;
+                                        const childArrivalDamaged =
+                                          child.arrivalDamaged;
+                                        const childInternalDamaged =
+                                          child.internalDamaged;
+                                        const childBadOrder = badOrdersMap[child.id]?.total || 0;
+                                        const childTotal = childGood + childBadOrder;
+                                        const childCost = child.avgCost;
+                                        const childGoodsValue =
+                                          child.goodsValue;
+
                                         return (
                                           <tr
-                                            key={`${b.invoiceNumber || b.batchId}-${idx}`}
+                                            key={child.id}
                                             style={{
                                               background:
-                                                idx % 2 === 0
+                                                cIdx % 2 === 0
                                                   ? "transparent"
                                                   : "rgba(255,255,255,0.01)",
                                               borderBottom:
@@ -2169,21 +1776,21 @@ export default function ActualStockTab({ materials }) {
                                               style={{
                                                 padding: "0.4rem 0.6rem",
                                                 color: "var(--gray)",
+                                                fontFamily: "monospace",
                                                 fontSize: "0.72rem",
                                               }}
                                             >
-                                              {b.invoiceNumber || "—"}
+                                              {child.sku || "—"}
                                             </td>
                                             <td
                                               style={{
                                                 padding: "0.4rem 0.6rem",
-                                                textAlign: "center",
-                                                color: "var(--gray)",
+                                                color: "#E5E2E1",
+                                                fontSize: "0.72rem",
+                                                fontWeight: 600,
                                               }}
                                             >
-                                              {new Date(
-                                                b.dateReceived,
-                                              ).toLocaleDateString("en-PH")}
+                                              {child.name}
                                             </td>
                                             <td
                                               style={{
@@ -2193,20 +1800,33 @@ export default function ActualStockTab({ materials }) {
                                                 fontWeight: 600,
                                               }}
                                             >
-                                              {good}
+                                              {childGood}
                                             </td>
                                             <td
                                               style={{
                                                 padding: "0.4rem 0.6rem",
                                                 textAlign: "center",
                                                 color:
-                                                  damaged > 0
+                                                  (badOrdersMap[child.id]?.total || 0) > 0
+                                                    ? "#f59e0b"
+                                                    : "#6b7280",
+                                                fontWeight: 600,
+                                              }}
+                                            >
+                                              {badOrdersMap[child.id]?.total || 0}
+                                            </td>
+                                            <td
+                                              style={{
+                                                padding: "0.4rem 0.6rem",
+                                                textAlign: "center",
+                                                color:
+                                                  childInternalDamaged > 0
                                                     ? "#ef4444"
                                                     : "#6b7280",
                                                 fontWeight: 600,
                                               }}
                                             >
-                                              {damaged}
+                                              {childInternalDamaged}
                                             </td>
                                             <td
                                               style={{
@@ -2216,31 +1836,50 @@ export default function ActualStockTab({ materials }) {
                                                 fontWeight: 600,
                                               }}
                                             >
-                                              {actual}
+                                              {childTotal}
                                             </td>
                                             <td
                                               style={{
                                                 padding: "0.4rem 0.6rem",
                                                 textAlign: "right",
-                                                color: "#D4A843",
+                                                fontWeight: 600,
+                                                color: "#E5E2E1",
                                                 fontFamily: "monospace",
                                               }}
                                             >
-                                              ₱{(b.unitCost || 0).toFixed(2)}
+                                              ₱
+                                              {childGoodsValue.toLocaleString(
+                                                "en-PH",
+                                                {
+                                                  minimumFractionDigits: 2,
+                                                },
+                                              )}
                                             </td>
                                             <td
                                               style={{
                                                 padding: "0.4rem 0.6rem",
                                                 textAlign: "right",
-                                                color: "#E5E2E1",
                                                 fontWeight: 600,
+                                                color: "#ef4444",
                                                 fontFamily: "monospace",
                                               }}
                                             >
                                               ₱
                                               {(
-                                                actual * (b.unitCost || 0)
-                                              ).toFixed(2)}
+                                                (() => {
+                                                  const pendingBO = badOrders.filter(
+                                                    (bo) =>
+                                                      bo.materialId === child.id &&
+                                                      bo.status === "pending",
+                                                  );
+                                                  return pendingBO.reduce(
+                                                    (sum, bo) => sum + (bo.totalValue || 0),
+                                                    0,
+                                                  );
+                                                })()
+                                              ).toLocaleString("en-PH", {
+                                                minimumFractionDigits: 2,
+                                              })}
                                             </td>
                                           </tr>
                                         );
@@ -2248,19 +1887,8 @@ export default function ActualStockTab({ materials }) {
                                     </tbody>
                                   </table>
                                 </div>
-                              </div>
-                            ) : (
-                              <div
-                                style={{
-                                  padding: "1rem",
-                                  textAlign: "center",
-                                  color: "var(--gray)",
-                                  fontSize: "0.8rem",
-                                }}
-                              >
-                                No batches yet.
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </td>
                         </tr>
                       )}
@@ -2420,6 +2048,7 @@ export default function ActualStockTab({ materials }) {
                   // Use pre-computed invoice totals
                   const invTotalGood = inv.invTotalGood;
                   const invTotalDamaged = inv.invTotalDamaged;
+                  const invTotalBadOrder = inv.invTotalBadOrder;
                   const invTotalValue = inv.invTotalValue;
 
                   return (
@@ -2479,12 +2108,12 @@ export default function ActualStockTab({ materials }) {
                               padding: "0.875rem 1rem",
                               textAlign: "center",
                               color:
-                                it.arrivalDamaged > 0 ? "#f59e0b" : "#6b7280",
+                                it.badOrder > 0 ? "#f59e0b" : "#6b7280",
                               fontWeight: 600,
                               fontFamily: "monospace",
                             }}
                           >
-                            {it.arrivalDamaged || 0}
+                            {it.badOrder || 0}
                           </td>
                           <td
                             style={{
@@ -2568,10 +2197,7 @@ export default function ActualStockTab({ materials }) {
                             fontSize: "0.85rem",
                           }}
                         >
-                          {inv.items.reduce(
-                            (s, it) => s + (it.arrivalDamaged || 0),
-                            0,
-                          )}
+                          {invTotalBadOrder}
                         </td>
                         <td
                           style={{

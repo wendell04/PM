@@ -400,6 +400,11 @@ export default function BusinessDashboardLayout({ children }) {
 
   const navItems = [
     {
+      name: 'Dashboard',
+      href: '/dashboard/business/dashboardoverview',
+      icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
+    },
+    {
       name: 'Product CMS',
       icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10',
       children: [
@@ -408,7 +413,8 @@ export default function BusinessDashboardLayout({ children }) {
         { name: 'Storefront Banners', href: '/dashboard/business/banners' },
       ],
     },
-    { name: 'Orders', href: '/dashboard/business/orders', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+    { name: 'Orders', href: '/dashboard/business/orders-new', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+    { name: 'Orders (Legacy)', href: '/dashboard/business/orders', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
     {
       name: 'Inventory',
       icon: 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4',
@@ -416,7 +422,6 @@ export default function BusinessDashboardLayout({ children }) {
         { name: 'Master Data',  href: '/dashboard/business/inventory/master-data' },
         { name: 'Stock In',     href: '/dashboard/business/inventory/stock-in' },
         { name: 'Stocks',       href: '/dashboard/business/inventory/stocks' },
-        { name: 'Purchasing',   href: '/dashboard/business/inventory/purchasing' },
         { name: 'Returns',      href: '/dashboard/business/inventory/returns' },
       ],
     },

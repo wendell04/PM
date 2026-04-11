@@ -3145,34 +3145,785 @@ function CreditClaimsTab({ onRefresh }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// MAIN PAGE
+// BAD ORDERS TAB - Shows categorized bad orders from stock-in
+// ══════════════════════════════════════════════════════════════════════════════
+const BAD_ORDER_TH_STYLE = {
+  padding: "0.875rem 1rem",
+  textAlign: "left",
+  color: "var(--gray)",
+  fontWeight: 700,
+  fontSize: "0.65rem",
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
+};
+
+function BadOrdersTab({ badOrders, onRefresh }) {
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [expandedInvoices, setExpandedInvoices] = useState({});
+  const [updateModal, setUpdateModal] = useState({ open: false, bo: null });
+  const [newStatus, setNewStatus] = useState("replaced");
+  const [replacementDate, setReplacementDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [reference, setReference] = useState("");
+
+  const damageTypeLabels = {
+    damaged: "Damaged",
+    shortage: "Shortage",
+    defective: "Defective",
+    wrong_item: "Wrong Item Shipped",
+  };
+
+  const statusColors = {
+    pending: "#f59e0b",
+    replaced: "#22c55e",
+    credited: "#8b5cf6",
+    cancelled: "#ef4444",
+  };
+
+  const statusLabels = {
+    pending: "Pending",
+    replaced: "Replacement Received",
+    credited: "Credited",
+    cancelled: "Cancelled",
+  };
+
+  // Group bad orders by invoice
+  const groupedInvoices = useMemo(() => {
+    const groups = {};
+    badOrders.forEach((bo) => {
+      const invKey = bo.invoiceNumber || "No Invoice";
+      const vendor = bo.vendorName || "Unknown Vendor";
+      const groupKey = `${invKey}|||${vendor}`;
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          invoiceNumber: invKey,
+          vendorName: vendor,
+          items: [],
+          totalQty: 0,
+          totalValue: 0,
+          pendingQty: 0,
+          statuses: new Set(),
+        };
+      }
+      const qty = bo.qty || 0;
+      const value = bo.totalValue || 0;
+      groups[groupKey].items.push(bo);
+      groups[groupKey].totalQty += qty;
+      groups[groupKey].totalValue += value;
+      if (bo.status === "pending") groups[groupKey].pendingQty += qty;
+      groups[groupKey].statuses.add(bo.status);
+    });
+    return Object.values(groups).sort(
+      (a, b) => new Date(b.items[0]?.createdAt || 0) - new Date(a.items[0]?.createdAt || 0)
+    );
+  }, [badOrders]);
+
+  // Filter grouped invoices
+  const filtered = useMemo(() => {
+    return groupedInvoices.filter((group) => {
+      const matchSearch =
+        !search ||
+        group.invoiceNumber.toLowerCase().includes(search.toLowerCase()) ||
+        group.vendorName.toLowerCase().includes(search.toLowerCase()) ||
+        group.items.some(
+          (item) =>
+            (item.materialName || "").toLowerCase().includes(search.toLowerCase()) ||
+            (item.sku || "").toLowerCase().includes(search.toLowerCase())
+        );
+      const matchStatus = !statusFilter || group.statuses.has(statusFilter);
+      const matchType =
+        !typeFilter || group.items.some((item) => item.type === typeFilter);
+      return matchSearch && matchStatus && matchType;
+    });
+  }, [groupedInvoices, search, statusFilter, typeFilter]);
+
+  // Summary
+  const summary = useMemo(() => {
+    const byType = {};
+    const byStatus = {};
+    let totalQty = 0;
+    let totalValue = 0;
+    let pendingQty = 0;
+    let pendingValue = 0;
+
+    badOrders.forEach((bo) => {
+      const qty = bo.qty || 0;
+      const value = bo.totalValue || 0;
+      totalQty += qty;
+      totalValue += value;
+      if (bo.status === "pending") {
+        pendingQty += qty;
+        pendingValue += value;
+      }
+      byType[bo.type] = (byType[bo.type] || 0) + qty;
+      byStatus[bo.status] = (byStatus[bo.status] || 0) + qty;
+    });
+    return { totalQty, totalValue, pendingQty, pendingValue, byType, byStatus };
+  }, [badOrders]);
+
+  const toggleExpand = (invoiceKey) => {
+    setExpandedInvoices((prev) => ({
+      ...prev,
+      [invoiceKey]: !prev[invoiceKey],
+    }));
+  };
+
+  const handleUpdateStatus = () => {
+    const bo = updateModal.bo;
+    if (!bo) return;
+
+    const allBO = JSON.parse(localStorage.getItem("pmp_bad_orders") || "[]");
+    const updated = allBO.map((item) =>
+      item.id === bo.id
+        ? {
+            ...item,
+            status: newStatus,
+            resolvedAt: new Date().toISOString(),
+            replacementDate: newStatus === "replaced" ? replacementDate : null,
+            reference: reference || null,
+          }
+        : item
+    );
+    localStorage.setItem("pmp_bad_orders", JSON.stringify(updated));
+
+    // If Replacement Received → add batch back to material
+    if (newStatus === "replaced") {
+      const materials = JSON.parse(localStorage.getItem("pmp_materials") || "[]");
+      const matIdx = materials.findIndex((m) => m.id === bo.materialId);
+      if (matIdx !== -1) {
+        const mat = materials[matIdx];
+        if (!mat.batches) mat.batches = [];
+
+        const d = new Date(replacementDate);
+        const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+        const timestamp = Date.now().toString(36).slice(-4).toUpperCase();
+        const seq = Math.floor(Math.random() * 1000).toString().padStart(3, "0");
+        const batchId = `REPL-${dateStr}-${timestamp}-${seq}`;
+
+        mat.batches.push({
+          batchId,
+          materialId: bo.materialId,
+          materialName: bo.materialName,
+          sku: bo.sku || "",
+          uom: mat.uom || "pcs",
+          qtyGood: bo.qty,
+          qtyDamaged: 0,
+          remainingQty: bo.qty,
+          unitCost: bo.unitCost || 0,
+          source: `replacement_for_${bo.id}`,
+          linkedBOId: bo.id,
+          dateReceived: replacementDate + "T00:00:00.000Z",
+          invoiceNumber: bo.invoiceNumber || "Replacement",
+          notes: `Replacement for ${damageTypeLabels[bo.type]} - Ref: ${reference || "N/A"}`,
+          createdAt: new Date().toISOString(),
+        });
+
+        // Recalculate stockQty
+        const totalGood = mat.batches.reduce((s, b) => s + (b.qtyGood || 0), 0);
+        mat.stockQty = totalGood;
+        mat.updatedAt = new Date().toISOString();
+
+        localStorage.setItem("pmp_materials", JSON.stringify(materials));
+      }
+    }
+
+    setUpdateModal({ open: false, bo: null });
+    setNewStatus("replaced");
+    setReference("");
+    setReplacementDate(new Date().toISOString().split("T")[0]);
+    onRefresh();
+  };
+
+  // Determine group status (highest priority pending)
+  const getGroupStatus = (group) => {
+    if (group.statuses.has("pending")) return "pending";
+    if (group.statuses.has("replaced")) return "replaced";
+    if (group.statuses.has("credited")) return "credited";
+    return "cancelled";
+  };
+
+  return (
+    <div>
+      {/* Summary Cards */}
+      <div className="inventory-summary" style={{ marginBottom: "1.5rem" }}>
+        <div className="summary-card">
+          <div className="summary-content">
+            <span className="summary-value" style={{ color: "#f59e0b" }}>
+              {summary.totalQty}
+            </span>
+            <span className="summary-label">Total Bad Orders</span>
+          </div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-content">
+            <span className="summary-value" style={{ color: "#ef4444" }}>
+              ₱{summary.pendingValue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+            </span>
+            <span className="summary-label">Pending Loss Value</span>
+          </div>
+        </div>
+        {Object.entries(summary.byType).map(([type, qty]) => (
+          <div key={type} className="summary-card">
+            <div className="summary-content">
+              <span className="summary-value" style={{ color: statusColors[type] || "#6b7280" }}>
+                {qty}
+              </span>
+              <span className="summary-label">{damageTypeLabels[type] || type}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Toolbar */}
+      <div className="inventory-toolbar" style={{ marginBottom: "1rem" }}>
+        <div className="search-wrapper" style={{ maxWidth: "280px" }}>
+          <span className="search-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+          </span>
+          <input
+            className="search-input"
+            placeholder="Search invoice, vendor, material..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button className="search-clear" onClick={() => setSearch("")}>
+              ×
+            </button>
+          )}
+        </div>
+        <CustomDropdown
+          value={typeFilter}
+          onChange={setTypeFilter}
+          options={[
+            { value: "", label: "All Types" },
+            ...Object.entries(damageTypeLabels).map(([id, label]) => ({
+              value: id,
+              label,
+            })),
+          ]}
+          placeholder="All Types"
+          style={{ minWidth: "160px" }}
+        />
+        <CustomDropdown
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { value: "", label: "All Status" },
+            { value: "pending", label: "Pending" },
+            { value: "replaced", label: "Replaced" },
+            { value: "credited", label: "Credited" },
+            { value: "cancelled", label: "Cancelled" },
+          ]}
+          placeholder="All Status"
+          style={{ minWidth: "130px" }}
+        />
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={onRefresh}
+          style={{
+            background: "linear-gradient(135deg,#FFDF9F 0%,#D4A843 100%)",
+            color: "#000",
+            fontWeight: 700,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M23 4v6h-6M1 20v-6h6" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          </svg>
+          Refresh
+        </button>
+      </div>
+
+      {/* Table */}
+      <div
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: "12px",
+          overflow: "hidden",
+          background: "var(--dark)",
+        }}
+      >
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: "0.85rem",
+          }}
+        >
+          <thead>
+            <tr
+              style={{
+                background: "rgba(0,0,0,0.3)",
+                borderBottom: "2px solid var(--border)",
+              }}
+            >
+              <th style={{ ...BAD_ORDER_TH_STYLE, width: "40px" }} />
+              <th style={BAD_ORDER_TH_STYLE}>Invoice / Vendor</th>
+              <th style={{ ...BAD_ORDER_TH_STYLE, textAlign: "center" }}>Total BO Qty</th>
+              <th style={{ ...BAD_ORDER_TH_STYLE, textAlign: "right" }}>Total Value</th>
+              <th style={{ ...BAD_ORDER_TH_STYLE, textAlign: "center" }}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={6}
+                  style={{
+                    padding: "3rem",
+                    textAlign: "center",
+                    color: "var(--gray)",
+                  }}
+                >
+                  {badOrders.length === 0
+                    ? "No bad orders yet. They will appear here when stock-in has issues."
+                    : "No bad orders match your filters."}
+                </td>
+              </tr>
+            ) : (
+              filtered.map((group) => {
+                const invKey = `${group.invoiceNumber}|||${group.vendorName}`;
+                const isExpanded = expandedInvoices[invKey];
+                const groupStatus = getGroupStatus(group);
+                return (
+                  <>
+                    {/* Parent Row */}
+                    <tr
+                      style={{
+                        borderBottom: isExpanded
+                          ? "none"
+                          : "1px solid rgba(255,255,255,0.04)",
+                        cursor: "pointer",
+                        background: isExpanded ? "rgba(255,255,255,0.02)" : "transparent",
+                      }}
+                      onClick={() => toggleExpand(invKey)}
+                      onMouseEnter={(e) => {
+                        if (!isExpanded)
+                          e.currentTarget.style.background = "rgba(255,255,255,0.02)";
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isExpanded)
+                          e.currentTarget.style.background = "transparent";
+                      }}
+                    >
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          style={{
+                            transform: isExpanded ? "rotate(90deg)" : "none",
+                            transition: "transform 0.2s",
+                            color: "var(--gray)",
+                          }}
+                        >
+                          <path d="M9 18l6-6-6-6" />
+                        </svg>
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        <div style={{ fontWeight: 600, color: "#E5E2E1", fontSize: "0.85rem" }}>
+                          {group.invoiceNumber}
+                        </div>
+                        <div style={{ fontSize: "0.7rem", color: "var(--gray)", marginTop: "0.15rem" }}>
+                          {group.vendorName} · {group.items.length} item{group.items.length !== 1 ? "s" : ""}
+                        </div>
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem", textAlign: "center", fontWeight: 700, color: "#F87171", fontFamily: "monospace" }}>
+                        {group.totalQty}
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem", textAlign: "right", fontWeight: 700, color: "#FACC15", fontFamily: "monospace" }}>
+                        ₱{group.totalValue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem", textAlign: "center" }}>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            padding: "0.15rem 0.5rem",
+                            borderRadius: "99px",
+                            fontSize: "0.6rem",
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            background: `${statusColors[groupStatus] || "#6b7280"}1a`,
+                            color: statusColors[groupStatus] || "#6b7280",
+                            border: `1px solid ${statusColors[groupStatus] || "#6b7280"}33`,
+                          }}
+                        >
+                          {groupStatus}
+                        </span>
+                      </td>
+                    </tr>
+                    {/* Child Rows */}
+                    {isExpanded &&
+                      group.items.map((bo) => (
+                        <tr
+                          key={bo.id}
+                          style={{
+                            borderBottom: "1px solid rgba(255,255,255,0.04)",
+                            background: "rgba(0,0,0,0.15)",
+                          }}
+                        >
+                          <td style={{ padding: "0.625rem 1rem" }} />
+                          <td style={{ padding: "0.625rem 1rem 0.625rem 2.5rem" }}>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                padding: "0.15rem 0.5rem",
+                                borderRadius: "6px",
+                                fontSize: "0.6rem",
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                background: `${statusColors[bo.type] || "#6b7280"}1a`,
+                                color: statusColors[bo.type] || "#6b7280",
+                                border: `1px solid ${statusColors[bo.type] || "#6b7280"}33`,
+                                marginBottom: "0.25rem",
+                              }}
+                            >
+                              {damageTypeLabels[bo.type] || bo.type}
+                            </span>
+                            <div style={{ fontWeight: 600, color: "#E5E2E1", fontSize: "0.8rem", marginTop: "0.25rem" }}>
+                              {bo.materialName}
+                            </div>
+                            {bo.sku && (
+                              <div style={{ fontSize: "0.6rem", color: "var(--gray)", fontFamily: "monospace" }}>
+                                {bo.sku}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: "0.625rem 1rem", textAlign: "center", fontWeight: 700, color: "#F87171" }}>
+                            {bo.qty}
+                          </td>
+                          <td style={{ padding: "0.625rem 1rem", textAlign: "right", fontFamily: "monospace", color: "#E5E2E1", fontSize: "0.8rem" }}>
+                            ₱{(bo.unitCost || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                          </td>
+                          <td style={{ padding: "0.625rem 1rem", textAlign: "center" }}>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                padding: "0.12rem 0.4rem",
+                                borderRadius: "99px",
+                                fontSize: "0.55rem",
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                background: `${statusColors[bo.status] || "#6b7280"}1a`,
+                                color: statusColors[bo.status] || "#6b7280",
+                                border: `1px solid ${statusColors[bo.status] || "#6b7280"}33`,
+                              }}
+                            >
+                              {statusLabels[bo.status] || bo.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: "0.625rem 1rem", textAlign: "center" }}>
+                            {bo.status === "pending" && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setUpdateModal({ open: true, bo });
+                                }}
+                                style={{
+                                  padding: "0.3rem 0.6rem",
+                                  fontSize: "0.65rem",
+                                  fontWeight: 700,
+                                  background: "rgba(212,168,67,0.15)",
+                                  color: "#D4A843",
+                                  border: "1px solid rgba(212,168,67,0.3)",
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                  transition: "all 0.15s",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = "rgba(212,168,67,0.25)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = "rgba(212,168,67,0.15)";
+                                }}
+                              >
+                                Update Status
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                  </>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Update Status Modal */}
+      {updateModal.open && updateModal.bo && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.8)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            backdropFilter: "blur(4px)",
+          }}
+          onClick={() => setUpdateModal({ open: false, bo: null })}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#1A1A1A",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: "16px",
+              width: "90%",
+              maxWidth: "440px",
+              overflow: "hidden",
+              boxShadow: "0 24px 48px rgba(0,0,0,0.5)",
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "1.25rem 1.5rem",
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: "0.6rem",
+                    color: "#D4A843",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.15em",
+                    fontWeight: 700,
+                    marginBottom: "0.25rem",
+                  }}
+                >
+                  Update Bad Order
+                </div>
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: "1.1rem",
+                    fontWeight: 700,
+                    color: "#E5E2E1",
+                  }}
+                >
+                  {updateModal.bo.materialName}
+                </h2>
+                <div style={{ fontSize: "0.7rem", color: "var(--gray)", marginTop: "0.15rem" }}>
+                  {damageTypeLabels[updateModal.bo.type]} · {updateModal.bo.qty} unit{updateModal.bo.qty !== 1 ? "s" : ""} · {statusLabels[updateModal.bo.status]}
+                </div>
+              </div>
+              <button
+                onClick={() => setUpdateModal({ open: false, bo: null })}
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "8px",
+                  width: "36px",
+                  height: "36px",
+                  cursor: "pointer",
+                  color: "var(--gray)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              {/* Status Dropdown */}
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#E5E2E1", marginBottom: "0.5rem" }}>
+                  New Status <span style={{ color: "#ef4444" }}>*</span>
+                </label>
+                <CustomDropdown
+                  value={newStatus}
+                  onChange={setNewStatus}
+                  options={[
+                    { value: "replaced", label: "Replacement Received" },
+                    { value: "credited", label: "Credited (Refund)" },
+                    { value: "cancelled", label: "Cancelled (Write-off)" },
+                  ]}
+                  placeholder="Select status"
+                />
+              </div>
+
+              {/* Replacement Date (only for replaced) */}
+              {newStatus === "replaced" && (
+                <div>
+                  <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#E5E2E1", marginBottom: "0.5rem" }}>
+                    Replacement Received Date <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={replacementDate}
+                    onChange={(e) => setReplacementDate(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "0.75rem 1rem",
+                      background: "rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: "10px",
+                      color: "#E5E2E1",
+                      fontSize: "0.85rem",
+                      outline: "none",
+                      colorScheme: "dark",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <div style={{ fontSize: "0.65rem", color: "var(--gray)", marginTop: "0.35rem" }}>
+                    This will add {updateModal.bo.qty} unit{updateModal.bo.qty !== 1 ? "s" : ""} back to your Goods Stock.
+                  </div>
+                </div>
+              )}
+
+              {/* Reference / Notes */}
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#E5E2E1", marginBottom: "0.5rem" }}>
+                  Reference / Notes
+                </label>
+                <input
+                  type="text"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value.slice(0, 100))}
+                  placeholder={
+                    newStatus === "replaced"
+                      ? "Replacement invoice # or delivery ref"
+                      : newStatus === "credited"
+                        ? "Credit memo # or refund ref"
+                        : "Reason for cancellation"
+                  }
+                  maxLength={100}
+                  style={{
+                    width: "100%",
+                    padding: "0.75rem 1rem",
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "10px",
+                    color: "#E5E2E1",
+                    fontSize: "0.85rem",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "0.75rem",
+                padding: "1.25rem 1.5rem",
+                borderTop: "1px solid rgba(255,255,255,0.08)",
+                background: "rgba(0,0,0,0.2)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setUpdateModal({ open: false, bo: null })}
+                style={{
+                  padding: "0.625rem 1.25rem",
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "8px",
+                  color: "#E5E2E1",
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleUpdateStatus}
+                disabled={!replacementDate && newStatus === "replaced"}
+                style={{
+                  padding: "0.625rem 1.5rem",
+                  background:
+                    !replacementDate && newStatus === "replaced"
+                      ? "rgba(255,255,255,0.1)"
+                      : "linear-gradient(135deg, #FFDF9F 0%, #D4A843 100%)",
+                  border: "none",
+                  borderRadius: "8px",
+                  color: !replacementDate && newStatus === "replaced" ? "var(--gray)" : "#000",
+                  fontSize: "0.85rem",
+                  fontWeight: 700,
+                  cursor: !replacementDate && newStatus === "replaced" ? "not-allowed" : "pointer",
+                  boxShadow:
+                    !replacementDate && newStatus === "replaced"
+                      ? "none"
+                      : "0 4px 12px rgba(212,168,67,0.3)",
+                }}
+              >
+                Confirm {statusLabels[newStatus]}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MAIN PAGE - BAD ORDER RETURN ONLY
 // ══════════════════════════════════════════════════════════════════════════════
 export default function ReturnsPage() {
-  const [activeTab, setActiveTab] = useState("returns");
-  const [rtvs, setRtvs] = useState([]);
-  const [backorderRefreshKey, setBackorderRefreshKey] = useState(0);
+  const [badOrders, setBadOrders] = useState([]);
 
   const refresh = useCallback(() => {
-    setRtvs(getStore(RTV_KEY));
-    // Trigger backorder reload when switching to backorders tab
-    setBackorderRefreshKey((prev) => prev + 1);
+    try {
+      const bo = JSON.parse(localStorage.getItem("pmp_bad_orders") || "[]");
+      setBadOrders(bo);
+    } catch {
+      setBadOrders([]);
+    }
   }, []);
 
   useEffect(() => {
     refresh();
+    // Listen for storage changes
+    const handleStorageChange = (e) => {
+      if (e.key === "pmp_bad_orders") {
+        try {
+          const bo = JSON.parse(e.newValue || "[]");
+          setBadOrders(bo);
+        } catch {
+          setBadOrders([]);
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    // Poll for same-tab changes
+    const interval = setInterval(refresh, 2000);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      clearInterval(interval);
+    };
   }, [refresh]);
-
-  const tabStyle = (tab) => ({
-    padding: "0.625rem 1.25rem",
-    fontSize: "0.825rem",
-    fontWeight: 700,
-    cursor: "pointer",
-    borderRadius: "8px",
-    border: "none",
-    background: activeTab === tab ? "var(--gold)" : "transparent",
-    color: activeTab === tab ? "#000" : "var(--gray)",
-    transition: "all 0.15s",
-  });
 
   return (
     <div className="page-content-wrapper">
@@ -3180,53 +3931,16 @@ export default function ReturnsPage() {
       <div className="page-header">
         <div className="page-header-content">
           <div>
-            <h1 className="page-title">Returns to Vendor</h1>
+            <h1 className="page-title">Bad Order Return</h1>
             <p className="page-subtitle">
-              Manage returns, backorders, and credit claims with your suppliers.
+              Track and manage bad orders from stock-in. Items counted as loss until resolved (replaced or credited by supplier).
             </p>
           </div>
         </div>
-
-        {/* Tab Switcher */}
-        <div
-          style={{
-            display: "flex",
-            gap: "0.25rem",
-            background: "rgba(255,255,255,0.04)",
-            borderRadius: "10px",
-            padding: "0.25rem",
-            width: "fit-content",
-          }}
-        >
-          <button
-            style={tabStyle("returns")}
-            onClick={() => setActiveTab("returns")}
-          >
-            Returns to Vendor
-          </button>
-          <button
-            style={tabStyle("backorders")}
-            onClick={() => setActiveTab("backorders")}
-          >
-            Backorders
-          </button>
-          <button
-            style={tabStyle("credits")}
-            onClick={() => setActiveTab("credits")}
-          >
-            Credit Claims
-          </button>
-        </div>
       </div>
 
-      {/* Tab Content */}
-      {activeTab === "returns" && (
-        <RTVListTab rtvs={rtvs} onRefresh={refresh} />
-      )}
-      {activeTab === "backorders" && (
-        <BackordersTab onRefresh={refresh} refreshKey={backorderRefreshKey} />
-      )}
-      {activeTab === "credits" && <CreditClaimsTab onRefresh={refresh} />}
+      {/* Bad Orders Tab Content */}
+      <BadOrdersTab badOrders={badOrders} onRefresh={refresh} />
     </div>
   );
 }

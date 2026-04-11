@@ -20,6 +20,12 @@ const thStyle = {
 
 function IssueTypeBadge({ type }) {
   const ISSUE_TYPES = {
+    manual_sale: {
+      label: "Sale",
+      color: "#22c55e",
+      bg: "rgba(34,197,94,0.1)",
+      border: "rgba(34,197,94,0.2)",
+    },
     damage: {
       label: "Damage",
       color: "#ef4444",
@@ -241,9 +247,9 @@ export default function StockOutHistoryTab({ stockOuts, materials }) {
           onChange={setTypeFilter}
           options={[
             { value: "", label: "All Types" },
+            { value: "manual_sale", label: "Sale" },
             { value: "damage", label: "Damage" },
             { value: "scrap", label: "Scrap" },
-            { value: "production", label: "Production Use" },
             { value: "lost", label: "Lost/Missing" },
             { value: "adjustment", label: "Adjustment" },
           ]}

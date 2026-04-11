@@ -62,7 +62,15 @@ function getMaterialCostStats(material) {
   }
 
   const costs = activeBatches.map((b) => b.unitCost || 0);
-  const avg = computeWeightedAvgCost(material);
+  const totalValue = activeBatches.reduce(
+    (sum, b) => sum + (b.remainingQty || 0) * (b.unitCost || 0),
+    0,
+  );
+  const totalQty = activeBatches.reduce(
+    (sum, b) => sum + (b.remainingQty || 0),
+    0,
+  );
+  const avg = totalQty > 0 ? totalValue / totalQty : material?.baseCost || 0;
 
   return {
     avg,
@@ -649,14 +657,10 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
                     display: "grid",
                     gridTemplateColumns: "1fr auto",
                     alignItems: "center",
-                    background: cd.isInBackorder
-                      ? "rgba(212,168,67,0.06)"
-                      : "rgba(14,14,14,0.3)",
+                    background: "rgba(14,14,14,0.3)",
                     padding: "0.6rem 0.75rem",
                     borderRadius: "8px",
-                    border: cd.isInBackorder
-                      ? "1px solid rgba(212,168,67,0.25)"
-                      : "1px solid rgba(78,70,54,0.05)",
+                    border: "1px solid rgba(78,70,54,0.05)",
                   }}
                 >
                   <div
