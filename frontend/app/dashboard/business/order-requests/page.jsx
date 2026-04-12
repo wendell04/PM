@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   fetchOrderRequests,
@@ -116,6 +116,22 @@ export default function OrderRequestsPage() {
     load();
     return () => { cancelled = true; };
   }, [token]);
+
+  // Auto-refresh every 30s — skipped when a modal is active or submitting
+  const pollRef = useRef(null);
+  useEffect(() => {
+    if (!token) return;
+    pollRef.current = setInterval(async () => {
+      if (submitting || selectedRequest != null) return;
+      try {
+        const result = await fetchOrderRequests(token);
+        setRequests(result.data);
+      } catch {
+        // silent — do not overwrite existing error state on poll failure
+      }
+    }, 30000);
+    return () => clearInterval(pollRef.current);
+  }, [token, submitting, selectedRequest]);
 
   // Filtered requests
   const filtered = useCallback(() => {

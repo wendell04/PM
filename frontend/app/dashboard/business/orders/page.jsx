@@ -6,7 +6,7 @@
 'use client';
 
 import ErrorBoundary from '../../../../components/ErrorBoundary';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchAllOrdersNew, updateOrder as updateOrderApi } from '@/lib/ordersApi';
 import { getStatusBadge } from '@/lib/utils/orderHelpers';
@@ -61,7 +61,19 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!token) return;
     fetchOrders();
-  }, []);
+  }, [token]);
+
+  // Auto-refresh every 30s — skipped when a manual refresh is already running
+  const pollRef = useRef(null);
+  useEffect(() => {
+    if (!token) return;
+    pollRef.current = setInterval(() => {
+      if (!isRefreshing) {
+        fetchOrders();
+      }
+    }, 30000);
+    return () => clearInterval(pollRef.current);
+  }, [token, isRefreshing, fetchOrders]);
 
   const filtered = orders.filter(o => {
     const matchSearch = !search || o.customerName?.toLowerCase().includes(search.toLowerCase()) || o.id?.toLowerCase().includes(search.toLowerCase()) || o.productName?.toLowerCase().includes(search.toLowerCase());

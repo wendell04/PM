@@ -348,6 +348,9 @@ class OrderController extends Controller
     public function stats(Request $request)
     {
         try {
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
             $totalOrders = Order::count();
             $pendingOrders = Order::where('orderStatus', 'Pending')->count();
             $completedOrders = Order::where('orderStatus', 'Delivered')->count();
@@ -377,7 +380,14 @@ class OrderController extends Controller
                 if (!$product || !$product->inventoryId) continue;
 
                 $inventory = Inventory::find($product->inventoryId);
-                if (!$inventory) continue;
+                if (!$inventory) {
+                    Log::warning('completeOrder: inventory record not found for product', [
+                        'orderId'     => $order->_id,
+                        'productId'   => $item['productId'],
+                        'inventoryId' => $product->inventoryId,
+                    ]);
+                    continue;
+                }
 
                 // 1. Create Sale Record
                 // Generate UUID-based Sale ID — collision-free, no DB read required
@@ -517,6 +527,11 @@ class OrderController extends Controller
             $order->orderStatus = $validated['orderStatus'];
             $order->updatedAt = now();
             $order->save();
+
+            // Handle completion: create sales records and deduct inventory
+            if ($order->orderStatus === 'Delivered' && $oldStatus !== 'Delivered') {
+                $this->completeOrder($order);
+            }
 
             // Log activity
             try {

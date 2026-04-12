@@ -56,6 +56,7 @@ import ErrorBoundary from '../../../../components/ErrorBoundary';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { formatNumber, formatPrice } from '../../../../src/utils/format';
 import { useAuth } from '@/contexts/AuthContext';
+import { fetchMasterlist, saveMasterlist } from '@/lib/inventoryApi';
 import {
   fetchInventory,
   createInventory,
@@ -2537,6 +2538,17 @@ export default function InventoryPage() {
           ? suppliersResponse : [];
         setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
 
+        // Load masterlist
+        try {
+          const masterlistData = await fetchMasterlist(token);
+          if (Array.isArray(masterlistData) && masterlistData.length > 0) {
+            setMasterlist(masterlistData);
+            setCategories(masterlistData.map(c => c.name));
+          }
+        } catch {
+          // masterlist load failure is non-fatal — keep empty default
+        }
+
         // Load products for linkage checks
         try {
           const productsResponse = await fetchProducts(token);
@@ -2630,12 +2642,15 @@ export default function InventoryPage() {
   };
 
   // TODO: MongoDB — Each action inside maps to its own API endpoint (see ItemMasterlistModal)
-  const handleSaveMasterlist = (updatedList) => {
+  const handleSaveMasterlist = async (updatedList) => {
     setMasterlist(updatedList);
-    // TODO: Call API to save masterlist when backend endpoint exists
-    // Sync categories from masterlist — masterlist is single source of truth
     const derivedCats = updatedList.map(c => c.name);
     setCategories(derivedCats);
+    try {
+      await saveMasterlist(updatedList, token);
+    } catch (err) {
+      console.error('Failed to persist masterlist:', err);
+    }
   };
 
   const archivedInventory = inventory.filter(i => i.isActive === false);

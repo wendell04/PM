@@ -335,6 +335,68 @@ export async function updateSupplier(supplierId, supplierData, token) {
 }
 
 /**
+ * Fetch masterlist from MongoDB
+ * @param {string} token - Authentication token
+ * @returns {Promise<Array>} Masterlist categories array
+ */
+export async function fetchMasterlist(token) {
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/api/admin/masterlist`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    }, 10000);
+
+    if (!response.ok) {
+      if (response.status === 401) throw new Error('Unauthenticated: Please login again');
+      if (response.status === 403) throw new Error('Unauthorized: Admin access required');
+      throw new Error(`Failed to fetch masterlist: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.data?.categories ?? data.categories ?? [];
+  } catch (error) {
+    console.error('Error fetching masterlist:', error);
+    return [];
+  }
+}
+
+/**
+ * Save masterlist to MongoDB (full replace)
+ * @param {Array} categories - Full masterlist categories array
+ * @param {string} token - Authentication token
+ * @returns {Promise<Array>} Saved masterlist categories array
+ */
+export async function saveMasterlist(categories, token) {
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/api/admin/masterlist`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ categories }),
+    }, 15000);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      if (response.status === 401) throw new Error('Unauthenticated: Please login again');
+      if (response.status === 403) throw new Error('Unauthorized: Admin access required');
+      if (response.status === 422 && errorData.errors) throw new Error(JSON.stringify(errorData.errors));
+      throw new Error(errorData.message || 'Failed to save masterlist');
+    }
+
+    const data = await response.json();
+    return data.data?.categories ?? data.categories ?? [];
+  } catch (error) {
+    console.error('Error saving masterlist:', error);
+    throw error;
+  }
+}
+
+/**
  * Delete a supplier
  * @param {string} supplierId - MongoDB supplier ID
  * @param {string} token - Authentication token

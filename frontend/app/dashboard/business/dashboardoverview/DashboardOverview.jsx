@@ -7,7 +7,7 @@
  * Inspired by Shopee Seller Centre Business Insights
  *
  * Data Sources:
- * - Real data: materials, stockOuts (where available)
+ * - Real data: orderStats, salesSummary, inventory, recentOrders (from API via page.jsx)
  * - Placeholder: Charts, top products, recent activity (needs backend integration)
  */
 
@@ -141,90 +141,45 @@ function ProgressBar({ value, color = "#D4A843" }) {
 }
 
 // ── Main Dashboard Component ───────────────────────────────────────────────────
-export default function DashboardOverview({ materials, stockOuts }) {
+export default function DashboardOverview({ orderStats, salesSummary, inventory = [], recentOrders = [], activeBanners = 0, pendingReturns = 0, topProducts = [], recentMovements = [], onRefresh }) {
   const [chartPeriod, setChartPeriod] = useState("daily");
 
-  // ── Compute inventory metrics ───────────────────────────────────────────────
+  // ── Compute inventory metrics from real API data ─────────────────────────
   const inventoryMetrics = useMemo(() => {
-    const parentMaterials = materials.filter((m) => !m.parentId);
-    const totalMaterials = parentMaterials.length;
+    const items = Array.isArray(inventory) ? inventory.filter(i => i.isActive !== false) : [];
+    const totalMaterials = items.length;
 
-    const categories = new Set(
-      parentMaterials.map((m) => m.category).filter(Boolean)
-    );
+    const categories = new Set(items.map((m) => m.category).filter(Boolean));
     const totalCategories = categories.size;
 
-    const getStock = (m) => {
-      if (m.batches && Array.isArray(m.batches) && m.batches.length > 0) {
-        return m.batches.reduce(
-          (s, b) => s + (b.remainingQty || b.goodQty || b.qtyGood || 0),
-          0
-        );
-      }
-      return m.stockQty || 0;
-    };
+    const totalStock = items.reduce((sum, m) => sum + (m.stockQty || 0), 0);
+    const totalValue = items.reduce((sum, m) => sum + ((m.stockQty || 0) * (m.averageCost || 0)), 0);
 
-    const totalStock = parentMaterials.reduce((sum, m) => sum + getStock(m), 0);
+    const lowStock  = items.filter(m => m.stockQty > 0 && m.stockQty <= (m.minStockLevel || 10)).length;
+    const outOfStock = items.filter(m => (m.stockQty || 0) === 0).length;
+    const healthy   = items.filter(m => (m.stockQty || 0) > (m.minStockLevel || 10)).length;
+    const healthRate = totalMaterials > 0 ? (healthy / totalMaterials) * 100 : 0;
 
-    const getValue = (m) => {
-      const stock = getStock(m);
-      return stock * (m.baseCost || 0);
-    };
-
-    const totalValue = parentMaterials.reduce((sum, m) => sum + getValue(m), 0);
-
-    const lowStock = parentMaterials.filter(
-      (m) => getStock(m) > 0 && getStock(m) < (m.minStock || 10)
-    ).length;
-
-    const outOfStock = parentMaterials.filter((m) => getStock(m) === 0).length;
-    const healthy = parentMaterials.filter(
-      (m) => getStock(m) >= (m.minStock || 10)
-    ).length;
-
-    const healthRate =
-      totalMaterials > 0 ? (healthy / totalMaterials) * 100 : 0;
-
-    // Category breakdown
     const categoryData = {};
-    parentMaterials.forEach((m) => {
+    items.forEach((m) => {
       const cat = m.category || "Uncategorized";
       if (!categoryData[cat]) {
         categoryData[cat] = { name: cat, stock: 0, value: 0, materials: 0 };
       }
-      categoryData[cat].stock += getStock(m);
-      categoryData[cat].value += getValue(m);
+      categoryData[cat].stock     += (m.stockQty || 0);
+      categoryData[cat].value     += ((m.stockQty || 0) * (m.averageCost || 0));
       categoryData[cat].materials += 1;
     });
 
-    const categoryBreakdown = Object.values(categoryData).sort(
-      (a, b) => b.value - a.value
-    );
-
-    const maxCategoryValue =
-      categoryBreakdown.length > 0 ? categoryBreakdown[0].value : 1;
+    const categoryBreakdown = Object.values(categoryData).sort((a, b) => b.value - a.value);
+    const maxCategoryValue  = categoryBreakdown.length > 0 ? categoryBreakdown[0].value : 1;
 
     return {
-      totalMaterials,
-      totalCategories,
-      totalStock,
-      totalValue,
-      lowStock,
-      outOfStock,
-      healthy,
-      healthRate,
-      categoryBreakdown,
-      maxCategoryValue,
+      totalMaterials, totalCategories, totalStock, totalValue,
+      lowStock, outOfStock, healthy, healthRate,
+      categoryBreakdown, maxCategoryValue,
     };
-  }, [materials]);
-
-  // ── Dummy data for placeholders ─────────────────────────────────────────────
-  const dummyData = {
-    revenueToday: null,
-    topProducts: [],
-    recentOrders: [],
-    recentMovements: [],
-  };
+  }, [inventory]);
 
   // ── Status badge helper ──────────────────────────────────────────────────────
   const getStatusColor = (status) => {
@@ -350,12 +305,12 @@ export default function DashboardOverview({ materials, stockOuts }) {
               style={{
                 fontSize: "2rem",
                 fontWeight: 800,
-                color: dummyData.revenueToday ? "#D4A843" : "#6b7280",
+                color: salesSummary?.totalRevenue ? "#D4A843" : "#6b7280",
                 fontFamily: "monospace",
               }}
             >
-              {dummyData.revenueToday
-                ? `P${dummyData.revenueToday.toLocaleString("en-PH")}`
+              {salesSummary?.totalRevenue
+                ? `₱${salesSummary.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
                 : "—"}
             </div>
           </div>
@@ -373,12 +328,18 @@ export default function DashboardOverview({ materials, stockOuts }) {
             }}
           >
             <div>
-              <div style={metricLabelStyle}>Orders</div>
-              <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#6b7280" }}>—</div>
+              <div style={metricLabelStyle}>Total Orders</div>
+              <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#E5E2E1" }}>
+                {orderStats?.totalOrders ?? "—"}
+              </div>
             </div>
             <div>
-              <div style={metricLabelStyle}>Units</div>
-              <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#6b7280" }}>—</div>
+              <div style={metricLabelStyle}>Total Profit</div>
+              <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#D4A843" }}>
+                {salesSummary?.totalProfit != null
+                  ? `₱${salesSummary.totalProfit.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
+                  : "—"}
+              </div>
             </div>
           </div>
         </div>
@@ -411,92 +372,40 @@ export default function DashboardOverview({ materials, stockOuts }) {
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            {dummyData.topProducts && dummyData.topProducts.length > 0 && dummyData.topProducts[0].revenue ? (
-              dummyData.topProducts.map((product) => (
+            {topProducts.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "2rem", color: "#9ca3af", fontSize: "0.85rem" }}>
+                — No sales data yet —
+              </div>
+            ) : (
+              topProducts.map((p, i) => (
                 <div
-                  key={product.rank}
+                  key={p.productName}
                   style={{
                     display: "flex",
+                    justifyContent: "space-between",
                     alignItems: "center",
-                    gap: "0.75rem",
-                    padding: "0.75rem",
-                    background:
-                      product.rank === 1
-                        ? "rgba(212,168,67,0.08)"
-                        : "rgba(255,255,255,0.02)",
-                    borderRadius: "8px",
-                    border:
-                      product.rank === 1
-                        ? "1px solid rgba(212,168,67,0.2)"
-                        : "1px solid transparent",
+                    padding: "0.5rem 0",
+                    borderBottom: i < topProducts.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none",
                   }}
                 >
-                  <div
-                    style={{
-                      width: "24px",
-                      height: "24px",
-                      borderRadius: "6px",
-                      background:
-                        product.rank === 1 ? "#D4A843" : "rgba(255,255,255,0.08)",
-                      color: product.rank === 1 ? "#000" : "#9ca3af",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "0.75rem",
-                      fontWeight: 700,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {product.rank}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: "0.8rem",
-                        fontWeight: 600,
-                        color: "#E5E2E1",
-                        marginBottom: "0.15rem",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {product.name}
+                  <div>
+                    <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "#E5E2E1" }}>
+                      {p.productName}
                     </div>
-                    <div
-                      style={{
-                        fontSize: "0.65rem",
-                        color: "#9ca3af",
-                        fontFamily: "monospace",
-                      }}
-                    >
-                      {product.sku}
+                    <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.125rem" }}>
+                      {p.category}
                     </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: "0.9rem",
-                      fontWeight: 700,
-                      color: "#D4A843",
-                      fontFamily: "monospace",
-                      flexShrink: 0,
-                    }}
-                  >
-                    P{product.revenue.toLocaleString("en-PH")}
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#D4A843" }}>
+                      {p.totalQty} sold
+                    </div>
+                    <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.125rem" }}>
+                      ₱{p.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                    </div>
                   </div>
                 </div>
               ))
-            ) : (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "2rem",
-                  color: "#9ca3af",
-                  fontSize: "0.85rem",
-                }}
-              >
-                — No sales data yet —
-              </div>
             )}
           </div>
         </div>
@@ -515,16 +424,24 @@ export default function DashboardOverview({ materials, stockOuts }) {
           }}
         >
           <div style={cardStyle}>
-            <div style={metricLabelStyle}>Sales</div>
-            <div style={{ ...metricValueStyle, color: "#6b7280" }}>—</div>
+            <div style={metricLabelStyle}>Total Revenue</div>
+            <div style={{ ...metricValueStyle, color: salesSummary?.totalRevenue ? "#D4A843" : "#6b7280" }}>
+              {salesSummary?.totalRevenue != null
+                ? `₱${salesSummary.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
+                : "—"}
+            </div>
           </div>
           <div style={cardStyle}>
-            <div style={metricLabelStyle}>Orders</div>
-            <div style={{ ...metricValueStyle, color: "#6b7280" }}>—</div>
+            <div style={metricLabelStyle}>Total Orders</div>
+            <div style={{ ...metricValueStyle, color: orderStats?.totalOrders ? "#E5E2E1" : "#6b7280" }}>
+              {orderStats?.totalOrders ?? "—"}
+            </div>
           </div>
           <div style={cardStyle}>
             <div style={metricLabelStyle}>Cancelled Orders</div>
-            <div style={{ ...metricValueStyle, color: "#6b7280" }}>—</div>
+            <div style={{ ...metricValueStyle, color: orderStats?.cancelledOrders ? "#ef4444" : "#6b7280" }}>
+              {orderStats?.cancelledOrders ?? "—"}
+            </div>
           </div>
         </div>
 
@@ -538,15 +455,23 @@ export default function DashboardOverview({ materials, stockOuts }) {
         >
           <div style={cardStyle}>
             <div style={metricLabelStyle}>Pending Orders</div>
-            <div style={{ ...metricValueStyle, color: "#6b7280" }}>—</div>
+            <div style={{ ...metricValueStyle, color: orderStats?.pendingOrders ? "#f59e0b" : "#6b7280" }}>
+              {orderStats?.pendingOrders ?? "—"}
+            </div>
           </div>
           <div style={cardStyle}>
-            <div style={metricLabelStyle}>Job Orders</div>
-            <div style={{ ...metricValueStyle, color: "#6b7280" }}>—</div>
+            <div style={metricLabelStyle}>Completed Orders</div>
+            <div style={{ ...metricValueStyle, color: orderStats?.completedOrders ? "#22c55e" : "#6b7280" }}>
+              {orderStats?.completedOrders ?? "—"}
+            </div>
           </div>
           <div style={cardStyle}>
-            <div style={metricLabelStyle}>Order Requests</div>
-            <div style={{ ...metricValueStyle, color: "#6b7280" }}>—</div>
+            <div style={metricLabelStyle}>Total Profit</div>
+            <div style={{ ...metricValueStyle, color: salesSummary?.totalProfit ? "#D4A843" : "#6b7280" }}>
+              {salesSummary?.totalProfit != null
+                ? `₱${salesSummary.totalProfit.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
+                : "—"}
+            </div>
           </div>
         </div>
       </div>
@@ -581,7 +506,7 @@ export default function DashboardOverview({ materials, stockOuts }) {
               Out of Stock Items
             </div>
             <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.25rem" }}>
-              [from materials]
+              Needs restocking
             </div>
           </div>
           <div
@@ -602,11 +527,16 @@ export default function DashboardOverview({ materials, stockOuts }) {
               Low Stock Items
             </div>
             <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.25rem" }}>
-              [from materials]
+              Below minimum level
             </div>
           </div>
-          <div style={{ ...cardStyle, borderLeft: "3px solid #f59e0b" }}>
-            <div style={{ fontSize: "2rem", fontWeight: 800, color: "#f59e0b" }}>—</div>
+          <div
+            style={{ ...cardStyle, borderLeft: "3px solid #f59e0b", cursor: "pointer" }}
+            onClick={() => (window.location.href = "/dashboard/business/inventory/returns")}
+          >
+            <div style={{ fontSize: "2rem", fontWeight: 800, color: "#f59e0b" }}>
+              {pendingReturns}
+            </div>
             <div
               style={{
                 fontSize: "0.8rem",
@@ -618,11 +548,16 @@ export default function DashboardOverview({ materials, stockOuts }) {
               Pending Returns (RTV)
             </div>
             <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.25rem" }}>
-              [from RTV log]
+              Awaiting resolution
             </div>
           </div>
-          <div style={{ ...cardStyle, borderLeft: "3px solid #f59e0b" }}>
-            <div style={{ fontSize: "2rem", fontWeight: 800, color: "#f59e0b" }}>—</div>
+          <div
+            style={{ ...cardStyle, borderLeft: "3px solid #f59e0b", cursor: "pointer" }}
+            onClick={() => (window.location.href = "/dashboard/business/banners")}
+          >
+            <div style={{ fontSize: "2rem", fontWeight: 800, color: "#f59e0b" }}>
+              {activeBanners}
+            </div>
             <div
               style={{
                 fontSize: "0.8rem",
@@ -634,7 +569,7 @@ export default function DashboardOverview({ materials, stockOuts }) {
               Active Banners
             </div>
             <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.25rem" }}>
-              [from banners]
+              Live or visible banners
             </div>
           </div>
         </div>
@@ -890,10 +825,10 @@ export default function DashboardOverview({ materials, stockOuts }) {
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {dummyData.recentOrders && dummyData.recentOrders.length > 0 ? (
-                dummyData.recentOrders.map((order) => (
+              {recentOrders && recentOrders.length > 0 ? (
+                recentOrders.map((order) => (
                   <div
-                    key={order.id}
+                    key={String(order._id || order.id)}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -912,19 +847,19 @@ export default function DashboardOverview({ materials, stockOuts }) {
                           color: "#E5E2E1",
                         }}
                       >
-                        {order.id}
+                        #{String(order._id || order.id || "").slice(-8).toUpperCase()}
                       </span>
                       <span
                         style={{
                           fontSize: "0.7rem",
                           padding: "0.15rem 0.5rem",
                           borderRadius: "4px",
-                          background: `${getStatusColor(order.status)}15`,
-                          color: getStatusColor(order.status),
-                          border: `1px solid ${getStatusColor(order.status)}30`,
+                          background: `${getStatusColor(order.orderStatus || order.status)}15`,
+                          color: getStatusColor(order.orderStatus || order.status),
+                          border: `1px solid ${getStatusColor(order.orderStatus || order.status)}30`,
                         }}
                       >
-                        {order.status}
+                        {order.orderStatus || order.status}
                       </span>
                     </div>
                     <div style={{ textAlign: "right" }}>
@@ -936,9 +871,11 @@ export default function DashboardOverview({ materials, stockOuts }) {
                           fontFamily: "monospace",
                         }}
                       >
-                        P{order.amount.toLocaleString()}
+                        ₱{(order.totalAmount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
                       </div>
-                      <div style={{ fontSize: "0.65rem", color: "#9ca3af" }}>{order.time}</div>
+                      <div style={{ fontSize: "0.65rem", color: "#9ca3af" }}>
+                        {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}
+                      </div>
                     </div>
                   </div>
                 ))
@@ -985,12 +922,14 @@ export default function DashboardOverview({ materials, stockOuts }) {
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {dummyData.recentMovements && dummyData.recentMovements.length > 0 ? (
-                dummyData.recentMovements.map((movement, idx) => {
-                  const typeSymbol =
-                    movement.type === "in" ? "+" : movement.type === "out" ? "-" : "=";
-                  const typeColor = getMovementColor(movement.type);
-
+              {recentMovements.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "2rem", color: "#9ca3af", fontSize: "0.85rem" }}>
+                  — No stock movements yet —
+                </div>
+              ) : (
+                recentMovements.map((movement, idx) => {
+                  const typeSymbol = movement.type === "in" ? "+" : "-";
+                  const typeColor  = getMovementColor(movement.type);
                   return (
                     <div
                       key={idx}
@@ -1012,16 +951,8 @@ export default function DashboardOverview({ materials, stockOuts }) {
                         <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#E5E2E1" }}>
                           {movement.item}
                         </span>
-                        <span
-                          style={{
-                            fontSize: "0.85rem",
-                            fontWeight: 700,
-                            color: typeColor,
-                            fontFamily: "monospace",
-                          }}
-                        >
-                          {typeSymbol}
-                          {Math.abs(movement.qty)} pcs
+                        <span style={{ fontSize: "0.85rem", fontWeight: 700, color: typeColor, fontFamily: "monospace" }}>
+                          {typeSymbol}{Math.abs(movement.qty)} pcs
                         </span>
                       </div>
                       <div style={{ fontSize: "0.7rem", color: "#9ca3af" }}>
@@ -1033,17 +964,6 @@ export default function DashboardOverview({ materials, stockOuts }) {
                     </div>
                   );
                 })
-              ) : (
-                <div
-                  style={{
-                    textAlign: "center",
-                    padding: "2rem",
-                    color: "#9ca3af",
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  — No stock movements yet —
-                </div>
               )}
             </div>
           </div>

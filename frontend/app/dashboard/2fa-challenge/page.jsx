@@ -41,7 +41,7 @@ export default function TwoFactorChallengePage() {
       userEmail={userEmail}
       userRole={userRole}
       onSuccess={(redirectTo) => {
-        router.push(redirectTo);
+        window.location.href = redirectTo;
       }}
       onBack={() => {
         sessionStorage.removeItem('pending_2fa');

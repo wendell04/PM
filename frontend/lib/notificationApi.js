@@ -22,6 +22,7 @@ export async function fetchNotifications(token) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
         },
       },
       10000
@@ -50,6 +51,7 @@ export async function fetchUnreadCount(token) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
         },
       },
       10000
@@ -79,6 +81,7 @@ export async function markNotificationRead(id, token) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
         },
       },
       10000
@@ -107,6 +110,7 @@ export async function markAllNotificationsRead(token) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
+          'ngrok-skip-browser-warning': 'true',
         },
       },
       10000

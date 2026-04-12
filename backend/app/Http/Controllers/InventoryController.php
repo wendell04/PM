@@ -85,6 +85,71 @@ class InventoryController extends Controller
         }
     }
 
+    /**
+     * GET /api/admin/inventory/recent-movements
+     * Returns last 10 stock movements across all inventory items for dashboard.
+     */
+    public function recentMovements(Request $request)
+    {
+        try {
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
+
+            $movements = StockHistory::orderBy('createdAt', 'desc')
+                ->limit(10)
+                ->get(['inventoryId', 'quantity', 'reason', 'remarks', 'createdAt']);
+
+            // Batch-load inventory names to avoid N+1
+            $inventoryIds = $movements->pluck('inventoryId')->unique()->filter()->values()->toArray();
+            $inventoryMap = Inventory::whereIn('_id', $inventoryIds)
+                ->get(['_id', 'name'])
+                ->keyBy(fn($i) => (string) $i->_id);
+
+            $typeMap = [
+                'restock'          => 'in',
+                'return'           => 'in',
+                'initial'          => 'in',
+                'correction-add'   => 'in',
+                'sale'             => 'out',
+                'damaged'          => 'out',
+                'correction-deduct'=> 'out',
+                'sales-outside'    => 'out',
+            ];
+
+            $labelMap = [
+                'restock'          => 'Restocked',
+                'return'           => 'Return received',
+                'initial'          => 'Initial stock',
+                'correction-add'   => 'Correction (add)',
+                'sale'             => 'Sale deducted',
+                'damaged'          => 'Damaged',
+                'correction-deduct'=> 'Correction (deduct)',
+                'sales-outside'    => 'Outside sale',
+            ];
+
+            $result = $movements->map(function ($m) use ($inventoryMap, $typeMap, $labelMap) {
+                $inv  = isset($inventoryMap[(string) $m->inventoryId])
+                    ? $inventoryMap[(string) $m->inventoryId]
+                    : null;
+                $type = $typeMap[$m->reason] ?? 'in';
+                return [
+                    'item'  => $inv ? $inv->name : 'Unknown Item',
+                    'qty'   => (int) $m->quantity,
+                    'type'  => $type,
+                    'label' => $labelMap[$m->reason] ?? ucfirst($m->reason ?? ''),
+                    'time'  => $m->createdAt ? $m->createdAt->format('M d, g:i A') : '',
+                ];
+            })->values()->toArray();
+
+            return $this->successResponse('Recent movements fetched successfully.', [
+                'movements' => $result,
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching recent movements.');
+        }
+    }
+
     public function store(Request $request)
     {
         try {

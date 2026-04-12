@@ -215,4 +215,56 @@ class SaleController extends Controller
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching the sales summary.');
         }
     }
+
+    /**
+     * GET /api/admin/sales/top-products
+     * Returns top 5 products by total quantity sold (completed sales only).
+     * Optional query params: startDate, endDate
+     */
+    public function topProducts(Request $request)
+    {
+        try {
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
+
+            $query = Sale::where('status', 'completed');
+
+            if ($request->filled('startDate')) {
+                $query->where('saleDate', '>=', $request->startDate);
+            }
+
+            if ($request->filled('endDate')) {
+                $query->where('saleDate', '<=', $request->endDate);
+            }
+
+            $sales = $query->get(['productName', 'category', 'quantity', 'totalPrice']);
+
+            // Group by productName in PHP — MongoDB driver does not support groupBy+sum in one chain
+            $grouped = [];
+            foreach ($sales as $sale) {
+                $key = $sale->productName ?? 'Unknown';
+                if (!isset($grouped[$key])) {
+                    $grouped[$key] = [
+                        'productName' => $key,
+                        'category'    => $sale->category ?? '',
+                        'totalQty'    => 0,
+                        'totalRevenue'=> 0,
+                    ];
+                }
+                $grouped[$key]['totalQty']     += (int)   ($sale->quantity   ?? 0);
+                $grouped[$key]['totalRevenue'] += (float) ($sale->totalPrice ?? 0);
+            }
+
+            usort($grouped, fn($a, $b) => $b['totalQty'] <=> $a['totalQty']);
+
+            $top5 = array_slice(array_values($grouped), 0, 5);
+
+            return $this->successResponse('Top products fetched successfully.', [
+                'products' => $top5,
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching top products.');
+        }
+    }
 }

@@ -790,9 +790,12 @@ export default function ShopLayout({ children }) {
       sessionStorage.setItem('pending_2fa', 'true');
       // Save redirect destination for after 2FA
       const currentPath = window.location.pathname;
-      const returnTo = (currentPath === '/shop/2fa-verify' || currentPath === '/')
-        ? '/shop'
-        : currentPath;
+      const isAdminUser = userData.role === 'admin' || userData.role === 'business' || userData.role === 'owner';
+      const returnTo = isAdminUser
+        ? '/dashboard/business/dashboardoverview'
+        : (currentPath === '/shop/2fa-verify' || currentPath === '/')
+          ? '/shop'
+          : currentPath;
       sessionStorage.setItem('post_2fa_redirect', returnTo);
       // Show inline modal — no page navigation
       setTwoFaToken(token);
@@ -808,9 +811,9 @@ export default function ShopLayout({ children }) {
     storage.setItem('auth_user', JSON.stringify(userData));
 
     // Redirect admin/owner to dashboard
-    if (userData.role === 'admin' || userData.role === 'business') {
+    if (userData.role === 'admin' || userData.role === 'business' || userData.role === 'owner') {
       sessionStorage.removeItem('pre_login_redirect');
-      router.push('/dashboard/business');
+      window.location.href = '/dashboard/business/dashboardoverview';
       return;
     }
 
@@ -854,8 +857,8 @@ export default function ShopLayout({ children }) {
     storage.setItem('auth_user', JSON.stringify(userData));
 
     // Redirect admin/owner to dashboard
-    if (userData.role === 'admin' || userData.role === 'business') {
-      router.push('/dashboard/business');
+    if (userData.role === 'admin' || userData.role === 'business' || userData.role === 'owner') {
+      window.location.href = '/dashboard/business/dashboardoverview';
       return;
     }
 
@@ -1508,12 +1511,9 @@ export default function ShopLayout({ children }) {
             onSuccess={(redirectTo) => {
               setTwoFaOpen(false);
               setTwoFaToken(null);
-              // Reload user from storage after successful 2FA
-              const raw = sessionStorage.getItem('auth_user') || localStorage.getItem('auth_user');
-              if (raw) {
-                try { setUser(JSON.parse(raw)); } catch { /* ignore */ }
-              }
-              router.push(redirectTo);
+              sessionStorage.removeItem('pending_2fa');
+              sessionStorage.removeItem('post_2fa_redirect');
+              window.location.href = redirectTo;
             }}
             onBack={() => {
               setTwoFaOpen(false);

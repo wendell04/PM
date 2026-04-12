@@ -7,6 +7,8 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\InventoryReturnController;
+use App\Http\Controllers\MasterlistController;
 use App\Http\Controllers\JobOrderController;
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\SaleController;
@@ -105,14 +107,25 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/products/{id}/toggle-publish', [ProductController::class, 'togglePublish']);
     Route::post('/admin/upload-image',           [ProductController::class, 'uploadImage']);
 
-    // ─── Inventory ────────────────────────────────────────────────────────────
-    Route::get('/admin/inventory',               [InventoryController::class, 'index']);
-    Route::get('/admin/inventory/{id}',          [InventoryController::class, 'show']);
-    Route::get('/admin/inventory/{id}/history',  [InventoryController::class, 'history']);
-    Route::post('/admin/inventory',              [InventoryController::class, 'store']);
-    Route::put('/admin/inventory/{id}',          [InventoryController::class, 'update']);
+    // ─── Inventory ───────────────────────────────────────────────────────────
+    Route::get('/admin/inventory/recent-movements',   [InventoryController::class, 'recentMovements']);
+    Route::get('/admin/inventory',                    [InventoryController::class, 'index']);
+    Route::post('/admin/inventory',                   [InventoryController::class, 'store']);
+    Route::get('/admin/inventory/{id}',               [InventoryController::class, 'show']);
+    Route::get('/admin/inventory/{id}/history',       [InventoryController::class, 'history']);
+    Route::put('/admin/inventory/{id}',               [InventoryController::class, 'update']);
     Route::post('/admin/inventory/{id}/adjust-stock', [InventoryController::class, 'adjustStock']);
-    Route::delete('/admin/inventory/{id}',       [InventoryController::class, 'destroy']);
+    Route::delete('/admin/inventory/{id}',            [InventoryController::class, 'destroy']);
+
+    // ─── Masterlist ──────────────────────────────────────────────────────────
+    Route::get('/admin/masterlist',                   [MasterlistController::class, 'index']);
+    Route::put('/admin/masterlist',                   [MasterlistController::class, 'update']);
+
+    // ─── Returns (RTV) ───────────────────────────────────────────────────────
+    Route::get('/admin/returns',                      [InventoryReturnController::class, 'index']);
+    Route::get('/admin/returns/stats',                [InventoryReturnController::class, 'stats']);
+    Route::post('/admin/returns',                     [InventoryReturnController::class, 'store']);
+    Route::put('/admin/returns/{id}',                 [InventoryReturnController::class, 'update']);
 
     // ─── Orders (Admin) — SECURITY: only admin can list/view all orders ───────
     Route::get('/orders',               [OrderController::class, 'index']);
@@ -143,6 +156,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     // ─── Sales ────────────────────────────────────────────────────────────────
     Route::get('/admin/sales',                   [SaleController::class, 'index']);
     Route::get('/admin/sales/summary',           [SaleController::class, 'summary']);
+    Route::get('/admin/sales/top-products',      [SaleController::class, 'topProducts']);
     Route::get('/admin/sales/{id}',              [SaleController::class, 'show']);
     Route::post('/admin/sales',                  [SaleController::class, 'store']);
     Route::put('/admin/sales/{id}',              [SaleController::class, 'update']);

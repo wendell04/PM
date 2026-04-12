@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -67,6 +67,18 @@ export default function OrdersHistoryPage() {
   }, [token, router]);
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
+
+  // Auto-refresh every 30s — paused when modal is open
+  const pollRef = useRef(null);
+  useEffect(() => {
+    if (!token) return;
+    pollRef.current = setInterval(() => {
+      if (!modalOpen) {
+        loadOrders();
+      }
+    }, 30000);
+    return () => clearInterval(pollRef.current);
+  }, [token, modalOpen, loadOrders]);
 
   // ── Open detail modal ──────────────────────────────
   const openDetail = useCallback(async (order) => {

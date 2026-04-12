@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fetchMyOrders, fetchMyOrder } from '@/lib/orderTrackingApi';
@@ -85,6 +85,18 @@ export default function ShopOrdersPage() {
   }, [token]);
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
+
+  // Auto-refresh every 30s — paused when modal is open
+  const pollRef = useRef(null);
+  useEffect(() => {
+    if (!token) return;
+    pollRef.current = setInterval(() => {
+      if (!selectedOrder) {
+        loadOrders();
+      }
+    }, 30000);
+    return () => clearInterval(pollRef.current);
+  }, [token, selectedOrder, loadOrders]);
 
   async function openDetail(order) {
     if (!token) return;

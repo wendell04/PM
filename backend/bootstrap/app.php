@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'isAdmin'    => \App\Http\Middleware\IsAdminMiddleware::class,
         ]);
+        $middleware->redirectGuestsTo(fn() => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Handle unauthenticated requests — return 401 JSON

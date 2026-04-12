@@ -3889,12 +3889,23 @@ function BadOrdersTab({ badOrders, onRefresh }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// MAIN PAGE - BAD ORDER RETURN ONLY
+// MAIN PAGE — RTV + Bad Orders
 // ══════════════════════════════════════════════════════════════════════════════
-export default function ReturnsPage() {
-  const [badOrders, setBadOrders] = useState([]);
 
-  const refresh = useCallback(() => {
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+function getToken() {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem("auth_token") || localStorage.getItem("auth_token");
+}
+
+export default function ReturnsPage() {
+  const [activeTab, setActiveTab] = useState("rtv");
+  const [badOrders, setBadOrders] = useState([]);
+  const [rtvs, setRtvs] = useState([]);
+  const [rtvLoading, setRtvLoading] = useState(false);
+
+  const refreshBadOrders = useCallback(() => {
     try {
       const bo = JSON.parse(localStorage.getItem("pmp_bad_orders") || "[]");
       setBadOrders(bo);
@@ -3903,44 +3914,116 @@ export default function ReturnsPage() {
     }
   }, []);
 
+  const refreshRtvs = useCallback(async () => {
+    setRtvLoading(true);
+    try {
+      const token = getToken();
+      if (!token) {
+        setRtvs([]);
+        return;
+      }
+      const res = await fetch(`${API_URL}/api/admin/returns`, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "ngrok-skip-browser-warning": "true",
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRtvs(data.data ?? []);
+      } else {
+        setRtvs([]);
+      }
+    } catch {
+      setRtvs([]);
+    } finally {
+      setRtvLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    refresh();
-    // Listen for storage changes
+    refreshBadOrders();
+    refreshRtvs();
     const handleStorageChange = (e) => {
       if (e.key === "pmp_bad_orders") {
         try {
-          const bo = JSON.parse(e.newValue || "[]");
-          setBadOrders(bo);
+          setBadOrders(JSON.parse(e.newValue || "[]"));
         } catch {
           setBadOrders([]);
         }
       }
     };
     window.addEventListener("storage", handleStorageChange);
-    // Poll for same-tab changes
-    const interval = setInterval(refresh, 2000);
+    const interval = setInterval(refreshBadOrders, 2000);
     return () => {
       window.removeEventListener("storage", handleStorageChange);
       clearInterval(interval);
     };
-  }, [refresh]);
+  }, [refreshBadOrders, refreshRtvs]);
+
+  const tabs = [
+    { key: "rtv", label: "Returns to Vendor (RTV)" },
+    { key: "badorders", label: "Bad Orders" },
+  ];
 
   return (
     <div className="page-content-wrapper">
-      {/* Page Header */}
       <div className="page-header">
         <div className="page-header-content">
           <div>
-            <h1 className="page-title">Bad Order Return</h1>
+            <h1 className="page-title">Returns</h1>
             <p className="page-subtitle">
-              Track and manage bad orders from stock-in. Items counted as loss until resolved (replaced or credited by supplier).
+              Manage returns to vendor and bad orders from stock-in.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Bad Orders Tab Content */}
-      <BadOrdersTab badOrders={badOrders} onRefresh={refresh} />
+      <div
+        style={{
+          display: "flex",
+          gap: "0.5rem",
+          marginBottom: "1.5rem",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          paddingBottom: "0",
+        }}
+      >
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: "0.625rem 1.25rem",
+              background: "transparent",
+              border: "none",
+              borderBottom:
+                activeTab === tab.key ? "2px solid #D4A843" : "2px solid transparent",
+              color: activeTab === tab.key ? "#D4A843" : "#9ca3af",
+              fontWeight: activeTab === tab.key ? 700 : 500,
+              fontSize: "0.85rem",
+              cursor: "pointer",
+              transition: "all 0.15s",
+              marginBottom: "-1px",
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "rtv" &&
+        (rtvLoading ? (
+          <div style={{ padding: "3rem", textAlign: "center", color: "#9ca3af" }}>
+            Loading...
+          </div>
+        ) : (
+          <RTVListTab rtvs={rtvs} onRefresh={refreshRtvs} />
+        ))}
+      {activeTab === "badorders" && (
+        <BadOrdersTab badOrders={badOrders} onRefresh={refreshBadOrders} />
+      )}
     </div>
   );
 }

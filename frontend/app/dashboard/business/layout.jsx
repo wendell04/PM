@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
@@ -79,15 +79,12 @@ export default function BusinessDashboardLayout({ children }) {
   const [avatarError, setAvatarError] = useState('');
   const [avatarSuccess, setAvatarSuccess] = useState(false);
 
-  // 2FA guard — redirect if OTP challenge not yet completed
-  useEffect(() => {
-    if (sessionStorage.getItem('pending_2fa') === 'true') {
-      router.replace('/dashboard/2fa-challenge');
-    }
-  }, [router]);
-
   useEffect(() => {
     if (currentUser) {
+      if (currentUser.role !== 'admin' && currentUser.role !== 'business' && currentUser.role !== 'owner') {
+        router.replace('/shop');
+        return;
+      }
       setProfileForm({
         firstName: currentUser.firstName || '',
         lastName: currentUser.lastName || '',
@@ -413,8 +410,7 @@ export default function BusinessDashboardLayout({ children }) {
         { name: 'Storefront Banners', href: '/dashboard/business/banners' },
       ],
     },
-    { name: 'Orders', href: '/dashboard/business/orders-new', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-    { name: 'Orders (Legacy)', href: '/dashboard/business/orders', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+    { name: 'Orders', href: '/dashboard/business/orders', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
     {
       name: 'Inventory',
       icon: 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4',
