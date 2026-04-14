@@ -11,7 +11,33 @@ const MATERIALS_KEY = "pmp_materials";
 const VENDORS_KEY = "pmp_vendors";
 const BOM_KEY = "pmp_bom";
 const CATEGORIES_KEY = "pmp_material_categories";
+const UNITS_KEY = "pmp_uoms"; // Unit of Measurements - TODO: Backend Conversion
 const ALLOWED_CATEGORIES = ["Raw Material", "Packaging"];
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ⚠️  TODO: BACKEND CONVERSION REQUIRED
+// ══════════════════════════════════════════════════════════════════════════════
+// Current: LocalStorage implementation for demo/capstone
+// Required: API endpoints with Laravel backend
+//
+// Migration Steps:
+// 1. Create database migration: unit_of_measurements table
+//    - id, code, name, description, sort_order, is_active, created_at, updated_at
+// 2. Create Laravel Model: UnitOfMeasurement
+// 3. Create API Controller with CRUD methods
+// 4. Add API routes in routes/api.php
+// 5. Replace localStorage functions with fetch() calls
+// 6. Add proper validation & error handling
+// 7. Add authentication middleware
+//
+// API Endpoints Needed:
+// - GET    /api/unit-of-measurements         (list all)
+// - POST   /api/unit-of-measurements         (create)
+// - PUT    /api/unit-of-measurements/{id}    (update)
+// - DELETE /api/unit-of-measurements/{id}    (soft delete/deactivate)
+//
+// For now, LocalStorage works for demo/capstone presentation ✅
+// ══════════════════════════════════════════════════════════════════════════════
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getMaterials() {
@@ -49,6 +75,78 @@ function getBOMs() {
 function saveBOMs(data) {
   if (typeof window === "undefined") return;
   localStorage.setItem(BOM_KEY, JSON.stringify(data));
+}
+
+// ── Unit of Measurement Helpers ──────────────────────────────────────────────
+// TODO: Backend Conversion - Replace with API calls
+function getUnits() {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = localStorage.getItem(UNITS_KEY);
+    if (stored) return JSON.parse(stored);
+
+    // Default units if nothing stored yet
+    return [
+      { id: 1, code: "pcs", name: "Pieces", description: "" },
+      { id: 2, code: "bottle", name: "Bottle", description: "" },
+      { id: 3, code: "liter", name: "Liter", description: "" },
+      { id: 4, code: "kg", name: "Kilogram", description: "" },
+      { id: 5, code: "meter", name: "Meter", description: "" },
+      { id: 6, code: "roll", name: "Roll", description: "" },
+      { id: 7, code: "box", name: "Box", description: "" },
+      { id: 8, code: "pack", name: "Pack", description: "" },
+      { id: 9, code: "set", name: "Set", description: "" },
+    ];
+  } catch {
+    return [];
+  }
+}
+
+function saveUnits(data) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(UNITS_KEY, JSON.stringify(data));
+}
+
+function addUnit(unit) {
+  const units = getUnits();
+  const newUnit = {
+    ...unit,
+    id: Date.now(),
+  };
+  units.push(newUnit);
+  saveUnits(units);
+  return newUnit;
+}
+
+function updateUnit(id, updates) {
+  const units = getUnits();
+  const index = units.findIndex((u) => u.id === id);
+  if (index === -1) return null;
+
+  units[index] = { ...units[index], ...updates };
+  saveUnits(units);
+  return units[index];
+}
+
+function hardDeleteUnit(id) {
+  const units = getUnits();
+  const updatedUnits = units.filter((u) => u.id !== id);
+  saveUnits(updatedUnits);
+  return updatedUnits;
+}
+
+function checkUnitUsage(unitCode, vendors, materials) {
+  const vendorUsage = vendors.filter((v) =>
+    (v.itemsSupplied || []).some((item) => item.uom === unitCode)
+  ).length;
+
+  const materialUsage = materials.filter((m) => m.uom === unitCode).length;
+
+  return {
+    vendorUsage,
+    materialUsage,
+    totalUsage: vendorUsage + materialUsage,
+  };
 }
 // Always return only the two allowed categories — ignore localStorage
 function getCategories() {
@@ -6715,15 +6813,19 @@ function BOMTab() {
       return sum + batchCost;
     }, 0);
 
+    // Ensure variantGroup is set from productGroupName (or productName) for proper grouping
+    const group = bom.productGroupName?.trim() || bom.productName?.trim() || "";
+
     let updated;
     if (editBOM) {
-      updated = boms.map((b) => (b.id === bom.id ? { ...bom, totalCost } : b));
+      updated = boms.map((b) => (b.id === bom.id ? { ...bom, totalCost, variantGroup: group } : b));
     } else {
       updated = [
         ...boms,
         {
           ...bom,
           totalCost,
+          variantGroup: group, // Explicitly set variantGroup for grouping logic
           id: `bom-${Date.now()}`,
           createdAt: new Date().toISOString(),
         },
@@ -6926,16 +7028,538 @@ function BOMTab() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// UNITS OF MEASUREMENT TAB
+// ══════════════════════════════════════════════════════════════════════════════
+function UnitMasterTab({ units: initialUnits, onUnitsChange, vendors, materials }) {
+  const [units, setUnits] = useState(initialUnits || []);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingUnit, setEditingUnit] = useState(null);
+  const [search, setSearch] = useState("");
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, unit: null });
+  const [infoModal, setInfoModal] = useState({ isOpen: false, title: "", message: "" });
+
+  useEffect(() => {
+    setUnits(initialUnits || []);
+  }, [initialUnits]);
+
+  const handleSaveUnit = (unitData) => {
+    if (editingUnit) {
+      const updated = updateUnit(editingUnit.id, unitData);
+      const newUnits = units.map((u) => (u.id === editingUnit.id ? updated : u));
+      setUnits(newUnits);
+      onUnitsChange(newUnits);
+    } else {
+      const newUnit = addUnit(unitData);
+      const newUnits = [...units, newUnit];
+      setUnits(newUnits);
+      onUnitsChange(newUnits);
+    }
+    setShowAddModal(false);
+    setEditingUnit(null);
+  };
+
+  const handleEditUnit = (unit) => {
+    setEditingUnit(unit);
+    setShowAddModal(true);
+  };
+
+  const handleDeleteClick = (unit) => {
+    setDeleteModal({ isOpen: true, unit });
+  };
+
+  const handleConfirmDelete = () => {
+    const unit = deleteModal.unit;
+    if (!unit) return;
+
+    const usage = checkUnitUsage(unit.code, vendors, materials);
+
+    if (usage.totalUsage === 0) {
+      const newUnits = hardDeleteUnit(unit.id);
+      setUnits(newUnits);
+      onUnitsChange(newUnits);
+      setDeleteModal({ isOpen: false, unit: null });
+    } else {
+      setInfoModal({
+        isOpen: true,
+        title: "Cannot Delete Unit",
+        message: `The unit "${unit.name}" (${unit.code}) is currently used by ${usage.totalUsage} item(s). Please update those items first before deleting this unit.`,
+      });
+      setDeleteModal({ isOpen: false, unit: null });
+    }
+  };
+
+  const filteredUnits = useMemo(() => {
+    let result = [...units];
+    if (search) {
+      const searchLower = search.toLowerCase();
+      result = result.filter(
+        (u) =>
+          u.name.toLowerCase().includes(searchLower) ||
+          u.code.toLowerCase().includes(searchLower) ||
+          (u.description && u.description.toLowerCase().includes(searchLower))
+      );
+    }
+    return result;
+  }, [units, search]);
+
+  return (
+    <div>
+      <div className="inventory-toolbar" style={{ marginBottom: "1rem" }}>
+        <div className="search-wrapper" style={{ maxWidth: "300px" }}>
+          <span className="search-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+          </span>
+          <input
+            className="search-input"
+            placeholder="Search units..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button className="search-clear" onClick={() => setSearch("")}>
+              x
+            </button>
+          )}
+        </div>
+        <button
+          className="btn-primary"
+          onClick={() => {
+            setEditingUnit(null);
+            setShowAddModal(true);
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Add Unit
+        </button>
+      </div>
+
+      <div className="table-wrapper">
+        <table className="inventory-table">
+          <thead>
+            <tr>
+              <th style={{ width: "60px" }}>#</th>
+              <th>Code</th>
+              <th>Name</th>
+              <th>Description</th>
+              <th style={{ width: "120px", textAlign: "right" }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredUnits.length === 0 ? (
+              <tr>
+                <td colSpan="5" style={{ textAlign: "center", padding: "3rem", color: "var(--gray)" }}>
+                  No units found
+                </td>
+              </tr>
+            ) : (
+              filteredUnits.map((unit, index) => (
+                <tr key={unit.id}>
+                  <td style={{ color: "var(--gray)", fontSize: "0.85rem" }}>{index + 1}</td>
+                  <td>
+                    <code style={{
+                      background: "rgba(255,255,255,0.06)",
+                      padding: "0.25rem 0.5rem",
+                      borderRadius: "4px",
+                      fontSize: "0.85rem",
+                    }}>
+                      {unit.code}
+                    </code>
+                  </td>
+                  <td style={{ fontWeight: 600 }}>{unit.name}</td>
+                  <td style={{ color: "var(--gray)", fontSize: "0.85rem" }}>
+                    {unit.description || "-"}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                      <button
+                        onClick={() => handleEditUnit(unit)}
+                        title="Edit unit"
+                        style={{
+                          padding: "0.375rem",
+                          background: "rgba(255,255,255,0.06)",
+                          border: "1px solid rgba(255,255,255,0.1)",
+                          borderRadius: "6px",
+                          color: "var(--gray)",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteClick(unit)}
+                        title="Delete unit"
+                        style={{
+                          padding: "0.375rem",
+                          background: "rgba(239,68,68,0.1)",
+                          border: "1px solid rgba(239,68,68,0.2)",
+                          borderRadius: "6px",
+                          color: "#EF4444",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {showAddModal && (
+        <UnitFormModal
+          unit={editingUnit}
+          onClose={() => {
+            setShowAddModal(false);
+            setEditingUnit(null);
+          }}
+          onSave={handleSaveUnit}
+        />
+      )}
+
+      {deleteModal.isOpen && deleteModal.unit && (
+        <DeleteConfirmModal
+          unit={deleteModal.unit}
+          onClose={() => setDeleteModal({ isOpen: false, unit: null })}
+          onConfirm={handleConfirmDelete}
+        />
+      )}
+
+      <InfoModal
+        isOpen={infoModal.isOpen}
+        onClose={() => setInfoModal({ isOpen: false, title: "", message: "" })}
+        title={infoModal.title}
+        message={infoModal.message}
+      />
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// UNIT FORM MODAL
+// ══════════════════════════════════════════════════════════════════════════════
+function UnitFormModal({ unit, onClose, onSave }) {
+  const [formData, setFormData] = useState({
+    code: unit?.code || "",
+    name: unit?.name || "",
+    description: unit?.description || "",
+  });
+  const [errors, setErrors] = useState({});
+
+  const validate = () => {
+    const newErrors = {};
+    if (!formData.code.trim()) {
+      newErrors.code = "Unit code is required";
+    } else if (!/^[a-zA-Z0-9_-]+$/.test(formData.code)) {
+      newErrors.code = "Code can only contain letters, numbers, hyphens, and underscores";
+    } else if (formData.code.length > 20) {
+      newErrors.code = "Code must be 20 characters or less";
+    }
+    if (!formData.name.trim()) {
+      newErrors.name = "Unit name is required";
+    } else if (formData.name.length > 100) {
+      newErrors.name = "Name must be 100 characters or less";
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (validate()) {
+      onSave({
+        code: formData.code.toLowerCase().trim(),
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+      });
+    }
+  };
+
+  const handleChange = (field, value) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    if (errors[field]) {
+      setErrors((prev) => ({ ...prev, [field]: undefined }));
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: "rgba(0,0,0,0.7)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+    }}>
+      <div style={{
+        background: "var(--dark)",
+        border: "1px solid var(--border)",
+        borderRadius: "12px",
+        width: "100%",
+        maxWidth: "500px",
+        maxHeight: "90vh",
+        overflow: "auto",
+      }}>
+        <div style={{
+          padding: "1.5rem",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}>
+          <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 700 }}>
+            {unit ? "Edit Unit" : "Add Unit of Measurement"}
+          </h2>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--gray)",
+              cursor: "pointer",
+              padding: "0.25rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ padding: "1.5rem" }}>
+          <div style={{ marginBottom: "1.25rem" }}>
+            <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem", fontWeight: 600 }}>
+              Unit Code <span style={{ color: "#EF4444" }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={formData.code}
+              onChange={(e) => handleChange("code", e.target.value)}
+              placeholder="e.g., dozen, bundle, yard"
+              style={{
+                width: "100%",
+                padding: "0.625rem 0.75rem",
+                background: "rgba(255,255,255,0.06)",
+                border: errors.code ? "1px solid #EF4444" : "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "8px",
+                color: "#E5E2E1",
+                fontSize: "0.875rem",
+                outline: "none",
+              }}
+            />
+            {errors.code && (
+              <p style={{ margin: "0.375rem 0 0", fontSize: "0.75rem", color: "#EF4444" }}>{errors.code}</p>
+            )}
+            <p style={{ margin: "0.375rem 0 0", fontSize: "0.75rem", color: "var(--gray)" }}>
+              Short code used in database (e.g., pcs, kg, doz)
+            </p>
+          </div>
+
+          <div style={{ marginBottom: "1.25rem" }}>
+            <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem", fontWeight: 600 }}>
+              Unit Name <span style={{ color: "#EF4444" }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => handleChange("name", e.target.value)}
+              placeholder="e.g., Dozen, Bundle of 50, Yard"
+              style={{
+                width: "100%",
+                padding: "0.625rem 0.75rem",
+                background: "rgba(255,255,255,0.06)",
+                border: errors.name ? "1px solid #EF4444" : "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "8px",
+                color: "#E5E2E1",
+                fontSize: "0.875rem",
+                outline: "none",
+              }}
+            />
+            {errors.name && (
+              <p style={{ margin: "0.375rem 0 0", fontSize: "0.75rem", color: "#EF4444" }}>{errors.name}</p>
+            )}
+          </div>
+
+          <div style={{ marginBottom: "1.5rem" }}>
+            <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem", fontWeight: 600 }}>
+              Description
+            </label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => handleChange("description", e.target.value)}
+              placeholder="e.g., 12 pieces per unit"
+              rows={3}
+              style={{
+                width: "100%",
+                padding: "0.625rem 0.75rem",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "8px",
+                color: "#E5E2E1",
+                fontSize: "0.875rem",
+                outline: "none",
+                resize: "vertical",
+              }}
+            />
+          </div>
+
+          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: "0.625rem 1.5rem",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "8px",
+                color: "#E5E2E1",
+                fontSize: "0.875rem",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              style={{
+                padding: "0.625rem 1.5rem",
+                background: "var(--gold)",
+                border: "none",
+                borderRadius: "8px",
+                color: "#000",
+                fontSize: "0.875rem",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {unit ? "Update Unit" : "Save Unit"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DELETE CONFIRMATION MODAL
+// ══════════════════════════════════════════════════════════════════════════════
+function DeleteConfirmModal({ unit, onClose, onConfirm }) {
+  return (
+    <div style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: "rgba(0,0,0,0.7)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+    }}>
+      <div style={{
+        background: "var(--dark)",
+        border: "1px solid var(--border)",
+        borderRadius: "12px",
+        width: "100%",
+        maxWidth: "400px",
+      }}>
+        <div style={{
+          padding: "1.5rem",
+          borderBottom: "1px solid var(--border)",
+        }}>
+          <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 700 }}>
+            Confirm Delete
+          </h2>
+        </div>
+        <div style={{ padding: "1.5rem" }}>
+          <p style={{ margin: 0, color: "#E5E2E1", lineHeight: 1.6 }}>
+            Are you sure you want to delete the unit <strong>"{unit.name}" ({unit.code})</strong>? This action cannot be undone.
+          </p>
+        </div>
+        <div style={{
+          padding: "1rem 1.5rem",
+          borderTop: "1px solid var(--border)",
+          display: "flex",
+          gap: "0.75rem",
+          justifyContent: "flex-end",
+        }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "0.625rem 1.5rem",
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: "8px",
+              color: "#E5E2E1",
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              padding: "0.625rem 1.5rem",
+              background: "#EF4444",
+              border: "none",
+              borderRadius: "8px",
+              color: "#fff",
+              fontSize: "0.875rem",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function MasterDataPage() {
   const [activeTab, setActiveTab] = useState("materials");
   const [vendors, setVendors] = useState([]);
   const [materials, setMaterials] = useState([]);
+  const [units, setUnits] = useState([]);
 
   useEffect(() => {
     setVendors(getVendors());
     setMaterials(getMaterials());
+    setUnits(getUnits());
   }, []);
 
   // Collect all unique item names from all vendors' itemsSupplied
@@ -7023,6 +7647,9 @@ export default function MasterDataPage() {
           <button style={tabStyle("bom")} onClick={() => setActiveTab("bom")}>
             Bill of Materials
           </button>
+          <button style={tabStyle("units")} onClick={() => setActiveTab("units")}>
+            Units
+          </button>
         </div>
       </div>
 
@@ -7038,6 +7665,14 @@ export default function MasterDataPage() {
         <VendorMasterTab materials={materials} onVendorsChange={setVendors} />
       )}
       {activeTab === "bom" && <BOMTab />}
+      {activeTab === "units" && (
+        <UnitMasterTab
+          units={units}
+          onUnitsChange={setUnits}
+          vendors={vendors}
+          materials={materials}
+        />
+      )}
     </div>
   );
 }

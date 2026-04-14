@@ -3165,6 +3165,7 @@ function BadOrdersTab({ badOrders, onRefresh }) {
   const [updateModal, setUpdateModal] = useState({ open: false, bo: null });
   const [newStatus, setNewStatus] = useState("replaced");
   const [replacementDate, setReplacementDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [replacementQty, setReplacementQty] = useState(0);
   const [reference, setReference] = useState("");
 
   const damageTypeLabels = {
@@ -3422,22 +3423,6 @@ function BadOrdersTab({ badOrders, onRefresh }) {
           placeholder="All Status"
           style={{ minWidth: "130px" }}
         />
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={onRefresh}
-          style={{
-            background: "linear-gradient(135deg,#FFDF9F 0%,#D4A843 100%)",
-            color: "#000",
-            fontWeight: 700,
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M23 4v6h-6M1 20v-6h6" />
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-          </svg>
-          Refresh
-        </button>
       </div>
 
       {/* Table */}
@@ -3468,6 +3453,7 @@ function BadOrdersTab({ badOrders, onRefresh }) {
               <th style={{ ...BAD_ORDER_TH_STYLE, textAlign: "center" }}>Total BO Qty</th>
               <th style={{ ...BAD_ORDER_TH_STYLE, textAlign: "right" }}>Total Value</th>
               <th style={{ ...BAD_ORDER_TH_STYLE, textAlign: "center" }}>Status</th>
+              <th style={{ ...BAD_ORDER_TH_STYLE, textAlign: "center", width: "100px" }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -3561,6 +3547,7 @@ function BadOrdersTab({ badOrders, onRefresh }) {
                           {groupStatus}
                         </span>
                       </td>
+                      <td style={{ padding: "0.875rem 1rem" }} />
                     </tr>
                     {/* Child Rows */}
                     {isExpanded &&
@@ -3631,6 +3618,7 @@ function BadOrdersTab({ badOrders, onRefresh }) {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setUpdateModal({ open: true, bo });
+                                  setReplacementQty(bo.qty || 0);
                                 }}
                                 style={{
                                   padding: "0.3rem 0.6rem",
@@ -3770,31 +3758,60 @@ function BadOrdersTab({ badOrders, onRefresh }) {
 
               {/* Replacement Date (only for replaced) */}
               {newStatus === "replaced" && (
-                <div>
-                  <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#E5E2E1", marginBottom: "0.5rem" }}>
-                    Replacement Received Date <span style={{ color: "#ef4444" }}>*</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={replacementDate}
-                    onChange={(e) => setReplacementDate(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "0.75rem 1rem",
-                      background: "rgba(255,255,255,0.06)",
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      borderRadius: "10px",
-                      color: "#E5E2E1",
-                      fontSize: "0.85rem",
-                      outline: "none",
-                      colorScheme: "dark",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                  <div style={{ fontSize: "0.65rem", color: "var(--gray)", marginTop: "0.35rem" }}>
-                    This will add {updateModal.bo.qty} unit{updateModal.bo.qty !== 1 ? "s" : ""} back to your Goods Stock.
+                <>
+                  {/* Replacement Quantity Input */}
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#E5E2E1", marginBottom: "0.5rem" }}>
+                      Replacement Quantity Received <span style={{ color: "#ef4444" }}>*</span>
+                    </label>
+                    <input
+                      type="number"
+                      value={replacementQty}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 0;
+                        setReplacementQty(Math.max(0, val));
+                      }}
+                      min="0"
+                      style={{
+                        width: "100%",
+                        padding: "0.75rem 1rem",
+                        background: "rgba(255,255,255,0.06)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: "10px",
+                        color: "#E5E2E1",
+                        fontSize: "0.85rem",
+                        outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    <div style={{ fontSize: "0.65rem", color: "var(--gray)", marginTop: "0.35rem" }}>
+                      Enter the actual number of units received. This amount will be added back to your Goods Stock.
+                    </div>
                   </div>
-                </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#E5E2E1", marginBottom: "0.5rem" }}>
+                      Replacement Received Date <span style={{ color: "#ef4444" }}>*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={replacementDate}
+                      onChange={(e) => setReplacementDate(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "0.75rem 1rem",
+                        background: "rgba(255,255,255,0.06)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: "10px",
+                        color: "#E5E2E1",
+                        fontSize: "0.85rem",
+                        outline: "none",
+                        colorScheme: "dark",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                </>
               )}
 
               {/* Reference / Notes */}

@@ -94,6 +94,7 @@ export default function BOMFormModal({
 }) {
   const [form, setForm] = useState({
     productName: "",
+    productGroupName: "",
     components: [],
   });
   const [errors, setErrors] = useState({});
@@ -106,6 +107,7 @@ export default function BOMFormModal({
     if (bom)
       setForm({
         productName: bom.productName || "",
+        productGroupName: bom.productGroupName || "",
         components: bom.components || [],
       });
   }, [bom]);
@@ -228,7 +230,7 @@ export default function BOMFormModal({
 
   // Builds BOM array from a given variant list — used by both buttons
   const buildBOMs = (variants) => {
-    const productName = form.productName.trim();
+    const productGroupName = form.productGroupName.trim();
     const sharedComponents = form.components.filter((c) => c.materialId);
     return variants.map((v, i) => {
       // Extract just the variant-specific part (e.g., "Magic Mugs 11oz" from "Mugs - Magic Mugs 11oz")
@@ -238,9 +240,10 @@ export default function BOMFormModal({
 
       return {
         id: `bom-${Date.now()}-${i}`,
-        productName: `${productName} - ${variantNameOnly}`,
+        productName: `${productGroupName} - ${variantNameOnly}`,
+        productGroupName: productGroupName,
         sku: "",
-        variantGroup: productName,
+        variantGroup: productGroupName,
         variantId: v.id,
         components: [
           ...sharedComponents,
@@ -267,7 +270,7 @@ export default function BOMFormModal({
   const handleSubmit = (e) => {
     e.preventDefault();
     const errs = {};
-    if (!form.productName.trim()) errs.productName = "Product name is required";
+    if (!form.productGroupName.trim()) errs.productGroupName = "Product group name is required";
     if (form.components.length === 0)
       errs.components = "Add at least one component";
     if (form.components.some((c) => !c.materialId))
@@ -283,18 +286,26 @@ export default function BOMFormModal({
   const selectedMaterialIds = form.components
     .filter((c) => c.materialId)
     .map((c) => c.materialId);
+  
+  // Get variant IDs to exclude from shared materials when variant picker is open
+  const variantIdsToExclude = useMemo(() => {
+    if (!showVariantPicker || !selectedParentId) return [];
+    return currentVariants.map((v) => v.id);
+  }, [showVariantPicker, selectedParentId, currentVariants]);
+
   const availableMaterials = useMemo(
     () =>
       materials
         .filter((m) => (!m.parentId && !m.hasVariants) || m.parentId)
         .filter((m) => !selectedMaterialIds.includes(m.id))
+        .filter((m) => !variantIdsToExclude.includes(m.id)) // Exclude variants from shared materials
         .map((m) => {
           const p = m.parentId
             ? materials.find((x) => x.id === m.parentId)
             : null;
           return { value: m.id, label: `${m.name}${p ? ` (${p.name})` : ""}` };
         }),
-    [materials, selectedMaterialIds],
+    [materials, selectedMaterialIds, variantIdsToExclude],
   );
 
   return (
@@ -381,34 +392,42 @@ export default function BOMFormModal({
           }}
         >
           <div style={{ padding: "0 2rem", overflowY: "auto", flex: 1 }}>
-            {/* Product Identity */}
+            {/* Product Group */}
             <div style={{ marginBottom: "2rem" }}>
-              <div>
-                <label style={labelStyle}>Product Name</label>
-                <input
-                  type="text"
-                  value={form.productName}
-                  onChange={(e) => {
-                    setForm((p) => ({
-                      ...p,
-                      productName: e.target.value.slice(0, 100),
-                    }));
-                    if (errors.productName)
-                      setErrors((er) => ({ ...er, productName: "" }));
-                  }}
-                  placeholder="e.g. Signature Ceramic Mug"
-                  maxLength={100}
-                  style={{
-                    ...inputStyle,
-                    border: errors.productName
-                      ? "1px solid rgba(239,68,68,0.5)"
-                      : "none",
-                  }}
-                />
-                {errors.productName && (
-                  <span style={errorStyle}>{errors.productName}</span>
-                )}
-              </div>
+              <label style={labelStyle}>Product Group Name</label>
+              <input
+                type="text"
+                value={form.productGroupName}
+                onChange={(e) => {
+                  setForm((p) => ({
+                    ...p,
+                    productGroupName: e.target.value.slice(0, 100),
+                  }));
+                  if (errors.productGroupName)
+                    setErrors((er) => ({ ...er, productGroupName: "" }));
+                }}
+                placeholder="e.g. Custom Mugs, T-Shirts, Bags"
+                maxLength={100}
+                style={{
+                  ...inputStyle,
+                  border: errors.productGroupName
+                    ? "1px solid rgba(239,68,68,0.5)"
+                    : "none",
+                }}
+              />
+              <span
+                style={{
+                  fontSize: "0.6rem",
+                  color: "rgba(229,226,225,0.35)",
+                  marginTop: "0.25rem",
+                  display: "block",
+                }}
+              >
+                Group related BOMs together (e.g., all mug variants)
+              </span>
+              {errors.productGroupName && (
+                <span style={errorStyle}>{errors.productGroupName}</span>
+              )}
             </div>
 
             {/* Shared cost card */}
@@ -1123,8 +1142,8 @@ export default function BOMFormModal({
                 } else {
                   // Normal single BOM save
                   const errs = {};
-                  if (!form.productName.trim())
-                    errs.productName = "Product name is required";
+                  if (!form.productGroupName.trim())
+                    errs.productGroupName = "Product group name is required";
                   if (form.components.length === 0)
                     errs.components = "Add at least one component";
                   if (form.components.some((c) => !c.materialId))

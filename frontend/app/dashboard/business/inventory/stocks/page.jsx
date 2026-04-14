@@ -46,6 +46,18 @@ function genDocNumber(prefix, list) {
 
 // ── Issue Type Config ──────────────────────────────────────────────────────────
 const ISSUE_TYPES = {
+  sale: {
+    label: "Sale",
+    color: "#22c55e",
+    bg: "rgba(34,197,94,0.1)",
+    border: "rgba(34,197,94,0.2)",
+  },
+  manual_sale: {
+    label: "Sale",
+    color: "#22c55e",
+    bg: "rgba(34,197,94,0.1)",
+    border: "rgba(34,197,94,0.2)",
+  },
   damage: {
     label: "Damage",
     color: "#ef4444",
@@ -458,11 +470,25 @@ function StockOverviewTab({ materials, onIssueStock }) {
   // ── FIX 3: Summary cards now use getStock(m) instead of m.stockQty ──────────
   const totalStock = materials
     .filter((m) => !m.parentId && m.procurementType !== "on-demand")
-    .reduce((sum, m) => sum + getStock(m), 0);
+    .reduce((sum, m) => {
+      // If it's a parent with variants, sum the children's stock
+      if (m.hasVariants) {
+        const children = materials.filter((c) => c.parentId === m.id);
+        return sum + children.reduce((cSum, c) => cSum + getStock(c), 0);
+      }
+      return sum + getStock(m);
+    }, 0);
 
   const outOfStock = materials
-    .filter((m) => !m.parentId && m.procurementType !== "on-demand")
-    .filter((m) => getStock(m) === 0).length;
+    .filter((m) => m.procurementType !== "on-demand")
+    .filter((m) => {
+      // Count standalone items with 0 stock
+      if (!m.parentId && !m.hasVariants) return getStock(m) === 0;
+      // Count variant children with 0 stock
+      if (m.parentId) return getStock(m) === 0;
+      // Don't count parent headers directly (we count their children)
+      return false;
+    }).length;
 
   const lowStock = materials
     .filter((m) => !m.parentId && m.procurementType !== "on-demand")

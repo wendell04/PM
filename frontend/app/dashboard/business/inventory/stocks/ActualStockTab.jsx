@@ -155,10 +155,13 @@ export default function ActualStockTab({ materials }) {
     setDateTo(to);
   }, [dateRange]);
 
-  // Create bad orders map by material ID
+  // Create bad orders map by material ID (ONLY pending bad orders)
   const badOrdersMap = useMemo(() => {
     const map = {};
     badOrders.forEach((bo) => {
+      // Only count pending bad orders - replaced/credited are resolved
+      if (bo.status !== "pending") return;
+      
       if (!map[bo.materialId]) {
         map[bo.materialId] = {
           total: 0,

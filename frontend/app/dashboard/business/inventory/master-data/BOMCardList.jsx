@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 // Helper function to calculate FIFO cost from active batches
 // FIFO = use oldest batches first (what you'll actually consume)
@@ -223,6 +223,8 @@ export default function BOMCardList({
   onDelete,
   onDuplicate,
 }) {
+  const [expandedGroups, setExpandedGroups] = useState({});
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return boms.filter(
@@ -234,16 +236,52 @@ export default function BOMCardList({
     );
   }, [boms, search, materials]);
 
+  // Group BOMs by variantGroup
+  const groupedBOMs = useMemo(() => {
+    const groups = {};
+
+    filtered.forEach((bom) => {
+      const group = (bom.variantGroup || "").trim();
+      // If no variantGroup, use productName as the group name so it still appears as a collapsible header
+      const groupName = group || bom.productName;
+      
+      if (!groups[groupName]) {
+        groups[groupName] = [];
+      }
+      groups[groupName].push(bom);
+    });
+
+    return groups;
+  }, [filtered]);
+
+  const toggleGroup = (groupName) => {
+    setExpandedGroups((prev) => ({
+      ...prev,
+      [groupName]: !prev[groupName],
+    }));
+  };
+
+  const expandAll = () => {
+    const allExpanded = {};
+    Object.keys(groupedBOMs).forEach((group) => {
+      allExpanded[group] = true;
+    });
+    setExpandedGroups(allExpanded);
+  };
+
+  const collapseAll = () => {
+    setExpandedGroups({});
+  };
+
   const stats = useMemo(() => {
     const totalComponents = boms.reduce(
       (sum, b) => sum + (b.components || []).length,
       0,
     );
-    const groups = new Set(
-      boms.filter((b) => b.variantGroup).map((b) => b.variantGroup),
-    );
-    return { total: boms.length, totalComponents, groupCount: groups.size };
-  }, [boms]);
+    // Count groups based on the actual grouped structure
+    const groupCount = Object.keys(groupedBOMs).length;
+    return { total: boms.length, totalComponents, groupCount };
+  }, [boms, groupedBOMs]);
 
   return (
     <div>
@@ -383,16 +421,163 @@ export default function BOMCardList({
               : "No BOMs match your search."}
           </div>
         ) : (
-          filtered.map((b) => (
-            <BOMCard
-              key={b.id}
-              bom={b}
-              materials={materials}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              onDuplicate={onDuplicate}
-            />
-          ))
+          <>
+            {/* Expand/Collapse Controls */}
+            {Object.keys(groupedBOMs).length > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  justifyContent: "flex-end",
+                  marginBottom: "0.5rem",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={expandAll}
+                  style={{
+                    background: "none",
+                    border: "1px solid rgba(212,168,67,0.3)",
+                    borderRadius: "6px",
+                    padding: "0.35rem 0.75rem",
+                    color: "#D4A843",
+                    fontSize: "0.7rem",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Expand All
+                </button>
+                <button
+                  type="button"
+                  onClick={collapseAll}
+                  style={{
+                    background: "none",
+                    border: "1px solid rgba(212,168,67,0.3)",
+                    borderRadius: "6px",
+                    padding: "0.35rem 0.75rem",
+                    color: "#D4A843",
+                    fontSize: "0.7rem",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Collapse All
+                </button>
+              </div>
+            )}
+
+            {/* Grouped BOMs */}
+            {Object.entries(groupedBOMs).map(([groupName, groupBOMs]) => {
+              const isExpanded = expandedGroups[groupName] === true;
+              return (
+                <div key={groupName}>
+                  {/* Group Header */}
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(groupName)}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "0.875rem 1.25rem",
+                      background: isExpanded
+                        ? "rgba(212,168,67,0.08)"
+                        : "rgba(255,255,255,0.02)",
+                      border: `1px solid ${isExpanded ? "rgba(212,168,67,0.3)" : "rgba(255,255,255,0.06)"}`,
+                      borderRadius: "10px",
+                      marginBottom: isExpanded ? "0.5rem" : "0",
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                      }}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke={isExpanded ? "#D4A843" : "var(--gray)"}
+                        strokeWidth="2.5"
+                        style={{
+                          transform: isExpanded ? "rotate(90deg)" : "none",
+                          transition: "transform 0.2s",
+                        }}
+                      >
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
+                      <span
+                        style={{
+                          fontSize: "0.85rem",
+                          fontWeight: 700,
+                          color: "#E5E2E1",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                        }}
+                      >
+                        {groupName}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "0.7rem",
+                          fontWeight: 600,
+                          color: "rgba(212,168,67,0.6)",
+                          background: "rgba(212,168,67,0.1)",
+                          padding: "0.15rem 0.5rem",
+                          borderRadius: "99px",
+                        }}
+                      >
+                        {groupBOMs.length} variant{groupBOMs.length !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: "0.7rem",
+                        color: "var(--gray)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {isExpanded ? "Click to collapse" : "Click to expand"}
+                    </span>
+                  </button>
+
+                  {/* Group Content */}
+                  {isExpanded && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.75rem",
+                        paddingLeft: "1.5rem",
+                      }}
+                    >
+                      {groupBOMs.map((b) => (
+                        <BOMCard
+                          key={b.id}
+                          bom={b}
+                          materials={materials}
+                          onEdit={onEdit}
+                          onDelete={onDelete}
+                          onDuplicate={onDuplicate}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </>
         )}
       </div>
     </div>
