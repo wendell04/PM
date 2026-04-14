@@ -189,12 +189,12 @@ class SaleController extends Controller
                 $query->where('saleDate', '<=', $request->endDate);
             }
 
-            $totalSales = $query->count();
+            $totalSales   = $query->count();
             $totalRevenue = $query->sum('totalPrice');
-            $totalCost = $query->sum('cost');
-            $totalProfit = $totalRevenue - $totalCost;
+            $totalCost    = $query->sum('cost');
+            $totalProfit  = $totalRevenue - $totalCost;
 
-            // Group by source
+            // Group by source (re-query — $query is already consumed above)
             $manualSales = Sale::where('status', 'completed')
                 ->where('source', 'manual')
                 ->sum('totalPrice');
@@ -203,13 +203,43 @@ class SaleController extends Controller
                 ->where('source', 'online')
                 ->sum('totalPrice');
 
+            // Optional period grouping for charts
+            $groupBy  = $request->input('groupBy'); // daily | weekly | monthly
+            $grouped  = [];
+
+            if (in_array($groupBy, ['daily', 'weekly', 'monthly'])) {
+                $allSales = Sale::where('status', 'completed')
+                    ->when($request->filled('startDate'), fn($q) => $q->where('saleDate', '>=', $request->startDate))
+                    ->when($request->filled('endDate'),   fn($q) => $q->where('saleDate', '<=', $request->endDate))
+                    ->get(['saleDate', 'totalPrice', 'cost']);
+
+                $buckets = [];
+                foreach ($allSales as $sale) {
+                    $date = \Carbon\Carbon::parse($sale->saleDate);
+                    $key  = match ($groupBy) {
+                        'daily'   => $date->format('Y-m-d'),
+                        'weekly'  => $date->format('Y-W'),
+                        'monthly' => $date->format('Y-m'),
+                    };
+                    if (!isset($buckets[$key])) {
+                        $buckets[$key] = ['period' => $key, 'revenue' => 0, 'cost' => 0, 'profit' => 0];
+                    }
+                    $buckets[$key]['revenue'] += (float) ($sale->totalPrice ?? 0);
+                    $buckets[$key]['cost']    += (float) ($sale->cost       ?? 0);
+                    $buckets[$key]['profit']  += (float) ($sale->totalPrice ?? 0) - (float) ($sale->cost ?? 0);
+                }
+                ksort($buckets);
+                $grouped = array_values($buckets);
+            }
+
             return $this->successResponse('Sales summary fetched successfully.', [
-                'totalSales' => $totalSales,
+                'totalSales'   => $totalSales,
                 'totalRevenue' => $totalRevenue,
-                'totalCost' => $totalCost,
-                'totalProfit' => $totalProfit,
-                'manualSales' => $manualSales,
-                'onlineSales' => $onlineSales,
+                'totalCost'    => $totalCost,
+                'totalProfit'  => $totalProfit,
+                'manualSales'  => $manualSales,
+                'onlineSales'  => $onlineSales,
+                'grouped'      => $grouped,
             ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching the sales summary.');
@@ -258,10 +288,11 @@ class SaleController extends Controller
 
             usort($grouped, fn($a, $b) => $b['totalQty'] <=> $a['totalQty']);
 
-            $top5 = array_slice(array_values($grouped), 0, 5);
+            $limit  = max(1, min(20, (int) $request->input('limit', 5)));
+            $topN   = array_slice(array_values($grouped), 0, $limit);
 
             return $this->successResponse('Top products fetched successfully.', [
-                'products' => $top5,
+                'products' => $topN,
             ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching top products.');

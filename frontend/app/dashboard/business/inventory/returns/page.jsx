@@ -4032,8 +4032,18 @@ export default function ReturnsPage() {
 
       {activeTab === "rtv" &&
         (rtvLoading ? (
-          <div style={{ padding: "3rem", textAlign: "center", color: "#9ca3af" }}>
-            Loading...
+          <div className="skeleton-page" style={{ padding: "1rem 0" }}>
+            <div className="skeleton-table">
+              <div className="skeleton-table-header" />
+              {[...Array(5)].map((_, i) => (
+                <div className="skeleton-row" key={i}>
+                  <div className="skeleton-cell skeleton-cell-short" />
+                  <div className="skeleton-cell skeleton-cell-wide" />
+                  <div className="skeleton-cell skeleton-cell-mid" />
+                  <div className="skeleton-cell-badge" />
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <RTVListTab rtvs={rtvs} onRefresh={refreshRtvs} />

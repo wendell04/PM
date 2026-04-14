@@ -220,7 +220,7 @@ export function CartProvider({ children }) {
   /**
    * Get total items count
    */
-  const cartCount = cartItems.reduce((sum, item) => sum + item.qty, 0);
+  const cartCount = cartItems.length;
 
   /**
    * Get total price

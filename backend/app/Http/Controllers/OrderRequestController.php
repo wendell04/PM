@@ -302,4 +302,47 @@ class OrderRequestController extends Controller
             'message' => 'Failed to upload design.',
         ], 500);
     }
+
+    /**
+     * GET /api/admin/order-requests/stats
+     * Returns order request conversion and status breakdown.
+     * Optional: startDate, endDate
+     */
+    public function stats(Request $request)
+    {
+        try {
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
+
+            $query = \App\Models\OrderRequest::query()
+                ->when($request->filled('startDate'), fn($q) => $q->where('createdAt', '>=', $request->startDate))
+                ->when($request->filled('endDate'),   fn($q) => $q->where('createdAt', '<=', $request->endDate));
+
+            $total     = (clone $query)->count();
+            $pending   = (clone $query)->where('status', 'pending_review')->count();
+            $confirmed = (clone $query)->where('status', 'confirmed')->count();
+            $processing= (clone $query)->where('status', 'processing')->count();
+            $ready     = (clone $query)->where('status', 'ready')->count();
+            $delivered = (clone $query)->where('status', 'delivered')->count();
+            $cancelled = (clone $query)->where('status', 'cancelled')->count();
+
+            $conversionRate = $total > 0
+                ? round((($confirmed + $processing + $ready + $delivered) / $total) * 100, 2)
+                : 0;
+
+            return $this->successResponse('Order request stats fetched successfully.', [
+                'total'          => $total,
+                'pending'        => $pending,
+                'confirmed'      => $confirmed,
+                'processing'     => $processing,
+                'ready'          => $ready,
+                'delivered'      => $delivered,
+                'cancelled'      => $cancelled,
+                'conversionRate' => $conversionRate,
+            ]);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to fetch order request stats.');
+        }
+    }
 }

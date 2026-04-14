@@ -133,7 +133,7 @@ export default function PaymentSuccessPage() {
 
         {order && !loading && (
           <div style={{
-            background: 'var(--dark3, var(--border))',
+            background: 'var(--dark3)',
             borderRadius: '10px',
             padding: '16px',
             marginBottom: '32px',
@@ -176,7 +176,7 @@ export default function PaymentSuccessPage() {
               </span>
               <span style={{
                 color: order.paymentStatus === 'paid'
-                  ? '#4caf50'
+                  ? 'var(--green)'
                   : 'var(--gold)',
                 fontSize: '0.85rem',
                 fontWeight: 600,
@@ -197,7 +197,7 @@ export default function PaymentSuccessPage() {
               gap: '6px',
               padding: '10px 20px',
               background: 'var(--gold)',
-              color: '#000',
+              color: 'var(--black)',
               borderRadius: '8px',
               fontWeight: 600,
               fontSize: '0.9rem',

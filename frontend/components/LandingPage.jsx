@@ -487,7 +487,8 @@ const LandingPage = ({onEnterShop}) => {
       // Check 2FA requirement first
       if (data.data.requires_2fa) {
         sessionStorage.setItem('pending_2fa', 'true');
-        const isAdminUser = data.data.user.role === 'admin' || data.data.user.role === 'business' || data.data.user.role === 'owner';
+        const dashboardRoles2fa = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
+        const isAdminUser = dashboardRoles2fa.includes(data.data.user.role);
         sessionStorage.setItem('post_2fa_redirect', isAdminUser ? '/dashboard/business/dashboardoverview' : '/shop');
         closeModal();
         router.push('/dashboard/2fa-challenge');
@@ -498,7 +499,8 @@ const LandingPage = ({onEnterShop}) => {
       const redirectPath = sessionStorage.getItem('redirectAfterLogin');
       sessionStorage.removeItem('redirectAfterLogin');
 
-      if (data.data.user.role === 'admin' || data.data.user.role === 'business') {
+      const dashboardRoles = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
+      if (dashboardRoles.includes(data.data.user.role)) {
         window.location.href = '/dashboard/business/dashboardoverview';
         return;
       }

@@ -4,13 +4,16 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import '@/app/shop/shop.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 export default function CheckoutPage() {
   const router = useRouter();
   const { token, currentUser } = useAuth();
+  const { clearCart } = useCart();
 
   // Cart payload (loaded from sessionStorage)
   const [items, setItems] = useState([]);
@@ -29,7 +32,10 @@ export default function CheckoutPage() {
   const [mounted, setMounted] = useState(false);
   const [designFile, setDesignFile] = useState(null);
   const [designNotes, setDesignNotes] = useState('');
+  const [designPreviewUrl, setDesignPreviewUrl] = useState(null);
+  const [designFilePreviewUrl, setDesignFilePreviewUrl] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('cod');
+  const [showCancelModal, setShowCancelModal] = useState(false);
 
   // ── EFFECT: Load cart payload from sessionStorage ──
   useEffect(() => {
@@ -46,6 +52,12 @@ export default function CheckoutPage() {
       }
       setItems(payload.items);
       setNotes(payload.notes ?? '');
+      if (payload.designUrl) {
+        setDesignPreviewUrl(payload.designUrl);
+      }
+      if (payload.notes && !designNotes) {
+        setDesignNotes(payload.notes);
+      }
     } catch {
       setPayloadError(true);
     }
@@ -93,8 +105,10 @@ export default function CheckoutPage() {
 
   // ── Computed ──
   const selectedAddress = addresses.find(a => a.id === selectedAddressId) ?? null;
+  const DELIVERY_FEE = 80;
   const subtotal = items.reduce((sum, i) => sum + (i.unitPrice * i.qty), 0);
   const total = subtotal;
+  const grandTotal = subtotal + DELIVERY_FEE;
 
   function handleDesignFileChange(e) {
     const file = e.target.files?.[0];
@@ -113,6 +127,11 @@ export default function CheckoutPage() {
     }
     setError(null);
     setDesignFile(file);
+    if (file.type.startsWith('image/')) {
+      setDesignFilePreviewUrl(URL.createObjectURL(file));
+    } else {
+      setDesignFilePreviewUrl(null);
+    }
   }
 
   // ── Place Order ──
@@ -243,9 +262,12 @@ export default function CheckoutPage() {
             <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
           </svg>
           <h2>No items found for checkout.</h2>
-          <Link href="/shop/cart" className="checkout-back-cart-link">
+          <button
+            className="checkout-back-cart-link"
+            onClick={() => setShowCancelModal(true)}
+          >
             ← Back to Cart
-          </Link>
+          </button>
         </div>
       </div>
     );
@@ -268,14 +290,17 @@ export default function CheckoutPage() {
     <div className="checkout-wrapper">
       {/* SECTION 1 — Header */}
       <div className="checkout-header">
-        <Link href="/shop/cart" className="checkout-back-btn">
+        <button
+          className="checkout-back-btn"
+          onClick={() => setShowCancelModal(true)}
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="19" y1="12" x2="5" y2="12"/>
             <polyline points="12 19 5 12 12 5"/>
           </svg>
           Back to Cart
-        </Link>
+        </button>
         <span className="checkout-divider">/</span>
         <h1 className="checkout-title">Checkout</h1>
       </div>
@@ -384,6 +409,51 @@ export default function CheckoutPage() {
           </span>
         </div>
 
+        {/* Design preview from product page — B-06 */}
+        {((designPreviewUrl && !designFile) || designFilePreviewUrl) && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '0.75rem',
+            padding: '0.75rem',
+            background: 'rgba(212,168,67,0.06)',
+            border: '1px solid rgba(212,168,67,0.25)',
+            borderRadius: '8px',
+            marginBottom: '0.75rem',
+          }}>
+            <img
+              src={designFilePreviewUrl || designPreviewUrl}
+              alt="Attached design"
+              style={{
+                width: 64,
+                height: 64,
+                objectFit: 'cover',
+                borderRadius: '6px',
+                flexShrink: 0,
+                border: '1px solid var(--border)',
+              }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                color: 'var(--gold)',
+                marginBottom: '0.25rem',
+              }}>
+                Design attached from product page
+              </div>
+              <div style={{
+                fontSize: '0.75rem',
+                color: 'var(--gray)',
+                lineHeight: 1.5,
+              }}>
+                To include this file in your order, please re-select
+                it below before placing your order.
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Upload area */}
         <label
           htmlFor="design-upload"
@@ -392,7 +462,7 @@ export default function CheckoutPage() {
             alignItems: 'center',
             gap: '0.75rem',
             padding: '0.75rem 1rem',
-            background: designFile ? 'rgba(212,168,67,0.06)' : '#1a1a1a',
+            background: designFile ? 'rgba(212,168,67,0.06)' : 'var(--dark)',
             border: designFile
               ? '1px solid rgba(212,168,67,0.4)'
               : '1px dashed rgba(255,255,255,0.12)',
@@ -403,14 +473,14 @@ export default function CheckoutPage() {
         >
           {designFile ? (
             <>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                 <polyline points="14 2 14 8 20 8"/>
                 <polyline points="16 13 12 17 8 13"/>
                 <line x1="12" y1="17" x2="12" y2="9"/>
               </svg>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f5f5f5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--white)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {designFile.name}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.15rem' }}>
@@ -419,7 +489,7 @@ export default function CheckoutPage() {
               </div>
               <button
                 type="button"
-                onClick={e => { e.preventDefault(); setDesignFile(null); document.getElementById('design-upload').value = ''; }}
+                onClick={e => { e.preventDefault(); setDesignFile(null); setDesignFilePreviewUrl(null); document.getElementById('design-upload').value = ''; }}
                 style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center', flexShrink: 0 }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -435,7 +505,7 @@ export default function CheckoutPage() {
                 <line x1="12" y1="3" x2="12" y2="15"/>
               </svg>
               <div>
-                <div style={{ fontSize: '0.85rem', color: '#f5f5f5', fontWeight: 500 }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--white)', fontWeight: 500 }}>
                   Attach your design
                 </div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.15rem' }}>
@@ -465,7 +535,7 @@ export default function CheckoutPage() {
           border: '1px solid rgba(212,168,67,0.15)',
           borderRadius: '8px',
         }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,marginTop:'1px'}}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,marginTop:'1px'}}>
             <circle cx="12" cy="12" r="10"/>
             <line x1="12" y1="8" x2="12" y2="12"/>
             <line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -527,16 +597,20 @@ export default function CheckoutPage() {
       <div className="checkout-card checkout-summary-card">
         <div className="checkout-summary-row">
           <span>Subtotal</span>
-          <span>₱{subtotal.toLocaleString()}</span>
+          <span>₱{subtotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
         <div className="checkout-summary-row">
           <span>Shipping</span>
           <span className="checkout-shipping-note">To be arranged</span>
         </div>
         <div className="checkout-divider" />
+        <div className="checkout-summary-row" style={{ color: 'var(--gray)', fontSize: '0.9rem' }}>
+          <span>Delivery Fee</span>
+          <span>₱{DELIVERY_FEE.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
         <div className="checkout-summary-total">
           <span>Total</span>
-          <span className="checkout-total-amount">₱{total.toLocaleString()}</span>
+          <span className="checkout-total-amount">₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
       </div>
 
@@ -556,7 +630,7 @@ export default function CheckoutPage() {
             display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
             padding: '1rem', borderRadius: '10px', cursor: 'pointer',
             border: `1px solid ${paymentMethod === 'cod' ? 'var(--gold)' : 'rgba(255,255,255,0.07)'}`,
-            background: paymentMethod === 'cod' ? 'rgba(212,168,67,0.06)' : '#1a1a1a',
+            background: paymentMethod === 'cod' ? 'rgba(212,168,67,0.06)' : 'var(--dark)',
             marginBottom: '0.75rem', transition: 'all 0.2s',
           }}
         >
@@ -583,7 +657,7 @@ export default function CheckoutPage() {
             display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
             padding: '1rem', borderRadius: '10px', cursor: 'pointer',
             border: `1px solid ${paymentMethod === 'online' ? 'var(--gold)' : 'rgba(255,255,255,0.07)'}`,
-            background: paymentMethod === 'online' ? 'rgba(212,168,67,0.06)' : '#1a1a1a',
+            background: paymentMethod === 'online' ? 'rgba(212,168,67,0.06)' : 'var(--dark)',
             transition: 'all 0.2s',
           }}
         >
@@ -600,7 +674,7 @@ export default function CheckoutPage() {
             <div style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
               GCash · PayMaya · Credit / Debit Card — via secure PayMongo payment page.
               {total < 100 && (
-                <span style={{ color: 'var(--danger, #ef4444)', display: 'block', marginTop: '0.25rem' }}>
+                <span style={{ color: 'var(--red)', display: 'block', marginTop: '0.25rem' }}>
                   ⚠ Minimum ₱100.00 required for online payment.
                 </span>
               )}
@@ -700,555 +774,68 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      {/* Styles */}
-      <style dangerouslySetInnerHTML={{ __html: checkoutStyles }} />
+      {showCancelModal && (
+        <div
+          onClick={() => setShowCancelModal(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            background: 'rgba(0,0,0,0.75)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--dark-2)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              padding: '2rem',
+              width: '100%',
+              maxWidth: '420px',
+            }}
+          >
+            <h3 style={{ margin: '0 0 12px', fontSize: '1.125rem', color: 'var(--white)' }}>
+              Cancel Checkout?
+            </h3>
+            <p style={{ margin: '0 0 20px', fontSize: '0.875rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+              Are you sure you want to cancel? Your cart will be cleared and you will be returned to the shop.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowCancelModal(false)}
+                style={{
+                  padding: '10px 20px', borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                  color: 'var(--white)', fontSize: '0.875rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Continue Checkout
+              </button>
+              <button
+                onClick={() => {
+                  clearCart();
+                  setShowCancelModal(false);
+                  router.push('/shop');
+                }}
+                style={{
+                  padding: '10px 20px', borderRadius: '8px',
+                  border: 'none',
+                  background: 'var(--red)',
+                  color: 'var(--white)', fontSize: '0.875rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Yes, Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
 
-const checkoutStyles = `
-  .checkout-wrapper {
-    max-width: 680px;
-    margin: 0 auto;
-    padding: 1.5rem;
-  }
-
-  .checkout-header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1.5rem;
-  }
-
-  .checkout-back-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    color: var(--gray);
-    text-decoration: none;
-    font-size: 0.875rem;
-    transition: color 0.2s;
-  }
-
-  .checkout-back-btn:hover {
-    color: var(--gold);
-  }
-
-  .checkout-divider {
-    color: #444;
-  }
-
-  .checkout-title {
-    margin: 0;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: #f5f5f5;
-  }
-
-  .checkout-card {
-    background: #161616;
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 12px;
-    padding: 1.25rem;
-    margin-bottom: 1rem;
-  }
-
-  .checkout-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-  }
-
-  .checkout-section-label {
-    font-size: 0.75rem;
-    color: var(--gray);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .checkout-address-badge {
-    display: inline-block;
-    background: rgba(212, 168, 67, 0.12);
-    border: 1px solid rgba(212, 168, 67, 0.3);
-    border-radius: 20px;
-    padding: 0.2rem 0.6rem;
-    font-size: 0.7rem;
-    color: var(--gold);
-    margin-bottom: 0.5rem;
-  }
-
-  .checkout-default-badge {
-    display: inline-block;
-    background: rgba(34, 197, 94, 0.12);
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    border-radius: 20px;
-    padding: 0.15rem 0.5rem;
-    font-size: 0.65rem;
-    color: #22c55e;
-  }
-
-  .checkout-change-btn {
-    background: none;
-    border: none;
-    color: var(--gold);
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.2s;
-  }
-
-  .checkout-change-btn:hover {
-    opacity: 0.8;
-  }
-
-  .checkout-address-name {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #f5f5f5;
-    margin: 0.5rem 0 0.25rem;
-  }
-
-  .checkout-address-phone {
-    font-size: 0.85rem;
-    color: var(--gray);
-    margin-bottom: 0.25rem;
-  }
-
-  .checkout-address-text {
-    font-size: 0.85rem;
-    color: var(--gray);
-    line-height: 1.5;
-  }
-
-  .checkout-loading-line {
-    height: 16px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-
-  .checkout-no-default,
-  .checkout-no-address {
-    font-size: 0.85rem;
-    color: var(--gray);
-    margin: 0 0 0.5rem;
-  }
-
-  .checkout-select-btn {
-    background: none;
-    border: 1px solid rgba(212, 168, 67, 0.3);
-    border-radius: 8px;
-    padding: 0.5rem 1rem;
-    color: var(--gold);
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .checkout-select-btn:hover {
-    background: rgba(212, 168, 67, 0.1);
-  }
-
-  .checkout-profile-link {
-    color: var(--gold);
-    text-decoration: none;
-    font-size: 0.85rem;
-    font-weight: 600;
-  }
-
-  .checkout-item-row {
-    display: grid;
-    grid-template-columns: 60px 1fr auto;
-    gap: 0.75rem;
-    align-items: center;
-    padding: 0.75rem 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  }
-
-  .checkout-item-row:last-child {
-    border-bottom: none;
-  }
-
-  .checkout-item-thumb {
-    width: 60px;
-    height: 60px;
-    border-radius: 8px;
-    overflow: hidden;
-    background: #1a1a1a;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .checkout-item-thumb-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .checkout-item-thumb-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: rgba(255, 255, 255, 0.15);
-  }
-
-  .checkout-item-name {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #f5f5f5;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .checkout-item-variant {
-    font-size: 0.75rem;
-    color: var(--gray);
-    margin-top: 0.2rem;
-  }
-
-  .checkout-item-pricing {
-    text-align: right;
-    min-width: 100px;
-  }
-
-  .checkout-item-price {
-    font-size: 0.85rem;
-    color: var(--gold);
-    margin-bottom: 0.25rem;
-  }
-
-  .checkout-item-total {
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--gold);
-  }
-
-  .checkout-notes-input {
-    width: 100%;
-    background: #1a1a1a;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
-    color: #f5f5f5;
-    font-size: 0.85rem;
-    resize: vertical;
-    outline: none;
-    transition: border-color 0.2s;
-    font-family: inherit;
-    margin-top: 0.75rem;
-  }
-
-  .checkout-notes-input:focus {
-    border-color: var(--gold);
-  }
-
-  .checkout-notes-input::placeholder {
-    color: #555;
-  }
-
-  .checkout-summary-card {
-    background: rgba(255, 255, 255, 0.02);
-  }
-
-  .checkout-summary-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.5rem 0;
-    font-size: 0.9rem;
-    color: var(--gray);
-  }
-
-  .checkout-shipping-note {
-    font-style: italic;
-    color: #666;
-  }
-
-  .checkout-divider {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.06);
-    margin: 0.5rem 0;
-  }
-
-  .checkout-summary-total {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.75rem 0;
-    font-size: 1.1rem;
-  }
-
-  .checkout-total-amount {
-    font-size: 1.4rem;
-    font-weight: 800;
-    color: var(--gold);
-  }
-
-  .checkout-payment-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-  }
-
-  .checkout-payment-icon {
-    color: var(--gray);
-    flex-shrink: 0;
-    margin-top: 2px;
-  }
-
-  .checkout-payment-label {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #f5f5f5;
-    margin-bottom: 0.25rem;
-  }
-
-  .checkout-payment-subtext {
-    font-size: 0.8rem;
-    color: var(--gray);
-    line-height: 1.5;
-  }
-
-  .checkout-place-btn {
-    width: 100%;
-    padding: 1rem 1.5rem;
-    background: linear-gradient(135deg, #d4a843 0%, #c4963a 100%);
-    border: none;
-    border-radius: 10px;
-    color: #0f0f0f;
-    font-weight: 700;
-    font-size: 1rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    transition: all 0.2s;
-  }
-
-  .checkout-place-btn:hover:not(:disabled) {
-    background: linear-gradient(135deg, #c4963a 0%, #b48630 100%);
-  }
-
-  .checkout-place-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .checkout-spinner-icon {
-    animation: spin 1s linear infinite;
-  }
-
-  .checkout-error {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
-    color: #ef4444;
-    font-size: 0.85rem;
-    margin-bottom: 1rem;
-  }
-
-  .checkout-disclaimer {
-    font-size: 0.75rem;
-    color: var(--gray);
-    text-align: center;
-    margin-top: 1rem;
-    line-height: 1.6;
-  }
-
-  .checkout-modal-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 1000;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1rem;
-  }
-
-  .checkout-modal-content {
-    background: #161616;
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 16px;
-    max-width: 480px;
-    width: 100%;
-    max-height: 80vh;
-    overflow-y: auto;
-    position: relative;
-  }
-
-  .checkout-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  }
-
-  .checkout-modal-title {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #f5f5f5;
-  }
-
-  .checkout-modal-close {
-    background: none;
-    border: none;
-    color: var(--gray);
-    cursor: pointer;
-    padding: 0.25rem;
-    display: flex;
-    align-items: center;
-    transition: color 0.2s;
-  }
-
-  .checkout-modal-close:hover {
-    color: #f5f5f5;
-  }
-
-  .checkout-modal-body {
-    padding: 1.25rem 1.5rem;
-  }
-
-  .checkout-modal-footer {
-    padding: 1rem 1.5rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    text-align: center;
-  }
-
-  .checkout-manage-link {
-    color: var(--gray);
-    text-decoration: none;
-    font-size: 0.85rem;
-    transition: color 0.2s;
-  }
-
-  .checkout-manage-link:hover {
-    color: var(--gold);
-  }
-
-  .checkout-addr-card {
-    padding: 1rem;
-    border-radius: 10px;
-    cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    background: #1a1a1a;
-    margin-bottom: 0.75rem;
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    transition: all 0.2s;
-  }
-
-  .checkout-addr-card:hover {
-    border-color: rgba(255, 255, 255, 0.15);
-  }
-
-  .checkout-addr-card.selected {
-    border-color: var(--gold);
-    background: rgba(212, 168, 67, 0.06);
-  }
-
-  .checkout-addr-radio {
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    border: 2px solid var(--gray);
-    margin-top: 2px;
-    transition: all 0.2s;
-  }
-
-  .checkout-addr-radio.selected {
-    border-color: var(--gold);
-    background: var(--gold);
-  }
-
-  .checkout-payload-error {
-    text-align: center;
-    padding: 4rem 1rem;
-    color: var(--gray);
-  }
-
-  .checkout-payload-error h2 {
-    color: #f5f5f5;
-    margin: 1rem 0;
-    font-size: 1.25rem;
-  }
-
-  .checkout-back-cart-link {
-    display: inline-block;
-    color: var(--gold);
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 0.9rem;
-    padding: 0.5rem 1rem;
-    border: 1px solid rgba(212, 168, 67, 0.3);
-    border-radius: 8px;
-    transition: all 0.2s;
-  }
-
-  .checkout-back-cart-link:hover {
-    background: rgba(212, 168, 67, 0.1);
-  }
-
-  .checkout-loading-state {
-    text-align: center;
-    padding: 4rem 1rem;
-    color: var(--gray);
-  }
-
-  .checkout-spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid rgba(255, 255, 255, 0.1);
-    border-top-color: var(--gold);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 1rem;
-  }
-
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-
-  @media (max-width: 768px) {
-    .checkout-wrapper {
-      padding: 1rem;
-    }
-
-    .checkout-title {
-      font-size: 1.25rem;
-    }
-
-    .checkout-item-row {
-      grid-template-columns: 50px 1fr auto;
-    }
-
-    .checkout-item-thumb {
-      width: 50px;
-      height: 50px;
-    }
-  }
-`;

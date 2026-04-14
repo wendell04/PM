@@ -34,6 +34,10 @@ class User extends Authenticatable
         'addresses', // Address book - array of saved addresses
         'device_tokens',
         'last_login_at',
+        'storeName',
+        'storeDescription',
+        'storeEmail',
+        'storePhone',
     ];
 
     protected $casts = [

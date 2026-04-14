@@ -11,7 +11,17 @@ class IsAdminMiddleware
     {
         $user = $request->user();
 
-        if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+        $staffRoles = [
+            'admin',
+            'owner',
+            'salesRep',
+            'productionOperator',
+            'qualityControl',
+            'cashier',
+            'inventoryManager',
+        ];
+
+        if (!$user || !in_array($user->role, $staffRoles)) {
             return response()->json(['error' => 'Forbidden'], 403);
         }
 

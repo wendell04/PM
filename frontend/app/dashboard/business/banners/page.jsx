@@ -654,9 +654,16 @@ export default function BannerManagementPage() {
 
   if (isLoading) {
     return (
-      <div className="banner-loading-state">
-        <div className="banner-spinner"></div>
-        <p>Loading banners...</p>
+      <div className="skeleton-page" style={{ padding: "2rem" }}>
+        <div className="skeleton-header">
+          <div className="skeleton-title" />
+          <div className="skeleton-subtitle" />
+        </div>
+        <div className="skeleton-cards">
+          {[...Array(3)].map((_, i) => (
+            <div className="skeleton-card" key={i} style={{ height: "160px" }} />
+          ))}
+        </div>
       </div>
     );
   }
@@ -818,10 +825,6 @@ export default function BannerManagementPage() {
 
         .banner-unsaved-indicator { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: rgba(212, 168, 67, 0.1); border-radius: 6px; font-size: 0.75rem; color: var(--gold); margin-top: 1rem; }
         .banner-unsaved-dot { width: 0.5rem; height: 0.5rem; background: var(--gold); border-radius: 50%; animation: pulse 2s infinite; }
-
-        .banner-loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 1rem; background: var(--black); }
-        .banner-spinner { width: 3rem; height: 3rem; border: 3px solid var(--dark2); border-top-color: var(--gold); border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
 
         .banner-modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 2rem; }
         .banner-modal { background: var(--dark); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; max-width: 400px; width: 100%; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }

@@ -24,6 +24,24 @@ abstract class Controller
     }
 
     /**
+     * Checks if the authenticated user has one of the given roles.
+     * Admin and owner always pass — they have full access.
+     *
+     * @param \Illuminate\Http\Request $request
+     * @param string ...$roles
+     * @return \App\Models\User|false
+     */
+    protected function hasRole(\Illuminate\Http\Request $request, string ...$roles): mixed
+    {
+        $user = $request->user();
+        if (!$user) return false;
+        // Admin and owner always have access
+        if (in_array($user->role, ['admin', 'owner'])) return $user;
+        if (in_array($user->role, $roles)) return $user;
+        return false;
+    }
+
+    /**
      * Standardized success response format.
      *
      * @param string $message
@@ -80,9 +98,9 @@ abstract class Controller
      * @param string $message
      * @return \Illuminate\Http\JsonResponse
      */
-    protected function unauthorizedResponse($message = 'Unauthorized')
+    protected function unauthorizedResponse($message = 'Forbidden')
     {
-        return $this->errorResponse($message, 401);
+        return $this->errorResponse($message, 403);
     }
 
     /**

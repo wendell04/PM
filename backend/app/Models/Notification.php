@@ -22,4 +22,8 @@ class Notification extends Model
         'is_read' => 'boolean',
         'data'    => 'array',
     ];
+
+    protected $indexes = [
+        ['key' => ['user_id' => 1, 'is_read' => 1]],
+    ];
 }

@@ -22,6 +22,7 @@ export default function BusinessDashboardLayout({ children }) {
   const { logout, currentUser, updateUser, token } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [permissions, setPermissions] = useState(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [adminDropdownOpen, setAdminDropdownOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -81,7 +82,8 @@ export default function BusinessDashboardLayout({ children }) {
 
   useEffect(() => {
     if (currentUser) {
-      if (currentUser.role !== 'admin' && currentUser.role !== 'business' && currentUser.role !== 'owner') {
+      const allowedRoles = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
+      if (!allowedRoles.includes(currentUser.role)) {
         router.replace('/shop');
         return;
       }
@@ -308,18 +310,25 @@ export default function BusinessDashboardLayout({ children }) {
   };
 
   // Poll unread count every 60 seconds
+  // Stops polling after 3 consecutive failures to prevent console spam
   useEffect(() => {
     if (!token) return;
+    let failCount = 0;
+    let interval;
     const poll = async () => {
       try {
         const data = await fetchUnreadCount(token);
         setUnreadCount(data.unread_count ?? 0);
+        failCount = 0;
       } catch {
-        // silent fail — polling should never break the UI
+        failCount += 1;
+        if (failCount >= 3) {
+          clearInterval(interval);
+        }
       }
     };
     poll();
-    const interval = setInterval(poll, 60000);
+    interval = setInterval(poll, 60000);
     return () => clearInterval(interval);
   }, [token]);
 
@@ -393,63 +402,127 @@ export default function BusinessDashboardLayout({ children }) {
     }
   }, [token]);
 
-  const [expandedItems, setExpandedItems] = useState(['Product CMS']);
+  const [expandedItems, setExpandedItems] = useState([]);
+
+  // Fetch role permissions on mount
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_URL}/api/my/permissions`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'ngrok-skip-browser-warning': '1',
+      },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.data?.permissions) {
+          setPermissions(data.data.permissions);
+        }
+      })
+      .catch(() => {}); // non-fatal — sidebar degrades gracefully
+  }, [token]);
+
+  // Returns true if admin/owner (always full access) or permission is granted
+  const can = (key) => {
+    if (!currentUser) return false;
+    if (['admin', 'owner'].includes(currentUser.role)) return true;
+    if (!permissions) return false;
+    return permissions[key] === true;
+  };
 
   const navItems = [
+    // ── Standalone ──────────────────────────────────────────────
     {
       name: 'Dashboard',
       href: '/dashboard/business/dashboardoverview',
+      permKey: 'dashboard',
       icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
     },
+
+    // ── Orders ──────────────────────────────────────────────────
     {
-      name: 'Product CMS',
-      icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10',
+      name: 'Orders',
+      permKey: 'orders',
+      icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
       children: [
-        { name: 'Add Products', href: '/dashboard/business/products/add' },
-        { name: 'Product List', href: '/dashboard/business/products' },
-        { name: 'Storefront Banners', href: '/dashboard/business/banners' },
+        { name: 'All Orders',     href: '/dashboard/business/orders' },
+        { name: 'Order Requests', href: '/dashboard/business/order-requests' },
+        { name: 'Job Orders',     href: '/dashboard/business/job-orders' },
       ],
     },
-    { name: 'Orders', href: '/dashboard/business/orders', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+
+    // ── Production ──────────────────────────────────────────────
     {
-      name: 'Inventory',
+      name: 'Production',
+      permKey: 'inventory',
       icon: 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4',
       children: [
-        { name: 'Master Data',  href: '/dashboard/business/inventory/master-data' },
-        { name: 'Stock In',     href: '/dashboard/business/inventory/stock-in' },
-        { name: 'Stocks',       href: '/dashboard/business/inventory/stocks' },
-        { name: 'Returns',      href: '/dashboard/business/inventory/returns' },
+        { name: 'Inventory', href: '/dashboard/business/inventory' },
+        { name: 'Returns',   href: '/dashboard/business/inventory/returns' },
+        { name: 'Suppliers', href: '/dashboard/business/suppliers' },
       ],
     },
-    { name: 'Suppliers', href: '/dashboard/business/suppliers', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
-    { name: 'Sales', href: '/dashboard/business/sales', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 13v-1m0-4c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+
+    // ── Product CMS ─────────────────────────────────────────────
     {
-      name: 'Reports',
+      name: 'Product CMS',
+      permKey: 'banners',
+      icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10',
+      children: [
+        { name: 'Product List', href: '/dashboard/business/products' },
+        { name: 'Add Product',  href: '/dashboard/business/products/add' },
+      ],
+    },
+
+    // ── Marketing ───────────────────────────────────────────────
+    {
+      name: 'Marketing',
+      permKey: 'flashSales',
+      icon: 'M13 10V3L4 14h7v7l9-11h-7z',
+      children: [
+        { name: 'Banners',     href: '/dashboard/business/banners' },
+        { name: 'Flash Sales', href: '/dashboard/business/flash-sales' },
+      ],
+    },
+
+    // ── Finance ─────────────────────────────────────────────────
+    {
+      name: 'Finance',
+      permKey: 'sales',
       icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
       children: [
-        { name: 'Overview',       href: '/dashboard/business/reports' },
+        { name: 'Sales',          href: '/dashboard/business/sales' },
+        { name: 'Reports',        href: '/dashboard/business/reports' },
         { name: 'Sales Forecast', href: '/dashboard/business/ssa-forecast' },
       ],
     },
+
+    // ── Standalone ──────────────────────────────────────────────
     {
       name: 'Audit Logs',
       href: '/dashboard/business/audit-logs',
+      permKey: 'auditLogs',
       icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01',
     },
+
+    // ── System ──────────────────────────────────────────────────
     {
-      name: 'Flash Sales',
-      href: '/dashboard/business/flash-sales',
-      icon: 'M13 10V3L4 14h7v7l9-11h-7z',
+      name: 'System',
+      permKey: 'userManagement',
+      icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',
+      children: [
+        { name: 'Users',            href: '/dashboard/business/users' },
+        { name: 'Role Permissions', href: '/dashboard/business/role-permissions' },
+      ],
     },
+
+    // ── Settings ──────────────────────────────────────────────────
     {
-      name: 'Order Requests',
-      href: '/dashboard/business/order-requests',
-      icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
-    },
-    {
-      name: 'Job Orders',
-      href: '/dashboard/business/job-orders',
-      icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01',
+      name: 'Settings',
+      href: '/dashboard/business/settings',
+      permKey: 'userManagement',
+      icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z',
     },
   ];
 
@@ -562,7 +635,7 @@ export default function BusinessDashboardLayout({ children }) {
           </div>
 
           <nav className="sidebar-nav">
-          {navItems.map((item) => {
+          {navItems.filter(item => can(item.permKey ?? 'dashboard')).map((item) => {
             if (item.children) {
               const isExpanded = expandedItems.includes(item.name);
               const hasActiveChild = isChildActive(item.children);
@@ -663,21 +736,6 @@ export default function BusinessDashboardLayout({ children }) {
             );
           })}
 
-          {/* Settings button */}
-          <button
-            type="button"
-            className="sidebar-nav-item"
-            onClick={() => setProfileModalOpen(true)}
-            style={{ width: '100%', textAlign: 'left', cursor: 'pointer' }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24"
-                 fill="none" stroke="currentColor" strokeWidth="2"
-                 style={{ flexShrink: 0 }}>
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-            <span className="nav-text">Settings</span>
-          </button>
         </nav>
         </div>
       </aside>
@@ -1304,7 +1362,15 @@ export default function BusinessDashboardLayout({ children }) {
                     textTransform: 'uppercase',
                     marginTop: '4px',
                   }}>
-                    {currentUser?.role === 'admin' ? 'Admin' : 'Business Owner'}
+                    {({
+                      admin: 'Admin',
+                      owner: 'Owner',
+                      salesRep: 'Sales Rep',
+                      productionOperator: 'Production',
+                      qualityControl: 'QC Staff',
+                      cashier: 'Cashier',
+                      inventoryManager: 'Inventory',
+                    })[currentUser?.role] ?? 'Staff'}
                   </span>
                 </div>
               </div>

@@ -54,6 +54,17 @@
 
   .gold-text { color: var(--gold); }
   .red-text  { color: var(--red); }
+  
+  .payment-method-badge {
+    font-size: 13px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: var(--gold);
+    color: var(--black);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
 
   .container {
     width: 100%;

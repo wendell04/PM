@@ -6,16 +6,17 @@ import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer
+  Tooltip, Legend, ResponsiveContainer, Brush
 } from 'recharts';
 
 const API_URL     = process.env.NEXT_PUBLIC_API_URL     || 'http://127.0.0.1:8000';
 const SSA_API_URL = process.env.NEXT_PUBLIC_SSA_API_URL || 'http://localhost:8001';
 
 const FORECAST_PERIODS = [
-  { label: 'Weekly',   days: 7   },
-  { label: 'Monthly',  days: 30  },
-  { label: 'Annually', days: 365 },
+  { label: 'Daily',       type: 'daily',       defaultCount: 30, unit: 'days'   },
+  { label: 'Weekly',      type: 'weekly',      defaultCount: 8,  unit: 'weeks'  },
+  { label: 'Monthly',     type: 'monthly',     defaultCount: 6,  unit: 'months' },
+  { label: 'Day of Week', type: 'day_of_week', defaultCount: 8,  unit: 'weeks'  },
 ];
 
 const DATA_SOURCES = [
@@ -172,8 +173,17 @@ export default function SSAForecastPage() {
   const { token } = useAuth();
 
   // ── Controls ──────────────────────────────────────────────
+  const [inputMode, setInputMode] = useState('upload'); // 'live' | 'upload'
+  const [csvFile, setCsvFile] = useState(null);
+  const [csvFileName, setCsvFileName] = useState('');
+  const csvInputRef = useRef(null);
+  const [availableColumns, setAvailableColumns] = useState([]);
+  const [selectedColumn, setSelectedColumn] = useState('');
+  const [forecastDayOfWeek, setForecastDayOfWeek] = useState('Monday');
+
   const [dataSource, setDataSource]     = useState('sales_revenue');
-  const [forecastDays, setForecastDays] = useState(30);
+  const [forecastPeriod, setForecastPeriod] = useState(FORECAST_PERIODS[0]); // default: Daily
+  const [forecastCount, setForecastCount]   = useState(30);
   const [inventoryList, setInventoryList] = useState([]);
   const [selectedInventoryId, setSelectedInventoryId] = useState('');
 
@@ -182,6 +192,7 @@ export default function SSAForecastPage() {
   const [error, setError]           = useState('');
   const [result, setResult]         = useState(null);
   const [dataPointCount, setDataPointCount] = useState(0);
+  const [showDecomp, setShowDecomp] = useState(false);
 
   // ── Load inventory list for inventory source ───────────────
   useEffect(() => {
@@ -198,10 +209,37 @@ export default function SSAForecastPage() {
       .catch(() => setInventoryList([]));
   }, [token]);
 
+  const resetCsvSelection = () => {
+    setCsvFile(null);
+    setCsvFileName('');
+    if (csvInputRef.current) csvInputRef.current.value = '';
+    setAvailableColumns([]);
+    setSelectedColumn('');
+  };
+
+  const fetchColumns = async (uploadedFile) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadedFile);
+      const res = await fetch(`${SSA_API_URL}/api/columns`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const cols = data.columns ?? [];
+      setAvailableColumns(cols);
+      setSelectedColumn(cols.length > 0 ? cols[0] : '');
+    } catch {
+      setAvailableColumns([]);
+      setSelectedColumn('');
+    }
+  };
+
   // ── Fetch data from Laravel and run SSA ───────────────────
   const handleSubmit = async () => {
     if (!token) return;
-    if (dataSource === 'inventory_stock' && !selectedInventoryId) {
+    if (inputMode === 'live' && dataSource === 'inventory_stock' && !selectedInventoryId) {
       setError('Please select an inventory item.');
       return;
     }
@@ -211,7 +249,49 @@ export default function SSAForecastPage() {
     setResult(null);
 
     try {
-      // Step 1: Fetch data from Laravel
+      if (inputMode === 'upload') {
+        if (!csvFile) {
+          setError('Please select a CSV file.');
+          setIsLoading(false);
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', csvFile, csvFile.name);
+        formData.append('forecast_periods', forecastCount);
+        formData.append('forecast_type', forecastPeriod.type);
+        if (forecastPeriod.type === 'day_of_week') {
+          formData.append('forecast_day_of_week', forecastDayOfWeek);
+        }
+        if (selectedColumn) {
+          formData.append('target_column', selectedColumn);
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+        const ssaRes = await fetch(`${SSA_API_URL}/api/forecast`, {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (!ssaRes.ok) {
+          const err = await ssaRes.json().catch(() => ({}));
+          const rawDetail = err.detail || 'SSA forecast failed.';
+          throw new Error(rawDetail.split('\n')[0].split('\\n')[0]);
+        }
+
+        const data = await ssaRes.json();
+        setResult(data);
+        setDataPointCount(
+          data.data_points ?? data.dataPoints ?? (data.historical?.dates?.length ?? 0)
+        );
+        return;
+      }
+
+      // ── Live data: Step 1 — Fetch data from Laravel ─────────
       let rows = []; // [{date: 'YYYY-MM-DD', value: number}]
 
       if (dataSource === 'sales_revenue' || dataSource === 'sales_qty') {
@@ -280,7 +360,12 @@ export default function SSAForecastPage() {
       const blob = new Blob([csvContent], { type: 'text/csv' });
       const formData = new FormData();
       formData.append('file', blob, 'data.csv');
-      formData.append('forecast_days', forecastDays);
+      formData.append('forecast_periods', forecastCount);
+      formData.append('forecast_type', forecastPeriod.type);
+      if (forecastPeriod.type === 'day_of_week') {
+        formData.append('forecast_day_of_week', forecastDayOfWeek);
+      }
+      // target_column is only relevant for user-uploaded files, not live-generated CSVs
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000);
@@ -294,11 +379,13 @@ export default function SSAForecastPage() {
 
       if (!ssaRes.ok) {
         const err = await ssaRes.json().catch(() => ({}));
-        throw new Error(err.detail || 'SSA forecast failed.');
+        const rawDetail = err.detail || 'SSA forecast failed.';
+        throw new Error(rawDetail.split('\n')[0].split('\\n')[0]);
       }
 
       const data = await ssaRes.json();
       setResult(data);
+      setDataPointCount(data.historical?.dates?.length ?? 0);
 
     } catch (err) {
       if (err.name === 'AbortError') {
@@ -328,6 +415,33 @@ export default function SSAForecastPage() {
     return data;
   };
 
+  const getDecompChartData = () => {
+    if (!result) return [];
+    const dates       = result.historical?.dates       || [];
+    const trend       = result.historical?.trend       || [];
+    const seasonality = result.historical?.seasonality || [];
+    const noise       = result.historical?.noise       || [];
+    return dates.map((date, i) => ({
+      date,
+      Trend:       trend[i]       ?? null,
+      Seasonality: seasonality[i] ?? null,
+      Noise:       noise[i]       ?? null,
+    }));
+  };
+
+  const formatDateLabel = (dateString) => {
+    if (forecastPeriod.type === 'daily' || !dateString) return dateString;
+    const parts = dateString.split('-');
+    if (parts.length < 3) return dateString;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthName = months[parseInt(parts[1], 10) - 1] ?? '';
+    const year = parts[0];
+    if (forecastPeriod.type === 'monthly') return `${monthName} ${year}`;
+    if (forecastPeriod.type === 'weekly') return `Week ${Math.ceil(parseInt(parts[2], 10) / 7)} (${monthName} ${year})`;
+    if (forecastPeriod.type === 'day_of_week') return `${forecastDayOfWeek} ${parts[2]} ${monthName} ${year}`;
+    return dateString;
+  };
+
   // ── CSV Download ──────────────────────────────────────────
   const handleDownloadCSV = () => {
     if (!result) return;
@@ -341,13 +455,14 @@ export default function SSAForecastPage() {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `ssa_forecast_${dataSource}_${forecastDays}d.csv`;
+    const slug = inputMode === 'upload' ? 'csv_upload' : dataSource;
+    a.download = `ssa_forecast_${slug}_${forecastCount}${forecastPeriod.type[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const selectedPeriodLabel = FORECAST_PERIODS.find(p => p.days === forecastDays)?.label ?? '';
   const selectedSourceLabel = DATA_SOURCES.find(s => s.key === dataSource)?.label ?? '';
+  const displaySourceLabel = inputMode === 'upload' ? 'CSV Upload' : selectedSourceLabel;
 
   return (
     <ErrorBoundary>
@@ -375,40 +490,90 @@ export default function SSAForecastPage() {
             <line x1="12" y1="8" x2="12.01" y2="8"/>
           </svg>
           <span>
-            Data is pulled directly from your database. Select a data source,
-            choose a forecast period, then click Run Forecast.
-            SSA requires at least 10 historical data points.
+            {inputMode === 'upload' ? (
+              <>
+                Upload a CSV file with Date and Value columns.
+                SSA requires at least 10 rows.
+              </>
+            ) : (
+              <>
+                Data is pulled directly from your database. Select a data source,
+                choose a forecast period, then click Run Forecast.
+                SSA requires at least 10 historical data points.
+              </>
+            )}
           </span>
         </div>
 
         {/* SECTION 3 — Controls Card */}
         <div className="ssa-card">
 
-          {/* Row 1: Data Source */}
+          {/* Row: Input Mode */}
           <div style={{ marginBottom: '1.25rem' }}>
             <label style={{
               fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600,
               textTransform: 'uppercase', letterSpacing: '0.5px',
               display: 'block', marginBottom: '0.5rem',
             }}>
-              Data Source
+              Input Mode
             </label>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {DATA_SOURCES.map(s => (
-                <button
-                  key={s.key}
-                  type="button"
-                  className={`ssa-source-btn ${dataSource === s.key ? 'active' : ''}`}
-                  onClick={() => { setDataSource(s.key); setResult(null); setError(''); }}
-                >
-                  {s.label}
-                </button>
-              ))}
+              <button
+                type="button"
+                className={`ssa-source-btn ${inputMode === 'upload' ? 'active' : ''}`}
+                onClick={() => {
+                  setInputMode('upload');
+                  setResult(null);
+                  setError('');
+                  resetCsvSelection();
+                }}
+              >
+                Upload CSV
+              </button>
+              <button
+                type="button"
+                className={`ssa-source-btn ${inputMode === 'live' ? 'active' : ''}`}
+                onClick={() => {
+                  setInputMode('live');
+                  setResult(null);
+                  setError('');
+                  setAvailableColumns([]);
+                  setSelectedColumn('');
+                  resetCsvSelection();
+                }}
+              >
+                Live Data
+              </button>
             </div>
           </div>
 
-          {/* Row 2: Inventory selector (only when inventory_stock) */}
-          {dataSource === 'inventory_stock' && (
+          {/* Row: Data Source (live only) */}
+          {inputMode === 'live' && (
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{
+                fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600,
+                textTransform: 'uppercase', letterSpacing: '0.5px',
+                display: 'block', marginBottom: '0.5rem',
+              }}>
+                Data Source
+              </label>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {DATA_SOURCES.map(s => (
+                  <button
+                    key={s.key}
+                    type="button"
+                    className={`ssa-source-btn ${dataSource === s.key ? 'active' : ''}`}
+                    onClick={() => { setDataSource(s.key); setResult(null); setError(''); }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Row: Inventory selector (live + inventory_stock) */}
+          {inputMode === 'live' && dataSource === 'inventory_stock' && (
             <div style={{ marginBottom: '1.25rem' }}>
               <label style={{
                 fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600,
@@ -437,7 +602,83 @@ export default function SSAForecastPage() {
             </div>
           )}
 
-          {/* Row 3: Forecast Period */}
+          {/* Row: CSV file (upload only) */}
+          {inputMode === 'upload' && (
+            <>
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{
+                  fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600,
+                  textTransform: 'uppercase', letterSpacing: '0.5px',
+                  display: 'block', marginBottom: '0.5rem',
+                }}>
+                  CSV File
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <input
+                    ref={csvInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      const f = e.target.files?.[0] ?? null;
+                      setCsvFile(f);
+                      setCsvFileName(f ? f.name : '');
+                      setError('');
+                      setAvailableColumns([]);
+                      setSelectedColumn('');
+                      if (f) fetchColumns(f);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ fontSize: '0.85rem' }}
+                    onClick={() => csvInputRef.current?.click()}
+                  >
+                    Choose File
+                  </button>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--gray)' }}>
+                    {csvFileName || 'No file chosen'}
+                  </span>
+                </div>
+                <p style={{
+                  fontSize: '0.78rem',
+                  color: 'var(--gray)',
+                  marginTop: '0.5rem',
+                  marginBottom: 0,
+                  lineHeight: 1.5,
+                }}>
+                  Required columns: Date (YYYY-MM-DD), Value. Accepts CSV, XLSX, XLS.
+                </p>
+              </div>
+
+              {availableColumns.length > 1 && (
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{
+                    fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600,
+                    textTransform: 'uppercase', letterSpacing: '0.5px',
+                    display: 'block', marginBottom: '0.5rem',
+                  }}>
+                    Target Column
+                  </label>
+                  <select
+                    className="ssa-select"
+                    value={selectedColumn}
+                    onChange={e => { setSelectedColumn(e.target.value); setResult(null); }}
+                  >
+                    {availableColumns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '0.4rem', marginBottom: 0 }}>
+                    Select the column to forecast from your file.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Row: Forecast Period */}
           <div style={{ marginBottom: '1.25rem' }}>
             <label style={{
               fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600,
@@ -446,17 +687,73 @@ export default function SSAForecastPage() {
             }}>
               Forecast Period
             </label>
-            <div className="ssa-period-selector">
+
+            {/* Type toggle */}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
               {FORECAST_PERIODS.map(p => (
                 <button
-                  key={p.days}
+                  key={p.type}
                   type="button"
-                  className={`ssa-period-btn ${forecastDays === p.days ? 'active' : ''}`}
-                  onClick={() => { setForecastDays(p.days); setResult(null); }}
+                  className={`ssa-period-btn ${forecastPeriod.type === p.type ? 'active' : ''}`}
+                  onClick={() => {
+                    setForecastPeriod(p);
+                    setForecastCount(p.defaultCount);
+                    setResult(null);
+                  }}
                 >
                   {p.label}
                 </button>
               ))}
+            </div>
+
+            {forecastPeriod.type === 'day_of_week' && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={{
+                  fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600,
+                  textTransform: 'uppercase', letterSpacing: '0.5px',
+                  display: 'block', marginBottom: '0.5rem',
+                }}>
+                  Day of Week
+                </label>
+                <select
+                  className="ssa-select"
+                  value={forecastDayOfWeek}
+                  onChange={e => { setForecastDayOfWeek(e.target.value); setResult(null); }}
+                >
+                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Count input */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="number"
+                min={1}
+                max={forecastPeriod.type === 'daily' ? 365 : (forecastPeriod.type === 'weekly' || forecastPeriod.type === 'day_of_week') ? 52 : 24}
+                value={forecastCount}
+                onChange={e => {
+                  const v = parseInt(e.target.value, 10);
+                  if (!isNaN(v) && v > 0) setForecastCount(v);
+                }}
+                style={{
+                  width: '80px',
+                  padding: '0.45rem 0.6rem',
+                  background: 'var(--dark)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  color: 'var(--white)',
+                  fontSize: '0.875rem',
+                  outline: 'none',
+                }}
+                onFocus={e => { e.target.style.borderColor = 'var(--gold)'; }}
+                onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
+              />
+              <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>
+                {forecastPeriod.unit} ahead
+              </span>
             </div>
           </div>
 
@@ -515,7 +812,7 @@ export default function SSAForecastPage() {
               <div className="ssa-stat-card">
                 <div className="ssa-stat-label">Forecast Period</div>
                 <div className="ssa-stat-value" style={{ fontSize: '1.1rem' }}>
-                  {selectedPeriodLabel}
+                  {forecastCount} {forecastPeriod.unit}
                 </div>
               </div>
               <div className="ssa-stat-card">
@@ -532,7 +829,7 @@ export default function SSAForecastPage() {
             <div className="ssa-card">
               <div className="ssa-card-header">
                 <h2 className="ssa-card-title">
-                  {selectedSourceLabel} — {selectedPeriodLabel} Forecast
+                  {displaySourceLabel} — {forecastCount} {forecastPeriod.unit} Forecast
                 </h2>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -558,6 +855,7 @@ export default function SSAForecastPage() {
                       tick={{ fill: 'var(--gray)', fontSize: 11 }}
                       tickMargin={8}
                       minTickGap={40}
+                      tickFormatter={formatDateLabel}
                     />
                     <YAxis stroke="var(--gray)" tick={{ fill: 'var(--gray)', fontSize: 11 }} />
                     <Tooltip
@@ -569,6 +867,7 @@ export default function SSAForecastPage() {
                       }}
                       itemStyle={{ color: 'var(--white)' }}
                       labelStyle={{ color: 'var(--gray)' }}
+                      labelFormatter={formatDateLabel}
                     />
                     <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '0.8rem' }} />
                     <Line
@@ -582,10 +881,95 @@ export default function SSAForecastPage() {
                       strokeDasharray="6 3"
                       dot={false} activeDot={{ r: 5 }}
                     />
+                    <Brush
+                      dataKey="date"
+                      height={28}
+                      stroke="#3a3a3a"
+                      fill="#1a1a1a"
+                      travellerWidth={8}
+                      tickFormatter={formatDateLabel}
+                      startIndex={Math.max(0, getCombinedChartData().length - Math.min(60, getCombinedChartData().length))}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             </div>
+
+            {/* Decomposition toggle */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+              <button
+                className={`ssa-source-btn ${showDecomp ? 'active' : ''}`}
+                type="button"
+                onClick={() => setShowDecomp(v => !v)}
+              >
+                {showDecomp ? 'Hide Decomposition' : 'Show Decomposition'}
+              </button>
+            </div>
+
+            {/* Decomposition chart */}
+            {showDecomp && (
+              <div className="ssa-card" style={{ marginBottom: '1rem' }}>
+                <div className="ssa-card-header">
+                  <h2 className="ssa-card-title">SSA Decomposition</h2>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
+                    Trend · Seasonality · Noise
+                  </span>
+                </div>
+                <div style={{ height: 320 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={getDecompChartData()}
+                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                      <XAxis
+                        dataKey="date"
+                        stroke="var(--gray)"
+                        tick={{ fill: 'var(--gray)', fontSize: 11 }}
+                        tickMargin={8}
+                        minTickGap={40}
+                        tickFormatter={formatDateLabel}
+                      />
+                      <YAxis stroke="var(--gray)" tick={{ fill: 'var(--gray)', fontSize: 11 }} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: 'var(--dark2)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          fontSize: '0.8rem',
+                        }}
+                        itemStyle={{ color: 'var(--white)' }}
+                        labelStyle={{ color: 'var(--gray)' }}
+                        labelFormatter={formatDateLabel}
+                      />
+                      <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '0.8rem' }} />
+                      <Line
+                        type="monotone" dataKey="Trend"
+                        stroke="var(--gold)" strokeWidth={2}
+                        dot={false} activeDot={{ r: 3 }}
+                      />
+                      <Line
+                        type="monotone" dataKey="Seasonality"
+                        stroke="#60a5fa" strokeWidth={1.5}
+                        dot={false} activeDot={{ r: 3 }}
+                      />
+                      <Line
+                        type="monotone" dataKey="Noise"
+                        stroke="rgba(255,255,255,0.25)" strokeWidth={1}
+                        dot={false} activeDot={{ r: 2 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <p style={{
+                  fontSize: '0.72rem', color: 'var(--gray)',
+                  marginTop: '0.75rem', marginBottom: 0, lineHeight: 1.5,
+                }}>
+                  Trend: long-run direction (component 0). Seasonality: periodic patterns (components 1–3).
+                  Noise: residual after removing trend and seasonality.
+                </p>
+              </div>
+            )}
 
             <p style={{
               fontSize: '0.75rem', color: 'var(--gray)',
@@ -617,7 +1001,12 @@ export default function SSAForecastPage() {
                 <table className="inventory-table">
                   <thead>
                     <tr>
-                      <th>#</th>
+                      <th>
+                        {forecastPeriod.type === 'daily' ? 'Day'
+                          : forecastPeriod.type === 'weekly' ? 'Week'
+                            : forecastPeriod.type === 'monthly' ? 'Month'
+                              : forecastDayOfWeek}
+                      </th>
                       <th>Date</th>
                       <th>Predicted Value</th>
                     </tr>
@@ -626,7 +1015,9 @@ export default function SSAForecastPage() {
                     {(result.forecast?.dates || []).map((date, idx) => (
                       <tr key={idx} className="ssa-forecast-day-row">
                         <td>{idx + 1}</td>
-                        <td style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>{date}</td>
+                        <td style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>
+                          {formatDateLabel(date)}
+                        </td>
                         <td>
                           <span style={{ color: 'var(--gold)', fontWeight: 600 }}>
                             {(result.forecast?.values || [])[idx]?.toFixed(2) ?? '—'}
