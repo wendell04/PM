@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardOverview from './DashboardOverview';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -34,14 +35,14 @@ export default function DashboardOverviewPage() {
       };
 
       const [statsRes, salesRes, inventoryRes, ordersRes, bannersRes, returnsRes, topProductsRes, movementsRes] = await Promise.all([
-        fetch(`${API_URL}/api/admin/orders/stats`,              { headers }),
-        fetch(`${API_URL}/api/admin/sales/summary`,             { headers }),
-        fetch(`${API_URL}/api/admin/inventory`,                  { headers }),
-        fetch(`${API_URL}/api/admin/orders`,                     { headers }),
-        fetch(`${API_URL}/api/admin/banners`,                    { headers }),
-        fetch(`${API_URL}/api/admin/returns/stats`,              { headers }),
-        fetch(`${API_URL}/api/admin/sales/top-products`,         { headers }),
-        fetch(`${API_URL}/api/admin/inventory/recent-movements`, { headers }),
+        fetchWithTimeout(`${API_URL}/api/admin/orders/stats`,              { headers }, 30000),
+        fetchWithTimeout(`${API_URL}/api/admin/sales/summary`,             { headers }, 30000),
+        fetchWithTimeout(`${API_URL}/api/admin/inventory`,                  { headers }, 30000),
+        fetchWithTimeout(`${API_URL}/api/admin/orders`,                     { headers }, 30000),
+        fetchWithTimeout(`${API_URL}/api/admin/banners`,                    { headers }, 30000),
+        fetchWithTimeout(`${API_URL}/api/admin/returns/stats`,              { headers }, 30000),
+        fetchWithTimeout(`${API_URL}/api/admin/sales/top-products`,         { headers }, 30000),
+        fetchWithTimeout(`${API_URL}/api/admin/inventory/recent-movements`, { headers }, 30000),
       ]);
 
       const statsJson        = statsRes.ok        ? await statsRes.json()        : null;
@@ -88,9 +89,27 @@ export default function DashboardOverviewPage() {
   if (data.loading) {
     return (
       <div className="page-content-wrapper">
-        <div className="loading-state">
-          <div className="loading-spinner"></div>
-          <p>Loading dashboard...</p>
+        <div className="skeleton-page">
+          <div className="skeleton-header">
+            <div className="skeleton-title" />
+            <div className="skeleton-subtitle" />
+          </div>
+          <div className="skeleton-cards">
+            {[...Array(4)].map((_, i) => (
+              <div className="skeleton-card" key={i} />
+            ))}
+          </div>
+          <div className="skeleton-table">
+            <div className="skeleton-table-header" />
+            {[...Array(5)].map((_, i) => (
+              <div className="skeleton-row" key={i}>
+                <div className="skeleton-cell skeleton-cell-short" />
+                <div className="skeleton-cell skeleton-cell-wide" />
+                <div className="skeleton-cell skeleton-cell-mid" />
+                <div className="skeleton-cell-badge" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );

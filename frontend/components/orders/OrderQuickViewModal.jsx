@@ -36,6 +36,41 @@ export default function OrderQuickViewModal({
   const [designError, setDesignError]       = useState(null);
   const [rejectReason, setRejectReason]     = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
+  const [cashReceived, setCashReceived]   = useState('');
+  const [codError, setCodError]           = useState(null);
+  const [codSuccess, setCodSuccess]       = useState(false);
+
+  const handleConfirmCOD = async () => {
+    const cash = parseFloat(cashReceived);
+    const due  = parseFloat(order?.totalAmount ?? 0);
+    if (isNaN(cash) || cash < due) {
+      setCodError('Cash received must be at least ₱' + due.toLocaleString('en-PH', { minimumFractionDigits: 2 }));
+      return;
+    }
+    setCodError(null);
+    setIsUpdating(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/orders/${order._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ paymentStatus: 'paid' }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to confirm COD payment');
+      }
+      setOrder(prev => prev ? { ...prev, payment_status: 'paid' } : null);
+      setCodSuccess(true);
+      if (onStatusUpdated) onStatusUpdated();
+    } catch (err) {
+      setCodError(err.message || 'Failed to confirm payment');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   // Hoisted fetch order function using useAuth token
   const fetchOrder = useCallback(async () => {
@@ -506,6 +541,80 @@ export default function OrderQuickViewModal({
                         {order.payment_status}
                       </span>
                     </div>
+                    {/* COD POS — B-14 */}
+                    {order.payment_method === 'COD' && order.payment_status !== 'paid' && (
+                      <div style={{
+                        marginTop: '0.75rem',
+                        padding: '0.75rem',
+                        borderRadius: '8px',
+                        background: 'rgba(250, 204, 21, 0.06)',
+                        border: '1px solid rgba(250, 204, 21, 0.2)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.5rem',
+                      }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                          COD Collection
+                        </span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Amount Due:</span>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>
+                            ₱{parseFloat(order.totalAmount ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--gray)', whiteSpace: 'nowrap' }}>Cash Received:</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={cashReceived}
+                            onChange={e => { setCashReceived(e.target.value); setCodError(null); setCodSuccess(false); }}
+                            placeholder="0.00"
+                            style={{
+                              width: '120px',
+                              padding: '0.3rem 0.5rem',
+                              background: 'var(--dark)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '6px',
+                              color: 'var(--white)',
+                              fontSize: '0.85rem',
+                              textAlign: 'right',
+                            }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Change:</span>
+                          <span style={{ fontSize: '0.85rem', color: parseFloat(cashReceived) >= parseFloat(order.totalAmount ?? 0) ? '#4ade80' : 'var(--gray)', fontWeight: 600 }}>
+                            ₱{Math.max(0, parseFloat(cashReceived || 0) - parseFloat(order.totalAmount ?? 0)).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        {codError && (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--red)' }}>{codError}</span>
+                        )}
+                        {codSuccess && (
+                          <span style={{ fontSize: '0.75rem', color: '#4ade80', fontWeight: 600 }}>✓ Payment confirmed</span>
+                        )}
+                        <button
+                          onClick={handleConfirmCOD}
+                          disabled={isUpdating || !cashReceived || parseFloat(cashReceived) < parseFloat(order.totalAmount ?? 0)}
+                          style={{
+                            marginTop: '0.25rem',
+                            padding: '0.4rem 1rem',
+                            background: isUpdating || !cashReceived || parseFloat(cashReceived) < parseFloat(order.totalAmount ?? 0) ? 'var(--border)' : 'var(--gold)',
+                            border: 'none',
+                            borderRadius: '6px',
+                            color: isUpdating || !cashReceived || parseFloat(cashReceived) < parseFloat(order.totalAmount ?? 0) ? 'var(--gray)' : 'var(--dark)',
+                            fontSize: '0.85rem',
+                            fontWeight: 700,
+                            cursor: isUpdating || !cashReceived || parseFloat(cashReceived) < parseFloat(order.totalAmount ?? 0) ? 'not-allowed' : 'pointer',
+                            width: '100%',
+                          }}
+                        >
+                          {isUpdating ? 'Processing...' : 'Confirm Payment Received'}
+                        </button>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Down Payment:</span>
                       <span style={{ fontSize: '0.85rem', color: 'var(--white)' }}>

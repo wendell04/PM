@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '../../../contexts/AuthContext';
 import '../../../components/custom-styles.css';
+import '../shop.css';
 import AddressBook from '../../../components/profile/AddressBook'; // NEW: Address Book component
 import { fetchMyOrders } from '../../../lib/ordersApi';
 import { fetchMyOrders as fetchMyOrderRequests } from '../../../lib/orderTrackingApi';
@@ -1779,7 +1780,7 @@ export default function CustomerProfilePage() {
                 {widgetError && !widgetLoading && (
                   <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--red)' }}>
                     <p style={{ marginBottom: '0.75rem', fontSize: '0.85rem' }}>Failed to load orders.</p>
-                    <button onClick={() => { setWidgetError(''); setWidgetLoading(true); if (!token) return; fetchMyOrderRequests(token).then(data => { const list = Array.isArray(data) ? data : []; setRecentOrders(list.slice(0, 3)); setWidgetError(''); }).catch(err => { setWidgetError(err.message); }).finally(() => { setWidgetLoading(false); }); }} style={{ background: 'var(--gold)', color: '#000', border: 'none', borderRadius: '6px', padding: '0.375rem 0.75rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>Retry</button>
+                    <button onClick={() => { setWidgetError(''); setWidgetLoading(true); if (!token) return; fetchMyOrderRequests(token).then(data => { const list = Array.isArray(data) ? data : []; setRecentOrders(list.slice(0, 3)); setWidgetError(''); }).catch(err => { setWidgetError(err.message); }).finally(() => { setWidgetLoading(false); }); }} style={{ background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '6px', padding: '0.375rem 0.75rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>Retry</button>
                   </div>
                 )}
 
@@ -1817,39 +1818,6 @@ export default function CustomerProfilePage() {
         </section>
       </main>
 
-      {/* Mobile Responsive Styles */}
-      <style jsx global>{`
-        .profile-layout {
-          display: flex;
-          align-items: flex-start;
-          gap: 2rem;
-        }
-        .profile-nav-item {
-          transition: background-color 0.2s ease, color 0.2s ease;
-        }
-        .profile-nav-item.active {
-          background: var(--gold) !important;
-          color: var(--black) !important;
-        }
-        .profile-nav-item:hover:not(.active) {
-          background: rgba(255,255,255,0.05) !important;
-          color: var(--white) !important;
-        }
-        @media (max-width: 768px) {
-          main {
-            flex-direction: column !important;
-            padding: 1rem !important;
-          }
-          aside {
-            width: 100% !important;
-            position: static !important;
-          }
-          nav button {
-            font-size: 0.85rem !important;
-            padding: 0.5rem 0.75rem !important;
-          }
-        }
-      `}</style>
     </div>
   );
 }

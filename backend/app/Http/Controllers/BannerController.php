@@ -29,7 +29,7 @@ class BannerController extends Controller
     {
         try {
             $validated = $request->validate([
-                'headline' => 'required|string|max:255',
+                'headline' => 'nullable|string|max:255',
                 'subtext' => 'nullable|string',
                 'ctaLabel' => 'nullable|string',
                 'ctaLink' => 'nullable|string',

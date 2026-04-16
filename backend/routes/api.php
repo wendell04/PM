@@ -23,6 +23,10 @@ use App\Http\Controllers\FlashSaleController;
 use App\Http\Controllers\OrderRequestController;
 use App\Http\Controllers\ShopOrderRequestController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\RolePermissionController;
+use App\Http\Controllers\StaffController;
+use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\ActivityLogController;
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::post('/register',        [AuthController::class, 'register'])->middleware('throttle:10,1');
@@ -81,14 +85,21 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/notifications/read-all',    [NotificationController::class, 'markAllRead']);
     Route::patch('/notifications/{id}/read',   [NotificationController::class, 'markRead']);
 
-    // ─── Active Sessions ──────────────────────────────────────────────────────
+    // ─── Active Sessions ─────────────────────────────────────────────────────
     Route::delete('/sessions/others/all', [SessionController::class, 'destroyOthers']);
     Route::get('/sessions',               [SessionController::class, 'index']);
     Route::delete('/sessions/{id}',       [SessionController::class, 'destroy']);
+
+    // ─── My Permissions (any authenticated staff) ────────────────────────────
+    Route::get('/my/permissions',         [RolePermissionController::class, 'myPermissions']);
 });
 
 // ─── Admin (authenticated + admin role required) ──────────────────────────────
 Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
+    // ─── Store settings (admin) ───────────────────────────────────────────────
+    Route::get('/admin/settings',  [SettingsController::class, 'show']);
+    Route::put('/admin/settings',  [SettingsController::class, 'update']);
+
     // ─── Suppliers ────────────────────────────────────────────────────────────
     Route::get('/admin/suppliers',               [SupplierController::class, 'index']);
     Route::post('/admin/suppliers',              [SupplierController::class, 'store']);
@@ -176,10 +187,21 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::delete('/admin/flash-sales/{id}',      [FlashSaleController::class, 'destroy']);
     Route::patch('/admin/flash-sales/{id}/toggle', [FlashSaleController::class, 'toggle']);
 
-    // ─── Order Requests (Admin) ───────────────────────────────────────────────
-    Route::get('/admin/order-requests',              [OrderRequestController::class, 'index']);
-    Route::get('/admin/order-requests/{id}',         [OrderRequestController::class, 'show']);
+    // ─── Order Requests (Admin) ──────────────────────────────────────────────
+    Route::get('/admin/order-requests',               [OrderRequestController::class, 'index']);
+    Route::get('/admin/order-requests/stats',         [OrderRequestController::class, 'stats']);
+    Route::get('/admin/order-requests/{id}',          [OrderRequestController::class, 'show']);
     Route::patch('/admin/order-requests/{id}/status', [OrderRequestController::class, 'updateStatus']);
+
+    // ─── Role Permissions ────────────────────────────────────────────────────
+    Route::get('/admin/role-permissions',             [RolePermissionController::class, 'index']);
+    Route::put('/admin/role-permissions/{role}',      [RolePermissionController::class, 'update']);
+
+    // ─── Staff Management ────────────────────────────────────────────────────
+    Route::get('/admin/staff',                        [StaffController::class, 'index']);
+    Route::post('/admin/staff',                       [StaffController::class, 'store']);
+    Route::put('/admin/staff/{id}',                   [StaffController::class, 'update']);
+    Route::delete('/admin/staff/{id}',                [StaffController::class, 'destroy']);
 });
 
 // ─── Order Requests (Customer) ───────────────────────────────────────────────

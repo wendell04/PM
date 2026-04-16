@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
   || 'http://127.0.0.1:8000';
@@ -39,9 +40,9 @@ export default function FlashSalesPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/flash-sales`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/flash-sales`, {
         headers: { Authorization: `Bearer ${token}` },
-      });
+      }, 30000);
       if (!res.ok) throw new Error('Failed to fetch flash sales');
       const data = await res.json();
       setSales(data.data || []);
@@ -56,9 +57,9 @@ export default function FlashSalesPage() {
     if (!token) return;
     setLoadingProducts(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/products`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/products`, {
         headers: { Authorization: `Bearer ${token}` },
-      });
+      }, 30000);
       if (!res.ok) throw new Error('Failed to fetch products');
       const data = await res.json();
       setProducts(Array.isArray(data.data) ? data.data
@@ -168,7 +169,7 @@ export default function FlashSalesPage() {
     const method = editTarget ? 'PUT' : 'POST';
 
     try {
-      const res = await fetch(url, {
+      const res = await fetchWithTimeout(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -178,7 +179,7 @@ export default function FlashSalesPage() {
           ...form,
           discountValue: parseFloat(form.discountValue),
         }),
-      });
+      }, 30000);
       const data = await res.json();
       if (!res.ok) {
         setFormError(data.message || 'Something went wrong.');
@@ -197,12 +198,13 @@ export default function FlashSalesPage() {
   async function handleToggle(sale) {
     setToggling(sale.id);
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `${API_URL}/api/admin/flash-sales/${sale.id}/toggle`,
         {
           method: 'PATCH',
           headers: { Authorization: `Bearer ${token}` },
-        }
+        },
+        30000
       );
       if (!res.ok) throw new Error();
       const updated = await res.json();
@@ -223,12 +225,13 @@ export default function FlashSalesPage() {
     )) return;
     setDeleting(sale.id);
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `${API_URL}/api/admin/flash-sales/${sale.id}`,
         {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
-        }
+        },
+        30000
       );
       if (!res.ok) throw new Error();
       setSales(prev => prev.filter(s => s.id !== sale.id));

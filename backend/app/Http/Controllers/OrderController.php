@@ -146,6 +146,25 @@ class OrderController extends Controller
             // Notify owner
             $this->notifyOwner($order);
 
+            // In-app notification to admin — B-13
+            try {
+                $admin = \App\Models\User::where('role', 'admin')->first();
+                if ($admin) {
+                    Notification::create([
+                        'user_id'    => (string) $admin->_id,
+                        'type'       => 'new_order',
+                        'title'      => 'New Order Received',
+                        'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8)) .
+                                        ' placed by ' . ($order->userSnapshot['name'] ?? 'Unknown') . '.',
+                        'is_read'    => false,
+                        'data'       => ['orderId' => (string) $order->_id],
+                        'created_at' => now(),
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('store: admin notification failed', ['error' => $e->getMessage()]);
+            }
+
             // Notify customer — order confirmation
             try {
                 $customerEmail = $order->userSnapshot['email'] ?? null;
@@ -275,7 +294,57 @@ class OrderController extends Controller
             ]);
 
             $oldStatus = $order->orderStatus;
+
+            // Enforce valid status transitions when orderStatus is being changed
+            if (isset($validated['orderStatus']) && $validated['orderStatus'] !== $oldStatus) {
+                $allowedTransitions = [
+                    'Pending'       => ['In Production', 'Cancelled'],
+                    'In Production' => ['For Delivery', 'Cancelled'],
+                    'For Delivery'  => ['Delivered', 'Returned'],
+                    'Delivered'     => [],
+                    'Returned'      => [],
+                    'Cancelled'     => [],
+                ];
+
+                $allowed = $allowedTransitions[$oldStatus] ?? [];
+                if (!in_array($validated['orderStatus'], $allowed)) {
+                    return response()->json([
+                        'error' => "Invalid transition: cannot move from '{$oldStatus}' to '{$validated['orderStatus']}'.",
+                    ], 422);
+                }
+
+                // Payment gate — same rule as updateStatus()
+                if ($validated['orderStatus'] === 'In Production') {
+                    $downPayment = $order->downPayment ?? 0;
+                    if ($downPayment <= 0) {
+                        return response()->json([
+                            'error' => 'A downpayment is required before moving this order to production. Please collect at least a partial payment first.',
+                        ], 422);
+                    }
+                }
+
+                // Courier gate — same rule as updateStatus()
+                if ($validated['orderStatus'] === 'For Delivery') {
+                    $courierValidated = $request->validate([
+                        'courierName'    => 'required|string|max:100',
+                        'trackingNumber' => 'nullable|string|max:200',
+                    ]);
+                    $order->courierName    = $courierValidated['courierName'];
+                    $order->trackingNumber = $courierValidated['trackingNumber'] ?? null;
+                }
+            }
+
             $order->update($validated);
+
+            // Handle cancellation: cancel linked JobOrder
+            if (isset($validated['orderStatus']) && $order->orderStatus === 'Cancelled' && $oldStatus !== 'Cancelled') {
+                $this->cancelLinkedJobOrder($order);
+            }
+
+            // Handle return: restore inventory
+            if (isset($validated['orderStatus']) && $order->orderStatus === 'Returned' && $oldStatus !== 'Returned') {
+                $this->restoreInventoryOnReturn($order);
+            }
 
             // Log activity if status changed
             if (isset($validated['orderStatus']) && $oldStatus !== $order->orderStatus) {
@@ -351,18 +420,28 @@ class OrderController extends Controller
             if (!$this->isAdmin($request)) {
                 return $this->unauthorizedResponse();
             }
-            $totalOrders = Order::count();
-            $pendingOrders = Order::where('orderStatus', 'Pending')->count();
-            $completedOrders = Order::where('orderStatus', 'Delivered')->count();
-            $cancelledOrders = Order::where('orderStatus', 'Cancelled')->count();
-            $totalRevenue = Order::where('orderStatus', 'Delivered')->sum('totalAmount');
+
+            $base = Order::query()
+                ->when($request->filled('startDate'), fn($q) => $q->where('createdAt', '>=', $request->startDate))
+                ->when($request->filled('endDate'),   fn($q) => $q->where('createdAt', '<=', $request->endDate));
+
+            $totalOrders     = (clone $base)->count();
+            $pendingOrders   = (clone $base)->where('orderStatus', 'Pending')->count();
+            $completedOrders = (clone $base)->where('orderStatus', 'Delivered')->count();
+            $cancelledOrders = (clone $base)->where('orderStatus', 'Cancelled')->count();
+            $totalRevenue    = (clone $base)->where('orderStatus', 'Delivered')->sum('totalAmount');
+
+            $cancellationRate = $totalOrders > 0
+                ? round(($cancelledOrders / $totalOrders) * 100, 2)
+                : 0;
 
             return $this->successResponse('Order statistics fetched successfully.', [
-                'totalOrders' => $totalOrders,
-                'pendingOrders' => $pendingOrders,
-                'completedOrders' => $completedOrders,
-                'cancelledOrders' => $cancelledOrders,
-                'totalRevenue' => $totalRevenue,
+                'totalOrders'      => $totalOrders,
+                'pendingOrders'    => $pendingOrders,
+                'completedOrders'  => $completedOrders,
+                'cancelledOrders'  => $cancelledOrders,
+                'totalRevenue'     => $totalRevenue,
+                'cancellationRate' => $cancellationRate,
             ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching order statistics.');
@@ -375,6 +454,15 @@ class OrderController extends Controller
     private function completeOrder(Order $order): void
     {
         try {
+            // Idempotency guard — if sales already exist for this order, skip entirely
+            $existingSale = Sale::where('notes', 'like', '%' . ($order->orderId ?? $order->_id) . '%')->first();
+            if ($existingSale) {
+                Log::warning('completeOrder: sales already exist for order, skipping to prevent duplication', [
+                    'orderId' => (string) $order->_id,
+                ]);
+                return;
+            }
+
             foreach ($order->items as $item) {
                 $product = Product::find($item['productId']);
                 if (!$product || !$product->inventoryId) continue;
@@ -397,10 +485,12 @@ class OrderController extends Controller
                 $cost = $inventory->averageCost * $item['qty'];
                 $profit = $item['lineTotal'] - $cost;
 
+                $variantName = $item['variantName'] ?? '';
+
                 Sale::create([
                     'saleId'          => $newSaleId,
                     'inventoryId'     => (string) $inventory->_id,
-                    'productName'     => $product->name . ($item['variantName'] ? " ({$item['variantName']})" : ""),
+                    'productName'     => $product->name . ($variantName ? " ({$variantName})" : ""),
                     'category'        => $product->category,
                     'quantity'        => $item['qty'],
                     'unitPrice'       => $item['unitPrice'],
@@ -524,13 +614,65 @@ class OrderController extends Controller
             }
 
             $oldStatus = $order->orderStatus;
-            $order->orderStatus = $validated['orderStatus'];
+            $newStatus = $validated['orderStatus'];
+
+            // Enforce valid status transitions
+            $allowedTransitions = [
+                'Pending'       => ['In Production', 'Cancelled'],
+                'In Production' => ['For Delivery', 'Cancelled'],
+                'For Delivery'  => ['Delivered', 'Returned'],
+                'Delivered'     => [],
+                'Returned'      => [],
+                'Cancelled'     => [],
+            ];
+
+            $allowed = $allowedTransitions[$oldStatus] ?? [];
+            if (!in_array($newStatus, $allowed)) {
+                return response()->json([
+                    'error' => "Invalid transition: cannot move from '{$oldStatus}' to '{$newStatus}'.",
+                ], 422);
+            }
+
+            // Payment gate — downpayment required before entering production
+            // All PersonalizeMe orders are custom/personalized goods.
+            // Per RA 7394 and DTI guidelines, merchants may require downpayment
+            // for bespoke orders since items cannot be resold if cancelled.
+            if ($newStatus === 'In Production') {
+                $downPayment = $order->downPayment ?? 0;
+                if ($downPayment <= 0) {
+                    return response()->json([
+                        'error' => 'A downpayment is required before moving this order to production. Please collect at least a partial payment first.',
+                    ], 422);
+                }
+            }
+
+            // Courier required when moving to For Delivery
+            if ($newStatus === 'For Delivery') {
+                $validated2 = $request->validate([
+                    'courierName'    => 'required|string|max:100',
+                    'trackingNumber' => 'nullable|string|max:200',
+                ]);
+                $order->courierName    = $validated2['courierName'];
+                $order->trackingNumber = $validated2['trackingNumber'] ?? null;
+            }
+
+            $order->orderStatus = $newStatus;
             $order->updatedAt = now();
             $order->save();
 
             // Handle completion: create sales records and deduct inventory
             if ($order->orderStatus === 'Delivered' && $oldStatus !== 'Delivered') {
                 $this->completeOrder($order);
+            }
+
+            // Handle cancellation: cancel linked JobOrder
+            if ($order->orderStatus === 'Cancelled') {
+                $this->cancelLinkedJobOrder($order);
+            }
+
+            // Handle return: restore inventory
+            if ($order->orderStatus === 'Returned' && $oldStatus !== 'Returned') {
+                $this->restoreInventoryOnReturn($order);
             }
 
             // Log activity
@@ -590,7 +732,71 @@ class OrderController extends Controller
         }
     }
 
-    // ─── Private Helpers ──────────────────────────────────────────────────────
+    /**
+     * Cancels the linked JobOrder when an Order is cancelled.
+     * Prevents production staff from continuing work on a dead order.
+     */
+    private function cancelLinkedJobOrder(Order $order): void
+    {
+        try {
+            $jobOrder = \App\Models\JobOrder::where('orderId', (string) $order->_id)
+                ->whereIn('joStatus', ['Queued', 'In Progress'])
+                ->first();
+
+            if ($jobOrder) {
+                $jobOrder->joStatus  = 'Cancelled';
+                $jobOrder->updatedAt = now();
+                $jobOrder->save();
+
+                Log::info('cancelLinkedJobOrder: JobOrder cancelled', [
+                    'orderId'    => (string) $order->_id,
+                    'jobOrderId' => (string) $jobOrder->_id,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('cancelLinkedJobOrder: failed', [
+                'orderId' => (string) $order->_id,
+                'error'   => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Restores inventory stock when an Order is returned.
+     * Mirrors the deduction done in completeOrder().
+     */
+    private function restoreInventoryOnReturn(Order $order): void
+    {
+        try {
+            foreach ($order->items as $item) {
+                $product = Product::find($item['productId']);
+                if (!$product || !$product->inventoryId) continue;
+
+                $inventory = Inventory::find($product->inventoryId);
+                if (!$inventory || $inventory->isOnDemand) continue;
+
+                $inventory->stockQty = $inventory->stockQty + $item['qty'];
+                $inventory->save();
+
+                \App\Models\StockHistory::create([
+                    'inventoryId'  => (string) $inventory->_id,
+                    'quantity'     => $item['qty'],
+                    'remainingQty' => $inventory->stockQty,
+                    'unitCost'     => $inventory->averageCost,
+                    'totalCost'    => $inventory->averageCost * $item['qty'],
+                    'reason'       => 'return',
+                    'createdAt'    => now(),
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('restoreInventoryOnReturn: failed', [
+                'orderId' => (string) $order->_id,
+                'error'   => $e->getMessage(),
+            ]);
+        }
+    }
+
+    // ─── Private Helpers ────────────────────────────────────────────────
 
     /**
      * Resolves unit price from product's price settings.
@@ -897,6 +1103,25 @@ class OrderController extends Controller
                 Log::warning('cancelMyOrder: notification failed', [
                     'error' => $e->getMessage(),
                 ]);
+            }
+
+            // In-app notification to admin — B-13
+            try {
+                $admin = \App\Models\User::where('role', 'admin')->first();
+                if ($admin) {
+                    Notification::create([
+                        'user_id'    => (string) $admin->_id,
+                        'type'       => 'order_cancelled',
+                        'title'      => 'Order Cancelled by Customer',
+                        'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8)) .
+                                        ' was cancelled by ' . trim("{$user->firstName} {$user->lastName}") . '.',
+                        'is_read'    => false,
+                        'data'       => ['orderId' => (string) $order->_id],
+                        'created_at' => now(),
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('cancelMyOrder: admin notification failed', ['error' => $e->getMessage()]);
             }
 
             // Activity log

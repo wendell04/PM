@@ -514,13 +514,13 @@ export default function ProductDetailPage() {
                 <div>
                   <div style={{ fontSize: '1.75rem',
                     fontWeight: 800, color: 'var(--gold)' }}>
-                    {formatPeso(totalPrice)}
+                    {formatPeso(unitPrice ?? totalPrice)}
                   </div>
-                  {unitPrice != null && quantity > 1 && (
+                  {totalPrice != null && quantity > 1 && (
                     <div style={{ fontSize: '0.82rem',
                       color: 'var(--gray)',
                       marginTop: '0.25rem' }}>
-                      {formatPeso(unitPrice)} / pc
+                      Subtotal: {formatPeso(totalPrice)}
                     </div>
                   )}
                 </div>
@@ -743,28 +743,20 @@ export default function ProductDetailPage() {
                     display: 'flex', alignItems: 'center',
                     justifyContent: 'center',
                   }}>−</button>
-                <input
-                  type="number"
-                  value={quantity}
-                  min={1}
-                  onChange={e => setQuantity(
-                    Math.max(1,
-                      parseInt(e.target.value) || 1))}
-                  onKeyDown={e => ['e','E','+','-']
-                    .includes(e.key) && e.preventDefault()}
-                  style={{
-                    width: '64px', textAlign: 'center',
-                    padding: '0.5rem',
-                    background: 'var(--dark2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '8px',
-                    color: 'var(--white)',
-                    fontSize: '0.95rem', fontWeight: 700,
-                    MozAppearance: 'textfield',
-                    WebkitAppearance: 'none',
-                    appearance: 'textfield',
-                  }}
-                />
+                <span style={{
+                  width: '64px', textAlign: 'center',
+                  padding: '0.5rem',
+                  background: 'var(--dark2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  color: 'var(--white)',
+                  fontSize: '0.95rem', fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  {quantity}
+                </span>
                 <button
                   onClick={() => setQuantity(q => q + 1)}
                   style={{

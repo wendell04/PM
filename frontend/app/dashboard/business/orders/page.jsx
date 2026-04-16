@@ -8,12 +8,13 @@
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchAllOrdersNew, updateOrder as updateOrderApi } from '@/lib/ordersApi';
+import { fetchAllOrdersNew, updateOrder as updateOrderApi, updateJobOrderStatus } from '@/lib/ordersApi';
 import { getStatusBadge } from '@/lib/utils/orderHelpers';
 import OrderQuickViewModal from '@/components/orders/OrderQuickViewModal';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const YEARS = [2025, 2026, 2027, 2028];
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 export default function OrdersPage() {
   const { token } = useAuth();
@@ -29,6 +30,11 @@ export default function OrdersPage() {
   const [selectedJO, setSelectedJO] = useState(null);
   const [showUnpaidWarning, setShowUnpaidWarning] = useState(false);
   const [pendingStatusUpdate, setPendingStatusUpdate] = useState(null);
+  const [showCourierModal, setShowCourierModal] = useState(false);
+  const [pendingDeliveryOrders, setPendingDeliveryOrders] = useState(null);
+  const [courierName, setCourierName] = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [courierError, setCourierError] = useState('');
 
   // Print modal form state
   const [printDescription, setPrintDescription] = useState('');
@@ -322,15 +328,22 @@ export default function OrdersPage() {
                   }
                 }
 
+                // For Delivery requires courier info — show modal first
+                if (newStatus === 'For Delivery') {
+                  setPendingDeliveryOrders(new Set(selectedOrders));
+                  setCourierName('');
+                  setTrackingNumber('');
+                  setCourierError('');
+                  setShowCourierModal(true);
+                  return;
+                }
+
                 // Update order status for selected orders via API
                 setIsSubmitting(true);
                 try {
                   const updatePromises = Array.from(selectedOrders).map(async (orderId) => {
-                    const updatedOrder = { orderStatus: newStatus };
-                    if (newStatus === 'For Delivery') {
-                      updatedOrder.joStatus = 'Completed';
-                    }
-                    return await updateOrderApi(orderId, updatedOrder, token);
+                    const result = await updateOrderApi(orderId, { orderStatus: newStatus }, token);
+                    return result;
                   });
 
                   const updatedOrders = await Promise.all(updatePromises);
@@ -348,11 +361,7 @@ export default function OrdersPage() {
                   // Fallback: update local state optimistically
                   setOrders(prev => prev.map(ord => {
                     if (selectedOrders.has(ord.id)) {
-                      const updated = { ...ord, orderStatus: newStatus };
-                      if (newStatus === 'For Delivery') {
-                        updated.joStatus = 'Completed';
-                      }
-                      return updated;
+                      return { ...ord, orderStatus: newStatus };
                     }
                     return ord;
                   }));
@@ -1241,13 +1250,13 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* Unpaid Warning Modal */}
+      {/* Unpaid Warning Modal — hard stop, no bypass */}
       {showUnpaidWarning && (
-        <div className="modal-overlay" onClick={() => setShowUnpaidWarning(false)}>
+        <div className="modal-overlay" onClick={() => { setShowUnpaidWarning(false); setPendingStatusUpdate(null); }}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '90%' }}>
             <div className="modal-header">
-              <h2 className="modal-title" style={{ color: '#facc15' }}>Unpaid Order Warning</h2>
-              <button className="modal-close" onClick={() => setShowUnpaidWarning(false)}>
+              <h2 className="modal-title" style={{ color: '#facc15' }}>Downpayment Required</h2>
+              <button className="modal-close" onClick={() => { setShowUnpaidWarning(false); setPendingStatusUpdate(null); }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 6L6 18M6 6l12 12"/>
                 </svg>
@@ -1255,18 +1264,101 @@ export default function OrdersPage() {
             </div>
 
             <div className="modal-body">
-              <div style={{ padding: '1rem', background: 'rgba(250, 204, 21, 0.1)', borderRadius: '8px', border: '1px solid rgba(250, 204, 21, 0.3)' }}>
+              <div style={{ padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
                 <p style={{ fontSize: '0.95rem', color: 'var(--white)', lineHeight: 1.6 }}>
-                  <strong>Warning:</strong> Some selected orders are not yet paid. Pending orders must be paid before they can be moved to In Production.
+                  <strong>Cannot proceed:</strong> One or more selected orders have no downpayment recorded. All custom orders require at least a partial payment before production can begin.
                 </p>
                 <p style={{ fontSize: '0.875rem', color: 'var(--gray)', marginTop: '0.75rem' }}>
-                  Please collect payment (downpayment or full payment) before proceeding.
+                  Please collect and record a downpayment for the affected orders, then try again.
                 </p>
               </div>
             </div>
 
             <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => setShowUnpaidWarning(false)}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => { setShowUnpaidWarning(false); setPendingStatusUpdate(null); }}
+              >
+                Understood
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Courier Modal — required for For Delivery transition */}
+      {showCourierModal && (
+        <div className="modal-overlay" onClick={() => { setShowCourierModal(false); setPendingDeliveryOrders(null); }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '90%' }}>
+            <div className="modal-header">
+              <h2 className="modal-title" style={{ color: 'var(--gold)' }}>Assign Courier</h2>
+              <button className="modal-close" onClick={() => { setShowCourierModal(false); setPendingDeliveryOrders(null); }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ fontSize: '0.875rem', color: 'var(--gray)', display: 'block', marginBottom: '0.5rem' }}>
+                  Courier <span style={{ color: 'var(--red)' }}>*</span>
+                </label>
+                <select
+                  value={courierName}
+                  onChange={e => { setCourierName(e.target.value); setCourierError(''); }}
+                  style={{
+                    width: '100%',
+                    padding: '0.625rem 0.75rem',
+                    background: 'var(--dark2)',
+                    border: `1px solid ${courierError ? 'var(--red)' : 'var(--border)'}`,
+                    borderRadius: '6px',
+                    color: 'var(--white)',
+                    fontSize: '0.95rem',
+                  }}
+                >
+                  <option value="">Select courier...</option>
+                  <option value="J&T Express">J&T Express</option>
+                  <option value="Ninja Van">Ninja Van</option>
+                  <option value="Lalamove">Lalamove</option>
+                  <option value="Grab Express">Grab Express</option>
+                  <option value="LBC">LBC</option>
+                  <option value="Other">Other</option>
+                </select>
+                {courierError && (
+                  <p style={{ fontSize: '0.8rem', color: 'var(--red)', marginTop: '0.375rem' }}>{courierError}</p>
+                )}
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.875rem', color: 'var(--gray)', display: 'block', marginBottom: '0.5rem' }}>
+                  Tracking Number <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={trackingNumber}
+                  onChange={e => setTrackingNumber(e.target.value)}
+                  placeholder="e.g. JT1234567890"
+                  style={{
+                    width: '100%',
+                    padding: '0.625rem 0.75rem',
+                    background: 'var(--dark2)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    color: 'var(--white)',
+                    fontSize: '0.95rem',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => { setShowCourierModal(false); setPendingDeliveryOrders(null); }}
+              >
                 Cancel
               </button>
               <button
@@ -1275,47 +1367,65 @@ export default function OrdersPage() {
                 disabled={isSubmitting}
                 style={{ opacity: isSubmitting ? 0.6 : 1 }}
                 onClick={async () => {
+                  if (!courierName) {
+                    setCourierError('Please select a courier before proceeding.');
+                    return;
+                  }
                   if (isSubmitting) return;
                   setIsSubmitting(true);
-                  // Proceed with status update despite unpaid warning
-                  const { newStatus, selectedOrders: selectedSet } = pendingStatusUpdate;
                   try {
-                    const updatePromises = Array.from(selectedSet).map(async (orderId) => {
-                      const updatedOrder = { orderStatus: newStatus };
-                      if (newStatus === 'For Delivery') {
-                        updatedOrder.joStatus = 'Completed';
+                    const updatePromises = Array.from(pendingDeliveryOrders).map(async (orderId) => {
+                      const res = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
+                        method: 'PATCH',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({
+                          orderStatus: 'For Delivery',
+                          courierName,
+                          trackingNumber: trackingNumber || null,
+                        }),
+                      });
+                      if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.message || err.error || 'Failed to update order');
                       }
-                      return await updateOrderApi(orderId, updatedOrder, token);
+                      const data = await res.json();
+                      const orderObj = orders.find(o => o.id === orderId || o._id === orderId);
+                      if (orderObj?.joId) {
+                        await updateJobOrderStatus(orderObj.joId, 'Completed', token);
+                      }
+                      return data.order;
                     });
-
                     const updatedOrders = await Promise.all(updatePromises);
-
-                    // Update local state with API responses
                     setOrders(prev => prev.map(ord => {
-                      if (selectedSet.has(ord.id)) {
-                        const apiUpdated = updatedOrders.find(u => u.id === ord.id || u._id === ord.id);
-                        return apiUpdated ? { ...ord, ...apiUpdated } : { ...ord, orderStatus: newStatus };
+                      if (pendingDeliveryOrders.has(ord.id)) {
+                        const apiUpdated = updatedOrders.find(u => u && (u._id === ord.id || u.id === ord.id));
+                        return apiUpdated ? { ...ord, ...apiUpdated, id: ord.id } : { ...ord, orderStatus: 'For Delivery', courierName, trackingNumber: trackingNumber || null };
                       }
                       return ord;
                     }));
+                    setSelectedOrders(new Set());
+                    setShowCourierModal(false);
+                    setPendingDeliveryOrders(null);
                   } catch (error) {
-                    console.error('Failed to update order status:', error);
-                    // Fallback: update local state optimistically
+                    console.error('Failed to assign courier:', error);
                     setOrders(prev => prev.map(ord => {
-                      if (selectedSet.has(ord.id)) {
-                        return { ...ord, orderStatus: newStatus };
+                      if (pendingDeliveryOrders.has(ord.id)) {
+                        return { ...ord, orderStatus: 'For Delivery', courierName, trackingNumber: trackingNumber || null };
                       }
                       return ord;
                     }));
+                    setSelectedOrders(new Set());
+                    setShowCourierModal(false);
+                    setPendingDeliveryOrders(null);
                   } finally {
                     setIsSubmitting(false);
                   }
-                  setSelectedOrders(new Set());
-                  setShowUnpaidWarning(false);
-                  setPendingStatusUpdate(null);
                 }}
               >
-                {isSubmitting ? 'Updating...' : 'Proceed Anyway'}
+                {isSubmitting ? 'Updating...' : 'Confirm & Send for Delivery'}
               </button>
             </div>
           </div>

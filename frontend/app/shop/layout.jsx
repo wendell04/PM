@@ -15,6 +15,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
 } from '@/lib/notificationApi';
+import './shop.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -214,8 +215,8 @@ function PasswordStrength({ password }) {
       {(isTooShort || isTooLong) && (
         <div style={{ fontSize: '0.7rem', marginBottom: '0.4rem', padding: '0.25rem 0.6rem', borderRadius: '6px',
           background: isTooLong ? 'rgba(239,68,68,0.12)' : 'rgba(249,115,22,0.12)',
-          border: `1px solid ${isTooLong ? '#ef4444' : '#f97316'}`,
-          color: isTooLong ? '#ef4444' : '#f97316' }}>
+          border: `1px solid ${isTooLong ? 'var(--red)' : '#f97316'}`,
+          color: isTooLong ? 'var(--red)' : '#f97316' }}>
           {isTooLong ? (
             <>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>{' '}Too long
@@ -230,10 +231,10 @@ function PasswordStrength({ password }) {
       <div style={{ height: '4px', borderRadius: '999px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
         <div style={{ height: '100%', borderRadius: '999px',
           width: isTooLong ? '100%' : current.width,
-          background: isTooLong ? '#ef4444' : current.color,
+          background: isTooLong ? 'var(--red)' : current.color,
           transition: 'width 0.3s ease, background 0.3s ease' }}/>
       </div>
-      <div style={{ fontSize: '0.72rem', marginTop: '0.25rem', color: isTooLong ? '#ef4444' : current.color, transition: 'color 0.3s' }}>
+      <div style={{ fontSize: '0.72rem', marginTop: '0.25rem', color: isTooLong ? 'var(--red)' : current.color, transition: 'color 0.3s' }}>
         {isTooLong ? 'Too Long — recommended max 32 characters' : current.label}
       </div>
     </div>
@@ -249,7 +250,7 @@ function StepIndicator({ step }) {
         color: step === 1 ? 'var(--gold)' : 'var(--gray)', fontWeight: '600' }}>
         <div style={{ width: '20px', height: '20px', borderRadius: '50%', fontWeight: '700',
           background: step === 1 ? 'var(--gold)' : 'rgba(212,168,67,0.2)',
-          color: step === 1 ? '#000' : 'var(--gold)',
+          color: step === 1 ? 'var(--black)' : 'var(--gold)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
           {step > 1 ? (
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -263,7 +264,7 @@ function StepIndicator({ step }) {
         color: step === 2 ? 'var(--gold)' : 'var(--gray)', fontWeight: '600' }}>
         <div style={{ width: '20px', height: '20px', borderRadius: '50%', fontWeight: '700',
           background: step === 2 ? 'var(--gold)' : 'var(--border)',
-          color: step === 2 ? '#000' : 'var(--gray)',
+          color: step === 2 ? 'var(--black)' : 'var(--gray)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>2</div>
         Review T&amp;C
       </div>
@@ -469,7 +470,7 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
           <div className="auth-field">
             <label>Phone Number</label>
             <div style={{ display: 'flex', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
-              <div style={{ background: 'var(--dark3,#1a1a1a)', borderRight: '1px solid var(--border)', padding: '0 1rem', display: 'flex', alignItems: 'center', color: 'var(--white)', fontWeight: '700', fontSize: '0.95rem', flexShrink: 0, userSelect: 'none' }}>+63</div>
+              <div style={{ background: 'var(--dark3)', borderRight: '1px solid var(--border)', padding: '0 1rem', display: 'flex', alignItems: 'center', color: 'var(--white)', fontWeight: '700', fontSize: '0.95rem', flexShrink: 0, userSelect: 'none' }}>+63</div>
               <input
                 type="tel"
                 placeholder="912 345 6789"
@@ -523,9 +524,9 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
                       { label: 'One number', pass: /\d/.test(formData.password) },
                       { label: 'One special character', pass: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password) },
                     ].map((c, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: c.pass ? '#4ade80' : 'var(--gray)', transition: 'color 0.2s' }}>
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: c.pass ? 'var(--green)' : 'var(--gray)', transition: 'color 0.2s' }}>
                         <span style={{ fontSize: '0.72rem' }}>{c.pass ? (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><polyline points="20 6 9 17 4 12"/></svg>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><polyline points="20 6 9 17 4 12"/></svg>
                         ) : (
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,opacity:0.3}}><circle cx="12" cy="12" r="2"/></svg>
                         )}</span>{c.label}
@@ -557,11 +558,11 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
                 </button>
               </div>
               {(confirmTouched || formData.confirmPassword.length > 0) && (
-                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: formData.confirmPassword.length === 0 ? 'var(--gray)' : (formData.confirmPassword === formData.password ? '#4ade80' : '#ef4444') }}>
+                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: formData.confirmPassword.length === 0 ? 'var(--gray)' : (formData.confirmPassword === formData.password ? 'var(--green)' : 'var(--red)') }}>
                   {formData.confirmPassword.length === 0
                     ? 'Re-enter your password to confirm.'
                     : (formData.confirmPassword === formData.password ? (
-                        <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><polyline points="20 6 9 17 4 12"/></svg> Passwords match</>
+                        <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><polyline points="20 6 9 17 4 12"/></svg> Passwords match</>
                       ) : 'Passwords do not match')}
                 </div>
               )}
@@ -664,6 +665,7 @@ export default function ShopLayout({ children }) {
   const [cartInitialized, setCartInitialized] = useState(false);
   const pendingCartAdds = useRef([]);
   const syncTimeoutRef = useRef(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -676,6 +678,17 @@ export default function ShopLayout({ children }) {
 
   // Call this instead of setAuthModalOpen(true) when login is
   // triggered by a protected action so we can redirect after login.
+  const handleSearchChange = (e) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+    window.dispatchEvent(new CustomEvent('pmp_search', { detail: { query: val } }));
+  };
+
+  const handleSearchClear = () => {
+    setSearchQuery('');
+    window.dispatchEvent(new CustomEvent('pmp_search', { detail: { query: '' } }));
+  };
+
   const openAuthModalWithRedirect = (returnPath) => {
     if (returnPath) sessionStorage.setItem('pre_login_redirect', returnPath);
     setAuthModalOpen(true);
@@ -790,7 +803,8 @@ export default function ShopLayout({ children }) {
       sessionStorage.setItem('pending_2fa', 'true');
       // Save redirect destination for after 2FA
       const currentPath = window.location.pathname;
-      const isAdminUser = userData.role === 'admin' || userData.role === 'business' || userData.role === 'owner';
+      const dashboardRoles = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
+      const isAdminUser = dashboardRoles.includes(userData.role);
       const returnTo = isAdminUser
         ? '/dashboard/business/dashboardoverview'
         : (currentPath === '/shop/2fa-verify' || currentPath === '/')
@@ -811,7 +825,8 @@ export default function ShopLayout({ children }) {
     storage.setItem('auth_user', JSON.stringify(userData));
 
     // Redirect admin/owner to dashboard
-    if (userData.role === 'admin' || userData.role === 'business' || userData.role === 'owner') {
+    const dashboardRolesLogin = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
+    if (dashboardRolesLogin.includes(userData.role)) {
       sessionStorage.removeItem('pre_login_redirect');
       window.location.href = '/dashboard/business/dashboardoverview';
       return;
@@ -857,7 +872,8 @@ export default function ShopLayout({ children }) {
     storage.setItem('auth_user', JSON.stringify(userData));
 
     // Redirect admin/owner to dashboard
-    if (userData.role === 'admin' || userData.role === 'business' || userData.role === 'owner') {
+    const dashboardRolesReg = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
+    if (dashboardRolesReg.includes(userData.role)) {
       window.location.href = '/dashboard/business/dashboardoverview';
       return;
     }
@@ -1113,19 +1129,26 @@ export default function ShopLayout({ children }) {
   }, [forgotResendCooldown]);
 
   // Poll unread count every 60 seconds (logged-in only)
+  // Stops polling after 3 consecutive failures to prevent console spam
   useEffect(() => {
     const token = getToken();
     if (!token || !user) return;
+    let failCount = 0;
+    let interval;
     const poll = async () => {
       try {
         const data = await fetchUnreadCount(token);
         setUnreadCount(data.unread_count ?? 0);
+        failCount = 0;
       } catch {
-        // silent fail — polling should never break the UI
+        failCount += 1;
+        if (failCount >= 3) {
+          clearInterval(interval);
+        }
       }
     };
     poll();
-    const interval = setInterval(poll, 60000);
+    interval = setInterval(poll, 60000);
     return () => clearInterval(interval);
   }, [user]);
 
@@ -1239,6 +1262,41 @@ export default function ShopLayout({ children }) {
               </div>
             </div>
 
+            {/* Center — Search bar — B-01 */}
+            <div className="shop-navbar-search">
+              <svg
+                className="shop-navbar-search-icon"
+                width="16" height="16" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              >
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                type="text"
+                className="shop-navbar-search-input"
+                placeholder="Search products..."
+                value={searchQuery}
+                onChange={handleSearchChange}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="shop-navbar-search-clear"
+                  onClick={handleSearchClear}
+                  aria-label="Clear search"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor"
+                    strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              )}
+            </div>
+
             {/* Right side */}
             <div className="shop-navbar-right">
               {/* Cart button */}
@@ -1306,8 +1364,21 @@ export default function ShopLayout({ children }) {
                         {/* Panel body */}
                         <div className="shop-notif-panel-body">
                           {notifLoading ? (
-                            <div className="shop-notif-empty">
-                              Loading...
+                            <div style={{ padding: '0.75rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                              {[...Array(3)].map((_, i) => (
+                                <div key={i} style={{
+                                  display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
+                                  animation: 'shopSkeletonPulse 1.4s ease-in-out infinite',
+                                  animationDelay: `${i * 0.1}s`,
+                                }}>
+                                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--border)', flexShrink: 0, marginTop: '5px' }} />
+                                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                    <div style={{ height: '13px', background: 'var(--border)', borderRadius: '4px', width: '65%' }} />
+                                    <div style={{ height: '11px', background: 'var(--border)', borderRadius: '4px', width: '85%' }} />
+                                    <div style={{ height: '10px', background: 'var(--border)', borderRadius: '4px', width: '35%' }} />
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           ) : notifications.length === 0 ? (
                             <div className="shop-notif-empty">
@@ -1562,7 +1633,7 @@ export default function ShopLayout({ children }) {
                       {forgotError && <span className="error-message">{forgotError}</span>}
                     </div>
                     {forgotSent && (
-                      <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ade80', fontSize: '0.85rem' }}>
+                      <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', color: 'var(--green)', fontSize: '0.85rem' }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'6px'}}><polyline points="20 6 9 17 4 12"/></svg> A reset code has been sent to your email.
                       </div>
                     )}
@@ -1581,7 +1652,7 @@ export default function ShopLayout({ children }) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.25)', margin: '0 auto 1rem' }}>
-                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--gold,#d4a843)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
                           <polyline points="22,6 12,13 2,6"/>
                         </svg>
@@ -1604,7 +1675,7 @@ export default function ShopLayout({ children }) {
                       />
                       {forgotError && <span className="error-message">{forgotError}</span>}
                       {forgotResendSuccess && (
-                        <span style={{ display: 'block', fontSize: '0.8rem', color: '#4ade80', marginTop: '0.4rem' }}>
+                        <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--green)', marginTop: '0.4rem' }}>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{display:'inline',verticalAlign:'middle',marginRight:'4px'}}><polyline points="20 6 9 17 4 12"/></svg> A new code has been sent
                         </span>
                       )}
@@ -1694,501 +1765,6 @@ export default function ShopLayout({ children }) {
         )}
       </div>
 
-      <style>{`
-        .shop-wrapper {
-          min-height: 100vh;
-          background: #0f0f0f;
-          color: var(--white);
-          font-family: 'Outfit', sans-serif;
-        }
-
-        /* ── Navbar ── */
-        .shop-navbar {
-          position: sticky;
-          top: 0;
-          z-index: 100;
-          background: rgba(15, 15, 15, 0.95);
-          backdrop-filter: blur(12px);
-          border-bottom: 1px solid color-mix(in srgb, var(--gold) 20%, transparent);
-          transition: all 0.3s ease;
-        }
-
-        .shop-navbar.scrolled {
-          border-bottom: 1px solid color-mix(in srgb, var(--gold) 40%, transparent);
-          box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-        }
-
-        .shop-navbar-container {
-          max-width: 1400px;
-          margin: 0 auto;
-          padding: 0 2rem;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          height: 70px;
-        }
-
-        .shop-navbar-left {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-        }
-
-        .shop-navbar-back {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 44px;
-          height: 44px;
-          background: color-mix(in srgb, var(--white) 5%, transparent);
-          border: 1px solid color-mix(in srgb, var(--white) 10%, transparent);
-          border-radius: 10px;
-          color: var(--gold);
-          text-decoration: none;
-          transition: all 0.2s;
-        }
-
-        .shop-navbar-back:hover {
-          background: color-mix(in srgb, var(--gold) 10%, transparent);
-          border-color: color-mix(in srgb, var(--gold) 30%, transparent);
-          transform: translateX(-2px);
-        }
-
-        .shop-navbar-logo {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          cursor: default;
-          text-decoration: none;
-        }
-
-        .shop-navbar-logo:hover {
-          opacity: 1;
-        }
-
-        .shop-navbar-logo-img {
-          width: 48px;
-          height: 48px;
-          border-radius: 50%;
-          object-fit: cover;
-        }
-
-        .shop-navbar-logo-text {
-          font-family: 'Outfit', sans-serif;
-          font-size: 0.75rem;
-          font-weight: 800;
-          letter-spacing: 1.2px;
-          line-height: 1.3;
-          color: var(--white);
-          text-transform: uppercase;
-        }
-
-        .shop-navbar-logo-text span {
-          color: var(--gold);
-        }
-
-        .shop-navbar-right {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-        }
-
-        .shop-navbar-cart {
-          position: relative;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 44px;
-          height: 44px;
-          background: color-mix(in srgb, var(--gold) 8%, transparent);
-          border: 1px solid color-mix(in srgb, var(--gold) 25%, transparent);
-          border-radius: 10px;
-          color: var(--gold);
-          text-decoration: none;
-          transition: all 0.2s;
-        }
-
-        .shop-navbar-cart:hover {
-          background: color-mix(in srgb, var(--gold) 15%, transparent);
-          border-color: color-mix(in srgb, var(--gold) 40%, transparent);
-        }
-
-        .shop-navbar-cart-badge {
-          position: absolute;
-          top: -6px;
-          right: -6px;
-          background: var(--gold);
-          color: #0f0f0f;
-          border-radius: 50%;
-          min-width: 20px;
-          height: 20px;
-          font-size: 0.7rem;
-          font-weight: 700;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 0 4px;
-        }
-
-        /* ── Notification Bell ── */
-        .shop-navbar-notif-btn {
-          position: relative;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 44px;
-          height: 44px;
-          background: color-mix(in srgb, var(--gold) 8%, transparent);
-          border: 1px solid color-mix(in srgb, var(--gold) 25%, transparent);
-          border-radius: 10px;
-          color: var(--gold);
-          cursor: pointer;
-          transition: all 0.2s;
-          flex-shrink: 0;
-        }
-
-        .shop-navbar-notif-btn:hover {
-          background: color-mix(in srgb, var(--gold) 15%, transparent);
-          border-color: color-mix(in srgb, var(--gold) 40%, transparent);
-        }
-
-        .shop-navbar-notif-badge {
-          position: absolute;
-          top: -6px;
-          right: -6px;
-          background: var(--red, #ef4444);
-          color: #fff;
-          border-radius: 50%;
-          min-width: 20px;
-          height: 20px;
-          font-size: 0.7rem;
-          font-weight: 700;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 0 4px;
-        }
-
-        .shop-notif-panel {
-          position: absolute;
-          top: calc(100% + 8px);
-          right: 0;
-          width: 360px;
-          max-height: 480px;
-          background: var(--dark2, #1a1a1a);
-          border: 1px solid var(--border);
-          border-radius: 12px;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-          z-index: 200;
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-        }
-
-        .shop-notif-panel-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 1rem 1.25rem;
-          border-bottom: 1px solid var(--border);
-          flex-shrink: 0;
-        }
-
-        .shop-notif-panel-title {
-          font-weight: 700;
-          font-size: 0.95rem;
-          color: var(--white);
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-
-        .shop-notif-count-badge {
-          padding: 0.1rem 0.5rem;
-          background: var(--red, #ef4444);
-          border-radius: 999px;
-          font-size: 0.72rem;
-          font-weight: 700;
-          color: #fff;
-        }
-
-        .shop-notif-mark-all {
-          background: none;
-          border: none;
-          color: var(--gold);
-          font-size: 0.78rem;
-          cursor: pointer;
-          font-weight: 600;
-          padding: 0;
-        }
-
-        .shop-notif-panel-body {
-          overflow-y: auto;
-          flex: 1;
-        }
-
-        .shop-notif-empty {
-          padding: 2.5rem 1.25rem;
-          text-align: center;
-          color: var(--gray);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-
-        .shop-notif-item {
-          padding: 0.875rem 1.25rem;
-          border-bottom: 1px solid rgba(255,255,255,0.05);
-          background: transparent;
-          cursor: default;
-          display: flex;
-          gap: 0.75rem;
-          align-items: flex-start;
-          transition: background 0.15s;
-        }
-
-        .shop-notif-item.unread {
-          background: rgba(212,168,67,0.06);
-          cursor: pointer;
-        }
-
-        .shop-notif-item.unread:hover {
-          background: rgba(212,168,67,0.1);
-        }
-
-        .shop-notif-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: var(--gold);
-          flex-shrink: 0;
-          margin-top: 5px;
-        }
-
-        .shop-notif-dot.read {
-          background: transparent;
-        }
-
-        .shop-notif-item-title {
-          font-size: 0.875rem;
-          color: var(--white);
-          margin-bottom: 0.2rem;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .shop-notif-item-msg {
-          font-size: 0.8rem;
-          color: var(--gray);
-          line-height: 1.4;
-        }
-
-        .shop-notif-item-time {
-          font-size: 0.72rem;
-          color: var(--gray);
-          margin-top: 0.35rem;
-          opacity: 0.7;
-        }
-
-        @media (max-width: 768px) {
-          .shop-notif-panel {
-            width: 320px;
-            right: -44px;
-          }
-        }
-
-        .shop-navbar-auth {
-          display: flex;
-          gap: 0.5rem;
-          align-items: center;
-        }
-
-        .shop-navbar-login-btn {
-          padding: 0.5rem 1.25rem;
-          background: color-mix(in srgb, var(--gold) 10%, transparent);
-          border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
-          border-radius: 10px;
-          color: var(--gold);
-          text-decoration: none;
-          font-weight: 600;
-          font-size: 0.9rem;
-          transition: all 0.2s;
-        }
-
-        .shop-navbar-login-btn:hover {
-          background: color-mix(in srgb, var(--gold) 20%, transparent);
-          border-color: color-mix(in srgb, var(--gold) 50%, transparent);
-        }
-
-        .shop-navbar-register-btn {
-          padding: 0.5rem 1.25rem;
-          background: var(--gold);
-          border: 1px solid var(--gold);
-          border-radius: 10px;
-          color: #0f0f0f;
-          text-decoration: none;
-          font-weight: 700;
-          font-size: 0.9rem;
-          transition: all 0.2s;
-        }
-
-        .shop-navbar-register-btn:hover {
-          background: #e5b953;
-          border-color: #e5b953;
-          transform: translateY(-1px);
-          box-shadow: 0 4px 16px color-mix(in srgb, var(--gold) 30%, transparent);
-        }
-
-        .shop-navbar-user {
-          position: relative;
-        }
-
-        .shop-navbar-user-btn {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          background: color-mix(in srgb, var(--white) 5%, transparent);
-          border: 1px solid color-mix(in srgb, var(--white) 10%, transparent);
-          border-radius: 10px;
-          padding: 0.5rem 0.875rem;
-          color: var(--white);
-          cursor: pointer;
-          font-size: 0.9rem;
-          font-weight: 500;
-          transition: all 0.2s;
-        }
-
-        .shop-navbar-user-btn:hover {
-          background: color-mix(in srgb, var(--white) 8%, transparent);
-          border-color: color-mix(in srgb, var(--gold) 30%, transparent);
-        }
-
-        .shop-navbar-user-name {
-          max-width: 120px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .shop-navbar-user-chevron {
-          transition: transform 0.2s;
-        }
-
-        .shop-navbar-user-chevron.open {
-          transform: rotate(180deg);
-        }
-
-        .shop-navbar-user-backdrop {
-          position: fixed;
-          inset: 0;
-          z-index: 99;
-        }
-
-        .shop-navbar-user-menu {
-          position: absolute;
-          right: 0;
-          top: calc(100% + 10px);
-          background: var(--dark);
-          border: 1px solid color-mix(in srgb, var(--gold) 20%, transparent);
-          border-radius: 12px;
-          min-width: 200px;
-          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-          z-index: 100;
-          overflow: hidden;
-        }
-
-        .shop-navbar-user-info {
-          padding: 1rem 1.25rem;
-          border-bottom: 1px solid color-mix(in srgb, var(--white) 8%, transparent);
-        }
-
-        .shop-navbar-user-label {
-          font-size: 0.75rem;
-          color: var(--gray);
-          margin-bottom: 2px;
-        }
-
-        .shop-navbar-user-name-full {
-          font-size: 0.95rem;
-          font-weight: 600;
-          color: var(--white);
-        }
-
-        .shop-navbar-menu-item {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          width: 100%;
-          padding: 0.75rem 1.25rem;
-          background: none;
-          border: none;
-          color: var(--gray);
-          font-size: 0.9rem;
-          cursor: pointer;
-          transition: all 0.15s;
-          text-align: left;
-          text-decoration: none;
-        }
-
-        .shop-navbar-menu-item:hover {
-          background: color-mix(in srgb, var(--white) 5%, transparent);
-          color: var(--white);
-        }
-
-        .shop-navbar-logout {
-          color: var(--red);
-          border-top: 1px solid color-mix(in srgb, var(--white) 5%, transparent);
-        }
-
-        .shop-navbar-logout:hover {
-          background: color-mix(in srgb, var(--red) 10%, transparent);
-        }
-
-        /* ── Main Content ── */
-        .shop-main-content {
-          max-width: 1400px;
-          margin: 0 auto;
-          padding: 2.5rem 2rem;
-        }
-
-        @media (max-width: 768px) {
-          .shop-navbar-container {
-            padding: 0 1rem;
-          }
-
-          .shop-navbar-left {
-            gap: 0.5rem;
-          }
-
-          .shop-navbar-back {
-            width: 40px;
-            height: 40px;
-          }
-
-          .shop-navbar-logo-text {
-            display: none;
-          }
-
-          .shop-navbar-user-name {
-            display: none;
-          }
-
-          .shop-navbar-auth {
-            gap: 0.4rem;
-          }
-
-          .shop-navbar-login-btn,
-          .shop-navbar-register-btn {
-            padding: 0.4rem 0.875rem;
-            font-size: 0.85rem;
-          }
-
-          .shop-main-content {
-            padding: 1.5rem 1rem;
-          }
-        }
-      `}</style>
     </>
   );
 }

@@ -139,13 +139,20 @@ class JobOrderController extends Controller
             $jobOrder->updatedAt = now();
             $jobOrder->save();
 
-            // If JO is completed, update order status
+            // If JO is completed, update linked Order — only if not already For Delivery
             if (isset($validated['joStatus']) && $validated['joStatus'] === 'Completed') {
-                Order::where('_id', $jobOrder->orderId)->update([
-                    'joStatus' => 'Completed',
-                    'orderStatus' => 'For Delivery',
-                    'updatedAt' => now(),
-                ]);
+                $linkedOrder = Order::where('_id', $jobOrder->orderId)->first();
+                if ($linkedOrder && $linkedOrder->orderStatus !== 'For Delivery') {
+                    $linkedOrder->joStatus     = 'Completed';
+                    $linkedOrder->orderStatus  = 'For Delivery';
+                    $linkedOrder->updatedAt    = now();
+                    $linkedOrder->save();
+                } elseif ($linkedOrder) {
+                    // Order already at For Delivery — only sync joStatus field, no orderStatus overwrite
+                    $linkedOrder->joStatus  = 'Completed';
+                    $linkedOrder->updatedAt = now();
+                    $linkedOrder->save();
+                }
             }
 
             return $this->successResponse('Job order updated successfully.', $jobOrder);

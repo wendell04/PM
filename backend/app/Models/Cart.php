@@ -25,7 +25,7 @@ class Cart extends Model
     ];
 
     protected $attributes = [
-        'items' => '[]',
+        'items' => [],
     ];
 
     public function user()

@@ -4,8 +4,8 @@ import { AuthProvider } from '../contexts/AuthContext';
 import { CartProvider } from '../context/CartContext';
 
 export const metadata = {
-  title: 'Personalize Me V2',
-  description: 'Personalization platform',
+  title: 'Personalize Me Prints',
+  description: 'Custom printing for t-shirts, mugs, souvenirs, and more. Fast turnaround, bulk pricing, and personalized service.',
   icons: {
     icon: '/logos/PersonalizeMe logo.png',
   },

@@ -4,17 +4,16 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 /**
- * BUSINESS DASHBOARD HOME - Redirects to Add Products page
- * 
- * This page serves as a redirect from the old /dashboard/business route
- * to the new /dashboard/business/products/add route.
+ * BUSINESS DASHBOARD HOME - Redirects to Dashboard Overview
+ *
+ * Redirects /dashboard/business to /dashboard/business/dashboardoverview.
  */
 
 export default function BusinessDashboardHome() {
   const router = useRouter();
 
   useEffect(() => {
-    router.push('/dashboard/business/products/add');
+    router.push('/dashboard/business/dashboardoverview');
   }, [router]);
 
   return (
@@ -36,7 +35,7 @@ export default function BusinessDashboardHome() {
         borderRadius: '50%',
         animation: 'spin 1s linear infinite'
       }} />
-      <p>Redirecting to Add Products...</p>
+      <p>Loading dashboard...</p>
     </div>
   );
 }

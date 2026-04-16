@@ -7,6 +7,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStorefrontBanners } from '@/lib/bannerUtils';
 import { fetchProductSearch } from '@/lib/productsApi';
+import './shop.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -19,10 +20,10 @@ function getDisplayPrice(product) {
       if (!prices.length) return 'Price on request';
       const min = Math.min(...prices);
       const max = Math.max(...prices);
-      if (min === max) return `₱${min.toLocaleString()}`;
-      return `₱${min.toLocaleString()} – ₱${max.toLocaleString()}`;
+      if (min === max) return `₱${min.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      return `₱${min.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} – ₱${max.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
-    if (product.price) return `₱${parseFloat(product.price).toLocaleString()}`;
+    if (product.price) return `₱${parseFloat(product.price).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
   if (product.priceType === 'tiered' && product.priceTiers?.length) {
     const allPrices = product.priceTiers.flatMap(t =>
@@ -31,8 +32,8 @@ function getDisplayPrice(product) {
     if (!allPrices.length) return 'Price on request';
     const min = Math.min(...allPrices);
     const max = Math.max(...allPrices);
-    if (min === max) return `₱${min.toLocaleString()}`;
-    return `₱${min.toLocaleString()} – ₱${max.toLocaleString()}`;
+    if (min === max) return `₱${min.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `₱${min.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} – ₱${max.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
   return 'Price on request';
 }
@@ -111,8 +112,8 @@ function ProductCard({ product, onAddToCart, flashSale }) {
               position: 'absolute',
               top: '10px',
               right: '10px',
-              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-              color: '#fff',
+              background: 'linear-gradient(135deg, var(--red) 0%, var(--red-dark) 100%)',
+              color: 'var(--white)',
               fontSize: '0.65rem',
               fontWeight: 700,
               padding: '3px 8px',
@@ -159,12 +160,27 @@ function ProductCard({ product, onAddToCart, flashSale }) {
             {product.description || ''}
           </p>
 
+          {/* Stock indicator */}
+          {product.stockStatus && product.stockStatus !== 'upon-order' && (
+            <div className="shop-product-stock">
+              {product.stockStatus === 'out-of-stock' ? (
+                <span className="shop-stock-badge out-of-stock">Out of stock</span>
+              ) : product.stockStatus === 'low-stock' ? (
+                <span className="shop-stock-badge low-stock">
+                  Low stock{product.stock > 0 ? ` — ${product.stock} left` : ''}
+                </span>
+              ) : (
+                <span className="shop-stock-badge in-stock">In stock</span>
+              )}
+            </div>
+          )}
+
           <div className="shop-product-footer">
             {flashSale && flashSale.discountedPrice != null ? (
               <span style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
                 <span style={{
                   fontSize: '0.75rem',
-                  color: '#666',
+                  color: 'var(--gray)',
                   textDecoration: 'line-through',
                   lineHeight: 1,
                 }}>
@@ -173,7 +189,7 @@ function ProductCard({ product, onAddToCart, flashSale }) {
                 <span style={{
                   fontSize: '1.05rem',
                   fontWeight: 700,
-                  color: '#ef4444',
+                  color: 'var(--red)',
                   lineHeight: 1,
                 }}>
                   ₱{parseFloat(flashSale.discountedPrice).toLocaleString()}
@@ -203,7 +219,7 @@ function ProductCard({ product, onAddToCart, flashSale }) {
               border: '1px solid rgba(239,68,68,0.2)',
               borderRadius: '6px',
               fontSize: '0.72rem',
-              color: '#ef4444',
+              color: 'var(--red)',
               fontWeight: 600,
             }}>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
@@ -224,6 +240,7 @@ function ProductCard({ product, onAddToCart, flashSale }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ShopPage() {
   const [products, setProducts]   = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(null);
   const [category, setCategory]   = useState('All');
@@ -239,6 +256,12 @@ export default function ShopPage() {
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const [flashSales, setFlashSales] = useState({});
   const { addToCart } = useCart();
+
+  useEffect(() => {
+    const handleSearch = (e) => setSearchQuery(e.detail?.query ?? '');
+    window.addEventListener('pmp_search', handleSearch);
+    return () => window.removeEventListener('pmp_search', handleSearch);
+  }, []);
 
   // Read logged-in user for greeting
   const [shopUser, setShopUser] = useState(null);
@@ -370,7 +393,12 @@ export default function ShopPage() {
       (p.name || '').toLowerCase().includes(search.toLowerCase()) ||
       (p.description || '').toLowerCase().includes(search.toLowerCase()) ||
       p.tags?.some(t => t.toLowerCase().includes(search.toLowerCase()));
-    return matchCat && matchSearch;
+    return matchCat && matchSearch
+      && (
+        !searchQuery ||
+        p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
   });
 
   // Search suggestions with debounce - fetch from backend
@@ -621,10 +649,10 @@ export default function ShopPage() {
             onChange={e => setCategory(e.target.value)}
             style={{
               padding: '0.75rem 2.5rem 0.75rem 1rem',
-              background: '#1a1a1a',
+              background: 'var(--dark)',
               border: '1px solid rgba(255,255,255,0.1)',
               borderRadius: '10px',
-              color: category === 'All' ? '#888' : '#d4a843',
+              color: category === 'All' ? 'var(--gray)' : 'var(--gold)',
               fontSize: '0.9rem',
               fontWeight: 500,
               cursor: 'pointer',
@@ -641,7 +669,7 @@ export default function ShopPage() {
               <option
                 key={cat}
                 value={cat}
-                style={{ background: '#1a1a1a', color: '#f5f5f5' }}
+                style={{ background: 'var(--dark)', color: 'var(--white)' }}
               >
                 {cat}
               </option>
@@ -650,7 +678,7 @@ export default function ShopPage() {
           {/* Chevron icon */}
           <svg
             width="14" height="14" viewBox="0 0 24 24" fill="none"
-            stroke={category === 'All' ? '#888' : '#d4a843'}
+            stroke={category === 'All' ? 'var(--gray)' : 'var(--gold)'}
             strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
             style={{
               position: 'absolute',
@@ -685,7 +713,7 @@ export default function ShopPage() {
         <div className="shop-empty-state">
           <div className="shop-empty-icon">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
-              stroke="#d4a843" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
           </div>
@@ -752,896 +780,6 @@ export default function ShopPage() {
         </div>
       )}
 
-      <style>{`
-        /* Carousel */
-        .shop-carousel-container {
-          position: relative;
-          border-radius: 16px;
-          overflow: hidden;
-          margin-bottom: 1.5rem;
-          aspect-ratio: 16/5;
-        }
-
-        .shop-carousel-track {
-          position: relative;
-          height: 100%;
-          width: 100%;
-        }
-
-        .shop-carousel-slide {
-          position: absolute;
-          inset: 0;
-          display: flex;
-          align-items: center;
-          justify-content: flex-start;
-          transition: opacity 0.5s ease;
-        }
-
-        .shop-carousel-slide.active {
-          opacity: 1;
-          z-index: 1;
-        }
-
-        .shop-carousel-slide:not(.active) {
-          opacity: 0;
-          z-index: 0;
-        }
-
-        .shop-carousel-bg-image {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          z-index: 0;
-        }
-
-        .shop-carousel-bg-image img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          object-position: center center;
-        }
-
-        .shop-carousel-placeholder {
-          background: var(--dark2);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: var(--gray);
-          font-size: 1.25rem;
-        }
-
-        .shop-carousel-overlay {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          z-index: 1;
-          background: linear-gradient(
-            to right,
-            rgba(0, 0, 0, 0.85) 0%,
-            rgba(0, 0, 0, 0.65) 20%,
-            rgba(0, 0, 0, 0.4) 40%,
-            rgba(0, 0, 0, 0.2) 60%,
-            transparent 100%
-          );
-        }
-
-        .shop-carousel-content {
-          position: relative;
-          z-index: 2;
-          padding: 4rem;
-          padding-left: 6rem;
-          max-width: 600px;
-          text-align: left;
-        }
-
-        .shop-carousel-text {
-          text-align: left;
-        }
-
-        .shop-carousel-subtitle {
-          display: block;
-          font-size: 0.85rem;
-          font-weight: 600;
-          color: rgba(212, 168, 67, 0.8);
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          margin-bottom: 0.5rem;
-        }
-
-        .shop-carousel-title {
-          margin: 0 0 0.75rem;
-          font-size: 2.5rem;
-          font-weight: 800;
-          color: #f5f5f5;
-          line-height: 1.1;
-        }
-
-        .shop-carousel-description {
-          margin: 0;
-          color: rgba(255, 255, 255, 0.7);
-          font-size: 1rem;
-          line-height: 1.6;
-          max-width: 450px;
-        }
-
-        .shop-carousel-arrow {
-          position: absolute;
-          top: 50%;
-          transform: translateY(-50%);
-          width: 44px;
-          height: 44px;
-          border-radius: 50%;
-          background: rgba(0, 0, 0, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          color: #fff;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s;
-          z-index: 10;
-        }
-
-        .shop-carousel-arrow:hover {
-          background: rgba(212, 168, 67, 0.8);
-          border-color: rgba(212, 168, 67, 0.5);
-          color: #0f0f0f;
-        }
-
-        .shop-carousel-prev {
-          left: 1rem;
-        }
-
-        .shop-carousel-next {
-          right: 1rem;
-        }
-
-        .shop-carousel-dots {
-          position: absolute;
-          bottom: 1.5rem;
-          left: 50%;
-          transform: translateX(-50%);
-          display: flex;
-          gap: 0.5rem;
-          z-index: 10;
-        }
-
-        .shop-carousel-dot {
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          border: 2px solid rgba(255, 255, 255, 0.3);
-          background: transparent;
-          cursor: pointer;
-          transition: all 0.2s;
-          padding: 0;
-        }
-
-        .shop-carousel-dot.active {
-          background: #d4a843;
-          border-color: #d4a843;
-        }
-
-        .shop-carousel-dot:hover {
-          border-color: #d4a843;
-        }
-
-        /* Hero Banner (legacy - kept for compatibility) */
-        .shop-hero-banner {
-          background: linear-gradient(135deg, rgba(212, 168, 67, 0.15) 0%, rgba(196, 30, 58, 0.1) 100%);
-          border: 1px solid rgba(212, 168, 67, 0.3);
-          border-radius: 16px;
-          padding: 2.5rem;
-          margin-bottom: 1.5rem;
-          display: grid;
-          grid-template-columns: 1fr auto;
-          gap: 2rem;
-          align-items: center;
-          position: relative;
-          overflow: hidden;
-        }
-
-        .shop-hero-banner::before {
-          content: '';
-          position: absolute;
-          top: -50%;
-          right: -10%;
-          width: 300px;
-          height: 300px;
-          background: radial-gradient(circle, rgba(212, 168, 67, 0.1) 0%, transparent 70%);
-          border-radius: 50%;
-          pointer-events: none;
-        }
-
-        .shop-hero-content {
-          position: relative;
-          z-index: 1;
-        }
-
-        .shop-hero-badge {
-          display: inline-block;
-          background: rgba(212, 168, 67, 0.2);
-          border: 1px solid rgba(212, 168, 67, 0.4);
-          border-radius: 20px;
-          padding: 0.4rem 1rem;
-          font-size: 0.8rem;
-          font-weight: 600;
-          color: #d4a843;
-          margin-bottom: 1rem;
-        }
-
-        .shop-hero-title {
-          margin: 0 0 0.75rem;
-          font-size: 2.25rem;
-          font-weight: 800;
-          color: #f5f5f5;
-          line-height: 1.2;
-        }
-
-        .shop-hero-title .gold-text {
-          background: linear-gradient(135deg, #d4a843 0%, #f0c953 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
-
-        .shop-hero-subtitle {
-          margin: 0 0 1.5rem;
-          color: #aaa;
-          font-size: 1rem;
-          line-height: 1.6;
-          max-width: 500px;
-        }
-
-        .shop-hero-features {
-          display: flex;
-          gap: 1.5rem;
-          flex-wrap: wrap;
-        }
-
-        .shop-hero-feature {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          color: #4ade80;
-          font-size: 0.9rem;
-          font-weight: 500;
-        }
-
-        .shop-hero-feature svg {
-          flex-shrink: 0;
-        }
-
-        .shop-hero-visual {
-          position: relative;
-          width: 180px;
-          height: 180px;
-        }
-
-        .shop-hero-orbit {
-          position: relative;
-          width: 100%;
-          height: 100%;
-          animation: rotate 20s linear infinite;
-        }
-
-        @keyframes rotate {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-
-        .shop-hero-orbit-item {
-          position: absolute;
-          font-size: 2rem;
-          animation: counterRotate 20s linear infinite;
-        }
-
-        .shop-hero-orbit-item:nth-child(1) { top: 0; left: 50%; transform: translateX(-50%); }
-        .shop-hero-orbit-item:nth-child(2) { right: 0; top: 50%; transform: translateY(-50%); }
-        .shop-hero-orbit-item:nth-child(3) { bottom: 0; left: 50%; transform: translateX(-50%); }
-        .shop-hero-orbit-item:nth-child(4) { left: 0; top: 50%; transform: translateY(-50%); }
-
-        @keyframes counterRotate {
-          from { transform: rotate(0deg) translateX(-50%); }
-          to { transform: rotate(-360deg) translateX(-50%); }
-        }
-
-        /* Promo Banner */
-        .shop-promo-banner {
-          background: linear-gradient(135deg, #d4a843 0%, #c41e3a 100%);
-          border-radius: 12px;
-          padding: 1rem 1.5rem;
-          margin-bottom: 1.5rem;
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          animation: promoPulse 3s ease-in-out infinite;
-        }
-
-        @keyframes promoPulse {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.02); }
-        }
-
-        .shop-promo-content {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          width: 100%;
-        }
-
-        .shop-promo-icon {
-          font-size: 2rem;
-          flex-shrink: 0;
-        }
-
-        .shop-promo-text {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          gap: 0.25rem;
-        }
-
-        .shop-promo-text strong {
-          color: #0f0f0f;
-          font-size: 1rem;
-        }
-
-        .shop-promo-text span {
-          color: rgba(15, 15, 15, 0.8);
-          font-size: 0.85rem;
-        }
-
-        .shop-carousel-cta {
-          display: inline-block;
-          background: linear-gradient(135deg, #d4a843, #b8941f);
-          color: #0f0f0f;
-          padding: 0.75rem 1.5rem;
-          border-radius: 8px;
-          text-decoration: none;
-          font-weight: 700;
-          font-size: 0.875rem;
-          white-space: nowrap;
-          transition: all 0.2s;
-          margin-top: 1rem;
-        }
-
-        .shop-carousel-cta:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(212, 168, 67, 0.4);
-        }
-
-        .shop-promo-cta {
-          background: #0f0f0f;
-          color: #d4a843;
-          padding: 0.6rem 1.25rem;
-          border-radius: 8px;
-          text-decoration: none;
-          font-weight: 700;
-          font-size: 0.85rem;
-          white-space: nowrap;
-          transition: all 0.2s;
-        }
-
-        .shop-promo-cta:hover {
-          background: #1a1a1a;
-          transform: translateY(-1px);
-        }
-
-        /* Filter Bar */
-        .shop-filter-bar {
-          display: flex;
-          gap: 1rem;
-          flex-wrap: nowrap;
-          margin-bottom: 1.5rem;
-          align-items: center;
-        }
-
-        .shop-search-wrapper {
-          position: relative;
-          flex: 1;
-          min-width: 220px;
-        }
-
-        .shop-search-icon {
-          position: absolute;
-          left: 14px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: #555;
-        }
-
-        .shop-search-input {
-          width: 100%;
-          padding: 0.75rem 1rem 0.75rem 2.5rem;
-          background: #1a1a1a;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 10px;
-          color: #f5f5f5;
-          font-size: 0.9rem;
-          outline: none;
-          box-sizing: border-box;
-          transition: border-color 0.2s;
-        }
-
-        .shop-search-input:focus {
-          border-color: rgba(212, 168, 67, 0.5);
-        }
-
-        .shop-search-input::placeholder {
-          color: #666;
-        }
-
-        /* Results Count */
-        .shop-results-count {
-          font-size: 0.85rem;
-          color: #666;
-          margin-bottom: 1rem;
-        }
-
-        .shop-results-count .shop-search-term {
-          color: #888;
-          font-style: italic;
-        }
-
-        /* Products Grid */
-        .shop-products-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-          gap: 1.25rem;
-        }
-
-        .shop-products-grid-loading {
-          /* Loading state */
-        }
-
-        .shop-product-skeleton {
-          height: 320px;
-          border-radius: 12px;
-          background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%);
-          background-size: 200% 100%;
-          animation: shimmer 1.5s infinite;
-        }
-
-        @keyframes shimmer {
-          0%   { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-
-        /* Empty State */
-        .shop-empty-state {
-          text-align: center;
-          padding: 4rem 2rem;
-          background: rgba(212, 168, 67, 0.03);
-          border: 1px dashed rgba(212, 168, 67, 0.2);
-          border-radius: 16px;
-        }
-
-        .shop-empty-icon {
-          width: 80px;
-          height: 80px;
-          margin: 0 auto 1.5rem;
-          background: rgba(212, 168, 67, 0.1);
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .shop-empty-title {
-          margin: 0 0 0.5rem;
-          font-size: 1.25rem;
-          font-weight: 600;
-          color: #f5f5f5;
-        }
-
-        .shop-empty-description {
-          margin: 0;
-          color: #888;
-          font-size: 0.9rem;
-          max-width: 400px;
-          margin-left: auto;
-          margin-right: auto;
-        }
-
-        .shop-clear-filters-btn {
-          margin-top: 1.5rem;
-          padding: 0.6rem 1.5rem;
-          background: rgba(212, 168, 67, 0.15);
-          border: 1px solid rgba(212, 168, 67, 0.3);
-          border-radius: 8px;
-          color: #d4a843;
-          font-size: 0.9rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .shop-clear-filters-btn:hover {
-          background: rgba(212, 168, 67, 0.25);
-        }
-
-        /* Social Proof */
-        .shop-social-proof {
-          margin-top: 4rem;
-          padding: 2.5rem;
-          background: rgba(212, 168, 67, 0.05);
-          border: 1px solid rgba(212, 168, 67, 0.15);
-          border-radius: 16px;
-          text-align: center;
-        }
-
-        .shop-proof-title {
-          margin: 0 0 2rem;
-          font-size: 1.25rem;
-          font-weight: 700;
-          color: #f5f5f5;
-        }
-
-        .shop-proof-stats {
-          display: flex;
-          justify-content: center;
-          gap: 3rem;
-          flex-wrap: wrap;
-          margin-bottom: 2rem;
-        }
-
-        .shop-proof-stat {
-          text-align: center;
-        }
-
-        .shop-proof-stat-num {
-          font-size: 2rem;
-          font-weight: 800;
-          background: linear-gradient(135deg, #d4a843 0%, #f0c953 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
-
-        .shop-proof-stat-label {
-          font-size: 0.85rem;
-          color: #888;
-          margin-top: 0.25rem;
-        }
-
-        .shop-social-links {
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          gap: 1rem;
-          flex-wrap: wrap;
-        }
-
-        .shop-social-label {
-          color: #666;
-          font-size: 0.9rem;
-        }
-
-        .shop-social-link {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.5rem;
-          padding: 0.5rem 1rem;
-          border-radius: 8px;
-          text-decoration: none;
-          font-size: 0.85rem;
-          font-weight: 500;
-          transition: all 0.2s;
-        }
-
-        .shop-social-fb {
-          background: rgba(24, 119, 242, 0.15);
-          color: #1877f2;
-          border: 1px solid rgba(24, 119, 242, 0.3);
-        }
-
-        .shop-social-fb:hover {
-          background: rgba(24, 119, 242, 0.25);
-        }
-
-        .shop-social-insta {
-          background: linear-gradient(135deg, rgba(131, 58, 180, 0.15), rgba(253, 29, 29, 0.15), rgba(252, 176, 69, 0.15));
-          color: #e4405f;
-          border: 1px solid rgba(228, 64, 95, 0.3);
-        }
-
-        .shop-social-insta:hover {
-          background: linear-gradient(135deg, rgba(131, 58, 180, 0.25), rgba(253, 29, 29, 0.25), rgba(252, 176, 69, 0.25));
-        }
-
-        .shop-social-tiktok {
-          background: rgba(0, 0, 0, 0.3);
-          color: #fff;
-          border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .shop-social-tiktok:hover {
-          background: rgba(0, 0, 0, 0.5);
-        }
-
-        .shop-social-shopee {
-          background: rgba(238, 44, 100, 0.15);
-          color: #ee2c64;
-          border: 1px solid rgba(238, 44, 100, 0.3);
-        }
-
-        .shop-social-shopee:hover {
-          background: rgba(238, 44, 100, 0.25);
-        }
-
-        /* Toast */
-        .shop-toast {
-          position: fixed;
-          bottom: 2rem;
-          right: 2rem;
-          background: rgba(22, 22, 22, 0.95);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(74, 222, 128, 0.4);
-          border-radius: 12px;
-          padding: 1rem 1.5rem;
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          color: #4ade80;
-          font-weight: 500;
-          font-size: 0.9rem;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-          z-index: 1000;
-          animation: slideIn 0.3s ease;
-        }
-
-        @keyframes slideIn {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-
-        /* Product Card */
-        .shop-product-card-link {
-          text-decoration: none;
-        }
-
-        .shop-product-card {
-          background: #161616;
-          border: 1px solid rgba(255, 255, 255, 0.07);
-          border-radius: 12px;
-          overflow: hidden;
-          transition: all 0.25s ease;
-          cursor: pointer;
-        }
-
-        .shop-product-card.hovered {
-          background: #1c1c1c;
-          border-color: rgba(212, 168, 67, 0.4);
-          transform: translateY(-3px);
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-        }
-
-        .shop-product-image-area {
-          height: 180px;
-          background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          position: relative;
-          overflow: hidden;
-        }
-
-        .shop-product-image {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-
-        .shop-product-no-image {
-          text-align: center;
-          color: rgba(212, 168, 67, 0.2);
-        }
-
-        .shop-product-no-image svg {
-          display: block;
-          margin: 0 auto 8px;
-        }
-
-        .shop-product-no-image div {
-          font-size: 0.75rem;
-          color: rgba(255, 255, 255, 0.3);
-        }
-
-        .shop-quick-add-btn {
-          position: absolute;
-          bottom: 10px;
-          right: 10px;
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          background: rgba(212, 168, 67, 0.9);
-          border: 2px solid rgba(255, 255, 255, 0.2);
-          color: #0f0f0f;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          opacity: 0;
-          transform: translateY(10px);
-          transition: all 0.25s ease;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        }
-
-        .shop-product-card:hover .shop-quick-add-btn {
-          opacity: 1;
-          transform: translateY(0);
-        }
-
-        .shop-quick-add-btn:hover {
-          background: #d4a843;
-          transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(212, 168, 67, 0.4);
-        }
-
-        .shop-quick-add-btn.adding {
-          background: #4ade80;
-          border-color: rgba(74, 222, 128, 0.5);
-          animation: pulse 0.3s ease;
-        }
-
-        @keyframes pulse {
-          0% { transform: scale(1); }
-          50% { transform: scale(1.1); }
-          100% { transform: scale(1); }
-        }
-
-        .shop-product-category-badge {
-          position: absolute;
-          top: 10px;
-          left: 10px;
-          background: rgba(0, 0, 0, 0.7);
-          backdrop-filter: blur(6px);
-          border: 1px solid rgba(212, 168, 67, 0.3);
-          border-radius: 6px;
-          padding: 4px 10px;
-          font-size: 0.7rem;
-          color: #d4a843;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        .shop-product-info {
-          padding: 1.25rem;
-          min-height: 80px;
-        }
-
-        .shop-product-name {
-          margin: 0 0 0.5rem;
-          font-size: 1rem;
-          font-weight: 600;
-          color: #f5f5f5;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .shop-product-description {
-          margin: 0 0 1rem;
-          font-size: 0.85rem;
-          color: #888;
-          line-height: 1.6;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-
-        .shop-product-footer {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-
-        .shop-product-price {
-          font-size: 1.1rem;
-          font-weight: 700;
-          color: #d4a843;
-        }
-
-        .shop-product-variants {
-          font-size: 0.75rem;
-          color: #666;
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-          .shop-hero-banner {
-            grid-template-columns: 1fr;
-            padding: 1.5rem;
-            text-align: center;
-          }
-
-          .shop-hero-title {
-            font-size: 1.75rem;
-          }
-
-          .shop-hero-features {
-            justify-content: center;
-          }
-
-          .shop-hero-visual {
-            width: 120px;
-            height: 120px;
-            margin: 0 auto;
-          }
-
-          .shop-hero-orbit-item {
-            font-size: 1.5rem;
-          }
-
-          .shop-promo-banner {
-            flex-direction: column;
-            text-align: center;
-          }
-
-          .shop-promo-content {
-            flex-direction: column;
-          }
-
-          .shop-promo-cta {
-            width: 100%;
-            text-align: center;
-          }
-
-          .shop-filter-bar {
-            flex-direction: column;
-            align-items: stretch;
-          }
-
-          .shop-search-wrapper {
-            min-width: 100%;
-          }
-
-          .shop-products-grid {
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 1rem;
-          }
-
-          .shop-proof-stats {
-            gap: 2rem;
-          }
-
-          .shop-proof-stat-num {
-            font-size: 1.5rem;
-          }
-
-          .shop-quick-add-btn {
-            opacity: 1;
-            transform: translateY(0);
-            width: 36px;
-            height: 36px;
-            bottom: 8px;
-            right: 8px;
-          }
-
-          .shop-toast {
-            left: 1rem;
-            right: 1rem;
-            bottom: 1rem;
-          }
-
-          .shop-empty-state {
-            padding: 3rem 1rem;
-          }
-        }
-      `}</style>
     </div>
     </ErrorBoundary>
   );

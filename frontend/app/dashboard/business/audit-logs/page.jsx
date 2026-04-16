@@ -409,9 +409,23 @@ export default function AuditLogsPage() {
 
         {/* Loading state */}
         {loading && (
-          <div className="loading-state">
-            <div className="loading-spinner"/>
-            <p>Loading audit logs...</p>
+          <div className="skeleton-page">
+            <div className="skeleton-header">
+              <div className="skeleton-title" />
+              <div className="skeleton-subtitle" />
+            </div>
+            <div className="skeleton-table">
+              <div className="skeleton-table-header" />
+              {[...Array(6)].map((_, i) => (
+                <div className="skeleton-row" key={i}>
+                  <div className="skeleton-cell skeleton-cell-short" />
+                  <div className="skeleton-cell skeleton-cell-wide" />
+                  <div className="skeleton-cell skeleton-cell-mid" />
+                  <div className="skeleton-cell skeleton-cell-mid" />
+                  <div className="skeleton-cell-badge" />
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

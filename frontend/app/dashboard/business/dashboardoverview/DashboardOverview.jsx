@@ -490,7 +490,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
         >
           <div
             style={{ ...cardStyle, borderLeft: "3px solid #ef4444", cursor: "pointer" }}
-            onClick={() => (window.location.href = "/dashboard/business/inventory/stocks")}
+            onClick={() => (window.location.href = "/dashboard/business/inventory")}
           >
             <div style={{ fontSize: "2rem", fontWeight: 800, color: "#ef4444" }}>
               {inventoryMetrics.outOfStock}
@@ -511,7 +511,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
           </div>
           <div
             style={{ ...cardStyle, borderLeft: "3px solid #f59e0b", cursor: "pointer" }}
-            onClick={() => (window.location.href = "/dashboard/business/inventory/stocks")}
+            onClick={() => (window.location.href = "/dashboard/business/inventory")}
           >
             <div style={{ fontSize: "2rem", fontWeight: 800, color: "#f59e0b" }}>
               {inventoryMetrics.lowStock}

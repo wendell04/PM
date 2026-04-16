@@ -66,7 +66,7 @@ export default function PaymentFailedPage() {
 
         {orderId && (
           <div style={{
-            background: 'var(--dark3, var(--border))',
+            background: 'var(--dark3)',
             borderRadius: '10px',
             padding: '12px 16px',
             marginBottom: '32px',
@@ -95,7 +95,7 @@ export default function PaymentFailedPage() {
               alignItems: 'center',
               padding: '10px 20px',
               background: 'var(--gold)',
-              color: '#000',
+              color: 'var(--black)',
               borderRadius: '8px',
               fontWeight: 600,
               fontSize: '0.9rem',
