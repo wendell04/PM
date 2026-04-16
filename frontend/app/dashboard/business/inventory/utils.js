@@ -1,6 +1,5 @@
 "use client";
 
-
 // ══════════════════════════════════════════════════════════════════════════════
 // SHARED INVENTORY UTILITIES
 // Extracted from repeated patterns across all inventory module files.

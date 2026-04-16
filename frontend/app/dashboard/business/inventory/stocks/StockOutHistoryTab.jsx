@@ -146,8 +146,13 @@ export default function StockOutHistoryTab({ stockOuts, materials }) {
   const summaryStats = useMemo(
     () => ({
       totalRecords: filtered.length,
-      totalQty: filtered.reduce((s, so) => s + (so.quantity || 0), 0),
-      totalLoss: filtered.reduce((s, so) => s + (so.totalLoss || 0), 0),
+      totalQty: filtered.reduce((s, so) => s + Math.abs(so.quantity || 0), 0),
+      // Sales are revenue, not loss — only count actual losses (damage, scrap, lost, adjustment)
+      totalLoss: filtered
+        .filter(
+          (so) => so.issueType !== "manual_sale" && so.issueType !== "sale",
+        )
+        .reduce((s, so) => s + (so.totalLoss || 0), 0),
     }),
     [filtered],
   );
@@ -174,6 +179,30 @@ export default function StockOutHistoryTab({ stockOuts, materials }) {
           <div className="summary-content">
             <span className="summary-value">{summaryStats.totalQty} pcs</span>
             <span className="summary-label">Total Qty Deducted</span>
+          </div>
+        </div>
+        <div
+          className="summary-card"
+          style={{
+            background: "rgba(34,197,94,0.08)",
+            borderColor: "rgba(34,197,94,0.3)",
+          }}
+        >
+          <div className="summary-content">
+            <span className="summary-value" style={{ color: "#22c55e" }}>
+              ₱
+              {filtered
+                .filter(
+                  (so) =>
+                    so.issueType === "manual_sale" || so.issueType === "sale",
+                )
+                .reduce((s, so) => s + (so.totalLoss || 0), 0)
+                .toLocaleString("en-PH", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+            </span>
+            <span className="summary-label">Total Revenue (Sales)</span>
           </div>
         </div>
         <div
@@ -433,7 +462,7 @@ export default function StockOutHistoryTab({ stockOuts, materials }) {
                         color: "#ef4444",
                       }}
                     >
-                      -{so.quantity} {so.uom || "pcs"}
+                      -{Math.abs(so.quantity || 0)} {so.uom || "pcs"}
                     </td>
                     <td
                       style={{

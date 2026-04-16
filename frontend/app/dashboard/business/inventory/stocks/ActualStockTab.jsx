@@ -51,7 +51,7 @@ function ChevronIcon({ open }) {
 // ACTUAL STOCK TAB — Simplified User-Friendly View
 // Shows: Total Stock (Goods + Damaged), In Transit/Pending PO, Summary Cards
 // ══════════════════════════════════════════════════════════════════════════════
-export default function ActualStockTab({ materials }) {
+export default function ActualStockTab({ materials, onDeleteZeroStock }) {
   const [expandedMaterial, setExpandedMaterial] = useState(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -133,7 +133,9 @@ export default function ActualStockTab({ materials }) {
         break;
       }
       case "thisMonth": {
-        from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+        from = new Date(now.getFullYear(), now.getMonth(), 1)
+          .toISOString()
+          .split("T")[0];
         to = now.toISOString().split("T")[0];
         break;
       }
@@ -161,7 +163,7 @@ export default function ActualStockTab({ materials }) {
     badOrders.forEach((bo) => {
       // Only count pending bad orders - replaced/credited are resolved
       if (bo.status !== "pending") return;
-      
+
       if (!map[bo.materialId]) {
         map[bo.materialId] = {
           total: 0,
@@ -212,7 +214,8 @@ export default function ActualStockTab({ materials }) {
       0,
     );
     const totalWaste = data.reduce(
-      (s, inv) => s + inv.items.reduce((ss, it) => ss + (it.internalDamaged || 0), 0),
+      (s, inv) =>
+        s + inv.items.reduce((ss, it) => ss + (it.internalDamaged || 0), 0),
       0,
     );
     const totalValue = data.reduce(
@@ -245,8 +248,14 @@ export default function ActualStockTab({ materials }) {
         .join("");
 
       const invTotalGood = inv.items.reduce((s, it) => s + it.good, 0);
-      const invTotalBadOrder = inv.items.reduce((s, it) => s + (it.badOrder || 0), 0);
-      const invTotalWaste = inv.items.reduce((s, it) => s + (it.internalDamaged || 0), 0);
+      const invTotalBadOrder = inv.items.reduce(
+        (s, it) => s + (it.badOrder || 0),
+        0,
+      );
+      const invTotalWaste = inv.items.reduce(
+        (s, it) => s + (it.internalDamaged || 0),
+        0,
+      );
       const invTotalQty = inv.items.reduce((s, it) => s + it.total, 0);
       const invTotalValue = inv.items.reduce((s, it) => s + it.value, 0);
 
@@ -352,7 +361,10 @@ export default function ActualStockTab({ materials }) {
           const childBatches = child.batches || [];
 
           childBatches.forEach((b) => {
-            const good = b.qtyGood || b.goodQty || 0;
+            const good =
+              b.remainingQty != null
+                ? b.remainingQty
+                : (b.qtyGood ?? b.goodQty ?? 0);
             const damaged = b.qtyDamaged || b.damagedQty || 0;
             const cost = b.unitCost || 0;
 
@@ -396,7 +408,10 @@ export default function ActualStockTab({ materials }) {
         let damaged = 0;
 
         batches.forEach((b) => {
-          const good = b.qtyGood || b.goodQty || 0;
+          const good =
+            b.remainingQty != null
+              ? b.remainingQty
+              : (b.qtyGood ?? b.goodQty ?? 0);
           const dmg = b.qtyDamaged || b.damagedQty || 0;
           const cost = b.unitCost || 0;
 
@@ -566,6 +581,34 @@ export default function ActualStockTab({ materials }) {
         !(m.sku || "").toLowerCase().includes(q)
       )
         return false;
+
+      // Logic: Show item if stock > 0 OR if it has history (batches)
+      // Handle variants: check children's batches
+      let stock = 0;
+      let hasHistory = false;
+
+      if (m.hasVariants) {
+        const children = materials.filter((c) => c.parentId === m.id);
+        children.forEach((child) => {
+          const childBatches = child.batches || [];
+          if (childBatches.length > 0) hasHistory = true;
+          stock += childBatches.reduce(
+            (s, b) => s + (b.remainingQty || b.qtyGood || 0),
+            0,
+          );
+        });
+      } else {
+        // Standalone item
+        const batches = m.batches || [];
+        stock = batches.reduce(
+          (s, b) => s + (b.remainingQty || b.qtyGood || 0),
+          0,
+        );
+        hasHistory = batches.length > 0;
+      }
+
+      if (stock === 0 && !hasHistory) return false;
+
       return true;
     });
   }, [materials, categoryFilter, search]);
@@ -589,7 +632,10 @@ export default function ActualStockTab({ materials }) {
     filtered.forEach((mat) => {
       const hasChildren = mat.hasVariants && childrenMap.has(mat.id);
       let batches, goodStock, damaged, arrivalDamaged, internalDamaged;
-      let totalStock, avgCost, goodsValue, parentBadOrderQty = 0;
+      let totalStock,
+        avgCost,
+        goodsValue,
+        parentBadOrderQty = 0;
 
       if (hasChildren) {
         const children = childrenMap.get(mat.id);
@@ -612,7 +658,10 @@ export default function ActualStockTab({ materials }) {
         });
 
         allChildrenBatches.forEach((b) => {
-          const good = b.qtyGood || 0;
+          const good =
+            b.remainingQty != null
+              ? b.remainingQty
+              : (b.qtyGood ?? b.goodQty ?? 0);
           const dmg = b.qtyDamaged || 0;
           const cost = b.unitCost || 0;
 
@@ -641,7 +690,10 @@ export default function ActualStockTab({ materials }) {
         let totalVal = 0;
 
         batches.forEach((b) => {
-          const good = b.qtyGood || 0;
+          const good =
+            b.remainingQty != null
+              ? b.remainingQty
+              : (b.qtyGood ?? b.goodQty ?? 0);
           const dmg = b.qtyDamaged || 0;
           const cost = b.unitCost || 0;
 
@@ -676,7 +728,10 @@ export default function ActualStockTab({ materials }) {
           let childTotalVal = 0;
 
           childBatches.forEach((b) => {
-            const good = b.qtyGood || 0;
+            const good =
+              b.remainingQty != null
+                ? b.remainingQty
+                : (b.qtyGood ?? b.goodQty ?? 0);
             const dmg = b.qtyDamaged || 0;
             const cost = b.unitCost || 0;
 
@@ -727,7 +782,9 @@ export default function ActualStockTab({ materials }) {
         goodsValue,
         hasChildren,
         childrenStats,
-        badOrderQty: hasChildren ? parentBadOrderQty : (badOrdersMap[mat.id]?.total || 0),
+        badOrderQty: hasChildren
+          ? parentBadOrderQty
+          : badOrdersMap[mat.id]?.total || 0,
       });
     });
 
@@ -788,7 +845,14 @@ export default function ActualStockTab({ materials }) {
       invTotalBadOrder: inv.items.reduce((s, it) => s + (it.badOrder || 0), 0),
       invTotalValue: inv.items.reduce((s, it) => s + it.value, 0),
     }));
-  }, [invoiceGroups, categoryFilter, search, materialCategoryMap, dateFrom, dateTo]);
+  }, [
+    invoiceGroups,
+    categoryFilter,
+    search,
+    materialCategoryMap,
+    dateFrom,
+    dateTo,
+  ]);
 
   // ── CSV Preview Data ────────────────────────────────────────────────────
   const csvPreviewData = useMemo(() => {
@@ -976,7 +1040,9 @@ export default function ActualStockTab({ materials }) {
         <div className="summary-card">
           <div className="summary-content">
             <span className="summary-value" style={{ color: "#f59e0b" }}>
-              {badOrders.filter((bo) => bo.status === "pending").reduce((sum, bo) => sum + (bo.qty || 0), 0)}
+              {badOrders
+                .filter((bo) => bo.status === "pending")
+                .reduce((sum, bo) => sum + (bo.qty || 0), 0)}
             </span>
             <span className="summary-label">Bad Orders</span>
           </div>
@@ -1328,7 +1394,7 @@ export default function ActualStockTab({ materials }) {
               {paginatedItems.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     style={{
                       padding: "3rem",
                       textAlign: "center",
@@ -1478,7 +1544,8 @@ export default function ActualStockTab({ materials }) {
                             padding: "0.875rem 1rem",
                             textAlign: "center",
                             fontWeight: 700,
-                            color: stats.badOrderQty > 0 ? "#f59e0b" : "#6b7280",
+                            color:
+                              stats.badOrderQty > 0 ? "#f59e0b" : "#6b7280",
                             fontFamily: "monospace",
                           }}
                         >
@@ -1557,34 +1624,39 @@ export default function ActualStockTab({ materials }) {
                           }}
                         >
                           ₱
-                          {(
-                            (() => {
-                              // For parent rows with children, aggregate children's loss values
-                              if (hasChildren && children && children.length > 0) {
-                                return children.reduce((sum, child) => {
-                                  const childPendingBO = badOrders.filter(
-                                    (bo) =>
-                                      bo.materialId === child.id &&
-                                      bo.status === "pending",
-                                  );
-                                  return sum + childPendingBO.reduce(
+                          {(() => {
+                            // For parent rows with children, aggregate children's loss values
+                            if (
+                              hasChildren &&
+                              children &&
+                              children.length > 0
+                            ) {
+                              return children.reduce((sum, child) => {
+                                const childPendingBO = badOrders.filter(
+                                  (bo) =>
+                                    bo.materialId === child.id &&
+                                    bo.status === "pending",
+                                );
+                                return (
+                                  sum +
+                                  childPendingBO.reduce(
                                     (s, bo) => s + (bo.totalValue || 0),
                                     0,
-                                  );
-                                }, 0);
-                              }
-                              // For standalone materials, use direct material ID
-                              const pendingBO = badOrders.filter(
-                                (bo) =>
-                                  bo.materialId === mat.id &&
-                                  bo.status === "pending",
-                              );
-                              return pendingBO.reduce(
-                                (sum, bo) => sum + (bo.totalValue || 0),
-                                0,
-                              );
-                            })()
-                          ).toLocaleString("en-PH", {
+                                  )
+                                );
+                              }, 0);
+                            }
+                            // For standalone materials, use direct material ID
+                            const pendingBO = badOrders.filter(
+                              (bo) =>
+                                bo.materialId === mat.id &&
+                                bo.status === "pending",
+                            );
+                            return pendingBO.reduce(
+                              (sum, bo) => sum + (bo.totalValue || 0),
+                              0,
+                            );
+                          })().toLocaleString("en-PH", {
                             minimumFractionDigits: 2,
                           })}
                         </td>
@@ -1630,8 +1702,7 @@ export default function ActualStockTab({ materials }) {
                               ) : (
                                 <div
                                   style={{
-                                    border:
-                                      "1px solid rgba(255,255,255,0.06)",
+                                    border: "1px solid rgba(255,255,255,0.06)",
                                     borderRadius: "8px",
                                     overflow: "hidden",
                                   }}
@@ -1757,8 +1828,10 @@ export default function ActualStockTab({ materials }) {
                                           child.arrivalDamaged;
                                         const childInternalDamaged =
                                           child.internalDamaged;
-                                        const childBadOrder = badOrdersMap[child.id]?.total || 0;
-                                        const childTotal = childGood + childBadOrder;
+                                        const childBadOrder =
+                                          badOrdersMap[child.id]?.total || 0;
+                                        const childTotal =
+                                          childGood + childBadOrder;
                                         const childCost = child.avgCost;
                                         const childGoodsValue =
                                           child.goodsValue;
@@ -1810,13 +1883,15 @@ export default function ActualStockTab({ materials }) {
                                                 padding: "0.4rem 0.6rem",
                                                 textAlign: "center",
                                                 color:
-                                                  (badOrdersMap[child.id]?.total || 0) > 0
+                                                  (badOrdersMap[child.id]
+                                                    ?.total || 0) > 0
                                                     ? "#f59e0b"
                                                     : "#6b7280",
                                                 fontWeight: 600,
                                               }}
                                             >
-                                              {badOrdersMap[child.id]?.total || 0}
+                                              {badOrdersMap[child.id]?.total ||
+                                                0}
                                             </td>
                                             <td
                                               style={{
@@ -1868,19 +1943,20 @@ export default function ActualStockTab({ materials }) {
                                               }}
                                             >
                                               ₱
-                                              {(
-                                                (() => {
-                                                  const pendingBO = badOrders.filter(
+                                              {(() => {
+                                                const pendingBO =
+                                                  badOrders.filter(
                                                     (bo) =>
-                                                      bo.materialId === child.id &&
+                                                      bo.materialId ===
+                                                        child.id &&
                                                       bo.status === "pending",
                                                   );
-                                                  return pendingBO.reduce(
-                                                    (sum, bo) => sum + (bo.totalValue || 0),
-                                                    0,
-                                                  );
-                                                })()
-                                              ).toLocaleString("en-PH", {
+                                                return pendingBO.reduce(
+                                                  (sum, bo) =>
+                                                    sum + (bo.totalValue || 0),
+                                                  0,
+                                                );
+                                              })().toLocaleString("en-PH", {
                                                 minimumFractionDigits: 2,
                                               })}
                                             </td>
@@ -2110,8 +2186,7 @@ export default function ActualStockTab({ materials }) {
                             style={{
                               padding: "0.875rem 1rem",
                               textAlign: "center",
-                              color:
-                                it.badOrder > 0 ? "#f59e0b" : "#6b7280",
+                              color: it.badOrder > 0 ? "#f59e0b" : "#6b7280",
                               fontWeight: 600,
                               fontFamily: "monospace",
                             }}

@@ -1257,11 +1257,26 @@ function MaterialMasterTab({
         (c.batches || []).some((b) => (b.remainingQty || b.qtyGood || 0) > 0),
     );
 
+    // Check if material is used in any BOM
+    const boms = JSON.parse(localStorage.getItem("pmp_bom") || "[]");
+    const isUsedInBOM = boms.some((bom) =>
+      (bom.components || []).some((comp) => comp.materialId === id),
+    );
+
     if (hasStock || childrenHaveStock) {
       setInfoModal({
         isOpen: true,
         title: "Cannot Delete",
         message: `Cannot delete "${mat?.name}" — it has existing stock or batches. Archive the material instead, or reduce stock to zero first.`,
+      });
+      return;
+    }
+
+    if (isUsedInBOM) {
+      setInfoModal({
+        isOpen: true,
+        title: "Cannot Delete",
+        message: `Cannot delete "${mat?.name}" — it is currently used in a Bill of Materials (BOM). Remove it from all BOMs first.`,
       });
       return;
     }

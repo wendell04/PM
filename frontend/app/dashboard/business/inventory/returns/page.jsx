@@ -3274,6 +3274,12 @@ function BadOrdersTab({ badOrders, onRefresh }) {
     const bo = updateModal.bo;
     if (!bo) return;
 
+    // Validation for Replacement Quantity
+    if (newStatus === "replaced" && (!replacementQty || replacementQty <= 0)) {
+      alert("Please enter a valid replacement quantity greater than 0.");
+      return;
+    }
+
     const allBO = JSON.parse(localStorage.getItem("pmp_bad_orders") || "[]");
     const updated = allBO.map((item) =>
       item.id === bo.id
@@ -3283,13 +3289,14 @@ function BadOrdersTab({ badOrders, onRefresh }) {
             resolvedAt: new Date().toISOString(),
             replacementDate: newStatus === "replaced" ? replacementDate : null,
             reference: reference || null,
+            replacementQty: newStatus === "replaced" ? replacementQty : 0,
           }
         : item
     );
     localStorage.setItem("pmp_bad_orders", JSON.stringify(updated));
 
     // If Replacement Received → add batch back to material
-    if (newStatus === "replaced") {
+    if (newStatus === "replaced" && replacementQty > 0) {
       const materials = JSON.parse(localStorage.getItem("pmp_materials") || "[]");
       const matIdx = materials.findIndex((m) => m.id === bo.materialId);
       if (matIdx !== -1) {
@@ -3308,15 +3315,15 @@ function BadOrdersTab({ badOrders, onRefresh }) {
           materialName: bo.materialName,
           sku: bo.sku || "",
           uom: mat.uom || "pcs",
-          qtyGood: bo.qty,
+          qtyGood: replacementQty,
           qtyDamaged: 0,
-          remainingQty: bo.qty,
+          remainingQty: replacementQty,
           unitCost: bo.unitCost || 0,
           source: `replacement_for_${bo.id}`,
           linkedBOId: bo.id,
           dateReceived: replacementDate + "T00:00:00.000Z",
           invoiceNumber: bo.invoiceNumber || "Replacement",
-          notes: `Replacement for ${damageTypeLabels[bo.type]} - Ref: ${reference || "N/A"}`,
+          notes: `Replacement for ${damageTypeLabels[bo.type]} - Ref: ${reference || "N/A"} (Qty: ${replacementQty})`,
           createdAt: new Date().toISOString(),
         });
 
@@ -3331,6 +3338,7 @@ function BadOrdersTab({ badOrders, onRefresh }) {
 
     setUpdateModal({ open: false, bo: null });
     setNewStatus("replaced");
+    setReplacementQty(0);
     setReference("");
     setReplacementDate(new Date().toISOString().split("T")[0]);
     onRefresh();
