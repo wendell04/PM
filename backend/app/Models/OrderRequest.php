@@ -24,8 +24,13 @@ class OrderRequest extends Model
         'designNotes',
         'suggestedPrice',
         'finalPrice',
+        'downPayment',
+        'paymentStatus',
+        'eta',
         'status',
         'statusHistory',
+        'adminComment',
+        'mockupUrl',
         'createdAt',
         'updatedAt',
     ];
@@ -34,6 +39,8 @@ class OrderRequest extends Model
         'quantity'         => 'integer',
         'suggestedPrice'   => 'float',
         'finalPrice'       => 'float',
+        'downPayment'      => 'float',
+        'eta'              => 'datetime',
         'createdAt'        => 'datetime',
         'updatedAt'        => 'datetime',
     ];
@@ -42,6 +49,9 @@ class OrderRequest extends Model
         'status'           => 'pending_review',
         'statusHistory'    => [],
         'selectedVariants' => [],
+        'paymentStatus'    => 'unpaid',
+        'downPayment'      => null,
+        'eta'              => null,
     ];
 
     // Scopes

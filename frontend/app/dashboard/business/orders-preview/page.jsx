@@ -16,13 +16,21 @@
  * All data is MOCK — for preview purposes only.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  fetchAdminOrders,
+  createJobOrder,
+  submitJobOrderQC,
+  recordOrderPayment,
+} from '@/lib/ordersApi';
 import { OrderStatusBadge, JOStatusBadge, PaymentBadge } from './components/StatusBadges';
 import OrderTimeline from './components/OrderTimeline';
 import DesignViewer from './components/DesignViewer';
 import PaymentTracker from './components/PaymentTracker';
 import CreateJOModal from './components/CreateJOModal';
 import BOMVerification from './components/BOMVerification';
+import QCModal from './components/QCModal';
 
 // ── Mock Data ──────────────────────────────────────────────────────────────────
 const MOCK_ORDERS = [
@@ -201,18 +209,48 @@ function formatDate(d) {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function OrdersPreviewPage() {
-  const [orders, setOrders] = useState(MOCK_ORDERS);
+  const { token } = useAuth();
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showCreateJO, setShowCreateJO] = useState(false);
   const [showDesign, setShowDesign] = useState(false);
   const [showBOM, setShowBOM] = useState(false);
+  const [showQC, setShowQC] = useState(false);
   const [targetOrder, setTargetOrder] = useState(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentTarget, setPaymentTarget] = useState(null);
+  const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', note: '' });
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const loadOrders = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchAdminOrders(token);
+      setOrders(data);
+    } catch (err) {
+      setError(err.message || 'Failed to load orders');
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
 
   const filtered = useMemo(() => {
     return orders.filter((o) => {
-      const matchSearch = !search || o.id.toLowerCase().includes(search.toLowerCase()) || o.customer.name.toLowerCase().includes(search.toLowerCase());
+      const matchSearch =
+        !search ||
+        (o.id || '').toLowerCase().includes(search.toLowerCase()) ||
+        (o.customer?.name || '').toLowerCase().includes(search.toLowerCase());
       const matchStatus = filterStatus === 'all' || o.status === filterStatus;
       return matchSearch && matchStatus;
     });
@@ -225,6 +263,87 @@ export default function OrdersPreviewPage() {
     setShowCreateJO(true);
   };
 
+  const handleCreateJOSubmit = useCallback(async (formData) => {
+    if (!token || !targetOrder) return;
+    setActionLoading(true);
+    try {
+      await createJobOrder(
+        {
+          orderId: targetOrder._id || targetOrder.id,
+          product: {
+            name: formData.productName,
+            variant: formData.productVariant || null,
+            quantity: formData.productQuantity,
+          },
+          targetCompletion: formData.targetCompletion,
+          isRush: formData.isRush || false,
+          assignedTo: formData.assignedTo,
+          notes: formData.notes || null,
+        },
+        token
+      );
+      setShowCreateJO(false);
+      setTargetOrder(null);
+      await loadOrders();
+    } catch (err) {
+      alert(err.message || 'Failed to create job order');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [token, targetOrder, loadOrders]);
+
+  const handleQCSubmit = useCallback(async (payload) => {
+    if (!token || !targetOrder) return;
+    setActionLoading(true);
+    try {
+      // QC is submitted against the Job Order ID, not the order ID
+      const joId = targetOrder.jo?._id || targetOrder.jo?.id;
+      if (!joId) throw new Error('No linked job order found for this order');
+      await submitJobOrderQC(joId, payload, token);
+      setShowQC(false);
+      setTargetOrder(null);
+      await loadOrders();
+    } catch (err) {
+      alert(err.message || 'Failed to submit QC result');
+    } finally {
+      setActionLoading(false);
+    }
+  }, [token, targetOrder, loadOrders]);
+
+  const handleOpenPayment = (order) => {
+    setPaymentTarget(order);
+    setPaymentForm({ amount: '', method: 'cash', note: '' });
+    setShowPaymentModal(true);
+  };
+
+  const handleRecordPayment = useCallback(async () => {
+    if (!token || !paymentTarget) return;
+    const amount = parseFloat(paymentForm.amount);
+    if (!amount || amount <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+    setPaymentLoading(true);
+    try {
+      await recordOrderPayment(
+        paymentTarget._id || paymentTarget.id,
+        {
+          amount,
+          method: paymentForm.method,
+          note: paymentForm.note || null,
+        },
+        token
+      );
+      setShowPaymentModal(false);
+      setPaymentTarget(null);
+      await loadOrders();
+    } catch (err) {
+      alert(err.message || 'Failed to record payment');
+    } finally {
+      setPaymentLoading(false);
+    }
+  }, [token, paymentTarget, paymentForm, loadOrders]);
+
   const handleViewDesign = (order) => {
     setTargetOrder(order);
     setShowDesign(true);
@@ -233,6 +352,11 @@ export default function OrdersPreviewPage() {
   const handleViewBOM = (order) => {
     setTargetOrder(order);
     setShowBOM(true);
+  };
+
+  const handleOpenQC = (order) => {
+    setTargetOrder(order);
+    setShowQC(true);
   };
 
   return (
@@ -406,6 +530,14 @@ export default function OrdersPreviewPage() {
                           Create JO
                         </button>
                       )}
+                      {order.status === 'quality_check' && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleOpenQC(order); }}
+                          style={{ padding: '0.25rem 0.5rem', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '4px', color: '#8b5cf6', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          QC
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -511,19 +643,118 @@ export default function OrdersPreviewPage() {
                 <OrderTimeline events={selectedOrder.timeline} />
               </div>
             </div>
+
+            {/* Panel Footer Actions */}
+            <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              {!selectedOrder.jo && selectedOrder.status !== 'delivered' && (
+                <button
+                  onClick={() => handleCreateJO(selectedOrder)}
+                  style={{ flex: 1, padding: '0.625rem', background: 'linear-gradient(135deg, #FFDF9F 0%, #D4A843 100%)', border: 'none', borderRadius: '8px', color: '#000', fontSize: '0.85rem', fontWeight: 800, cursor: 'pointer' }}
+                >
+                  Create JO
+                </button>
+              )}
+              {selectedOrder.paid < selectedOrder.total && (
+                <button
+                  onClick={() => handleOpenPayment(selectedOrder)}
+                  style={{ flex: 1, padding: '0.625rem', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Record Payment
+                </button>
+              )}
+              {selectedOrder.status === 'quality_check' && (
+                <button
+                  onClick={() => handleOpenQC(selectedOrder)}
+                  style={{ flex: 1, padding: '0.625rem', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '8px', color: '#8b5cf6', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Submit QC
+                </button>
+              )}
+            </div>
           </div>
         </>
       )}
 
       {/* ── Modals ─────────────────────────────────────────────────────────── */}
       {showCreateJO && targetOrder && (
-        <CreateJOModal order={targetOrder} onClose={() => { setShowCreateJO(false); setTargetOrder(null); }} />
+        <CreateJOModal
+          order={targetOrder}
+          onClose={() => { setShowCreateJO(false); setTargetOrder(null); }}
+          onSubmit={handleCreateJOSubmit}
+        />
       )}
       {showDesign && targetOrder && (
         <DesignViewer order={targetOrder} onClose={() => { setShowDesign(false); setTargetOrder(null); }} />
       )}
       {showBOM && targetOrder && (
         <BOMVerification order={targetOrder} onClose={() => { setShowBOM(false); setTargetOrder(null); }} />
+      )}
+      {showQC && targetOrder && (
+        <QCModal
+          order={targetOrder}
+          onClose={() => { setShowQC(false); setTargetOrder(null); }}
+          onSubmit={handleQCSubmit}
+        />
+      )}
+      {showPaymentModal && paymentTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '2rem', width: '100%', maxWidth: '420px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)' }}>Record Payment</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Order <strong>{paymentTarget.id}</strong> — Balance: <strong>₱{Number((paymentTarget.total || 0) - (paymentTarget.paid || 0)).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Amount *</label>
+              <input
+                type="number"
+                min="1"
+                value={paymentForm.amount}
+                onChange={(e) => setPaymentForm((p) => ({ ...p, amount: e.target.value }))}
+                placeholder="Enter amount..."
+                style={{ padding: '0.625rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Method *</label>
+              <select
+                value={paymentForm.method}
+                onChange={(e) => setPaymentForm((p) => ({ ...p, method: e.target.value }))}
+                style={{ padding: '0.625rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+              >
+                <option value="cash">Cash</option>
+                <option value="gcash">GCash</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="cod">COD</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Note</label>
+              <input
+                type="text"
+                value={paymentForm.note}
+                onChange={(e) => setPaymentForm((p) => ({ ...p, note: e.target.value }))}
+                placeholder="Optional note..."
+                style={{ padding: '0.625rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+              <button
+                onClick={() => { setShowPaymentModal(false); setPaymentTarget(null); }}
+                disabled={paymentLoading}
+                style={{ flex: 1, padding: '0.625rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRecordPayment}
+                disabled={paymentLoading}
+                style={{ flex: 1, padding: '0.625rem', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: '#22c55e', fontSize: '0.85rem', fontWeight: 700, cursor: paymentLoading ? 'not-allowed' : 'pointer', opacity: paymentLoading ? 0.6 : 1 }}
+              >
+                {paymentLoading ? 'Recording...' : 'Confirm Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

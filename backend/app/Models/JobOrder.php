@@ -18,21 +18,34 @@ class JobOrder extends Model
         'joStatus',
         'assignedTo',
         'notes',
+        'designNotes',
+        'designFilePath',
+        'adminComment',
+        'qcResult',
+        'materialsConsumed',
+        'bomVerified',
+        'cancelledAt',
         'createdAt',
         'updatedAt',
     ];
 
     protected $casts = [
-        'product'        => 'array',
-        'targetCompletion' => 'datetime',
-        'isRush'         => 'boolean',
-        'createdAt'      => 'datetime',
-        'updatedAt'      => 'datetime',
+        'product'           => 'array',
+        'targetCompletion'  => 'datetime',
+        'isRush'            => 'boolean',
+        'qcResult'          => 'array',
+        'materialsConsumed' => 'array',
+        'bomVerified'       => 'boolean',
+        'cancelledAt'       => 'datetime',
+        'createdAt'         => 'datetime',
+        'updatedAt'         => 'datetime',
     ];
 
     protected $attributes = [
-        'joStatus' => 'Queued',
-        'isRush'   => false,
+        'joStatus'          => 'Queued',
+        'isRush'            => false,
+        'bomVerified'       => false,
+        'materialsConsumed' => [],
     ];
 
     public function order()

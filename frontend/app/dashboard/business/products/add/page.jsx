@@ -1112,6 +1112,7 @@ export default function AddProductsPage() {
     description: '',
     priceType: 'fixed',
     trackInventory: true,
+    isCustom: false,
     stock: '',
     inventoryId: '',        // linked Inventory item ID (for "Source of Truth" materials)
   });
@@ -1729,6 +1730,9 @@ export default function AddProductsPage() {
       stock: stockVal,                          // Current stock quantity
       stockStatus: stockStatus.class,           // Status pill class
 
+      // ── Product Type ──
+      isCustom: formData.isCustom ?? false,     // true = requires design upload on checkout
+
       // ── Metadata ──
       createdAt: new Date().toISOString(),      // Product creation timestamp
     };
@@ -2007,6 +2011,40 @@ export default function AddProductsPage() {
               onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
               placeholder="Materials, printing details, sizes, notes…"
             />
+          </div>
+
+          {/* Is Custom Product toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderTop: '1px solid var(--border)' }}>
+            <div>
+              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--white)' }}>Requires Design Upload</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '2px' }}>Customer must upload a design file at checkout</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormData(prev => ({ ...prev, isCustom: !prev.isCustom }))}
+              style={{
+                width: '44px',
+                height: '24px',
+                borderRadius: '12px',
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: formData.isCustom ? 'var(--gold)' : 'var(--border)',
+                position: 'relative',
+                transition: 'background-color 0.2s',
+                flexShrink: 0,
+              }}
+            >
+              <span style={{
+                position: 'absolute',
+                top: '2px',
+                left: formData.isCustom ? '22px' : '2px',
+                width: '20px',
+                height: '20px',
+                borderRadius: '50%',
+                backgroundColor: 'var(--white)',
+                transition: 'left 0.2s',
+              }} />
+            </button>
           </div>
 
           {/* ── Product ID: Auto-generated from category + sub-category ── */}

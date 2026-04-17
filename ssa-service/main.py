@@ -1,175 +1,134 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List
 import pandas as pd
 import numpy as np
-import io
-import datetime
 from ssa import SSA
 
 app = FastAPI()
 
-# Allow CORS for the frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For development; restrict in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.post("/api/columns")
-async def get_columns(file: UploadFile = File(...)):
-    try:
-        contents = await file.read()
-        if file.filename.endswith('.csv'):
-            df = pd.read_csv(io.BytesIO(contents), nrows=5)
-        elif file.filename.endswith(('.xlsx', '.xls')):
-            try:
-                df = pd.read_excel(io.BytesIO(contents), nrows=5)
-            except:
-                df = pd.read_excel(io.BytesIO(contents), header=None, nrows=5)
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported file format.")
-        
-        columns = list(df.columns)
-        if len(columns) > 1:
-            return {"columns": [str(c) for c in columns[1:]]}
-        else:
-            return {"columns": []}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+class DataRow(BaseModel):
+    date: str
+    value: float
+
+
+class ForecastRequest(BaseModel):
+    rows: List[DataRow]
+    forecast_periods: int
+    forecast_type: str  # 'weekly' | 'monthly' | 'annually'
+
 
 @app.post("/api/forecast")
-async def forecast(file: UploadFile = File(...), forecast_periods: int = Form(...), forecast_type: str = Form("daily"), forecast_day_of_week: str = Form(None), target_column: str = Form(None)):
+async def forecast(req: ForecastRequest):
     try:
-        contents = await file.read()
-        
-        # Determine file type and read into pandas
-        if file.filename.endswith('.csv'):
-            df = pd.read_csv(io.BytesIO(contents))
-            if len(df.columns) < 2:
-                raise Exception("File must have at least two columns.")
-            # Standardize columns
-            if target_column and target_column in df.columns:
-                date_col = df.columns[0]
-                df = df[[date_col, target_column]]
-            else:
-                df = df.iloc[:, :2]
-            df.columns = ['Date', 'Value']
-        elif file.filename.endswith('.xlsx') or file.filename.endswith('.xls'):
-            try:
-                df = pd.read_excel(io.BytesIO(contents))
-                if len(df.columns) < 2:
-                    raise Exception("File must have at least two columns.")
-                
-                if target_column and target_column in df.columns:
-                    date_col = df.columns[0]
-                    df = df[[date_col, target_column]]
-                else:
-                    df = df.iloc[:, :2]
-                df.columns = ['Date', 'Value']
-            except Exception as read_ex:
-                # Fallback to no header
-                df = pd.read_excel(io.BytesIO(contents), header=None)
-                df = df.iloc[:, :2]
-                df.columns = ['Date', 'Value']
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported file format. Please upload a CSV or Excel file.")
+        forecast_type = req.forecast_type
+        forecast_periods = req.forecast_periods
 
-        # Convert date to datetime, handle errors
-        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-        # Drop rows with invalid dates or missing values
-        df = df.dropna(subset=['Date', 'Value'])
-        df = df.sort_values('Date').reset_index(drop=True)
-        
-        if forecast_type == 'monthly':
-            df = df.set_index('Date').resample('ME').sum().reset_index()
-        elif forecast_type == 'weekly':
-            df = df.set_index('Date').resample('W').sum().reset_index()
-        elif forecast_type == 'day_of_week':
-            if forecast_day_of_week:
-                df = df[df['Date'].dt.day_name() == forecast_day_of_week].reset_index(drop=True)
-            else:
-                df = df[df['Date'].dt.day_name() == 'Monday'].reset_index(drop=True)
-        
+        if forecast_type not in ("weekly", "monthly", "annually"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid forecast_type '{forecast_type}'. Must be weekly, monthly, or annually.",
+            )
+
+        # Build DataFrame
+        df = pd.DataFrame([{"Date": r.date, "Value": r.value} for r in req.rows])
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        df["Value"] = pd.to_numeric(df["Value"], errors="coerce")
+        df = df.dropna(subset=["Date", "Value"])
+        df = df.sort_values("Date").reset_index(drop=True)
+
+        if len(df) == 0:
+            raise HTTPException(status_code=400, detail="No valid data rows after parsing.")
+
+        # Resample based on period type
+        # Weekly  → each point = 1 day   (W-SUN bins)
+        # Monthly → each point = 1 week  (W-SUN bins, labeled as weeks)
+        # Annually→ each point = 1 month (MS bins)
+        if forecast_type == "weekly":
+            df = df.set_index("Date").resample("W").sum().reset_index()
+        elif forecast_type == "monthly":
+            df = df.set_index("Date").resample("W").sum().reset_index()
+        elif forecast_type == "annually":
+            df = df.set_index("Date").resample("MS").sum().reset_index()
+
         if len(df) < 10:
-            raise HTTPException(status_code=400, detail="Not enough data points for SSA.")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Not enough data points after resampling ({len(df)}). Need at least 10.",
+            )
 
-        # Determine L and components based on data length and type.
-        L = 30
-        components = [0, 1, 2, 3]
-        
-        if forecast_type == 'monthly':
-            L = min(12, max(2, len(df) // 2))
-            components = [0, 1] if L < 6 else [0, 1, 2]
-        elif forecast_type in ['weekly', 'day_of_week']:
-            L = min(13, max(2, len(df) // 2))
-            components = [0]
-        else:
-            if len(df) < 60:
-                L = max(2, len(df) // 2)
+        n = len(df)
 
-        # Initialize SSA
-        ssa = SSA(df['Value'].values, L=L)
+        # L selection per period type
+        if forecast_type == "weekly":
+            L = min(26, max(2, n // 2))
+        elif forecast_type == "monthly":
+            L = min(13, max(2, n // 2))
+        elif forecast_type == "annually":
+            L = min(6, max(2, n // 2))
 
-        # Extract components
+        # Components: trend (0) + first two seasonal pairs (1,2,3,4)
+        components = [0, 1, 2, 3, 4]
+        # Clamp to available singular values (determined after SSA init)
+        ssa = SSA(df["Value"].values, L=L)
+        max_comp = len(ssa.Sigma)
+        components = [c for c in components if c < max_comp]
+
+        # Decompose
         trend = ssa.reconstruct(0)
-        
-        seasonality_comps = [c for c in components if c > 0]
-        if seasonality_comps:
-            seasonality = ssa.reconstruct(seasonality_comps)
-        else:
-            seasonality = np.zeros(len(df))
-            
-        noise = df['Value'] - trend - seasonality
-        
+        seasonal_c = [c for c in components if c > 0]
+        seasonality = ssa.reconstruct(seasonal_c) if seasonal_c else np.zeros(n)
+        noise = df["Value"].values - trend - seasonality
+
         # Forecast
         forecast_vals = ssa.forecast(components, steps=forecast_periods)
-        
-        # Generate future dates
-        last_date = df['Date'].iloc[-1]
-        
-        if forecast_type == 'monthly':
-            # Use pd.DateOffset to add months
-            forecast_dates = [last_date + pd.DateOffset(months=i) for i in range(1, forecast_periods + 1)]
-        elif forecast_type in ['weekly', 'day_of_week']:
-            # Use pd.DateOffset to add weeks
-            forecast_dates = [last_date + pd.DateOffset(weeks=i) for i in range(1, forecast_periods + 1)]
-        else:
-            # Try to infer frequency, fallback to 1 day
-            try:
-                freq = df['Date'].diff().median()
-                if pd.isna(freq):
-                    freq = pd.Timedelta(days=1)
-            except:
-                freq = pd.Timedelta(days=1)
-                
-            forecast_dates = [last_date + freq * i for i in range(1, forecast_periods + 1)]
 
-        # Prepare response
-        # We need to send back dates as strings
-        # Also handle any NaN or infinite values
-        df['Value'] = df['Value'].replace([np.inf, -np.inf], np.nan).fillna(0)
-        
-        historical_data = {
-            "dates": df['Date'].dt.strftime('%Y-%m-%d').tolist(),
-            "values": df['Value'].tolist(),
-            "trend": trend.tolist(),
-            "seasonality": seasonality.tolist(),
-            "noise": noise.tolist()
-        }
-        
-        forecast_data = {
-            "dates": [d.strftime('%Y-%m-%d') for d in forecast_dates],
-            "values": forecast_vals.tolist()
-        }
+        # Confidence interval: ±1.96 * std(noise)
+        noise_std = float(np.std(noise))
+        margin = 1.96 * noise_std
+        conf_high = (forecast_vals + margin).tolist()
+        conf_low = (forecast_vals - margin).tolist()
+
+        # Future dates
+        last_date = df["Date"].iloc[-1]
+        if forecast_type == "weekly":
+            forecast_dates = [last_date + pd.DateOffset(weeks=i) for i in range(1, forecast_periods + 1)]
+        elif forecast_type == "monthly":
+            forecast_dates = [last_date + pd.DateOffset(weeks=i) for i in range(1, forecast_periods + 1)]
+        elif forecast_type == "annually":
+            forecast_dates = [last_date + pd.DateOffset(months=i) for i in range(1, forecast_periods + 1)]
+
+        # Clean historical values
+        hist_values = df["Value"].replace([np.inf, -np.inf], np.nan).fillna(0).tolist()
 
         return {
-            "historical": historical_data,
-            "forecast": forecast_data
+            "historical": {
+                "dates": df["Date"].dt.strftime("%Y-%m-%d").tolist(),
+                "values": hist_values,
+                "trend": trend.tolist(),
+                "seasonality": seasonality.tolist(),
+                "noise": noise.tolist(),
+            },
+            "forecast": {
+                "dates": [d.strftime("%Y-%m-%d") for d in forecast_dates],
+                "values": forecast_vals.tolist(),
+                "confidence_high": conf_high,
+                "confidence_low": conf_low,
+            },
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
-        tb_str = traceback.format_exc()
-        raise HTTPException(status_code=500, detail=f"{str(e)}\nTraceback: {tb_str}")
+        raise HTTPException(status_code=500, detail=f"{str(e)}\n{traceback.format_exc()}")

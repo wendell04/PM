@@ -35,10 +35,15 @@ export async function fetchOrderRequest(token, id) {
   return data.data ?? data;
 }
 
-export async function updateOrderRequestStatus(token, id, { status, finalPrice, note }) {
+export async function updateOrderRequestStatus(token, id, { status, finalPrice, note, downPayment, paymentStatus, eta, adminComment, mockupUrl }) {
   const body = { status };
   if (finalPrice !== undefined && finalPrice !== null) body.finalPrice = finalPrice;
   if (note) body.note = note;
+  if (downPayment !== undefined && downPayment !== null) body.downPayment = downPayment;
+  if (paymentStatus) body.paymentStatus = paymentStatus;
+  if (eta) body.eta = eta;
+  if (adminComment !== undefined) body.adminComment = adminComment;
+  if (mockupUrl !== undefined) body.mockupUrl = mockupUrl;
 
   const res = await fetch(`${API_URL}/api/admin/order-requests/${id}/status`, {
     method: 'PATCH',

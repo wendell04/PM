@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Http;
 use App\Mail\OrderSubmittedMail;
 use App\Mail\OrderConfirmedMail;
+use App\Mail\OrderStatusMail;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 
@@ -31,6 +32,7 @@ class OrderRequestController extends Controller
             'designNotes'      => 'nullable|string|max:1000',
             'designUrl'        => 'nullable|string|url',
             'selectedVariants' => 'nullable|array',
+            'isCustom'         => 'nullable|boolean',
         ])->validate();
 
         // Fetch product
@@ -112,8 +114,11 @@ class OrderRequestController extends Controller
             'quantity'         => $validated['quantity'],
             'designUrl'        => $validated['designUrl'] ?? null,
             'designNotes'      => $validated['designNotes'] ?? null,
+            'isCustom'         => $validated['isCustom'] ?? false,
             'suggestedPrice'   => $suggestedPrice,
             'finalPrice'       => null,
+            'downPayment'      => null,
+            'paymentStatus'    => 'unpaid',
             'status'           => 'pending_review',
             'statusHistory'    => [$statusHistoryEntry],
         ]);
@@ -190,7 +195,12 @@ class OrderRequestController extends Controller
         $validated = Validator::make($request->all(), [
             'status'     => 'required|in:pending_review,confirmed,processing,ready,delivered,cancelled',
             'finalPrice' => 'nullable|numeric|min:0',
-            'note'       => 'nullable|string|max:500',
+            'downPayment' => 'nullable|numeric|min:0',
+            'paymentStatus' => 'nullable|in:unpaid,partial,paid',
+            'eta' => 'nullable|date',
+            'note'          => 'nullable|string|max:500',
+            'adminComment'  => 'nullable|string|max:2000',
+            'mockupUrl'     => 'nullable|string|url',
         ])->validate();
 
         $user = $request->user();
@@ -211,6 +221,30 @@ class OrderRequestController extends Controller
             $req->finalPrice = (float) $validated['finalPrice'];
         }
 
+        if (array_key_exists('downPayment', $validated)) {
+            $req->downPayment = $validated['downPayment'] !== null
+                ? (float) $validated['downPayment']
+                : null;
+        }
+
+        if (array_key_exists('paymentStatus', $validated) && $validated['paymentStatus'] !== null) {
+            $req->paymentStatus = (string) $validated['paymentStatus'];
+        }
+
+        if (array_key_exists('eta', $validated)) {
+            $req->eta = $validated['eta'] !== null
+                ? \Carbon\Carbon::parse($validated['eta'])
+                : null;
+        }
+
+        if (array_key_exists('adminComment', $validated)) {
+            $req->adminComment = $validated['adminComment'] ?? null;
+        }
+
+        if (array_key_exists('mockupUrl', $validated)) {
+            $req->mockupUrl = $validated['mockupUrl'] ?? null;
+        }
+
         $req->save();
 
         if ($validated['status'] === 'confirmed') {
@@ -225,6 +259,54 @@ class OrderRequestController extends Controller
                     ));
             } catch (\Exception $e) {
                 Log::error('OrderConfirmedMail failed', [
+                    'orderId' => (string) $req->_id,
+                    'error'   => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($validated['status'] === 'processing') {
+            try {
+                Mail::to($req->customerEmail)->send(new OrderStatusMail(
+                    firstName:   explode(' ', $req->customerName)[0] ?? $req->customerName,
+                    orderId:     (string) $req->_id,
+                    newStatus:   'processing',
+                    totalAmount: (float) ($req->finalPrice ?? 0.0),
+                ));
+            } catch (\Exception $e) {
+                Log::error('OrderStatusMail failed', [
+                    'orderId' => (string) $req->_id,
+                    'error'   => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($validated['status'] === 'ready') {
+            try {
+                Mail::to($req->customerEmail)->send(new OrderStatusMail(
+                    firstName:   explode(' ', $req->customerName)[0] ?? $req->customerName,
+                    orderId:     (string) $req->_id,
+                    newStatus:   'ready',
+                    totalAmount: (float) ($req->finalPrice ?? 0.0),
+                ));
+            } catch (\Exception $e) {
+                Log::error('OrderStatusMail failed', [
+                    'orderId' => (string) $req->_id,
+                    'error'   => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($validated['status'] === 'delivered') {
+            try {
+                Mail::to($req->customerEmail)->send(new OrderStatusMail(
+                    firstName:   explode(' ', $req->customerName)[0] ?? $req->customerName,
+                    orderId:     (string) $req->_id,
+                    newStatus:   'delivered',
+                    totalAmount: (float) ($req->finalPrice ?? 0.0),
+                ));
+            } catch (\Exception $e) {
+                Log::error('OrderStatusMail failed', [
                     'orderId' => (string) $req->_id,
                     'error'   => $e->getMessage(),
                 ]);

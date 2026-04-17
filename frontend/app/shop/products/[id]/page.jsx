@@ -226,7 +226,8 @@ export default function ProductDetailPage() {
         },
         quantity,
         null,
-        resolveVariantName(selectedVariants)
+        resolveVariantName(selectedVariants),
+        flashSale?._id ?? null
       );
       setAddedToCart(true);
       setTimeout(() => setAddedToCart(false), 2500);
@@ -253,7 +254,8 @@ export default function ProductDetailPage() {
         },
         quantity,
         null,
-        resolveVariantName(selectedVariants)
+        resolveVariantName(selectedVariants),
+        flashSale?._id ?? null
       );
       // Write checkout_payload so checkout page can read it
       const payload = {
@@ -856,7 +858,7 @@ export default function ProductDetailPage() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
                 marginBottom: '0.5rem' }}>
-                Notes / Instructions
+                Design Notes
                 <span style={{ color: 'var(--gray)',
                   fontWeight: 400,
                   textTransform: 'none',

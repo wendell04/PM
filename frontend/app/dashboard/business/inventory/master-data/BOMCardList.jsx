@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 
 // Helper function to calculate FIFO cost from active batches
 // FIFO = use oldest batches first (what you'll actually consume)
 function computeFifoCost(material, requiredQty = 1) {
   if (!material || !material.batches || material.batches.length === 0) {
-    return material?.baseCost || 0;
+    return material?.baseCost || material?.averageCost || 0;
   }
 
   // Get all active batches sorted by date (FIFO order - oldest first)
@@ -13,7 +13,7 @@ function computeFifoCost(material, requiredQty = 1) {
     .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
 
   if (activeBatches.length === 0) {
-    return material?.baseCost || 0;
+    return material?.baseCost || material?.averageCost || 0;
   }
 
   // Simulate FIFO consumption to calculate actual cost
@@ -48,7 +48,7 @@ function computeFifoCost(material, requiredQty = 1) {
 // Helper function to get cost statistics for a material (min, max, avg)
 function getMaterialCostStats(material) {
   if (!material || !material.batches || material.batches.length === 0) {
-    const cost = material?.baseCost || 0;
+    const cost = material?.baseCost || material?.averageCost || 0;
     return { avg: cost, min: cost, max: cost, batches: 0 };
   }
 
@@ -57,7 +57,7 @@ function getMaterialCostStats(material) {
   );
 
   if (activeBatches.length === 0) {
-    const cost = material?.baseCost || 0;
+    const cost = material?.baseCost || material?.averageCost || 0;
     return { avg: cost, min: cost, max: cost, batches: 0 };
   }
 
@@ -70,7 +70,7 @@ function getMaterialCostStats(material) {
     (sum, b) => sum + (b.remainingQty || 0),
     0,
   );
-  const avg = totalQty > 0 ? totalValue / totalQty : material?.baseCost || 0;
+  const avg = totalQty > 0 ? totalValue / totalQty : material?.baseCost || material?.averageCost || 0;
 
   return {
     avg,
@@ -117,7 +117,7 @@ function generateBomSku(bom, materials) {
   // Get material names from components
   const materialNames = bom.components
     .map((c) => {
-      const mat = materials.find((m) => m.id === c.materialId);
+      const mat = materials.find((m) => m._id === c.inventoryId);
       return mat?.name || "";
     })
     .filter((name) => name);
@@ -564,7 +564,7 @@ export default function BOMCardList({
                     >
                       {groupBOMs.map((b) => (
                         <BOMCard
-                          key={b.id}
+                          key={b._id}
                           bom={b}
                           materials={materials}
                           onEdit={onEdit}
@@ -588,7 +588,7 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
   const totalCost = useMemo(
     () =>
       (bom.components || []).reduce((sum, c) => {
-        const mat = materials.find((m) => m.id === c.materialId);
+        const mat = materials.find((m) => m._id === c.inventoryId);
         // Use FIFO cost - what you'll actually pay when consuming from oldest stock
         const cost = computeFifoCost(mat, c.qty || 1);
         return sum + cost * (c.qty || 1);
@@ -599,7 +599,7 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
   const componentDetails = useMemo(
     () =>
       (bom.components || []).map((c) => {
-        const mat = materials.find((m) => m.id === c.materialId);
+        const mat = materials.find((m) => m._id === c.inventoryId);
         const stats = getMaterialCostStats(mat);
 
         // Get detailed batch breakdown with FIFO ordering
@@ -647,7 +647,7 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
           totalAvailableStock,
           isInBackorder,
           backorderQty,
-          materialId: c.materialId,
+          inventoryId: c.inventoryId,
         };
       }),
     [bom, materials],
@@ -1052,7 +1052,7 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onDelete(bom.id);
+              onDelete(bom._id);
             }}
             style={{
               ...actionBtnBase,

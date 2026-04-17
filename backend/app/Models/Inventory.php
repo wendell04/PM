@@ -9,16 +9,25 @@ class Inventory extends Model
     protected $collection = 'inventory';  
   
     protected $fillable = [  
-        'name', 'category', 'stockQty', 'minStockLevel', 'isOnDemand',  
+        'name', 'sku', 'uom', 'category', 'stockQty', 'minStockLevel', 'isOnDemand',  
         'isActive', 'deletedAt', 'supplierId', 'supplierName',  
-        'lastUnitCost', 'averageCost', 'createdAt', 'updatedAt',  
+        'lastUnitCost', 'averageCost', 'baseCost',
+        'reservedQty', 'consumedQty', 'badOrderQty',
+        'batches',
+        'createdAt', 'updatedAt',  
     ]; 
   
     protected $casts = [
+        'sku'      => 'string',  'uom' => 'string',
         'stockQty' => 'integer', 'minStockLevel' => 'integer',
         'isOnDemand' => 'boolean', 'isActive' => 'boolean',
         'deletedAt' => 'datetime', 'lastUnitCost' => 'float',
-        'averageCost' => 'float', 'createdAt' => 'datetime',
+        'averageCost'  => 'float', 'baseCost' => 'float',
+        'reservedQty'  => 'integer',
+        'consumedQty'  => 'integer',
+        'badOrderQty'  => 'integer',
+        'batches'      => 'array',
+        'createdAt' => 'datetime',
         'updatedAt' => 'datetime',
     ];
 
@@ -31,7 +40,8 @@ class Inventory extends Model
 
     protected $attributes = [
         'isActive' => true, 'deletedAt' => null,  
-        'stockQty' => 0, 'minStockLevel' => 10, 'isOnDemand' => false,  
+        'stockQty' => 0, 'minStockLevel' => 10, 'isOnDemand' => false,
+        'reservedQty' => 0, 'consumedQty' => 0, 'badOrderQty' => 0,
     ];  
  
     public function supplier() { return $this->belongsTo(Supplier::class, 'supplierId'); }  

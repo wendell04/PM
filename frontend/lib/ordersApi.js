@@ -184,6 +184,21 @@ function normalizeOrder(apiOrder) {
     targetCompletion: apiOrder.target_completion || apiOrder.targetCompletion || null,
     createdAt: apiOrder.created_at || apiOrder.createdAt || null,
     updatedAt: apiOrder.updated_at || apiOrder.updatedAt || null,
+    // Phase 3 fields
+    paymentHistory: apiOrder.paymentHistory || [],
+    orderSource: apiOrder.orderSource || 'online',
+    paymentStatus: apiOrder.payment_status || apiOrder.paymentStatus || 'unpaid',
+    // Eager-loaded job order — required for QC submit
+    jo: apiOrder.jobOrder
+      ? {
+          _id: apiOrder.jobOrder._id || apiOrder.jobOrder.id || null,
+          id: apiOrder.jobOrder._id || apiOrder.jobOrder.id || null,
+          targetDate: apiOrder.jobOrder.targetCompletion || null,
+          assignedTo: apiOrder.jobOrder.assignedTo || null,
+          rush: apiOrder.jobOrder.isRush || false,
+          status: apiOrder.jobOrder.joStatus || null,
+        }
+      : null,
   };
 }
 
@@ -362,6 +377,120 @@ export async function updateJobOrderStatus(joId, joStatus, token) {
     console.error('Error updating job order status:', error);
     // Non-fatal — do not rethrow. Order status update already succeeded.
   }
+}
+
+/**
+ * Alias: fetchAllOrders → fetchAllOrdersNew
+ * Fixes broken imports in inventory, job-orders, orders, products pages.
+ */
+/**
+ * Fetch all orders for admin orders-preview page
+ * Maps to GET /api/admin/orders
+ * @param {string} token
+ * @returns {Promise<Array>} Normalized orders array
+ */
+export async function fetchAdminOrders(token) {
+  const response = await fetchWithTimeout(
+    `${API_URL}/api/admin/orders`,
+    {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    },
+    10000
+  );
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to fetch admin orders (${response.status})`);
+  }
+  const data = await response.json();
+  const orders = data.data || data.orders || [];
+  return orders.map(normalizeOrder);
+}
+
+/**
+ * Create a Job Order for an existing order (admin)
+ * Maps to POST /api/admin/job-orders
+ * @param {Object} payload - { orderId, product, targetCompletion, isRush, assignedTo, notes }
+ * @param {string} token
+ * @returns {Promise<Object>} Created job order
+ */
+export async function createJobOrder(payload, token) {
+  const response = await fetchWithTimeout(
+    `${API_URL}/api/admin/job-orders`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    },
+    15000
+  );
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to create job order (${response.status})`);
+  }
+  return response.json();
+}
+
+/**
+ * Submit QC result for a Job Order (admin)
+ * Maps to POST /api/admin/job-orders/{id}/qc
+ * @param {string} jobOrderId - JobOrder _id (MongoDB)
+ * @param {Object} payload - { passed: bool, defects: string, checkedBy: string }
+ * @param {string} token
+ * @returns {Promise<Object>} Updated job order
+ */
+export async function submitJobOrderQC(jobOrderId, payload, token) {
+  const response = await fetchWithTimeout(
+    `${API_URL}/api/admin/job-orders/${jobOrderId}/qc`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    },
+    15000
+  );
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to submit QC result (${response.status})`);
+  }
+  return response.json();
+}
+
+/**
+ * Record a cash payment against an order (admin)
+ * Maps to POST /api/admin/orders/{id}/record-payment
+ * @param {string} orderId - Order _id (MongoDB)
+ * @param {Object} payload - { amount: float, method: string, note: string }
+ * @param {string} token
+ * @returns {Promise<Object>} Updated order (raw, not normalized)
+ */
+export async function recordOrderPayment(orderId, payload, token) {
+  const response = await fetchWithTimeout(
+    `${API_URL}/api/admin/orders/${orderId}/record-payment`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    },
+    15000
+  );
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to record payment (${response.status})`);
+  }
+  return response.json();
 }
 
 /**

@@ -27,6 +27,9 @@ use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\BillOfMaterialController;
+use App\Http\Controllers\VoucherController;
+use App\Http\Controllers\WalkInOrderController;
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::post('/register',        [AuthController::class, 'register'])->middleware('throttle:10,1');
@@ -202,10 +205,37 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::post('/admin/staff',                       [StaffController::class, 'store']);
     Route::put('/admin/staff/{id}',                   [StaffController::class, 'update']);
     Route::delete('/admin/staff/{id}',                [StaffController::class, 'destroy']);
+
+    // ─── Bill of Materials ─────────────────────────────────────────────────────────────────────
+    Route::get('/admin/bom',                          [BillOfMaterialController::class, 'index']);
+    Route::post('/admin/bom',                         [BillOfMaterialController::class, 'store']);
+    Route::get('/admin/bom/by-product/{name}',        [BillOfMaterialController::class, 'byProduct']);
+    Route::get('/admin/bom/{id}',                     [BillOfMaterialController::class, 'show']);
+    Route::put('/admin/bom/{id}',                     [BillOfMaterialController::class, 'update']);
+    Route::delete('/admin/bom/{id}',                  [BillOfMaterialController::class, 'destroy']);
+
+    // ─── QC Endpoint ───────────────────────────────────────────────────────────────────────────
+    Route::post('/admin/job-orders/{id}/qc',          [JobOrderController::class, 'submitQC']);
+
+    // ─── Record Payment ────────────────────────────────────────────────────────────────────────
+    Route::post('/admin/orders/{id}/record-payment',  [OrderController::class, 'recordPayment']);
+
+    // ── Walk-in / POS ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    Route::post('/admin/orders/walk-in',       [WalkInOrderController::class, 'store']);
+
+    // ── Vouchers ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    Route::get('/admin/vouchers',              [VoucherController::class, 'index']);
+    Route::post('/admin/vouchers',             [VoucherController::class, 'store']);
+    Route::put('/admin/vouchers/{id}',         [VoucherController::class, 'update']);
+    Route::delete('/admin/vouchers/{id}',      [VoucherController::class, 'destroy']);
+    Route::patch('/admin/vouchers/{id}/toggle', [VoucherController::class, 'toggle']);
 });
 
 // ─── Order Requests (Customer) ───────────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
+    // ── Vouchers (Customer) ───────────────────────────────────────────────
+    Route::post('/vouchers/apply',                [VoucherController::class, 'apply']);
+
     Route::post('/order-requests',                [OrderRequestController::class, 'store']);
     Route::get('/my/order-requests',              [OrderRequestController::class, 'myRequests']);
     Route::post('/order-requests/upload-design',  [OrderRequestController::class, 'uploadDesign']);

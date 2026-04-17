@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fetchMyOrders, fetchMyOrder } from '@/lib/orderTrackingApi';
+import CustomerTrackingView from './components/CustomerTrackingView';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { StatusBadge, formatDate, formatTimestamp, formatPeso } from '@/lib/shopUtils';
@@ -240,6 +241,37 @@ export default function ShopOrdersPage() {
                       Cancel
                     </button>
                   )}
+                  {order.status !== 'pending_review' && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                    <div
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        borderRadius: '8px',
+                        background: 'var(--dark3)',
+                        color: 'var(--gray)',
+                        fontSize: '0.75rem',
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      This order can no longer be cancelled as it has already been confirmed and is in progress.
+                    </div>
+                  )}
+                  {order.status === 'delivered' && (
+                    <button
+                      onClick={() => router.push(`/shop/products/${order.productId}`)}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--gold)',
+                        background: 'transparent',
+                        color: 'var(--gold)',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Re-order
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -271,6 +303,10 @@ export default function ShopOrdersPage() {
               </div>
             ) : (
               <div style={{ padding: '1.5rem' }}>
+                {/* Order Progress Tracker */}
+                <div style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '1.5rem' }}>
+                  <CustomerTrackingView order={selectedOrder} />
+                </div>
                 {/* Section 1: Order Info */}
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Order Info</h3>
@@ -316,7 +352,7 @@ export default function ShopOrdersPage() {
                           <div style={{ marginBottom: '0.25rem' }}>
                             <StatusBadge status={entry.status} />
                           </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.125rem' }}>{formatTimestamp(entry.changed_at)}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.125rem' }}>{formatTimestamp(entry.timestamp)}</div>
                           {entry.note && <div style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic' }}>{entry.note}</div>}
                         </div>
                       ))}
@@ -329,7 +365,24 @@ export default function ShopOrdersPage() {
             )}
 
             {/* Footer */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '1rem 1.5rem', borderTop: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', gap: '8px' }}>
+              {selectedOrder.status === 'delivered' && (
+                <button
+                  onClick={() => { closeDetail(); router.push(`/shop/products/${selectedOrder.productId}`); }}
+                  style={{
+                    padding: '0.625rem 1.25rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--gold)',
+                    background: 'transparent',
+                    color: 'var(--gold)',
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Re-order
+                </button>
+              )}
               <button onClick={closeDetail} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.625rem 1.25rem', color: 'var(--gray)', fontSize: '0.875rem', cursor: 'pointer' }}>Close</button>
             </div>
           </div>

@@ -25,6 +25,8 @@ class StockHistory extends Model
         'saleDate',
         'customerName',
         'remarks',
+        'type',
+        'performedBy',
         'createdAt',
     ];
 
@@ -37,10 +39,12 @@ class StockHistory extends Model
         'createdAt'    => 'datetime',
         'deliveryDate' => 'datetime',
         'saleDate'     => 'datetime',
+        'type'         => 'string',
     ];
 
     protected $attributes = [
         'remainingQty' => 0,
+        'type'         => 'addition',
     ];
 
     public function inventory()

@@ -1,0 +1,320 @@
+﻿1466:                     <div
+1467:                       style={{
+1468:                         fontSize: "0.62rem",
+1469:                         color: "var(--gray)",
+1470:                         textTransform: "uppercase",
+1471:                         marginBottom: "0.35rem",
+1472:                         fontWeight: 600,
+1473:                         letterSpacing: "0.08em",
+1474:                       }}
+1475:                     >
+1476:                       Total Effective Qty
+1477:                     </div>
+1478:                     <div
+1479:                       style={{
+1480:                         fontSize: "1.75rem",
+1481:                         fontWeight: 800,
+1482:                         color: "#E5E2E1",
+1483:                       }}
+1484:                     >
+1485:                       {totalGood}{" "}
+1486:                       <span
+1487:                         style={{
+1488:                           fontSize: "0.8rem",
+1489:                           fontWeight: 500,
+1490:                           color: "var(--gray)",
+1491:                         }}
+1492:                       >
+1493:                         units
+1494:                       </span>
+1495:                     </div>
+1496:                   </div>
+1497:                   <div
+1498:                     style={{
+1499:                       padding: "1rem",
+1500:                       background: "rgba(248,113,113,0.06)",
+1501:                       border: "1px solid rgba(248,113,113,0.2)",
+1502:                       borderRadius: "10px",
+1503:                     }}
+1504:                   >
+1505:                     <div
+1506:                       style={{
+1507:                         fontSize: "0.62rem",
+1508:                         color: "var(--gray)",
+1509:                         textTransform: "uppercase",
+1510:                         marginBottom: "0.35rem",
+1511:                         fontWeight: 600,
+1512:                         letterSpacing: "0.08em",
+1513:                       }}
+1514:                     >
+1515:                       Bad Orders
+1516:                     </div>
+1517:                     <div
+1518:                       style={{
+1519:                         fontSize: "1.75rem",
+1520:                         fontWeight: 800,
+1521:                         color: "#F87171",
+1522:                       }}
+1523:                     >
+1524:                       {totalDamaged}{" "}
+1525:                       <span
+1526:                         style={{
+1527:                           fontSize: "0.8rem",
+1528:                           fontWeight: 500,
+1529:                           color: "var(--gray)",
+1530:                         }}
+1531:                       >
+1532:                         units
+1533:                       </span>
+1534:                     </div>
+1535:                   </div>
+1536:                 </div>
+1537:               </div>
+1538: 
+1539:               {/* RIGHT "}
+1540:                                       </span>
+1541:                                     </div>
+1542:                                   );
+1543:                                 })}
+1544:                               </>
+1545:                             )}
+1546:                           </div>
+1547:                         </div>
+1548:                       );
+1549:                     })}
+1550:                   </div>
+1551:                 </div>
+1552: 
+1553:                 {/* Receipt upload */}
+1554:                 <div style={{ marginTop: "1.5rem" }}>
+1555:                   <label
+1556:                     style={{
+1557:                       display: "block",
+1558:                       fontSize: "0.65rem",
+1559:                       fontWeight: 700,
+1560:                       color: "var(--gray)",
+1561:                       textTransform: "uppercase",
+1562:                       letterSpacing: "0.08em",
+1563:                       marginBottom: "0.5rem",
+1564:                     }}
+1565:                   >
+1566:                     Proof of Purchase / Receipt{" "}
+1567:                     <span style={{ fontWeight: 400 }}>(Optional)</span>
+1568:                   </label>
+1569:                   <label
+1570:                     style={{
+1571:                       display: "flex",
+1572:                       flexDirection: "column",
+1573:                       alignItems: "center",
+1574:                       justifyContent: "center",
+1575:                       gap: "0.5rem",
+1576:                       padding: "1.25rem",
+1577:                       border: "2px dashed rgba(255,255,255,0.15)",
+1578:                       borderRadius: "10px",
+1579:                       background: "rgba(0,0,0,0.15)",
+1580:                       cursor: "pointer",
+1581:                       transition: "all 0.2s",
+1582:                     }}
+1583:                     onMouseEnter={(e) => {
+1584:                       e.currentTarget.style.borderColor = "#D4A843";
+1585:                       e.currentTarget.style.background =
+1586:                         "rgba(212,168,67,0.05)";
+1587:                     }}
+1588:                     onMouseLeave={(e) => {
+1589:                       e.currentTarget.style.borderColor =
+1590:                         "rgba(255,255,255,0.15)";
+1591:                       e.currentTarget.style.background = "rgba(0,0,0,0.15)";
+1592:                     }}
+1593:                   >
+1594:                     <div
+1595:                       style={{
+1596:                         width: "40px",
+1597:                         height: "40px",
+1598:                         borderRadius: "50%",
+1599:                         background: "rgba(255,255,255,0.08)",
+1600:                         display: "flex",
+1601:                         alignItems: "center",
+1602:                         justifyContent: "center",
+1603:                       }}
+1604:                     >
+1605:                       <svg
+1606:                         width="20"
+1607:                         height="20"
+1608:                         viewBox="0 0 24 24"
+1609:                         fill="none"
+1610:                         stroke="currentColor"
+1611:                         strokeWidth="1.5"
+1612:                         style={{ color: "var(--gray)" }}
+1613:                       >
+1614:                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+1615:                         <polyline points="17 8 12 3 7 8" />
+1616:                         <line x1="12" y1="3" x2="12" y2="15" />
+1617:                       </svg>
+1618:                     </div>
+1619:                     <span
+1620:                       style={{
+1621:                         fontSize: "0.75rem",
+1622:                         color: "var(--gray)",
+1623:                         fontWeight: 600,
+1624:                       }}
+1625:                     >
+1626:                       {invoice.receiptImage
+1627:                         ? "Receipt uploaded ΩïâΦïó∞û¼╬ôΦïâΩÅé∞îÇ∞èâ┬┤"
+1628:                         : "Upload Receipt Image"}
+1629:                     </span>
+1630:                     <span
+1631:                       style={{
+1632:                         fontSize: "0.6rem",
+1633:                         textTransform: "uppercase",
+1634:                         letterSpacing: "0.08em",
+1635:                         color: "var(--gray)",
+1636:                       }}
+1637:                     >
+1638:                       JPG, PNG up to 5MB
+1639:                     </span>
+1640:                     <input
+1641:                       type="file"
+1642:                       accept="image/*"
+1643:                       style={{ display: "none" }}
+1644:                       onChange={(e) => {
+1645:                         const file = e.target.files?.[0];
+1646:                         if (!file) return;
+1647:                         if (file.size > 5 * 1024 * 1024) {
+1648:                           setInfoModal({
+1649:                             title: "File Too Large",
+1650:                             message: "Receipt must be under 5MB.",
+1651:                           });
+1652:                           return;
+1653:                         }
+1654:                         const reader = new FileReader();
+1655:                         reader.onload = (ev) =>
+1656:                           setInvoice((p) => ({
+1657:                             ...p,
+1658:                             receiptImage: ev.target.result,
+1659:                           }));
+1660:                         reader.readAsDataURL(file);
+1661:                       }}
+1662:                     />
+1663:                   </label>
+1664:                   {invoice.receiptImage && (
+1665:                     <div style={{ position: "relative", marginTop: "0.5rem" }}>
+1666:                       <img
+1667:                         src={invoice.receiptImage}
+1668:                         alt="Receipt"
+1669:                         style={{
+1670:                           maxHeight: "100px",
+1671:                           maxWidth: "100%",
+1672:                           objectFit: "contain",
+1673:                           borderRadius: "8px",
+1674:                           border: "1px solid rgba(255,255,255,0.08)",
+1675:                           display: "block",
+1676:                         }}
+1677:                       />
+1678:                       <button
+1679:                         type="button"
+1680:                         onClick={() =>
+1681:                           setInvoice((p) => ({ ...p, receiptImage: null }))
+1682:                         }
+1683:                         style={{
+1684:                           position: "absolute",
+1685:                           top: "-6px",
+1686:                           right: "-6px",
+1687:                           background: "#ef4444",
+1688:                           border: "none",
+1689:                           borderRadius: "50%",
+1690:                           width: "22px",
+1691:                           height: "22px",
+1692:                           cursor: "pointer",
+1693:                           color: "#fff",
+1694:                           fontSize: "0.85rem",
+1695:                           display: "flex",
+1696:                           alignItems: "center",
+1697:                           justifyContent: "center",
+1698:                           fontWeight: 700,
+1699:                         }}
+1700:                       >
+1701:                          */}
+1702:         <div
+1703:           style={{
+1704:             padding: "1rem 2rem",
+1705:             borderTop: "1px solid rgba(255,255,255,0.08)",
+1706:             background: "#131313",
+1707:             display: "flex",
+1708:             justifyContent: "space-between",
+1709:             alignItems: "center",
+1710:             flexShrink: 0,
+1711:           }}
+1712:         >
+1713:           <div style={{ display: "flex", gap: "0.5rem" }}>
+1714:             {step > 1 && (
+1715:               <button
+1716:                 onClick={step === 3 ? handleBackToStep2 : handleBackToStep1}
+1717:                 style={{
+1718:                   display: "flex",
+1719:                   alignItems: "center",
+1720:                   gap: "0.4rem",
+1721:                   background: "none",
+1722:                   border: "1px solid rgba(255,255,255,0.15)",
+1723:                   color: "var(--white)",
+1724:                   borderRadius: "8px",
+1725:                   padding: "0.625rem 1rem",
+1726:                   fontSize: "0.82rem",
+1727:                   fontWeight: 600,
+1728:                   cursor: "pointer",
+1729:                   transition: "all 0.2s",
+1730:                 }}
+1731:                 onMouseEnter={(e) => {
+1732:                   e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+1733:                 }}
+1734:                 onMouseLeave={(e) => {
+1735:                   e.currentTarget.style.background = "none";
+1736:                 }}
+1737:               >
+1738:                 <svg
+1739:                   width="14"
+1740:                   height="14"
+1741:                   viewBox="0 0 24 24"
+1742:                   fill="none"
+1743:                   stroke="currentColor"
+1744:                   strokeWidth="2.5"
+1745:                 >
+1746:                   <path d="M19 12H5" />
+1747:                   <path d="M12 19l-7-7 7-7" />
+1748:                 </svg>
+1749:                 Back
+1750:               </button>
+1751:             )}
+1752:             <button
+1753:               onClick={onClose}
+1754:               style={{
+1755:                 background: "none",
+1756:                 border: "1px solid rgba(255,255,255,0.15)",
+1757:                 color: "var(--gray)",
+1758:                 borderRadius: "8px",
+1759:                 padding: "0.625rem 1rem",
+1760:                 fontSize: "0.82rem",
+1761:                 fontWeight: 600,
+1762:                 cursor: "pointer",
+1763:                 transition: "all 0.2s",
+1764:               }}
+1765:               onMouseEnter={(e) => {
+1766:                 e.currentTarget.style.background = "rgba(239,68,68,0.1)";
+1767:                 e.currentTarget.style.color = "#ef4444";
+1768:               }}
+1769:               onMouseLeave={(e) => {
+1770:                 e.currentTarget.style.background = "none";
+1771:                 e.currentTarget.style.color = "var(--gray)";
+1772:               }}
+1773:             >
+1774:               {step === 3 ? "Discard" : "Cancel"}
+1775:             </button>
+1776:           </div>
+1777: 
+1778:           <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+1779:             {step === 3 && totalInvoiceValue > 0 && (
+1780:               <div
+1781:                 style={{
+1782:                   display: "flex",
+1783:                   alignItems: "center",
+1784:                   gap: "0.75rem",
+1785:                   fontSize: "0.75rem",

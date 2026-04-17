@@ -449,6 +449,7 @@ export default function BusinessDashboardLayout({ children }) {
         { name: 'All Orders',     href: '/dashboard/business/orders' },
         { name: 'Order Requests', href: '/dashboard/business/order-requests' },
         { name: 'Job Orders',     href: '/dashboard/business/job-orders' },
+        { name: 'POS / Walk-in', href: '/dashboard/business/pos' },
       ],
     },
 
@@ -459,6 +460,7 @@ export default function BusinessDashboardLayout({ children }) {
       icon: 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4',
       children: [
         { name: 'Inventory', href: '/dashboard/business/inventory' },
+        { name: 'Stock In',  href: '/dashboard/business/inventory/stock-in' },
         { name: 'Returns',   href: '/dashboard/business/inventory/returns' },
         { name: 'Suppliers', href: '/dashboard/business/suppliers' },
       ],
@@ -483,6 +485,7 @@ export default function BusinessDashboardLayout({ children }) {
       children: [
         { name: 'Banners',     href: '/dashboard/business/banners' },
         { name: 'Flash Sales', href: '/dashboard/business/flash-sales' },
+        { name: 'Vouchers',    href: '/dashboard/business/vouchers' },
       ],
     },
 

@@ -30,6 +30,9 @@ const EMPTY_FORM = {
   isRush: false,
   assignedTo: '',
   notes: '',
+  designNotes: '',
+  designFilePath: '',
+  adminComment: '',
 };
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -744,6 +747,42 @@ export default function JobOrdersPage() {
                         {jo.notes}
                       </div>
                     )}
+
+                    {/* Design File */}
+                    {jo.designFilePath && (
+                      <div style={{ marginTop: '0.75rem' }}>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Design File</div>
+                        <a
+                          href={jo.designFilePath}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.82rem', color: 'var(--gold)', fontWeight: 600, textDecoration: 'none' }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                            <polyline points="15 3 21 3 21 9"/>
+                            <line x1="10" y1="14" x2="21" y2="3"/>
+                          </svg>
+                          View Design File
+                        </a>
+                      </div>
+                    )}
+
+                    {/* Design Notes */}
+                    {jo.designNotes && (
+                      <div style={{ marginTop: '0.75rem' }}>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Customer Design Notes</div>
+                        <div style={{ fontSize: '0.82rem', color: 'var(--white)', lineHeight: 1.5 }}>{jo.designNotes}</div>
+                      </div>
+                    )}
+
+                    {/* Admin Comment */}
+                    {jo.adminComment && (
+                      <div style={{ marginTop: '0.75rem' }}>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Admin Notes</div>
+                        <div style={{ fontSize: '0.82rem', color: 'var(--white)', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '6px', padding: '0.5rem 0.75rem', lineHeight: 1.5 }}>{jo.adminComment}</div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -968,7 +1007,10 @@ export default function JobOrdersPage() {
                   : '',
                 isRush:    selected.isRush   || false,
                 assignedTo: selected.assignedTo || '',
-                notes:      selected.notes    || '',
+                notes:         selected.notes         || '',
+                designNotes:   selected.designNotes   || '',
+                designFilePath: selected.designFilePath || '',
+                adminComment:  selected.adminComment  || '',
               }}
               isEdit={true}
               onSubmit={handleUpdate}

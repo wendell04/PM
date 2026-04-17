@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
+use App\Models\Voucher;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -41,6 +42,8 @@ class PaymentController extends Controller
                 'items.*.variantId'           => 'nullable|string',
                 'items.*.variantName'         => 'nullable|string',
                 'items.*.qty'                 => 'required|integer|min:1',
+                'items.*.flashSaleId'         => 'nullable|string|max:24',
+                'voucherCode'                 => 'nullable|string|max:50',
                 'notes'                       => 'nullable|string|max:1000',
                 'deliveryAddress'             => 'nullable|array',
                 'deliveryAddress.label'       => 'nullable|string|max:100',
@@ -94,6 +97,9 @@ class PaymentController extends Controller
                     'qty'         => $qty,
                     'unitPrice'   => $unitPrice,
                     'lineTotal'   => $lineTotal,
+                    'flashSaleId' => isset($item['flashSaleId']) && $item['flashSaleId'] !== ''
+                        ? $item['flashSaleId']
+                        : null,
                 ];
             }
 
@@ -112,6 +118,53 @@ class PaymentController extends Controller
                 }
             }
 
+            // ── Voucher discount (server-side validation) ──────────────────────
+            $discountAmount = 0.0;
+            $appliedVoucher = null;
+
+            if (!empty($validated['voucherCode'])) {
+                $voucherCode = strtoupper(trim($validated['voucherCode']));
+                $voucher     = Voucher::where('code', $voucherCode)->first();
+                $userId      = (string) $user->_id;
+
+                $usedBy      = $voucher?->usedBy ?? [];
+                $alreadyUsed = in_array($userId, $usedBy, true);
+
+                $voucherValid = $voucher
+                    && $voucher->isActive
+                    && (!$voucher->expiresAt || $voucher->expiresAt >= now())
+                    && ($voucher->maxUses === null || $voucher->usedCount < $voucher->maxUses)
+                    && !$alreadyUsed
+                    && ($voucher->minOrderAmount === null || $totalAmount >= $voucher->minOrderAmount);
+
+                if ($voucherValid) {
+                    $discountAmount = $voucher->discountType === 'percentage'
+                        ? round($totalAmount * $voucher->discountValue / 100, 2)
+                        : min((float) $voucher->discountValue, $totalAmount);
+
+                    $totalAmount    = max(0, $totalAmount - $discountAmount);
+                    $appliedVoucher = $voucher;
+                }
+            }
+
+            // ── Idempotency: check for existing unpaid order (same user, same items, last 5 min) ──
+            $itemIds = collect($validated['items'])->pluck('productId')->sort()->values()->toArray();
+            $recentOrder = Order::where('userId', (string) $user->_id)
+                ->where('paymentStatus', 'unpaid')
+                ->where('createdAt', '>=', now()->subMinutes(5))
+                ->latest('createdAt')
+                ->first();
+
+            if ($recentOrder) {
+                $existingIds = collect($recentOrder->items ?? [])->pluck('productId')->sort()->values()->toArray();
+                if ($existingIds === $itemIds && $recentOrder->checkoutUrl) {
+                    return $this->successResponse('Existing payment link reused.', [
+                        'orderId'     => (string) $recentOrder->_id,
+                        'checkoutUrl' => $recentOrder->checkoutUrl,
+                    ]);
+                }
+            }
+
             // ── Create order (paymentStatus: unpaid) ──────────────────
             $order = Order::create([
                 'userId'          => (string) $user->_id,
@@ -122,6 +175,8 @@ class PaymentController extends Controller
                 ],
                 'items'           => $orderItems,
                 'totalAmount'     => $totalAmount,
+                'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
+                'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => 'Pending',
                 'paymentStatus'   => 'unpaid',
                 'notes'           => strip_tags($validated['notes'] ?? ''),
@@ -133,19 +188,38 @@ class PaymentController extends Controller
                 'updatedAt'       => now(),
             ]);
 
+            // Increment voucher usage + record userId (non-fatal)
+            if ($appliedVoucher) {
+                try {
+                    $appliedVoucher->increment('usedCount');
+                    $appliedVoucher->push('usedBy', (string) $user->_id, true);
+                } catch (\Exception $voucherErr) {
+                    Log::warning('PaymentController@createLink: voucher increment failed', [
+                        'voucherCode' => $appliedVoucher->code,
+                        'error'       => $voucherErr->getMessage(),
+                    ]);
+                }
+            }
+
             $orderId     = (string) $order->_id;
             $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
-            $amountCents = (int) round($totalAmount * 100);
+            $amountInCentavos = (int) round($totalAmount * 100);
+            $description = "PersonalizeMe Prints — Order #{$orderId}";
 
-            // ── Create PayMongo Payment Link (/v1/links) ──────────────
+            // ── Create PayMongo Checkout Session (/v1/checkout_sessions) ──
             $response = Http::withBasicAuth($this->secretKey, '')
-                ->post("{$this->baseUrl}/links", [
+                ->post("{$this->baseUrl}/checkout_sessions", [
                     'data' => [
                         'attributes' => [
-                            'amount'      => $amountCents,
-                            'currency'    => 'PHP',
-                            'description' => "PersonalizeMe Prints — Order #{$orderId}",
-                            'remarks'     => "Order ID: {$orderId}",
+                            'billing'              => ['email' => $order->userSnapshot['email'] ?? ''],
+                            'reference_number'     => (string) $orderId,
+                            'payment_method_types' => ['gcash', 'paymaya', 'card'],
+                            'line_items'           => [[
+                                'currency'   => 'PHP',
+                                'amount'     => $amountInCentavos,
+                                'name'       => $description,
+                                'quantity'   => 1,
+                            ]],
                             'redirect'    => [
                                 'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}",
                                 'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}",
@@ -168,7 +242,9 @@ class PaymentController extends Controller
             }
 
             $linkData    = $response->json();
-            $checkoutUrl = $linkData['data']['attributes']['checkout_url'] ?? null;
+            $checkoutUrl = $linkData['data']['attributes']['checkout_url']
+                        ?? $linkData['data']['attributes']['url']
+                        ?? null;
             $linkId      = $linkData['data']['id'] ?? null;
 
             if (!$checkoutUrl) {
@@ -203,7 +279,7 @@ class PaymentController extends Controller
      * POST /api/payment/webhook
      *
      * PayMongo sends payment.paid event.
-     * Extracts orderId from remarks, marks order as paid.
+     * Extracts orderId from reference_number, marks order as paid.
      * No auth middleware — verified by signature.
      */
     public function webhook(Request $request)
@@ -212,6 +288,11 @@ class PaymentController extends Controller
             $webhookSecret = config('services.paymongo.webhook_secret', '');
 
             // ── Signature verification ────────────────────────────────
+            if (!$webhookSecret) {
+                Log::critical('PayMongo webhook: PAYMONGO_WEBHOOK_SECRET is not set. Rejecting all webhook calls.');
+                return response()->json(['error' => 'Webhook not configured.'], 500);
+            }
+
             if ($webhookSecret) {
                 $sigHeader = $request->header('Paymongo-Signature');
                 if (!$sigHeader) {
@@ -247,16 +328,16 @@ class PaymentController extends Controller
                 return response()->json(['received' => true]);
             }
 
-            // ── Extract orderId from remarks ──────────────────────────
+            // ── Extract orderId from reference_number ─────────────────
             $data    = $payload['data']['attributes']['data'] ?? [];
-            $remarks = $data['attributes']['remarks'] ?? '';
+            $remarks = $data['attributes']['reference_number'] ?? '';
 
-            preg_match('/Order ID:\s*([a-f0-9]{24})/i', $remarks, $matches);
+            preg_match('/^([a-f0-9]{24})$/i', $remarks, $matches);
             $orderId = $matches[1] ?? null;
 
             if (!$orderId) {
                 Log::warning('PayMongo webhook: could not extract orderId', [
-                    'remarks' => $remarks,
+                    'reference_number' => $remarks,
                 ]);
                 return response()->json(['received' => true]);
             }

@@ -204,6 +204,7 @@ export default function CartPage() {
         variantName: i.variantName ?? null,
         qty:         i.qty,
         unitPrice:   i.unitPrice,
+        isCustom:    i.isCustom    ?? false,
       })),
       notes,
     };

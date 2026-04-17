@@ -3,7 +3,7 @@
 import TwoFactorModal from '@/components/auth/TwoFactorModal';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useCart as useGlobalCart } from '../../context/CartContext';
 import { syncCart, mergeCart } from '@/lib/cartApi';
@@ -659,6 +659,7 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
 // ─── Layout ───────────────────────────────────────────────────────────────────
 export default function ShopLayout({ children }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { setCartItems, cartCount: globalCartCount } = useGlobalCart();
   const [user, setUser]       = useState(null);
   const [cart, setCart]       = useState([]);
@@ -1263,39 +1264,41 @@ export default function ShopLayout({ children }) {
             </div>
 
             {/* Center — Search bar — B-01 */}
-            <div className="shop-navbar-search">
-              <svg
-                className="shop-navbar-search-icon"
-                width="16" height="16" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor"
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              >
-                <circle cx="11" cy="11" r="8"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <input
-                type="text"
-                className="shop-navbar-search-input"
-                placeholder="Search products..."
-                value={searchQuery}
-                onChange={handleSearchChange}
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  className="shop-navbar-search-clear"
-                  onClick={handleSearchClear}
-                  aria-label="Clear search"
+            {pathname !== '/shop/cart' && (
+              <div className="shop-navbar-search">
+                <svg
+                  className="shop-navbar-search-icon"
+                  width="16" height="16" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor"
+                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24"
-                    fill="none" stroke="currentColor"
-                    strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"/>
-                    <line x1="6" y1="6" x2="18" y2="18"/>
-                  </svg>
-                </button>
-              )}
-            </div>
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input
+                  type="text"
+                  className="shop-navbar-search-input"
+                  placeholder="Search products..."
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    className="shop-navbar-search-clear"
+                    onClick={handleSearchClear}
+                    aria-label="Clear search"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24"
+                      fill="none" stroke="currentColor"
+                      strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Right side */}
             <div className="shop-navbar-right">

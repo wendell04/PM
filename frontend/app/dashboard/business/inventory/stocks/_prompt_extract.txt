@@ -1,0 +1,280 @@
+───────────────────────────────────────────────────
+    Route::get('/admin/vouchers',              [VoucherController::class, 'index']);
+
+FILE 3 — frontend/lib/posApi.js (new file — create it)
+javascriptconst API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+/**
+ * Fetch all active + published products for the POS product picker.
+ * Reuses the existing public products endpoint.
+ */
+export async function fetchPosProducts(token, search = '') {
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+
+  const res = await fetch(`${API_URL}/api/products?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Failed to fetch products.');
+  const data = await res.json();
+  // Support both { data: [] } and plain array shapes
+  return Array.isArray(data) ? data : (data.data ?? []);
+}
+
+/**
+ * Submit a walk-in / POS order.
+ */
+export async function submitWalkInOrder(token, payload) {
+  const res = await fetch(`${API_URL}/api/admin/orders/walk-in`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Failed to submit walk-in order.');
+  return data;
+}
+
+FILE 4 — frontend/app/dashboard/business/pos/page.jsx (new file — create it)
+jsx'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchPosProducts, submitWalkInOrder } from '@/lib/posApi';
+
+// ── Price resolver (mirrors backend resolvePrice) ────────────────────────────
+function resolvePrice(product, qty = 1, variantId = null) {
+  if (variantId && product.variantPrices && product.variantPrices[variantId] != null) {
+    return parseFloat(product.variantPrices[variantId]);
+  }
+  const tiers = product.priceTiers ?? [];
+  if (tiers.length > 0) {
+    const sorted = [...tiers].sort((a, b) => (a.minQty ?? 0) - (b.minQty ?? 0));
+    let matched = null;
+    for (const tier of sorted) {
+      const min = parseInt(tier.minQty ?? 1);
+      const max = tier.maxQty != null ? parseInt(tier.maxQty) : Infinity;
+      if (qty >= min && qty <= max) { matched = parseFloat(tier.price); break; }
+    }
+    if (matched === null && sorted.length > 0) matched = parseFloat(sorted[sorted.length - 1].price);
+    if (matched !== null) return matched;
+  }
+  if (product.price != null)     return parseFloat(product.price);
+  if (product.flatPrice != null) return parseFloat(product.flatPrice);
+  return null;
+}
+
+function formatPrice(n) {
+  if (n == null) return '—';
+  return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ── Variant helpers ──────────────────────────────────────────────────────────
+function getVariantOptions(product) {
+  if (!product.variantPrices || !Object.keys(product.variantPrices).length) return [];
+  return Object.keys(product.variantPrices).map(key => ({
+    id:    key,
+    label: key,
+    price: parseFloat(product.variantPrices[key]),
+  }));
+}
+
+// ── Styles ───────────────────────────────────────────────────────────────────
+const inputStyle = {
+  width: '100%',
+  padding: '9px 12px',
+  backgroundColor: 'var(--dark)',
+  border: '1px solid var(--border)',
+  borderRadius: '8px',
+  color: 'var(--white)',
+  fontSize: '14px',
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
+const btnGold = {
+  padding: '10px 20px',
+  backgroundColor: 'var(--gold)',
+  color: '#000',
+  border: 'none',
+  borderRadius: '8px',
+  fontWeight: 700,
+  fontSize: '0.875rem',
+  cursor: 'pointer',
+};
+
+const btnGhost = {
+  padding: '8px 14px',
+  backgroundColor: 'var(--border)',
+  color: 'var(--white)',
+  border: 'none',
+  borderRadius: '8px',
+  fontWeight: 600,
+  fontSize: '0.8rem',
+  cursor: 'pointer',
+};
+
+// ── Main Component ────────────────────────────────────────────────────────────
+export default function PosPage() {
+  const { token } = useAuth();
+
+  // Products
+  const [products, setProducts]       = useState([]);
+  const [prodLoading, setProdLoading] = useState(true);
+  const [search, setSearch]           = useState('');
+
+  // Cart
+  const [cart, setCart]               = useState([]); // { product, variantId, variantName, qty, unitPrice }
+
+  // Variant picker modal
+  const [variantModal, setVariantModal]   = useState(null); // product to pick variant for
+  const [selectedVariant, setSelectedVariant] = useState(null);
+  const [variantQty, setVariantQty]       = useState(1);
+
+  // Customer info
+  const [customerName, setCustomerName]   = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [notes, setNotes]                 = useState('');
+
+  // Submit
+  const [submitting, setSubmitting]   = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+  const [receipt, setReceipt]         = useState(null); // success receipt data
+
+  // ── Load products ──────────────────────────────────────────────────────────
+  const loadProducts = useCallback(async () => {
+    if (!token) return;
+    setProdLoading(true);
+    try {
+      const data = await fetchPosProducts(token, search);
+      // Exclude inquiry-only products
+      setProducts(data.filter(p => p.priceType !== 'inquiry'));
+    } catch {
+      setProducts([]);
+    } finally {
+      setProdLoading(false);
+    }
+  }, [token, search]);
+
+  useEffect(() => {
+    const t = setTimeout(loadProducts, 300);
+    return () => clearTimeout(t);
+  }, [loadProducts]);
+
+  // ── Add to cart ────────────────────────────────────────────────────────────
+  function handleAddProduct(product) {
+    const variants = getVariantOptions(product);
+    if (variants.length > 0) {
+      setSelectedVariant(variants[0]);
+      setVariantQty(1);
+      setVariantModal(product);
+      return;
+    }
+    // No variants — add directly with qty 1
+    const price = resolvePrice(product, 1, null);
+    if (price === null) return; // inquiry product slipped through
+    addToCart(product, null, null, 1, price);
+  }
+
+  function confirmVariant() {
+    if (!variantModal || !selectedVariant) return;
+    const price = resolvePrice(variantModal, variantQty, selectedVariant.id);
+    addToCart(variantModal, selectedVariant.id, selectedVariant.label, variantQty, price ?? selectedVariant.price);
+    setVariantModal(null);
+    setSelectedVariant(null);
+    setVariantQty(1);
+  }
+
+  function addToCart(product, variantId, variantName, qty, unitPrice) {
+    const key = `${product._id}__${variantId ?? ''}`;
+    setCart(prev => {
+      const existing = prev.find(c => c.key === key);
+      if (existing) {
+        return prev.map(c => c.key === key
+          ? { ...c, qty: c.qty + qty }
+          : c
+        );
+      }
+      return [...prev, { key, product, variantId, variantName, qty, unitPrice }];
+    });
+  }
+
+  function updateQty(key, delta) {
+    setCart(prev => prev
+      .map(c => c.key === key ? { ...c, qty: Math.max(1, c.qty + delta) } : c)
+    );
+  }
+
+  function setQtyDirect(key, val) {
+    const n = parseInt(val);
+    if (isNaN(n) || n < 1) return;
+    setCart(prev => prev.map(c => c.key === key ? { ...c, qty: n } : c));
+  }
+
+  function removeFromCart(key) {
+    setCart(prev => prev.filter(c => c.key !== key));
+  }
+
+  function clearCart() {
+    setCart([]);
+    setCustomerName('');
+    setCustomerPhone('');
+    setNotes('');
+    setSubmitError(null);
+  }
+
+  // ── Totals ─────────────────────────────────────────────────────────────────
+  const total = cart.reduce((sum, c) => sum + c.unitPrice * c.qty, 0);
+
+  // ── Submit ─────────────────────────────────────────────────────────────────
+  async function handleSubmit() {
+    if (!customerName.trim()) { setSubmitError('Customer name is required.'); return; }
+    if (cart.length === 0)    { setSubmitError('Cart is empty.'); return; }
+
+    setSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const payload = {
+        customerName:  customerName.trim(),
+        customerPhone: customerPhone.trim() || null,
+        notes:         notes.trim() || null,
+        items: cart.map(c => ({
+          productId:   c.product._id,
+          variantId:   c.variantId   ?? null,
+          variantName: c.variantName ?? null,
+          qty:         c.qty,
+          unitPrice:   c.unitPrice,
+        })),
+      };
+
+      const data = await submitWalkInOrder(token, payload);
+      setReceipt(data.data);
+      clearCart();
+    } catch (err) {
+      setSubmitError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // ── Receipt modal ──────────────────────────────────────────────────────────
+  if (receipt) {
+    return (
+      <div style={{ padding: '2rem', maxWidth: '500px', margin: '4rem auto', textAlign: 'center' }}>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '2.5rem 2rem' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>✅</div>
+          <h2 style={{ margin: '0 0 0.25rem', color: 'var(--white)', fontWeight: 700 }}>Order Recorded</h2>
+          <p style={{ margin: '0 0 1.5rem', color: 'var(--gray)', fontSize: '0.875rem' }}>Walk-in sale logged and inventory updated.</p>
+
+          <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem', textAlign: 'left' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <span style={{ color: 'var(--gray)', fontSize: '0.78rem' }}>Order Ref</span>
+              <span style={{ color: 'var(--gold)', fontWeight: 700, fontFamily: 'monospace', fontSize: '0.875rem' }}>#{receipt.orderRef}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <span style={{ color: 'var(--gray)', fontSize: '0.78rem' }}>Total</span>
+              <s

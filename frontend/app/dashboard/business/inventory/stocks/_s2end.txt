@@ -1,0 +1,147 @@
+﻿1189:                     </div>
+1190:                   </div>
+1191:                 </div>
+1192: 
+1193:                 <div
+1194:                   style={{
+1195:                     display: "flex",
+1196:                     flexDirection: "column",
+1197:                     gap: "1rem",
+1198:                     opacity: 0.5,
+1199:                     pointerEvents: "none",
+1200:                   }}
+1201:                 >
+1202:                   <div>
+1203:                     <label
+1204:                       style={{
+1205:                         display: "block",
+1206:                         fontSize: "0.65rem",
+1207:                         fontWeight: 700,
+1208:                         color: "var(--gray)",
+1209:                         textTransform: "uppercase",
+1210:                         letterSpacing: "0.08em",
+1211:                         marginBottom: "0.5rem",
+1212:                       }}
+1213:                     >
+1214:                       Supplier
+1215:                     </label>
+1216:                     <div
+1217:                       style={{
+1218:                         background: "rgba(255,255,255,0.06)",
+1219:                         border: "1px solid rgba(255,255,255,0.1)",
+1220:                         borderRadius: "8px",
+1221:                         padding: "0.625rem 0.75rem",
+1222:                         color: "var(--gray)",
+1223:                         fontSize: "0.85rem",
+1224:                       }}
+1225:                     >
+1226:                       Select in Step 3
+1227:                     </div>
+1228:                   </div>
+1229:                   <div
+1230:                     style={{
+1231:                       display: "grid",
+1232:                       gridTemplateColumns: "1fr 1fr",
+1233:                       gap: "0.75rem",
+1234:                     }}
+1235:                   >
+1236:                     <div>
+1237:                       <label
+1238:                         style={{
+1239:                           display: "block",
+1240:                           fontSize: "0.65rem",
+1241:                           fontWeight: 700,
+1242:                           color: "var(--gray)",
+1243:                           textTransform: "uppercase",
+1244:                           letterSpacing: "0.08em",
+1245:                           marginBottom: "0.5rem",
+1246:                         }}
+1247:                       >
+1248:                         Invoice Number
+1249:                       </label>
+1250:                       <div
+1251:                         style={{
+1252:                           background: "rgba(255,255,255,0.06)",
+1253:                           border: "1px solid rgba(255,255,255,0.1)",
+1254:                           borderRadius: "8px",
+1255:                           padding: "0.625rem 0.75rem",
+1256:                           color: "var(--gray)",
+1257:                           fontSize: "0.85rem",
+1258:                         }}
+1259:                       >
+1260:                         Required
+1261:                       </div>
+1262:                     </div>
+1263:                     <div>
+1264:                       <label
+1265:                         style={{
+1266:                           display: "block",
+1267:                           fontSize: "0.65rem",
+1268:                           fontWeight: 700,
+1269:                           color: "var(--gray)",
+1270:                           textTransform: "uppercase",
+1271:                           letterSpacing: "0.08em",
+1272:                           marginBottom: "0.5rem",
+1273:                         }}
+1274:                       >
+1275:                         Delivery Date
+1276:                       </label>
+1277:                       <div
+1278:                         style={{
+1279:                           background: "rgba(255,255,255,0.06)",
+1280:                           border: "1px solid rgba(255,255,255,0.1)",
+1281:                           borderRadius: "8px",
+1282:                           padding: "0.625rem 0.75rem",
+1283:                           color: "var(--gray)",
+1284:                           fontSize: "0.85rem",
+1285:                         }}
+1286:                       >
+1287:                         Required
+1288:                       </div>
+1289:                     </div>
+1290:                   </div>
+1291:                 </div>
+1292: 
+1293:                 <div
+1294:                   style={{
+1295:                     marginTop: "2rem",
+1296:                     padding: "1rem",
+1297:                     background: "rgba(212,168,67,0.08)",
+1298:                     border: "1px solid rgba(212,168,67,0.2)",
+1299:                     borderRadius: "8px",
+1300:                     textAlign: "center",
+1301:                   }}
+1302:                 >
+1303:                   <svg
+1304:                     width="24"
+1305:                     height="24"
+1306:                     viewBox="0 0 24 24"
+1307:                     fill="none"
+1308:                     stroke="#D4A843"
+1309:                     strokeWidth="2"
+1310:                     style={{ margin: "0 auto 0.5rem" }}
+1311:                   >
+1312:                     <circle cx="12" cy="12" r="10" />
+1313:                     <path d="M12 16v-4M12 8h.01" />
+1314:                   </svg>
+1315:                   <div
+1316:                     style={{
+1317:                       fontSize: "0.75rem",
+1318:                       color: "#D4A843",
+1319:                       fontWeight: 600,
+1320:                     }}
+1321:                   >
+1322:                     Navigate to Step 3 to complete invoice details
+1323:                   </div>
+1324:                 </div>
+1325:               </div>
+1326:             </div>
+1327:           )}
+1328: 
+1329:           {/*  STEP 3: Invoice Details  */}
+1330:           {step === 3 && (
+1331:             <div
+1332:               style={{
+1333:                 flex: 1,
+1334:                 display: "grid",
+1335:                 gridTemplateColumns: "1fr 420px",

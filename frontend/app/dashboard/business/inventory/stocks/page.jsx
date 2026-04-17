@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * STOCKS PAGE
@@ -13,29 +13,14 @@
 
 import CustomDropdown from "@/app/components/CustomDropdown";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import StockReductionModal from "../../inventory-old/StockReductionModal";
+import GoodsIssueModal from "./GoodsIssueModal";
 import ActualStockTab from "./ActualStockTab";
 import InventoryReports from "./InventoryReports";
 import StockOutHistoryTab from "./StockOutHistoryTab";
+import { useAuth } from "@/app/context/AuthContext";
+import { fetchInventory, adjustInventoryStock, fetchAllStockHistory } from "@/lib/inventoryApi";
 
-// ── Storage Keys ───────────────────────────────────────────────────────────────
-const MATERIALS_KEY = "pmp_materials";
-const VENDORS_KEY = "pmp_vendors";
-const STOCK_OUT_KEY = "pmp_stock_out_log";
-
-// ── Storage Helpers ────────────────────────────────────────────────────────────
-function getStore(key) {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(key) || "[]");
-  } catch {
-    return [];
-  }
-}
-function setStore(key, data) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(data));
-}
+// Storage keys and localStorage helpers removed — all data via API.
 
 // ── Number Generation ──────────────────────────────────────────────────────────
 function genDocNumber(prefix, list) {
@@ -429,7 +414,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
       rows.push({ type: "standalone", item: { ...m, stockQty: getStock(m) } });
     });
     groupedMaterials.parents.forEach((parent) => {
-      const children = groupedMaterials.childrenMap.get(parent.id) || [];
+      const children = groupedMaterials.childrenMap.get(parent._id) || [];
       const parentMatches = matchesFilters(parent);
       const displayChildren = children.map((c) => ({
         ...c,
@@ -473,7 +458,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
     .reduce((sum, m) => {
       // If it's a parent with variants, sum the children's stock
       if (m.hasVariants) {
-        const children = materials.filter((c) => c.parentId === m.id);
+        const children = materials.filter((c) => c.parentId === m._id);
         return sum + children.reduce((cSum, c) => cSum + getStock(c), 0);
       }
       return sum + getStock(m);
@@ -499,7 +484,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
 
   const totalValue = materials
     .filter((m) => !m.parentId && m.procurementType !== "on-demand")
-    .reduce((sum, m) => sum + getStock(m) * (m.baseCost || 0), 0);
+    .reduce((sum, m) => sum + getStock(m) * (m.baseCost || m.averageCost || 0), 0);
 
   return (
     <div>
@@ -668,10 +653,10 @@ function StockOverviewTab({ materials, onIssueStock }) {
               filteredRows.map((row) => {
                 if (row.type === "standalone") {
                   const m = row.item;
-                  const stockVal = (m.stockQty || 0) * (m.baseCost || 0);
+                  const stockVal = getStock(m) * (m.baseCost || m.averageCost || 0);
                   return (
                     <tr
-                      key={m.id}
+                      key={m._id}
                       style={{
                         borderBottom: "1px solid rgba(255,255,255,0.04)",
                       }}
@@ -766,7 +751,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
                         }}
                       >
                         ₱
-                        {(m.baseCost || 0).toLocaleString("en-PH", {
+                        {(m.baseCost || m.averageCost || 0).toLocaleString("en-PH", {
                           minimumFractionDigits: 2,
                         })}
                       </td>
@@ -802,9 +787,9 @@ function StockOverviewTab({ materials, onIssueStock }) {
 
                 const parent = row.item;
                 const children = row.children || [];
-                const isExpanded = expandedParents.has(parent.id);
+                const isExpanded = expandedParents.has(parent._id);
                 const parentStockVal = children.reduce(
-                  (s, c) => s + (c.stockQty || 0) * (c.baseCost || 0),
+                  (s, c) => s + getStock(c) * (c.baseCost || c.averageCost || 0),
                   0,
                 );
                 const totalChildStock = children.reduce(
@@ -813,7 +798,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
                 );
 
                 return (
-                  <React.Fragment key={parent.id}>
+                  <React.Fragment key={parent._id}>
                     <tr
                       style={{
                         borderBottom: isExpanded
@@ -822,7 +807,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
                         background: "rgba(212,168,67,0.02)",
                         cursor: "pointer",
                       }}
-                      onClick={() => toggleExpand(parent.id)}
+                      onClick={() => toggleExpand(parent._id)}
                       onMouseEnter={(e) =>
                         (e.currentTarget.style.background =
                           "rgba(212,168,67,0.06)")
@@ -843,7 +828,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              toggleExpand(parent.id);
+                              toggleExpand(parent._id);
                             }}
                             style={{
                               background: "none",
@@ -961,7 +946,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
                       >
                         {(() => {
                           const costs = children
-                            .map((c) => c.baseCost || 0)
+                            .map((c) => c.baseCost || c.averageCost || 0)
                             .filter((c) => c > 0);
                           if (costs.length === 0) return "₱0.00";
                           const min = Math.min(...costs),
@@ -1014,10 +999,10 @@ function StockOverviewTab({ materials, onIssueStock }) {
                     {isExpanded &&
                       children.map((child) => {
                         const childStockVal =
-                          (child.stockQty || 0) * (child.baseCost || 0);
+                          getStock(child) * (child.baseCost || child.averageCost || 0);
                         return (
                           <tr
-                            key={child.id}
+                            key={child._id}
                             style={{
                               borderBottom: "1px solid rgba(255,255,255,0.03)",
                               background: "rgba(0,0,0,0.15)",
@@ -1109,7 +1094,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
                               }}
                             >
                               ₱
-                              {(child.baseCost || 0).toLocaleString("en-PH", {
+                              {(child.baseCost || child.averageCost || 0).toLocaleString("en-PH", {
                                 minimumFractionDigits: 2,
                               })}
                             </td>
@@ -1163,16 +1148,30 @@ function StockOverviewTab({ materials, onIssueStock }) {
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function StocksPage() {
+  const { token, user } = useAuth();
   const [activeTab, setActiveTab] = useState("goods");
   const [materials, setMaterials] = useState([]);
   const [stockOuts, setStockOuts] = useState([]);
-  const [showReductionModal, setShowReductionModal] = useState(false);
-  const [reductionItem, setReductionItem] = useState(null);
+  const [showGoodsIssue, setShowGoodsIssue] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const refresh = useCallback(() => {
-    setMaterials(getStore(MATERIALS_KEY));
-    setStockOuts(getStore(STOCK_OUT_KEY));
-  }, []);
+  const refresh = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchInventory(token);
+      setMaterials(data);
+      const ids = data.map((m) => m._id).filter(Boolean);
+      const history = await fetchAllStockHistory(ids, token);
+      setStockOuts(history.filter((h) => h.type === "deduction"));
+    } catch (err) {
+      setError(err.message || "Failed to load inventory.");
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
 
   useEffect(() => {
     refresh();
@@ -1198,148 +1197,53 @@ export default function StocksPage() {
   };
 
   // ── Stock Reduction Handler (Old Modal → New Batch System) ─────────────────
-  const handleStockReduction = (data) => {
+  const handleStockReduction = async (data) => {
     const {
       reason,
       remarks,
       variants,
-      totals,
       performedBy,
       saleRef,
       saleDate,
       customer,
     } = data;
-    const now = new Date().toISOString();
-    // Map old reasons to new GOODS_ISSUE_TYPES
-    const issueTypeMap = {
-      sales: "manual_sale",
-      damaged: "damage",
-      writeoff: "scrap",
-      missing: "lost",
-    };
-    const issueType = issueTypeMap[reason] || "adjustment";
 
-    const mats = getStore(MATERIALS_KEY);
-    const log = getStore(STOCK_OUT_KEY);
+    // reason comes directly from GoodsIssueModal which uses GOODS_ISSUE_TYPES
+    // IDs that already match the backend enum — no mapping needed.
+    const mappedReason = reason;
 
-    variants.forEach((variant) => {
-      const qtyFulfilled = variant.qtyFulfilled;
-      if (qtyFulfilled <= 0) return;
-
-      // Find material by variantId OR sku
-      let mat = mats.find((m) => m.id === variant.variantId);
-      if (!mat) {
-        // Fallback: find by SKU
-        mat = mats.find((m) => m.sku === variant.sku);
-      }
-      if (!mat) {
-        console.warn("Material not found for variant:", variant.variantId, variant.sku);
-        return;
-      }
-
-      const deductions = {};
-      variant.batches.forEach((b) => {
-        deductions[b.batchId] = b.take;
-      });
-      const currentBatches = [...(mat.batches || [])];
-      const updatedBatches = currentBatches.map((batch) => {
-        const deduct = deductions[batch.batchId];
-        if (!deduct) return batch;
-        const newRemaining = (batch.remainingQty || 0) - deduct;
-        return {
-          ...batch,
-          remainingQty: newRemaining,
-          // FIX 1: Track qtyDamaged when reason is 'damaged'
-          qtyDamaged:
-            reason === "damaged"
-              ? (batch.qtyDamaged || 0) + deduct
-              : batch.qtyDamaged || 0,
-          movements: [
-            ...(batch.movements || []),
-            {
-              type: issueType,
-              qty: -deduct,
-              remainingAfter: newRemaining,
-              reason:
-                remarks ||
-                (reason === "writeoff"
-                  ? "Write-off"
-                  : reason === "missing"
-                    ? "Missing"
-                    : reason === "sales"
-                      ? "Sale"
-                      : "Damaged"),
-              date: now,
-            },
-          ],
-          status: newRemaining === 0 ? "exhausted" : "active",
-        };
+    const calls = (variants || [])
+      .filter((v) => (v.qtyFulfilled || 0) > 0)
+      .map((variant) => {
+        const unitCost =
+          variant.qtyFulfilled > 0
+            ? (variant.totalCostValue || 0) / variant.qtyFulfilled
+            : 0;
+        return adjustInventoryStock(
+          variant.variantId || variant.inventoryId,
+          {
+            quantity: variant.qtyFulfilled,
+            adjustmentType: "subtract",
+            reason: mappedReason,
+            remarks: remarks || null,
+            sellingPrice: variant.sellingPrice || null,
+            saleDate: saleDate || null,
+            customerName: customer || null,
+            unitCost: unitCost || null,
+            performedBy: performedBy || null,
+          },
+          token,
+        );
       });
 
-      const idx = mats.findIndex((m) => m.id === mat.id);
-      if (idx !== -1) {
-        mats[idx] = {
-          ...mats[idx],
-          stockQty: computeStockFromBatches(updatedBatches),
-          baseCost: computeAveCostFromBatches(updatedBatches),
-          batches: updatedBatches,
-          updatedAt: now,
-        };
-      }
-
-      // FIX 5: Upgraded log entry format with audit fields
-      const batchBreakdown = variant.batches.map((b) => ({
-        batchId: b.batchId,
-        qty: b.take,
-        unitCost: b.unitCost || 0,
-        totalCost: b.totalCost || 0,
-      }));
-      const unitCost =
-        qtyFulfilled > 0 ? (variant.totalCostValue || 0) / qtyFulfilled : 0;
-      const sellingPrice = variant.sellingPrice || 0;
-      const totalRevenue = variant.totalRevenue || 0;
-
-      log.push({
-        // FIX 5: Use genDocNumber for proper ID format
-        id: genDocNumber("GI", log),
-        materialId: mat.id,
-        materialName: mat.name || variant.variantName,
-        variantId: mat.id,
-        variantName: variant.variantName || mat.name,
-        sku: variant.sku || mat.sku,
-        category: variant.category || mat.category || "",
-        uom: variant.uom || mat.uom || "pcs",
-        issueType,
-        quantity: -qtyFulfilled,
-        unitCost,
-        totalCost: qtyFulfilled * unitCost,
-        performedBy: performedBy || "",
-        notes: remarks || "",
-        batchBreakdown,
-        // Sale-specific fields (only when issueType === 'manual_sale')
-        ...(issueType === "manual_sale"
-          ? {
-              saleRef: saleRef || null,
-              saleDate: saleDate || null,
-              customer: customer || null,
-              sellingPrice,
-              totalRevenue,
-              grossProfit: totalRevenue - (variant.totalCostValue || 0),
-            }
-          : {}),
-        previousStock: mat.stockQty || 0,
-        newStock: computeStockFromBatches(updatedBatches),
-        totalLoss: variant.totalCostValue || 0,
-        dateIssued: now,
-        createdAt: now,
-      });
-    });
-
-    setStore(MATERIALS_KEY, mats);
-    setStore(STOCK_OUT_KEY, log);
-    setShowReductionModal(false);
-    setReductionItem(null);
-    refresh();
+    try {
+      await Promise.all(calls);
+      setShowGoodsIssue(false);
+      refresh();
+    } catch (err) {
+      console.error("Stock reduction failed:", err);
+      setError(err.message || "Failed to issue stock.");
+    }
   };
 
   const tabStyle = (tab) => ({
@@ -1406,35 +1310,42 @@ export default function StocksPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === "goods" && (
+      {loading && (
+        <p style={{ padding: "2rem", color: "var(--gray)", fontSize: "0.875rem" }}>
+          Loading inventory...
+        </p>
+      )}
+      {error && (
+        <p style={{ padding: "2rem", color: "var(--danger)", fontSize: "0.875rem" }}>
+          {error}
+        </p>
+      )}
+      {!loading && !error && activeTab === "goods" && (
         <StockOverviewTab
           materials={materials}
-          onIssueStock={() => {
-            setReductionItem(null);
-            setShowReductionModal(true);
-          }}
+          onIssueStock={() => setShowGoodsIssue(true)}
         />
       )}
-      {activeTab === "actual" && <ActualStockTab materials={materials} />}
-      {activeTab === "history" && (
+      {!loading && !error && activeTab === "actual" && (
+        <ActualStockTab
+          materials={materials}
+          onStockAdded={refresh}
+        />
+      )}
+      {!loading && !error && activeTab === "history" && (
         <StockOutHistoryTab stockOuts={stockOuts} materials={materials} />
       )}
-      {activeTab === "reports" && (
+      {!loading && !error && activeTab === "reports" && (
         <InventoryReports materials={materials} stockOuts={stockOuts} />
       )}
 
-      {/* Stock Adjustment Modal (Old Inventory — FIFO + Pick Batch + Sales/Damage/Writeoff) */}
-      {showReductionModal && (
-        <StockReductionModal
-          isOpen={showReductionModal}
-          onClose={() => {
-            setShowReductionModal(false);
-            setReductionItem(null);
-          }}
+      {/* Goods Issue Modal — FIFO/Pick Batch/Sales/Damage/Writeoff */}
+      {showGoodsIssue && (
+        <GoodsIssueModal
+          materials={materials}
+          onClose={() => setShowGoodsIssue(false)}
           onConfirm={handleStockReduction}
-          item={reductionItem}
-          inventory={materials}
-          masterlist={null}
+          currentUser={user}
         />
       )}
     </div>

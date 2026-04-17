@@ -424,3 +424,20 @@ export async function deleteSupplier(supplierId, token) {
     throw error;
   }
 }
+
+/**
+ * Fetch deduction history for all inventory items (parallel per-item fetch)
+ * Used by StockOutHistoryTab and InventoryReports.
+ * @param {Array} inventoryIds - Array of MongoDB inventory _id strings
+ * @param {string} token - Authentication token
+ * @returns {Promise<Array>} Flat array of stock history records with inventoryId attached
+ */
+export async function fetchAllStockHistory(inventoryIds, token) {
+  if (!inventoryIds || inventoryIds.length === 0) return [];
+  const results = await Promise.allSettled(
+    inventoryIds.map((id) => fetchInventoryHistory(id, token))
+  );
+  return results
+    .filter((r) => r.status === 'fulfilled')
+    .flatMap((r) => r.value ?? []);
+}

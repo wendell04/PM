@@ -1,0 +1,51 @@
+﻿frontend\app\dashboard\business\inventory\master-data\BOMCardList.jsx: 7: return material?.baseCost || material?.averageCost || 0;
+frontend\app\dashboard\business\inventory\master-data\BOMCardList.jsx: 16: return material?.baseCost || material?.averageCost || 0;
+frontend\app\dashboard\business\inventory\master-data\BOMCardList.jsx: 51: const cost = material?.baseCost || material?.averageCost || 0;
+frontend\app\dashboard\business\inventory\master-data\BOMCardList.jsx: 60: const cost = material?.baseCost || material?.averageCost || 0;
+frontend\app\dashboard\business\inventory\master-data\BOMCardList.jsx: 73: const avg = totalQty > 0 ? totalValue / totalQty : material?.baseCost || material?.averageCost || 0;
+frontend\app\dashboard\business\inventory\master-data\BOMFormModal.jsx: 142: return sum + (mat?.baseCost || mat?.averageCost || 0) * (c.qty || 0);
+frontend\app\dashboard\business\inventory\master-data\BOMFormModal.jsx: 149: return sum + (mat?.baseCost || mat?.averageCost || 0) * (c.qty || 0);
+frontend\app\dashboard\business\inventory\master-data\BOMFormModal.jsx: 210: bomCost: sharedCost + (v.baseCost || v.averageCost || 0) * variantQty,
+frontend\app\dashboard\business\inventory\master-data\BOMFormModal.jsx: 761: sharedCost + (v.baseCost || v.averageCost || 0) * variantQty;
+frontend\app\dashboard\business\inventory\master-data\BOMFormModal.jsx: 976: ? (selectedMat.baseCost || selectedMat.averageCost || 0) * (comp.qty || 0)
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 761: {(material.baseCost || material.averageCost || 0).toLocaleString("en-PH", {
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 1605: {(m.baseCost || m.averageCost || 0).toLocaleString("en-PH", {
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 1803: .map((c) => c.baseCost || c.averageCost || 0)
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 1845: : `P${(parent.baseCost || parent.averageCost || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`}
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 1975: {(child.baseCost || child.averageCost || 0).toLocaleString("en-PH", {
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2190: baseCost: "",
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2241: baseCost:
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2242: editMaterial.baseCost !== undefined
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2243: ? String(editMaterial.baseCost)
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2264: costs[key] = String(child.baseCost || child.averageCost || 0);
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2278: baseCost: "",
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2460: (!form.baseCost || parseFloat(form.baseCost) === 0)
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2462: newErrors.baseCost = "Base cost is required.";
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2471: const baseCost = form.baseCost === "" ? 0 : parseFloat(form.baseCost) || 0;
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2493: baseCost,
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2516: ? parseFloat(comboCost) || baseCost
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2517: : baseCost;
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2544: baseCost: childCost,
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2575: baseCost,
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2944: value={form.baseCost}
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2947: setForm((p) => ({ ...p, baseCost: e.target.value }));
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2952: {!form.hasVariants && errors.baseCost && (
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 2961: {errors.baseCost}
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 3034: baseCost: checked ? "" : p.baseCost,
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 5096: {(m.baseCost || m.averageCost || 0).toLocaleString("en-PH", {
+frontend\app\dashboard\business\inventory\master-data\page.jsx: 6798: return sum + (mat?.baseCost || mat?.averageCost || 0) * (c.qty || 1);
+frontend\app\dashboard\business\inventory\returns\page.jsx: 815: unitCost: parseFloat(material?.baseCost) || 0,
+frontend\app\dashboard\business\inventory\returns\page.jsx: 1149: const restoreCost = rtv.unitCost || mat.baseCost || mat.averageCost || 0;
+frontend\app\dashboard\business\inventory\returns\page.jsx: 1212: // Recalculate baseCost (weighted average)
+frontend\app\dashboard\business\inventory\returns\page.jsx: 1224: mat.baseCost = totalQty > 0 ? totalVal / totalQty : restoreCost;
+frontend\app\dashboard\business\inventory\stocks\ActualStockTab.jsx: 634: avgCost = totalQty > 0 ? totalVal / totalQty : mat.baseCost || mat.averageCost || 0;
+frontend\app\dashboard\business\inventory\stocks\ActualStockTab.jsx: 663: avgCost = totalQty > 0 ? totalVal / totalQty : mat.baseCost || mat.averageCost || 0;
+frontend\app\dashboard\business\inventory\stocks\ActualStockTab.jsx: 701: : child.baseCost || child.averageCost || 0;
+frontend\app\dashboard\business\inventory\stocks\GoodsIssueModal.jsx: 70: fifoCost: getFifoCost(m.batches) || m.baseCost || m.averageCost || 0,
+frontend\app\dashboard\business\inventory\stocks\page.jsx: 487: .reduce((sum, m) => sum + getStock(m) * (m.baseCost || m.averageCost || 0), 0);
+frontend\app\dashboard\business\inventory\stocks\page.jsx: 656: const stockVal = getStock(m) * (m.baseCost || m.averageCost || 0);
+frontend\app\dashboard\business\inventory\stocks\page.jsx: 754: {(m.baseCost || m.averageCost || 0).toLocaleString("en-PH", {
+frontend\app\dashboard\business\inventory\stocks\page.jsx: 792: (s, c) => s + getStock(c) * (c.baseCost || c.averageCost || 0),
+frontend\app\dashboard\business\inventory\stocks\page.jsx: 949: .map((c) => c.baseCost || c.averageCost || 0)
+frontend\app\dashboard\business\inventory\stocks\page.jsx: 1002: getStock(child) * (child.baseCost || child.averageCost || 0);
+frontend\app\dashboard\business\inventory\stocks\page.jsx: 1097: {(child.baseCost || child.averageCost || 0).toLocaleString("en-PH", {

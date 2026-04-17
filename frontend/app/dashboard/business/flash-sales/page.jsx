@@ -32,6 +32,7 @@ export default function FlashSalesPage() {
     startDate: '',
     endDate: '',
     isActive: true,
+    stockLimit: '',
   });
 
   // Fetch
@@ -113,7 +114,7 @@ export default function FlashSalesPage() {
     setForm({
       productId: '', discountType: 'percentage',
       discountValue: '', startDate: '', endDate: '',
-      isActive: true,
+      isActive: true, stockLimit: '',
     });
     setFormError(null);
     setShowModal(true);
@@ -128,6 +129,7 @@ export default function FlashSalesPage() {
       startDate: toDatetimeLocal(sale.startDate),
       endDate: toDatetimeLocal(sale.endDate),
       isActive: sale.isActive !== false,
+      stockLimit: sale.stockLimit != null ? String(sale.stockLimit) : '',
     });
     setFormError(null);
     setShowModal(true);
@@ -178,6 +180,7 @@ export default function FlashSalesPage() {
         body: JSON.stringify({
           ...form,
           discountValue: parseFloat(form.discountValue),
+          stockLimit: form.stockLimit !== '' ? parseInt(form.stockLimit, 10) : null,
         }),
       }, 30000);
       const data = await res.json();
@@ -383,7 +386,7 @@ export default function FlashSalesPage() {
                 <tr style={{ borderBottom: '1px solid var(--border)',
                   background: 'var(--dark2)' }}>
                   {['Product', 'Discount', 'Original',
-                    'Sale Price', 'Start', 'End',
+                    'Sale Price', 'Stock', 'Start', 'End',
                     'Status', 'Actions'].map(col => (
                     <th key={col} style={{
                       padding: '0.875rem 1rem', textAlign: 'left',
@@ -483,6 +486,31 @@ export default function FlashSalesPage() {
                                 { minimumFractionDigits: 2,
                                   maximumFractionDigits: 2 })}`
                           : '—'}
+                      </td>
+
+                      {/* Stock */}
+                      <td style={{ padding: '0.875rem 1rem', whiteSpace: 'nowrap' }}>
+                        {sale.isOnDemand ? (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>On-demand</span>
+                        ) : sale.currentStock == null ? (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>—</span>
+                        ) : (
+                          <span style={{
+                            fontSize: '0.8rem', fontWeight: 600,
+                            color: sale.currentStock === 0
+                              ? '#ef4444'
+                              : sale.currentStock <= 5
+                                ? '#f59e0b'
+                                : 'var(--white)',
+                          }}>
+                            {sale.currentStock === 0 ? '⚠ Out of stock' : `${sale.currentStock} left`}
+                            {sale.stockLimit != null && (
+                              <span style={{ color: 'var(--gray)', fontWeight: 400 }}>
+                                {' '}/ {sale.stockLimit} cap
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </td>
 
                       {/* Start */}
@@ -833,6 +861,53 @@ export default function FlashSalesPage() {
                       colorScheme: 'dark',
                     }}
                   />
+                </div>
+
+                {/* Stock Limit */}
+                <div>
+                  <label style={{ display: 'block',
+                    fontSize: '0.8rem', fontWeight: 600,
+                    color: 'var(--gray)', marginBottom: '0.5rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em' }}>
+                    Stock Limit <span style={{ color: 'var(--gray)', fontWeight: 400, textTransform: 'none' }}>(optional)</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={form.stockLimit}
+                    onChange={e => setForm(f => ({ ...f, stockLimit: e.target.value }))}
+                    onKeyDown={e => { if (['e','E','+','-'].includes(e.key)) e.preventDefault(); }}
+                    placeholder="e.g. 50 — leave blank for unlimited"
+                    style={{
+                      width: '100%', padding: '0.625rem 0.875rem',
+                      background: 'var(--dark2)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px', color: 'var(--white)',
+                      fontSize: '0.875rem', boxSizing: 'border-box',
+                    }}
+                  />
+                  {/* Live stock warning for selected product */}
+                  {(() => {
+                    if (!form.productId) return null;
+                    const stockInfo = editTarget
+                      ? { stock: editTarget.currentStock, isOnDemand: editTarget.isOnDemand }
+                      : null;
+                    if (!stockInfo || stockInfo.isOnDemand) return null;
+                    if (stockInfo.stock == null) return null;
+                    const color = stockInfo.stock === 0 ? '#ef4444' : stockInfo.stock <= 5 ? '#f59e0b' : '#4ade80';
+                    const msg = stockInfo.stock === 0
+                      ? '⚠ This product is out of stock.'
+                      : stockInfo.stock <= 5
+                        ? `⚠ Only ${stockInfo.stock} units in stock.`
+                        : `✓ ${stockInfo.stock} units available.`;
+                    return (
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color }}>
+                        {msg}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Active checkbox */}

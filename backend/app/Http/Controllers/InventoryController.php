@@ -277,8 +277,8 @@ class InventoryController extends Controller
             }
 
             $validated = $request->validate([
-                'quantity'         => 'required|integer',
-                'reason'           => 'required|in:restock,correction-add,correction-deduct,sale,return,sales-outside,damaged',
+                'quantity'         => 'required|numeric',
+                'reason'           => 'required|in:restock,correction-add,correction-deduct,sale,return,sales-outside,damaged,writeoff,missing',
                 'adjustmentType'   => 'nullable|in:add,subtract',
                 'supplierId'       => 'nullable|string',
                 'supplierName'     => 'nullable|string',
@@ -290,6 +290,7 @@ class InventoryController extends Controller
                 'saleDate'         => 'nullable|string',
                 'customerName'     => 'nullable|string|max:100',
                 'remarks'          => 'nullable|string|max:500',
+                'performedBy'      => 'nullable|string|max:100',
             ]);
 
             // Determine actual direction from adjustmentType if provided
@@ -304,42 +305,130 @@ class InventoryController extends Controller
             // If no adjustmentType, use raw sign of quantity (legacy support)
 
             // Adjust stock without transaction wrapper for MongoDB compatibility
-            $newStock = $inventory->stockQty + $quantity;
+            $batches = $inventory->batches ?? [];
+            $absQty  = abs($quantity);
 
-            if ($newStock < 0) {
-                throw new \Exception('Insufficient stock.');
+            if ($quantity < 0) {
+                // ── SUBTRACT: FIFO deduction from batches ──────────────────────────
+                // Sort batches by dateReceived ascending (true FIFO)
+                usort($batches, function ($a, $b) {
+                    return strtotime($a['dateReceived'] ?? '0') <=> strtotime($b['dateReceived'] ?? '0');
+                });
+
+                // Compute available stock from batches
+                $available = array_reduce($batches, function ($carry, $b) {
+                    return $carry + ($b['remainingQty'] ?? $b['goodQty'] ?? 0);
+                }, 0);
+
+                if ($available < $absQty) {
+                    throw new \Exception('Insufficient stock.');
+                }
+
+                $remaining       = $absQty;
+                $batchDeductions = []; // per-batch log for history
+
+                foreach ($batches as &$batch) {
+                    if ($remaining <= 0) break;
+                    $batchQty = $batch['remainingQty'] ?? $batch['goodQty'] ?? 0;
+                    if ($batchQty <= 0) continue;
+                    $deduct = min($batchQty, $remaining);
+                    $batch['remainingQty'] = $batchQty - $deduct;
+                    $remaining -= $deduct;
+
+                    // Record which batch was consumed, how much, and at what cost
+                    $batchDeductions[] = [
+                        'batchId'   => $batch['batchId']  ?? null,
+                        'qty'       => $deduct,
+                        'unitCost'  => $batch['unitCost'] ?? 0,
+                    ];
+                }
+                unset($batch);
+
+                $newStock = max(0, ($inventory->stockQty ?? 0) - $absQty);
+
+            } else {
+                // ── ADD: append new batch entry ────────────────────────────
+                $unitCost = $validated['unitCost'] ?? $inventory->averageCost ?? 0;
+                $batches[] = [
+                    'batchId'       => $validated['batchId'] ?? (string) \Illuminate\Support\Str::uuid(),
+                    'invoiceNumber' => $validated['invoiceNumber'] ?? null,
+                    'supplierId'    => $validated['supplierId'] ?? null,
+                    'vendorName'    => $validated['supplierName'] ?? null,
+                    'goodQty'       => $absQty,
+                    'remainingQty'  => $absQty,
+                    'qtyDamaged'    => 0,
+                    'unitCost'      => $unitCost,
+                    'dateReceived'  => $validated['deliveryDate'] ?? now()->toISOString(),
+                    'damageType'    => null,
+                    'createdAt'     => now()->toISOString(),
+                ];
+
+                $newStock = ($inventory->stockQty ?? 0) + $absQty;
+
+                // Recalculate weighted average cost
+                $currentTotalCost = ($inventory->averageCost ?? 0) * ($newStock - $absQty);
+                $newAdditionCost  = $unitCost * $absQty;
+                $inventory->averageCost  = $newStock > 0 ? ($currentTotalCost + $newAdditionCost) / $newStock : $unitCost;
+                $inventory->lastUnitCost = $unitCost;
             }
 
+            $inventory->batches  = $batches;
             $inventory->stockQty = $newStock;
-
-            if ($quantity > 0 && isset($validated['unitCost'])) {
-                $currentTotalCost = ($inventory->averageCost ?? 0) * ($newStock - $quantity);
-                $newAdditionCost = ($validated['unitCost'] * $quantity);
-                $inventory->averageCost = ($currentTotalCost + $newAdditionCost) / $newStock;
-                $inventory->lastUnitCost = $validated['unitCost'];
-            }
-
             $inventory->updatedAt = now();
             $inventory->save();
 
-            StockHistory::create([
-                'inventoryId'   => $inventory->_id,
-                'supplierId'    => $validated['supplierId'] ?? null,
-                'supplierName'  => $validated['supplierName'] ?? null,
-                'quantity'      => abs($quantity),
-                'remainingQty'  => $newStock,
-                'unitCost'      => $validated['unitCost'] ?? $inventory->averageCost,
-                'totalCost'     => abs($quantity) * ($validated['unitCost'] ?? $inventory->averageCost),
-                'reason'        => $validated['reason'],
-                'batchId'       => $validated['batchId'] ?? null,
-                'invoiceNumber' => $validated['invoiceNumber'] ?? null,
-                'deliveryDate'  => $validated['deliveryDate'] ?? null,
-                'sellingPrice'  => $validated['sellingPrice'] ?? null,
-                'saleDate'      => $validated['saleDate'] ?? null,
-                'customerName'  => $validated['customerName'] ?? null,
-                'remarks'       => $validated['remarks'] ?? null,
-                'createdAt'     => now(),
-            ]);
+            $historyType = $quantity < 0 ? 'deduction' : 'addition';
+
+            if ($quantity < 0 && !empty($batchDeductions)) {
+                // Per-batch history records for full FIFO traceability
+                // runningRemaining starts at pre-deduction stock and decrements per batch
+                $runningRemaining = $newStock + $absQty; // restore to pre-deduction total
+                foreach ($batchDeductions as $bd) {
+                    $runningRemaining -= $bd['qty']; // decrement before recording
+                    StockHistory::create([
+                        'inventoryId'   => $inventory->_id,
+                        'supplierId'    => $validated['supplierId'] ?? null,
+                        'supplierName'  => $validated['supplierName'] ?? null,
+                        'quantity'      => $bd['qty'],
+                        'remainingQty'  => $runningRemaining,
+                        'unitCost'      => $bd['unitCost'],
+                        'totalCost'     => $bd['qty'] * $bd['unitCost'],
+                        'reason'        => $validated['reason'],
+                        'type'          => 'deduction',
+                        'batchId'       => $bd['batchId'],
+                        'invoiceNumber' => $validated['invoiceNumber'] ?? null,
+                        'deliveryDate'  => $validated['deliveryDate'] ?? null,
+                        'sellingPrice'  => $validated['sellingPrice'] ?? null,
+                        'saleDate'      => $validated['saleDate'] ?? null,
+                        'customerName'  => $validated['customerName'] ?? null,
+                        'remarks'       => $validated['remarks'] ?? null,
+                        'performedBy'   => $validated['performedBy'] ?? null,
+                        'createdAt'     => now(),
+                    ]);
+                }
+            } else {
+                // Single history record for additions
+                StockHistory::create([
+                    'inventoryId'   => $inventory->_id,
+                    'supplierId'    => $validated['supplierId'] ?? null,
+                    'supplierName'  => $validated['supplierName'] ?? null,
+                    'quantity'      => $absQty,
+                    'remainingQty'  => $newStock,
+                    'unitCost'      => $validated['unitCost'] ?? $inventory->averageCost,
+                    'totalCost'     => $absQty * ($validated['unitCost'] ?? $inventory->averageCost ?? 0),
+                    'reason'        => $validated['reason'],
+                    'type'          => 'addition',
+                    'batchId'       => $validated['batchId'] ?? null,
+                    'invoiceNumber' => $validated['invoiceNumber'] ?? null,
+                    'deliveryDate'  => $validated['deliveryDate'] ?? null,
+                    'sellingPrice'  => $validated['sellingPrice'] ?? null,
+                    'saleDate'      => $validated['saleDate'] ?? null,
+                    'customerName'  => $validated['customerName'] ?? null,
+                    'remarks'       => $validated['remarks'] ?? null,
+                    'performedBy'   => $validated['performedBy'] ?? null,
+                    'createdAt'     => now(),
+                ]);
+            }
 
             return $this->successResponse('Stock adjusted successfully.', $inventory);
         } catch (\Illuminate\Validation\ValidationException $e) {

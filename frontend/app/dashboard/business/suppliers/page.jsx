@@ -8,6 +8,7 @@ import {
   createSupplier,
   updateSupplier,
   deleteSupplier,
+  fetchInventory,
 } from '@/lib/inventoryApi';
 
 // ─── Constants ────────────────────────────────────────────
@@ -219,9 +220,13 @@ export default function SuppliersPage() {
   const { token } = useAuth();
 
   const [suppliers, setSuppliers]       = useState([]);
+  const [inventory, setInventory]       = useState([]);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState(null);
   const [search, setSearch]             = useState('');
+
+  // Price History modal state
+  const [priceHistorySupplier, setPriceHistorySupplier] = useState(null); // supplier object | null
 
   // Modal state
   const [modal, setModal]               = useState(null); // null | 'create' | 'edit' | 'delete'
@@ -236,8 +241,12 @@ export default function SuppliersPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchSuppliers(token);
-      setSuppliers(Array.isArray(data) ? data : []);
+      const [suppliersData, inventoryData] = await Promise.all([
+        fetchSuppliers(token),
+        fetchInventory(token).catch(() => []),
+      ]);
+      setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
+      setInventory(Array.isArray(inventoryData) ? inventoryData : []);
     } catch (err) {
       setError(err.message || 'Failed to load suppliers.');
     } finally {
@@ -461,7 +470,21 @@ export default function SuppliersPage() {
                       </div>
                     )}
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={() => setPriceHistorySupplier(supplier)}
+                      style={{
+                        background: 'none',
+                        border: '1px solid rgba(99,102,241,0.5)',
+                        borderRadius: '6px',
+                        color: '#6366f1',
+                        padding: '4px 10px',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Price History
+                    </button>
                     <button
                       onClick={() => openEdit(supplier)}
                       style={{
@@ -692,6 +715,214 @@ export default function SuppliersPage() {
           </div>
         </div>
       )}
+
+      {/* ── Price History Modal ──────────────────────────────────── */}
+      {priceHistorySupplier && (() => {
+        const supplierId = priceHistorySupplier._id || priceHistorySupplier.id;
+
+        // Collect all batches from inventory where supplierId matches
+        const rows = [];
+        inventory.forEach(item => {
+          (item.batches || []).forEach(batch => {
+            if (batch.supplierId === supplierId) {
+              rows.push({
+                itemName:      item.name,
+                itemCategory:  item.category,
+                batchId:       batch.batchId,
+                invoiceNumber: batch.invoiceNumber || batch.invoiceNumber || null,
+                dateReceived:  batch.dateReceived,
+                unitCost:      batch.unitCost ?? 0,
+                originalQty:   batch.originalQty ?? batch.goodQty ?? 0,
+                goodQty:       batch.goodQty ?? batch.originalQty ?? 0,
+              });
+            }
+          });
+        });
+
+        // Sort newest first
+        rows.sort((a, b) => new Date(b.dateReceived) - new Date(a.dateReceived));
+
+        // Group by item for summary: last price, min price, max price
+        const byItem = {};
+        rows.forEach(r => {
+          if (!byItem[r.itemName]) {
+            byItem[r.itemName] = { category: r.itemCategory, prices: [] };
+          }
+          byItem[r.itemName].prices.push(r.unitCost);
+        });
+
+        return (
+          <div
+            onClick={() => setPriceHistorySupplier(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 1000,
+              background: 'rgba(0,0,0,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '24px',
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: 'var(--dark2)',
+                border: '1px solid var(--border)',
+                borderRadius: '16px',
+                padding: '32px',
+                width: '100%',
+                maxWidth: '780px',
+                maxHeight: '85vh',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '20px',
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--white)' }}>
+                    Price History
+                  </h2>
+                  <div style={{ fontSize: '0.85rem', color: '#6366f1', fontWeight: 600, marginTop: '2px' }}>
+                    {priceHistorySupplier.name}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '2px' }}>
+                    {rows.length} purchase record{rows.length !== 1 ? 's' : ''} across {Object.keys(byItem).length} item{Object.keys(byItem).length !== 1 ? 's' : ''}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setPriceHistorySupplier(null)}
+                  style={{
+                    background: 'none', border: 'none', color: 'var(--gray)',
+                    cursor: 'pointer', padding: '4px', flexShrink: 0,
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+
+              {rows.length === 0 ? (
+                <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.875rem' }}>
+                  No purchase records found for this supplier.
+                  <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                    Records appear here when stock is added with this supplier selected.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+                  {/* Per-item price summary */}
+                  <div>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>
+                      Price Summary by Item
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
+                      {Object.entries(byItem).map(([itemName, { category, prices }]) => {
+                        const last   = prices[0];
+                        const minP   = Math.min(...prices);
+                        const maxP   = Math.max(...prices);
+                        const hasVar = prices.length > 1 && minP !== maxP;
+                        return (
+                          <div key={itemName} style={{
+                            padding: '12px 14px',
+                            background: 'rgba(99,102,241,0.06)',
+                            border: '1px solid rgba(99,102,241,0.2)',
+                            borderRadius: '10px',
+                          }}>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--white)', marginBottom: '2px' }}>{itemName}</div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '8px' }}>{category}</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>
+                                Last price: <strong style={{ color: 'var(--gold)' }}>₱{last.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                              </div>
+                              {hasVar && (
+                                <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>
+                                  Range: <span style={{ color: '#4ade80' }}>₱{minP.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  {' — '}
+                                  <span style={{ color: '#f87171' }}>₱{maxP.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                </div>
+                              )}
+                              <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>
+                                {prices.length} purchase{prices.length !== 1 ? 's' : ''}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Full transaction log */}
+                  <div>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>
+                      Full Purchase Log
+                    </div>
+                    <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(0,0,0,0.25)', borderBottom: '2px solid var(--border)' }}>
+                            {['Date', 'Item', 'Category', 'Invoice', 'Qty', 'Unit Cost'].map(h => (
+                              <th key={h} style={{ padding: '10px 12px', textAlign: h === 'Unit Cost' || h === 'Qty' ? 'center' : 'left', color: 'var(--gray)', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((row, idx) => (
+                            <tr key={`${row.batchId}-${idx}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}>
+                              <td style={{ padding: '10px 12px', color: 'var(--gray)', whiteSpace: 'nowrap' }}>
+                                {new Date(row.dateReceived).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}
+                              </td>
+                              <td style={{ padding: '10px 12px', color: 'var(--white)', fontWeight: 600 }}>
+                                {row.itemName}
+                              </td>
+                              <td style={{ padding: '10px 12px' }}>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--gray)', background: 'rgba(255,255,255,0.06)', padding: '2px 7px', borderRadius: '4px' }}>
+                                  {row.itemCategory}
+                                </span>
+                              </td>
+                              <td style={{ padding: '10px 12px', color: 'var(--gray)', fontFamily: 'monospace', fontSize: '0.78rem' }}>
+                                {row.invoiceNumber || <em style={{ fontStyle: 'italic', opacity: 0.5 }}>N/A</em>}
+                              </td>
+                              <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--white)' }}>
+                                {row.originalQty} pcs
+                              </td>
+                              <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: 'var(--gold)' }}>
+                                ₱{row.unitCost.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                </div>
+              )}
+
+              {/* Footer */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
+                <button
+                  onClick={() => setPriceHistorySupplier(null)}
+                  style={{
+                    padding: '10px 24px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--dark)',
+                    color: 'var(--gray)',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </ErrorBoundary>
   );
 }

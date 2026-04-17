@@ -31,6 +31,10 @@ class Order extends Model
         'designStatus'             => 'string',
         'createdAt'            => 'datetime',
         'updatedAt'            => 'datetime',
+        'paymentHistory'       => 'array',
+        'orderSource'          => 'string',
+        'voucherCode'          => 'string',
+        'discountAmount'       => 'float',
     ];
 
     protected $indexes = [
@@ -46,6 +50,8 @@ class Order extends Model
         'isRush'             => false,
         'checkoutRestricted' => true,
         'downPayment'        => 0,
+        'paymentHistory'     => [],
+        'orderSource'        => 'online',
     ];
 
     public function user()

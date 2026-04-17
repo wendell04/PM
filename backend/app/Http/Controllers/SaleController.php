@@ -42,7 +42,7 @@ class SaleController extends Controller
                 $query->where('inventoryId', $request->inventoryId);
             }
 
-            $sales = $query->limit(100)->get();
+            $sales = $query->limit(2000)->get();
 
             return $this->successResponse('Sales fetched successfully.', $sales);
         } catch (\Exception $e) {

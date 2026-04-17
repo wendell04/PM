@@ -85,6 +85,9 @@ class JobOrderController extends Controller
             $lastNumber = $lastJO ? intval(substr($lastJO->joId, 4)) : 0;
             $newJoId = 'JOB-' . str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
 
+            // Pull design context from the linked order so the printer operator can see it
+            $linkedOrder = Order::find($validated['orderId']);
+
             $jobOrder = JobOrder::create([
                 'joId'             => $newJoId,
                 'orderId'          => $validated['orderId'],
@@ -94,6 +97,9 @@ class JobOrderController extends Controller
                 'joStatus'         => 'Queued',
                 'assignedTo'       => $validated['assignedTo'] ?? null,
                 'notes'            => $validated['notes'] ?? '',
+                'designNotes'      => $linkedOrder?->designNotes ?? null,
+                'designFilePath'   => $linkedOrder?->designFilePath ?? null,
+                'adminComment'     => $linkedOrder?->adminComment ?? null,
                 'createdAt'        => now(),
                 'updatedAt'        => now(),
             ]);
@@ -128,11 +134,11 @@ class JobOrderController extends Controller
             }
 
             $validated = $request->validate([
-                'joStatus'       => 'sometimes|in:Queued,In Progress,Completed',
+                'joStatus'         => 'sometimes|in:Queued,In Progress,QC_Pending,QC_Passed,QC_Failed,Completed,Cancelled',
                 'targetCompletion' => 'sometimes|date',
-                'isRush'         => 'sometimes|boolean',
-                'assignedTo'     => 'nullable|string',
-                'notes'          => 'nullable|string',
+                'isRush'           => 'sometimes|boolean',
+                'assignedTo'       => 'nullable|string',
+                'notes'            => 'nullable|string',
             ]);
 
             $jobOrder->update($validated);
@@ -160,6 +166,130 @@ class JobOrderController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to update job order.');
+        }
+    }
+
+    /**
+     * POST /api/admin/job-orders/{id}/qc
+     * Submits QC result for a Job Order.
+     *
+     * On pass: consumes reserved materials, logs to StockHistory, moves order to For Delivery.
+     * On fail: keeps reservedQty intact, flags JO for reprint, does NOT deduct inventory.
+     */
+    public function submitQC(Request $request, string $id)
+    {
+        try {
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
+
+            $jobOrder = JobOrder::find($id);
+
+            if (!$jobOrder) {
+                return $this->notFoundResponse('Job order');
+            }
+
+            if (!in_array($jobOrder->joStatus, ['In Progress', 'QC_Pending', 'QC_Failed'])) {
+                return response()->json([
+                    'error' => "QC can only be submitted for job orders with status: In Progress, QC_Pending, or QC_Failed. Current status: {$jobOrder->joStatus}",
+                ], 422);
+            }
+
+            $validated = $request->validate([
+                'passed'     => 'required|boolean',
+                'defects'    => 'nullable|string|max:1000',
+                'checkedBy'  => 'required|string|max:255',
+            ]);
+
+            $adminUser   = $request->user();
+            $checkedBy   = $validated['checkedBy'];
+            $passed      = (bool) $validated['passed'];
+
+            $qcResult = [
+                'passed'    => $passed,
+                'defects'   => $validated['defects'] ?? null,
+                'checkedBy' => $checkedBy,
+                'checkedAt' => now()->toISOString(),
+            ];
+
+            if ($passed) {
+                // ── QC PASSED ──────────────────────────────────────────────────
+                // 1. Update JO status
+                $jobOrder->joStatus  = 'QC_Passed';
+                $jobOrder->qcResult  = $qcResult;
+                $jobOrder->updatedAt = now();
+                $jobOrder->save();
+
+                // 2. Consume reserved materials from BOM snapshot on this JO
+                $materialsConsumed = $jobOrder->materialsConsumed ?? [];
+                $joQty = $jobOrder->product['quantity'] ?? 1;
+
+                foreach ($materialsConsumed as $component) {
+                    $inventoryId = $component['inventoryId'] ?? null;
+                    if (!$inventoryId) continue;
+
+                    $inventory = \App\Models\Inventory::find($inventoryId);
+                    if (!$inventory || $inventory->isOnDemand) continue;
+
+                    $consumeQty = (float) ($component['qty'] ?? 0) * (int) $joQty;
+                    if ($consumeQty <= 0) continue;
+
+                    // Deduct stockQty and reservedQty, increment consumedQty
+                    $inventory->stockQty    = max(0, ($inventory->stockQty    ?? 0) - $consumeQty);
+                    $inventory->reservedQty = max(0, ($inventory->reservedQty ?? 0) - $consumeQty);
+                    $inventory->consumedQty = ($inventory->consumedQty ?? 0) + $consumeQty;
+                    $inventory->save();
+
+                    // Log to StockHistory
+                    \App\Models\StockHistory::create([
+                        'inventoryId'  => (string) $inventory->_id,
+                        'quantity'     => $consumeQty,
+                        'remainingQty' => $inventory->stockQty,
+                        'unitCost'     => $inventory->averageCost ?? 0,
+                        'totalCost'    => ($inventory->averageCost ?? 0) * $consumeQty,
+                        'reason'       => 'production',
+                        'type'         => 'deduction',
+                        'performedBy'  => $checkedBy,
+                        'remarks'      => "QC Passed — JO {$jobOrder->joId}",
+                        'createdAt'    => now(),
+                    ]);
+                }
+
+                // 3. Move linked order to For Delivery
+                $linkedOrder = Order::where('_id', $jobOrder->orderId)->first();
+                if ($linkedOrder && !in_array($linkedOrder->orderStatus, ['For Delivery', 'Delivered', 'Cancelled'])) {
+                    $linkedOrder->orderStatus = 'For Delivery';
+                    $linkedOrder->updatedAt   = now();
+                    $linkedOrder->save();
+                }
+
+            } else {
+                // ── QC FAILED ──────────────────────────────────────────────────
+                // reservedQty stays — materials still committed for reprint
+                // Do NOT deduct stockQty
+                $jobOrder->joStatus  = 'QC_Failed';
+                $jobOrder->qcResult  = $qcResult;
+                $jobOrder->updatedAt = now();
+                $jobOrder->save();
+
+                // Log the failure for audit — no inventory change
+                Log::info('submitQC: QC failed, materials remain reserved for reprint', [
+                    'jobOrderId' => (string) $jobOrder->_id,
+                    'joId'       => $jobOrder->joId,
+                    'checkedBy'  => $checkedBy,
+                    'defects'    => $validated['defects'] ?? null,
+                ]);
+            }
+
+            return $this->successResponse(
+                $passed ? 'QC passed. Inventory consumed and order moved to For Delivery.' : 'QC failed. Order flagged for reprint.',
+                $jobOrder
+            );
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to submit QC result.');
         }
     }
 

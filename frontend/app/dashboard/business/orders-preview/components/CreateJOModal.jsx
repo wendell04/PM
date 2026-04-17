@@ -1,101 +1,447 @@
-/**
- * Create Job Order Modal
- * Shows BOM info, design preview, and JO creation form
- */
+"use client"
+
+import { useState } from 'react';
 
 function formatPeso(n) {
-  return `₱${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+  return `₱${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export default function CreateJOModal({ order, onClose }) {
+export default function CreateJOModal({ order, onClose, onSubmit }) {
+  const [form, setForm] = useState({
+    assignedTo: '',
+    targetCompletion: '',
+    isRush: false,
+    notes: '',
+  });
+  const [errors, setErrors] = useState({});
+
+  const handleSubmit = () => {
+    const newErrors = {};
+    if (!form.targetCompletion) newErrors.targetCompletion = 'Target date is required';
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    onSubmit({
+      orderId: order.id,
+      productName: order.items?.[0]?.name,
+      productQuantity: order.items?.reduce((s, i) => s + (i.qty || 1), 0) || 1,
+      targetCompletion: form.targetCompletion,
+      isRush: form.isRush,
+      assignedTo: form.assignedTo,
+      notes: form.notes,
+    });
+  };
+
   if (!order) return null;
 
+  const colors = {
+    gold: '#D4A843',
+    goldGradient: 'linear-gradient(135deg, #FFDF9F 0%, #D4A843 100%)',
+    textPrimary: '#E5E2E1',
+    textMuted: '#9ca3af',
+    darkBg: '#1a1a1a',
+    cardBg: 'rgba(255,255,255,0.03)',
+    border: 'rgba(255,255,255,0.1)',
+    green: '#22c55e',
+    greenBg: 'rgba(34,197,94,0.08)',
+    greenBorder: 'rgba(34,197,94,0.2)',
+    red: '#ef4444',
+    redBg: 'rgba(239,68,68,0.08)',
+    redBorder: 'rgba(239,68,68,0.2)',
+    indigo: '#6366f1',
+    indigoBg: 'rgba(99,102,241,0.1)',
+  };
+
+  const sectionLabelStyle = {
+    margin: 0,
+    fontSize: '0.7rem',
+    fontWeight: 700,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+  };
+
+  const inputStyle = {
+    width: '100%',
+    padding: '8px 16px',
+    background: colors.darkBg,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 8,
+    color: colors.textPrimary,
+    fontSize: '0.875rem',
+    outline: 'none',
+  };
+
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', width: '90%', maxWidth: '560px', overflow: 'hidden', boxShadow: '0 24px 48px rgba(0,0,0,0.5)' }}>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.8)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 2000,
+        backdropFilter: 'blur(4px)',
+        padding: 16,
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: colors.darkBg,
+          border: `1px solid ${colors.border}`,
+          borderRadius: 16,
+          width: '100%',
+          maxWidth: 560,
+          overflow: 'hidden',
+          boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
+        }}
+      >
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '16px 24px',
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+          }}
+        >
           <div>
-            <div style={{ fontSize: '0.6rem', color: '#D4A843', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 700, marginBottom: '0.25rem' }}>Production</div>
-            <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#E5E2E1' }}>Create Job Order</h2>
+            <div
+              style={{
+                fontSize: '0.6rem',
+                color: colors.gold,
+                textTransform: 'uppercase',
+                letterSpacing: '0.15em',
+                fontWeight: 700,
+                marginBottom: 8,
+              }}
+            >
+              Production
+            </div>
+            <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: colors.textPrimary }}>
+              Create Job Order
+            </h2>
           </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', width: '36px', height: '36px', cursor: 'pointer', color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              border: `1px solid ${colors.border}`,
+              borderRadius: 8,
+              width: 40,
+              height: 40,
+              cursor: 'pointer',
+              color: colors.textMuted,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
           </button>
         </div>
 
         {/* Body */}
-        <div style={{ padding: '1.5rem' }}>
-          {/* Order Info */}
-          <div style={{ padding: '1rem', background: 'rgba(212,168,67,0.08)', borderRadius: '10px', border: '1px solid rgba(212,168,67,0.2)', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#E5E2E1' }}>Order #{order.id}</div>
-                <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>{order.customer.name} | {order.items.length} item(s)</div>
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* 1) Order info card */}
+          <div
+            style={{
+              padding: 16,
+              background: colors.cardBg,
+              borderRadius: 16,
+              border: `1px solid ${colors.border}`,
+              borderLeft: `3px solid ${colors.gold}`,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: 700, color: colors.textPrimary }}>
+                  Order #{order.id}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: colors.textMuted, marginTop: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {order.customer.name} | {order.items.length} item(s)
+                </div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#D4A843', fontFamily: 'monospace' }}>{formatPeso(order.total)}</div>
-                <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{formatPeso(order.paid)} paid</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 800, color: colors.gold, fontFamily: 'monospace' }}>
+                  {formatPeso(order.total)}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginTop: 8 }}>
+                  {formatPeso(order.paid)} paid
+                </div>
               </div>
             </div>
           </div>
 
-          {/* BOM Status */}
+          {/* 2) BOM status */}
           {order.bom && (
-            <div style={{ padding: '0.75rem', background: order.bom.verified ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', borderRadius: '8px', border: `1px solid ${order.bom.verified ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`, marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={order.bom.verified ? '#22c55e' : '#ef4444'} strokeWidth="2">
-                  {order.bom.verified ? <><circle cx="12" cy="12" r="10" /><path d="M8 12l3 3 5-5" /></> : <><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></>}
+            <div
+              style={{
+                padding: 16,
+                background: order.bom.verified ? colors.greenBg : colors.redBg,
+                borderRadius: 16,
+                border: `1px solid ${order.bom.verified ? colors.greenBorder : colors.redBorder}`,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={order.bom.verified ? colors.green : colors.red}
+                  strokeWidth="2"
+                >
+                  {order.bom.verified ? (
+                    <>
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M8 12l3 3 5-5" />
+                    </>
+                  ) : (
+                    <>
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="15" y1="9" x2="9" y2="15" />
+                      <line x1="9" y1="9" x2="15" y2="15" />
+                    </>
+                  )}
                 </svg>
-                <span style={{ fontSize: '0.75rem', color: order.bom.verified ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
-                  {order.bom.verified ? 'BOM verified — all materials available' : 'BOM not verified — check stock before creating JO'}
+                <span style={{ fontSize: '0.85rem', color: colors.textPrimary, fontWeight: 700 }}>
+                  {order.bom.verified
+                    ? 'BOM verified — all materials available'
+                    : 'BOM not verified — check stock before creating JO'}
                 </span>
               </div>
             </div>
           )}
 
-          {/* Design Files */}
-          {order.designs.length > 0 && (
-            <div style={{ marginBottom: '1rem' }}>
-              <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.7rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Design Files</h4>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {/* 3) Design files */}
+          {order.designs?.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <h4 style={sectionLabelStyle}>Design Files</h4>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {order.designs.map((d, idx) => (
-                  <div key={idx} style={{ padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', color: '#6366f1', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
-                    {d.name}
+                  <div
+                    key={idx}
+                    style={{
+                      padding: '8px 12px',
+                      background: colors.indigoBg,
+                      border: `1px solid rgba(99,102,241,0.3)`,
+                      borderRadius: 999,
+                      color: colors.indigo,
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      maxWidth: '100%',
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                    </svg>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {d.name}
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Items Summary */}
-          <div style={{ marginBottom: '1rem' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.7rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Items to Produce</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+          {/* 4) Items to produce */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <h4 style={sectionLabelStyle}>Items to Produce</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {order.items.map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '6px' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#E5E2E1' }}>{item.name} × {item.qty}</span>
-                  <span style={{ fontSize: '0.8rem', color: '#D4A843', fontFamily: 'monospace' }}>{formatPeso(item.total)}</span>
+                <div
+                  key={idx}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 16,
+                    padding: '8px 16px',
+                    background: colors.cardBg,
+                    borderRadius: 8,
+                  }}
+                >
+                  <span style={{ fontSize: '0.9rem', color: colors.textPrimary, fontWeight: 600 }}>
+                    {item.name} × {item.qty}
+                  </span>
+                  <span style={{ fontSize: '0.9rem', color: colors.gold, fontFamily: 'monospace', fontWeight: 700 }}>
+                    {formatPeso(item.total)}
+                  </span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Notes */}
+          {/* 5) Form fields */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={sectionLabelStyle}>Assigned To</div>
+              <input
+                value={form.assignedTo}
+                placeholder="Production team member"
+                onChange={(e) => setForm((p) => ({ ...p, assignedTo: e.target.value }))}
+                style={inputStyle}
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={sectionLabelStyle}>Target Completion</div>
+              <input
+                value={form.targetCompletion}
+                type="date"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setForm((p) => ({ ...p, targetCompletion: v }));
+                  if (errors.targetCompletion) {
+                    setErrors((p) => ({ ...p, targetCompletion: undefined }));
+                  }
+                }}
+                style={{
+                  ...inputStyle,
+                  border: errors.targetCompletion ? `1px solid ${colors.redBorder}` : inputStyle.border,
+                }}
+              />
+              {errors.targetCompletion && (
+                <div style={{ fontSize: '0.8rem', color: colors.red, fontWeight: 700 }}>
+                  {errors.targetCompletion}
+                </div>
+              )}
+            </div>
+
+            <div
+              onClick={() => setForm((p) => ({ ...p, isRush: !p.isRush }))}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 16,
+                padding: 16,
+                background: form.isRush ? colors.redBg : colors.cardBg,
+                borderRadius: 16,
+                border: `1px solid ${form.isRush ? colors.redBorder : colors.border}`,
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 800, color: colors.textPrimary }}>
+                  Rush Order
+                </div>
+                <div style={{ fontSize: '0.8rem', color: colors.textMuted, marginTop: 8 }}>
+                  Prioritize this job in production.
+                </div>
+              </div>
+              <div
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 8,
+                  border: `2px solid ${form.isRush ? colors.red : colors.textMuted}`,
+                  background: form.isRush ? colors.red : 'transparent',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                {form.isRush && (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="3">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={sectionLabelStyle}>Notes</div>
+              <textarea
+                rows={3}
+                value={form.notes}
+                placeholder="Special instructions for production..."
+                onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+                style={{
+                  ...inputStyle,
+                  resize: 'vertical',
+                  minHeight: 88,
+                  lineHeight: 1.4,
+                }}
+              />
+            </div>
+          </div>
+
+          {/* 6) Order notes */}
           {order.notes && (
-            <div>
-              <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.7rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Order Notes</h4>
-              <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', fontSize: '0.8rem', color: '#E5E2E1', lineHeight: 1.5 }}>{order.notes}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <h4 style={sectionLabelStyle}>Order Notes</h4>
+              <div
+                style={{
+                  padding: 16,
+                  background: colors.cardBg,
+                  borderRadius: 16,
+                  fontSize: '0.9rem',
+                  color: colors.textPrimary,
+                  lineHeight: 1.6,
+                }}
+              >
+                {order.notes}
+              </div>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', padding: '1.25rem 1.5rem', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)' }}>
-          <button onClick={onClose} style={{ padding: '0.625rem 1.25rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#E5E2E1', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-          <button onClick={onClose} style={{ padding: '0.625rem 1.5rem', background: 'linear-gradient(135deg, #FFDF9F 0%, #D4A843 100%)', border: 'none', borderRadius: '8px', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}>
-            Create & Assign JO
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 16,
+            padding: '16px 24px',
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(0,0,0,0.2)',
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{
+              padding: '8px 16px',
+              background: colors.cardBg,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 8,
+              color: colors.textPrimary,
+              fontSize: '0.9rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            style={{
+              padding: '8px 16px',
+              background: colors.goldGradient,
+              border: 'none',
+              borderRadius: 8,
+              color: '#000',
+              fontSize: '0.9rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            Create &amp; Assign JO
           </button>
         </div>
       </div>

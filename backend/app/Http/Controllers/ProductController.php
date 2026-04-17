@@ -166,7 +166,9 @@ class ProductController extends Controller
                 'tags'              => 'nullable|array',
                 'tags.*'            => 'string',
                 'isPublished'       => 'boolean',
+                'isCustom'          => 'boolean',
                 'isActive'          => 'boolean',
+                'bomId'             => 'nullable|string|max:24',
             ]);
 
             // Check for duplicate (same category + subCategoryName)
@@ -222,6 +224,10 @@ class ProductController extends Controller
             $validated['variantPrices'] = $validated['variantPrices'] ?? [];
             $validated['createdAt'] = now();
             $validated['updatedAt'] = now();
+
+            $validated['bomId'] = isset($validated['bomId']) && $validated['bomId'] !== ''
+                ? new \MongoDB\BSON\ObjectId($validated['bomId'])
+                : null;
 
             $product = Product::create($validated);
 
@@ -289,6 +295,7 @@ class ProductController extends Controller
                 'tags.*'            => 'string',
                 'isPublished'       => 'boolean',
                 'isActive'          => 'boolean',
+                'bomId'             => 'nullable|string|max:24',
             ]);
 
             // Check for duplicate if category/subCategory changed
@@ -322,6 +329,13 @@ class ProductController extends Controller
             }
 
             $validated['updatedAt'] = now();
+
+            if (array_key_exists('bomId', $validated)) {
+                $validated['bomId'] = isset($validated['bomId']) && $validated['bomId'] !== ''
+                    ? new \MongoDB\BSON\ObjectId($validated['bomId'])
+                    : null;
+            }
+
             $product->update($validated);
 
             return $this->successResponse('Product updated successfully.', $product);

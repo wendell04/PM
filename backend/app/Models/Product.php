@@ -12,6 +12,8 @@ class Product extends Model
 
     protected $fillable = [
         'inventoryId',
+        'bomId',
+        'isCustom',
         'name',
         'description',
         'category',
@@ -39,6 +41,8 @@ class Product extends Model
 
     protected $casts = [
         'inventoryId'    => ObjectId::class,
+        'bomId'          => ObjectId::class,
+        'isCustom'       => 'boolean',
         'price'          => 'float',
         'flatPrice'      => 'float',
         'trackInventory' => 'boolean',
@@ -54,6 +58,7 @@ class Product extends Model
         'isActive'    => true,
         'isPublished' => false,
         'isArchived'  => false,
+        'isCustom'    => false,
     ];
 
     public function inventory()

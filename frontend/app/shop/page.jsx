@@ -6,7 +6,6 @@ import { useCart } from './layout';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStorefrontBanners } from '@/lib/bannerUtils';
-import { fetchProductSearch } from '@/lib/productsApi';
 import './shop.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -244,12 +243,6 @@ export default function ShopPage() {
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(null);
   const [category, setCategory]   = useState('All');
-  const [search, setSearch]       = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const searchRef = useRef(null);
-  const debounceRef = useRef(null);
   const [toast, setToast]         = useState(null);
   const [banners, setBanners] = useState([]);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -389,55 +382,12 @@ export default function ShopPage() {
 
   const filtered = products.filter(p => {
     const matchCat  = category === 'All' || p.category === category;
-    const matchSearch = search.trim() === '' ||
-      (p.name || '').toLowerCase().includes(search.toLowerCase()) ||
-      (p.description || '').toLowerCase().includes(search.toLowerCase()) ||
-      p.tags?.some(t => t.toLowerCase().includes(search.toLowerCase()));
-    return matchCat && matchSearch
-      && (
-        !searchQuery ||
-        p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.description?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+    return matchCat && (
+      !searchQuery ||
+      p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.description?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
   });
-
-  // Search suggestions with debounce - fetch from backend
-  useEffect(() => {
-    if (search.trim().length < 2) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
-      setSearchLoading(true);
-      try {
-        const results = await fetchProductSearch(
-          search.trim(),
-          category !== 'All' ? category : ''
-        );
-        setSuggestions(results);
-      } catch {
-        setSuggestions([]);
-      } finally {
-        setSearchLoading(false);
-      }
-    }, 300);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [search, category]);
-
-  // Click outside to close suggestions
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (searchRef.current && !searchRef.current.contains(e.target)) {
-        setShowSuggestions(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   return (
     <ErrorBoundary>
@@ -547,101 +497,6 @@ export default function ShopPage() {
 
       {/* Search + Filter bar */}
       <div className="shop-filter-bar">
-        {/* Search */}
-        <div ref={searchRef} style={{ position: 'relative', width: '320px', flexShrink: 0 }}>
-          <div className="shop-search-wrapper">
-            <svg className="shop-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              type="text"
-              placeholder="Search products, categories, or tags..."
-              value={search}
-              onChange={e => {
-                setSearch(e.target.value);
-                setShowSuggestions(true);
-                if (e.target.value.trim() === '') setSuggestions([]);
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              className="shop-search-input"
-            />
-          </div>
-          {showSuggestions && (suggestions.length > 0 || searchLoading) && (
-            <div style={{
-              position: 'absolute',
-              top: 'calc(100% + 6px)',
-              left: 0,
-              right: 0,
-              background: 'var(--dark2)',
-              border: '1px solid var(--border)',
-              borderRadius: '10px',
-              overflow: 'hidden',
-              zIndex: 50,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-            }}>
-              {searchLoading && suggestions.length === 0 && (
-                <div style={{
-                  padding: '0.75rem 1rem',
-                  fontSize: '0.85rem',
-                  color: 'var(--gray)',
-                  textAlign: 'center',
-                }}>
-                  Searching...
-                </div>
-              )}
-              {suggestions.map((product, i) => (
-                <button
-                  key={product.id ?? product._id}
-                  type="button"
-                  onMouseDown={() => {
-                    setSearch(product.name);
-                    setShowSuggestions(false);
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75rem',
-                    width: '100%',
-                    padding: '0.625rem 1rem',
-                    background: 'transparent',
-                    border: 'none',
-                    borderBottom: i < suggestions.length - 1
-                      ? '1px solid var(--border)'
-                      : 'none',
-                    color: 'var(--white)',
-                    fontSize: '0.875rem',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                    stroke="var(--gray)" strokeWidth="2">
-                    <circle cx="11" cy="11" r="8"/>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                  </svg>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {product.name}
-                  </span>
-                  <span style={{
-                    fontSize: '0.7rem',
-                    color: 'var(--gold)',
-                    background: 'color-mix(in srgb, var(--gold) 10%, transparent)',
-                    border: '1px solid color-mix(in srgb, var(--gold) 25%, transparent)',
-                    borderRadius: '999px',
-                    padding: '1px 8px',
-                    flexShrink: 0,
-                  }}>
-                    {product.category}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* Category dropdown */}
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <select
@@ -698,7 +553,6 @@ export default function ShopPage() {
       {!loading && filtered.length > 0 && (
         <div className="shop-results-count">
           Showing {filtered.length} of {products.length} products
-          {search && <span className="shop-search-term"> for "{search}"</span>}
         </div>
       )}
 
@@ -718,16 +572,16 @@ export default function ShopPage() {
             </svg>
           </div>
           <h3 className="shop-empty-title">
-            {search || category !== 'All' ? 'No products found' : 'No products available'}
+            {category !== 'All' ? 'No products found' : 'No products available'}
           </h3>
           <p className="shop-empty-description">
-            {search || category !== 'All'
+            {category !== 'All'
               ? 'Try adjusting your search or filter to find what you\'re looking for.'
               : 'Check back later as we\'re constantly adding new products to our store.'}
           </p>
-          {(search || category !== 'All') && (
+          {category !== 'All' && (
             <button
-              onClick={() => { setSearch(''); setCategory('All'); }}
+              onClick={() => { setCategory('All'); }}
               className="shop-clear-filters-btn"
             >
               Clear Filters

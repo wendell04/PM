@@ -17,12 +17,33 @@ const STATUS_LABELS = {
 };
 
 const STATUS_COLORS = {
-  pending_review: { bg: 'var(--gold)', color: '#000' },
-  confirmed: { bg: '#3b82f6', color: '#fff' },
-  processing: { bg: '#8b5cf6', color: '#fff' },
-  ready: { bg: 'var(--green)', color: '#000' },
-  delivered: { bg: 'var(--gray)', color: '#000' },
-  cancelled: { bg: 'var(--red)', color: '#fff' },
+  pending_review: { bg: 'var(--gold)',       color: 'var(--black)' },
+  confirmed:      { bg: 'var(--gold-dark)',  color: 'var(--white)' },
+  processing:     { bg: 'var(--gold-light)', color: 'var(--black)' },
+  ready:          { bg: 'var(--green)',      color: 'var(--black)' },
+  delivered:      { bg: 'var(--gray)',       color: 'var(--black)' },
+  cancelled:      { bg: 'var(--red)',        color: 'var(--white)' },
+};
+
+const PAYMENT_STATUS_STYLES = {
+  unpaid:  {
+    background: 'rgba(196,30,58,0.15)',
+    color:      'var(--red)',
+    border:     '1px solid rgba(196,30,58,0.3)',
+    label:      'Unpaid',
+  },
+  partial: {
+    background: 'var(--gold-subtle)',
+    color:      'var(--gold)',
+    border:     '1px solid rgba(212,168,67,0.3)',
+    label:      'Partially Paid',
+  },
+  paid: {
+    background: 'var(--color-background-success)',
+    color:      'var(--color-text-success)',
+    border:     '1px solid var(--color-border-success)',
+    label:      'Paid',
+  },
 };
 
 const VALID_NEXT_STATUSES = {
@@ -62,7 +83,7 @@ function formatTimestamp(dateStr) {
 }
 
 function StatusBadge({ status, size = 'sm' }) {
-  const colors = STATUS_COLORS[status] || { bg: 'var(--gray)', color: '#000' };
+  const colors = STATUS_COLORS[status] || { bg: 'var(--gray)', color: 'var(--black)' };
   const label = STATUS_LABELS[status] || status;
   return (
     <span style={{
@@ -93,7 +114,12 @@ export default function OrderRequestsPage() {
   const [modalSuccess, setModalSuccess] = useState(null);
   const [updateStatus, setUpdateStatus] = useState('');
   const [updatePrice, setUpdatePrice] = useState('');
+  const [updateDownPayment, setUpdateDownPayment] = useState('');
+  const [updatePaymentStatus, setUpdatePaymentStatus] = useState('');
+  const [updateEta, setUpdateEta] = useState('');
   const [updateNote, setUpdateNote] = useState('');
+  const [updateAdminComment, setUpdateAdminComment] = useState('');
+  const [updateMockupUrl, setUpdateMockupUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
 
@@ -163,7 +189,12 @@ export default function OrderRequestsPage() {
     setSelectedRequest(req);
     setUpdateStatus('');
     setUpdatePrice(req.finalPrice != null ? String(req.finalPrice) : '');
+    setUpdateDownPayment(req.downPayment != null ? String(req.downPayment) : '');
+    setUpdatePaymentStatus(req.paymentStatus || 'unpaid');
+    setUpdateEta(req.eta ? req.eta.split('T')[0] : '');
     setUpdateNote('');
+    setUpdateAdminComment(req.adminComment || '');
+    setUpdateMockupUrl(req.mockupUrl || '');
     setModalError(null);
     setModalSuccess(null);
   }
@@ -173,7 +204,12 @@ export default function OrderRequestsPage() {
     setSelectedRequest(null);
     setUpdateStatus('');
     setUpdatePrice('');
+    setUpdateDownPayment('');
+    setUpdatePaymentStatus('');
+    setUpdateEta('');
     setUpdateNote('');
+    setUpdateAdminComment('');
+    setUpdateMockupUrl('');
     setModalError(null);
     setModalSuccess(null);
   }
@@ -199,6 +235,11 @@ export default function OrderRequestsPage() {
         status: nextStatus,
         finalPrice: updatePrice ? Number(updatePrice) : undefined,
         note: updateNote.trim() || undefined,
+        downPayment: updateDownPayment !== '' ? Number(updateDownPayment) : undefined,
+        paymentStatus: updatePaymentStatus || undefined,
+        eta: updateEta || undefined,
+        adminComment: updateAdminComment.trim() || undefined,
+        mockupUrl: updateMockupUrl.trim() || undefined,
       };
       const updated = await updateOrderRequestStatus(token, selectedRequest.id, payload);
       // Update local state
@@ -322,7 +363,7 @@ export default function OrderRequestsPage() {
             }}
             style={{
               background: isRetrying ? 'var(--dark3)' : 'var(--gold)',
-              color: isRetrying ? 'var(--gray)' : '#000',
+              color: isRetrying ? 'var(--gray)' : 'var(--black)',
               border: 'none',
               borderRadius: '8px',
               padding: '0.625rem 1.25rem',
@@ -393,7 +434,7 @@ export default function OrderRequestsPage() {
                       <td style={{ padding: '0.75rem 1rem' }}>
                         <button
                           onClick={() => openReview(req)}
-                          style={{ background: 'var(--gold)', color: '#000', border: 'none', borderRadius: '6px', padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                          style={{ background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '6px', padding: '0.375rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
                         >
                           Review
                         </button>
@@ -478,6 +519,54 @@ export default function OrderRequestsPage() {
                   <div style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 600 }}>{formatPeso(selectedRequest.suggestedPrice)}</div>
                 </div>
 
+                {/* Final Price */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Final Price</div>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 600 }}>
+                    {selectedRequest.finalPrice != null ? formatPeso(selectedRequest.finalPrice) : '—'}
+                  </div>
+                </div>
+
+                {/* Est. Completion */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--gray-light)', marginBottom: '0.25rem' }}>Est. Completion</div>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 600 }}>
+                    {selectedRequest.eta
+                      ? new Date(selectedRequest.eta).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+                      : '—'}
+                  </div>
+                </div>
+
+                {/* Down Payment */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Down Payment</div>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 600 }}>
+                    {selectedRequest.downPayment != null ? formatPeso(selectedRequest.downPayment) : '—'}
+                  </div>
+                </div>
+
+                {/* Payment Status */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Payment Status</div>
+                  {(() => {
+                    const s = PAYMENT_STATUS_STYLES[selectedRequest.paymentStatus];
+                    if (!s) return <span style={{ color: 'var(--gray)' }}>—</span>;
+                    return (
+                      <span style={{
+                        background:   s.background,
+                        color:        s.color,
+                        border:       s.border,
+                        borderRadius: '999px',
+                        padding:      '0.25rem 0.75rem',
+                        fontSize:     '0.75rem',
+                        fontWeight:   700,
+                      }}>
+                        {s.label}
+                      </span>
+                    );
+                  })()}
+                </div>
+
                 {/* Design File */}
                 {selectedRequest.designUrl && (
                   <div style={{ marginBottom: '1rem' }}>
@@ -494,6 +583,36 @@ export default function OrderRequestsPage() {
                   <div style={{ marginBottom: '1rem' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Design Notes</div>
                     <div style={{ fontSize: '0.85rem', color: 'var(--white)', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.625rem 0.875rem', lineHeight: 1.5 }}>{selectedRequest.designNotes}</div>
+                  </div>
+                )}
+
+                {/* Admin Comment */}
+                {selectedRequest.adminComment && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Admin Message</div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--white)', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '8px', padding: '0.625rem 0.875rem', lineHeight: 1.5 }}>
+                      {selectedRequest.adminComment}
+                    </div>
+                  </div>
+                )}
+
+                {/* Mockup */}
+                {selectedRequest.mockupUrl && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Revised Mockup</div>
+                    <a
+                      href={selectedRequest.mockupUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.85rem', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                        <polyline points="15 3 21 3 21 9"/>
+                        <line x1="10" y1="14" x2="21" y2="3"/>
+                      </svg>
+                      View Revised Mockup
+                    </a>
                   </div>
                 )}
 
@@ -579,6 +698,52 @@ export default function OrderRequestsPage() {
                       </div>
                     </div>
 
+                    {/* Down Payment */}
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>
+                        Down Payment (optional)
+                      </label>
+                      <div style={{ position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--gray)', fontSize: '0.875rem' }}>₱</span>
+                        <input
+                          type="number"
+                          value={updateDownPayment}
+                          onChange={e => setUpdateDownPayment(e.target.value)}
+                          placeholder="0.00"
+                          min="0"
+                          step="0.01"
+                          style={{ width: '100%', padding: '0.625rem 0.875rem 0.625rem 1.75rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Est. Completion Date */}
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>
+                        Est. Completion Date (optional)
+                      </label>
+                      <input
+                        type="date"
+                        value={updateEta}
+                        onChange={e => setUpdateEta(e.target.value)}
+                        style={{ width: '100%', padding: '0.625rem 0.875rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    {/* Payment Status */}
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>Payment Status</label>
+                      <select
+                        value={updatePaymentStatus}
+                        onChange={e => setUpdatePaymentStatus(e.target.value)}
+                        style={{ width: '100%', padding: '0.625rem 0.875rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box' }}
+                      >
+                        <option value="unpaid">Unpaid</option>
+                        <option value="partial">Partially Paid</option>
+                        <option value="paid">Paid</option>
+                      </select>
+                    </div>
+
                     {/* Note */}
                     <div style={{ marginBottom: '0.75rem' }}>
                       <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>Note (optional)</label>
@@ -589,6 +754,55 @@ export default function OrderRequestsPage() {
                         maxLength={500}
                         rows={3}
                         style={{ width: '100%', padding: '0.625rem 0.875rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    {/* Admin Comment */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>
+                        Message to Customer
+                      </label>
+                      <textarea
+                        value={updateAdminComment}
+                        onChange={e => setUpdateAdminComment(e.target.value)}
+                        placeholder="e.g. We adjusted the background to red as requested. Please confirm."
+                        rows={3}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          backgroundColor: 'var(--dark)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          color: 'var(--white)',
+                          fontSize: '14px',
+                          resize: 'vertical',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+
+                    {/* Mockup URL */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>
+                        Mockup URL <span style={{ color: 'var(--gray)', fontWeight: 400 }}>(optional — revised design link)</span>
+                      </label>
+                      <input
+                        type="url"
+                        value={updateMockupUrl}
+                        onChange={e => setUpdateMockupUrl(e.target.value)}
+                        placeholder="https://..."
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          backgroundColor: 'var(--dark)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          color: 'var(--white)',
+                          fontSize: '14px',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
                       />
                     </div>
 
@@ -604,7 +818,7 @@ export default function OrderRequestsPage() {
                     <button
                       onClick={handleSubmitUpdate}
                       disabled={submitting}
-                      style={{ width: '100%', padding: '0.75rem', background: submitting ? 'var(--gray)' : 'var(--gold)', color: '#000', border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.875rem', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+                      style={{ width: '100%', padding: '0.75rem', background: submitting ? 'var(--gray)' : 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.875rem', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
                     >
                       {submitting ? 'Updating...' : 'Update Status'}
                     </button>

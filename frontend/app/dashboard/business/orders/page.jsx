@@ -47,6 +47,15 @@ export default function OrdersPage() {
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Payment modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentTarget, setPaymentTarget] = useState(null); // full order object
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentNote, setPaymentNote] = useState('');
+  const [paymentError, setPaymentError] = useState('');
+  const [isPaymentSubmitting, setIsPaymentSubmitting] = useState(false);
+
   // Extract fetch orders logic into named function
   const fetchOrders = useCallback(async () => {
     setIsRefreshing(true);
@@ -141,6 +150,12 @@ export default function OrdersPage() {
     } else {
       setSelectedOrders(new Set(sorted.map(o => o.id)));
     }
+  };
+
+  const getPaymentBadge = (status) => {
+    if (status === 'paid')    return { label: 'Paid',    color: '#4ade80', bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.3)'  };
+    if (status === 'partial') return { label: 'Partial', color: '#facc15', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.3)' };
+    return                           { label: 'Unpaid',  color: '#f87171', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.3)' };
   };
 
   return (
@@ -505,8 +520,25 @@ export default function OrdersPage() {
                       </td>
                       <td className="table-cell" style={{ textAlign: 'center', color: 'var(--gray)' }}>{o.quantity} pcs</td>
                       <td className="table-cell">
-                        <div style={{ color: 'var(--gold)', fontSize: '1rem', fontWeight: 600 }}>₱{o.totalPrice?.toLocaleString()}</div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--gray)' }}>DP: ₱{o.downPayment?.toLocaleString()}</div>
+                        <div style={{ color: 'var(--gold)', fontSize: '1rem', fontWeight: 600 }}>₱{(o.totalAmount ?? o.totalPrice)?.toLocaleString()}</div>
+                        {(() => {
+                          const pb = getPaymentBadge(o.paymentStatus);
+                          return (
+                            <span style={{
+                              display: 'inline-block',
+                              marginTop: '0.25rem',
+                              fontSize: '0.65rem',
+                              fontWeight: 600,
+                              padding: '0.1rem 0.45rem',
+                              borderRadius: '10px',
+                              color: pb.color,
+                              background: pb.bg,
+                              border: `1px solid ${pb.border}`,
+                            }}>
+                              {pb.label}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="table-cell">
                         <span className="stock-status-badge" style={{ color: statusBadge.color, background: statusBadge.bg, borderColor: statusBadge.border }}>
@@ -597,20 +629,58 @@ export default function OrdersPage() {
                             
                             {/* Payment Breakdown */}
                             <div>
-                              <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Payment</div>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Payment</div>
+                                {!['Delivered','Cancelled','Returned'].includes(o.orderStatus) && (
+                                  <button
+                                    onClick={() => {
+                                      setPaymentTarget(o);
+                                      setPaymentAmount('');
+                                      setPaymentMethod('cash');
+                                      setPaymentNote('');
+                                      setPaymentError('');
+                                      setShowPaymentModal(true);
+                                    }}
+                                    style={{
+                                      fontSize: '0.68rem',
+                                      padding: '0.2rem 0.5rem',
+                                      background: 'rgba(250,204,21,0.12)',
+                                      border: '1px solid rgba(250,204,21,0.4)',
+                                      borderRadius: '4px',
+                                      color: 'var(--gold)',
+                                      cursor: 'pointer',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    + Record Payment
+                                  </button>
+                                )}
+                              </div>
                               <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.7 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ color: 'var(--gray)' }}>Total</span>
-                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{o.totalPrice?.toLocaleString()}</span>
+                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{(o.totalAmount ?? o.totalPrice)?.toLocaleString()}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <span style={{ color: 'var(--gray)' }}>Downpayment (50%)</span>
-                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{o.downPayment?.toLocaleString()}</span>
+                                  <span style={{ color: 'var(--gray)' }}>Paid</span>
+                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{(o.downPayment ?? 0).toLocaleString()}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ color: 'var(--gray)' }}>Balance</span>
-                                  <span style={{ color: o.balance === 0 ? '#4ade80' : '#facc15', fontWeight: 600 }}>₱{o.balance?.toLocaleString()}</span>
+                                  <span style={{ color: (o.balance ?? 0) <= 0 ? '#4ade80' : '#facc15', fontWeight: 600 }}>₱{(o.balance ?? 0).toLocaleString()}</span>
                                 </div>
+                                {/* Payment history entries */}
+                                {Array.isArray(o.paymentHistory) && o.paymentHistory.length > 0 && (
+                                  <div style={{ marginTop: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '0.5rem' }}>
+                                    <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>History</div>
+                                    {o.paymentHistory.map((p, idx) => (
+                                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '0.2rem' }}>
+                                        <span style={{ color: 'var(--gray)' }}>{p.method} {p.note ? `· ${p.note}` : ''}</span>
+                                        <span style={{ color: '#4ade80', fontWeight: 600 }}>+₱{Number(p.amount).toLocaleString()}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1426,6 +1496,169 @@ export default function OrdersPage() {
                 }}
               >
                 {isSubmitting ? 'Updating...' : 'Confirm & Send for Delivery'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Record Payment Modal */}
+      {showPaymentModal && paymentTarget && (
+        <div className="modal-overlay" onClick={() => { setShowPaymentModal(false); setPaymentTarget(null); }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px', width: '90%' }}>
+            <div className="modal-header">
+              <h2 className="modal-title" style={{ color: 'var(--gold)' }}>Record Payment</h2>
+              <button className="modal-close" onClick={() => { setShowPaymentModal(false); setPaymentTarget(null); }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Order summary */}
+              <div style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', fontSize: '0.82rem' }}>
+                <div style={{ color: 'var(--gray)', marginBottom: '0.25rem', fontFamily: 'monospace' }}>{paymentTarget.id}</div>
+                <div style={{ color: 'var(--white)', fontWeight: 600 }}>{paymentTarget.customerName}</div>
+                <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem' }}>
+                  <div>
+                    <span style={{ color: 'var(--gray)' }}>Total </span>
+                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{(paymentTarget.totalAmount ?? paymentTarget.totalPrice ?? 0).toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--gray)' }}>Balance </span>
+                    <span style={{ color: '#facc15', fontWeight: 600 }}>₱{(paymentTarget.balance ?? 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Amount */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Amount <span style={{ color: 'var(--red)' }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={paymentAmount}
+                  onChange={e => { setPaymentAmount(e.target.value); setPaymentError(''); }}
+                  onKeyDown={e => { if (['e','E','+','-'].includes(e.key)) e.preventDefault(); }}
+                  placeholder="e.g. 500"
+                  style={{
+                    width: '100%', padding: '0.625rem 0.875rem',
+                    background: 'var(--dark2)',
+                    border: `1px solid ${paymentError ? 'var(--red)' : 'var(--border)'}`,
+                    borderRadius: '8px', color: 'var(--white)',
+                    fontSize: '0.875rem', boxSizing: 'border-box',
+                  }}
+                />
+                {paymentError && (
+                  <p style={{ fontSize: '0.78rem', color: 'var(--red)', marginTop: '0.375rem' }}>{paymentError}</p>
+                )}
+              </div>
+
+              {/* Method */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Method <span style={{ color: 'var(--red)' }}>*</span>
+                </label>
+                <select
+                  value={paymentMethod}
+                  onChange={e => setPaymentMethod(e.target.value)}
+                  style={{
+                    width: '100%', padding: '0.625rem 0.75rem',
+                    background: 'var(--dark2)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px', color: 'var(--white)',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  <option value="cash" style={{ background: 'var(--dark)' }}>Cash</option>
+                  <option value="gcash" style={{ background: 'var(--dark)' }}>GCash</option>
+                  <option value="bank_transfer" style={{ background: 'var(--dark)' }}>Bank Transfer</option>
+                  <option value="cod" style={{ background: 'var(--dark)' }}>COD</option>
+                </select>
+              </div>
+
+              {/* Note */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Note <span style={{ color: 'var(--gray)', fontWeight: 400, textTransform: 'none' }}>(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={paymentNote}
+                  onChange={e => setPaymentNote(e.target.value)}
+                  placeholder="e.g. Downpayment, reference #12345"
+                  style={{
+                    width: '100%', padding: '0.625rem 0.875rem',
+                    background: 'var(--dark2)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px', color: 'var(--white)',
+                    fontSize: '0.875rem', boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => { setShowPaymentModal(false); setPaymentTarget(null); }}
+                disabled={isPaymentSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={isPaymentSubmitting}
+                style={{ opacity: isPaymentSubmitting ? 0.6 : 1 }}
+                onClick={async () => {
+                  const amt = parseFloat(paymentAmount);
+                  if (!paymentAmount || isNaN(amt) || amt <= 0) {
+                    setPaymentError('Please enter a valid amount greater than 0.');
+                    return;
+                  }
+                  if (isPaymentSubmitting) return;
+                  setIsPaymentSubmitting(true);
+                  try {
+                    const res = await fetch(`${API_URL}/api/admin/orders/${paymentTarget.id}/record-payment`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                      },
+                      body: JSON.stringify({
+                        amount: amt,
+                        method: paymentMethod,
+                        note: paymentNote || null,
+                      }),
+                    });
+                    if (!res.ok) {
+                      const err = await res.json().catch(() => ({}));
+                      setPaymentError(err.error || err.message || 'Failed to record payment.');
+                      return;
+                    }
+                    const data = await res.json();
+                    const updated = data.order ?? data.data ?? null;
+                    setOrders(prev => prev.map(ord =>
+                      ord.id === paymentTarget.id
+                        ? { ...ord, ...(updated ?? {}), id: ord.id }
+                        : ord
+                    ));
+                    setShowPaymentModal(false);
+                    setPaymentTarget(null);
+                  } catch {
+                    setPaymentError('Network error. Please try again.');
+                  } finally {
+                    setIsPaymentSubmitting(false);
+                  }
+                }}
+              >
+                {isPaymentSubmitting ? 'Recording...' : 'Confirm Payment'}
               </button>
             </div>
           </div>

@@ -1,10 +1,13 @@
-"use client";
+﻿"use client";
 
 import CustomDropdown from "@/app/components/CustomDropdown";
 import Link from "next/link";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import BOMCardList from "./BOMCardList";
 import BOMFormModal from "./BOMFormModal";
+import { useAuth } from "@/contexts/AuthContext";
+import { fetchBOMs, createBOM, updateBOM, deleteBOM } from "@/lib/bomApi";
+import { fetchInventory } from "@/lib/inventoryApi";
 
 // ── LocalStorage Keys ──────────────────────────────────────────────────────────
 const MATERIALS_KEY = "pmp_materials";
@@ -755,7 +758,7 @@ function MaterialDetailsModal({ material, vendors, onClose }) {
                 }}
               >
                 ₱
-                {(material.baseCost || 0).toLocaleString("en-PH", {
+                {(material.baseCost || material.averageCost || 0).toLocaleString("en-PH", {
                   minimumFractionDigits: 2,
                 })}
               </div>
@@ -1599,7 +1602,7 @@ function MaterialMasterTab({
                         }}
                       >
                         ₱
-                        {(m.baseCost || 0).toLocaleString("en-PH", {
+                        {(m.baseCost || m.averageCost || 0).toLocaleString("en-PH", {
                           minimumFractionDigits: 2,
                         })}
                       </td>
@@ -1797,7 +1800,7 @@ function MaterialMasterTab({
                         {parent.hasVariants && children.length > 0
                           ? (() => {
                               const costs = children
-                                .map((c) => c.baseCost || 0)
+                                .map((c) => c.baseCost || c.averageCost || 0)
                                 .filter((c) => c > 0);
                               const min = Math.min(...costs);
                               const max = Math.max(...costs);
@@ -1839,7 +1842,7 @@ function MaterialMasterTab({
                                 </div>
                               );
                             })()
-                          : `P${(parent.baseCost || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`}
+                          : `P${(parent.baseCost || parent.averageCost || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`}
                       </td>
                       <td
                         style={{
@@ -1969,7 +1972,7 @@ function MaterialMasterTab({
                             }}
                           >
                             ₱
-                            {(child.baseCost || 0).toLocaleString("en-PH", {
+                            {(child.baseCost || child.averageCost || 0).toLocaleString("en-PH", {
                               minimumFractionDigits: 2,
                             })}
                           </td>
@@ -2258,7 +2261,7 @@ function MaterialFormModal({
               .sort((a, b) => a[0].localeCompare(b[0]))
               .map(([k, v]) => `${k}:${v}`)
               .join("|");
-            costs[key] = String(child.baseCost || 0);
+            costs[key] = String(child.baseCost || child.averageCost || 0);
           }
         });
         setVariantCosts(costs);
@@ -4143,7 +4146,6 @@ function VendorCatalogModal({ vendor, materials, onClose }) {
     if (vendor) setExpandedItems(new Set());
   }, [vendor]);
 
-  // Load purchase data
   const grs = useMemo(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -4170,8 +4172,6 @@ function VendorCatalogModal({ vendor, materials, onClose }) {
       return [];
     }
   }, []);
-
-  if (!vendor) return null;
 
   // Build vendor's PO IDs
   const vendorPOs = pos.filter((p) => p.vendorId === vendor.id);
@@ -5090,7 +5090,7 @@ function VendorDetailsModal({ vendor, materials, onClose }) {
                         }}
                       >
                         ₱
-                        {(m.baseCost || 0).toLocaleString("en-PH", {
+                        {(m.baseCost || m.averageCost || 0).toLocaleString("en-PH", {
                           minimumFractionDigits: 2,
                         })}
                       </div>
@@ -6676,11 +6676,14 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
 // BOM TAB
 // ══════════════════════════════════════════════════════════════════════════════
 function BOMTab() {
+  const { token } = useAuth();
   const [boms, setBOMs] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [editBOM, setEditBOM] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     title: "",
@@ -6689,9 +6692,25 @@ function BOMTab() {
   });
 
   useEffect(() => {
-    setBOMs(getBOMs());
-    setMaterials(getMaterials());
-  }, []);
+    if (!token) return;
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const [bomsData, matsData] = await Promise.all([
+          fetchBOMs(token),
+          fetchInventory(token),
+        ]);
+        setBOMs(bomsData);
+        setMaterials(matsData);
+      } catch (err) {
+        setError(err.message || "Failed to load BOM data.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [token]);
 
   // Helper function to generate abbreviation from material name
   const abbreviateMaterial = (name) => {
@@ -6726,7 +6745,7 @@ function BOMTab() {
 
     const materialNames = bom.components
       .map((c) => {
-        const mat = materials.find((m) => m.id === c.materialId);
+        const mat = materials.find((m) => m._id === c.inventoryId);
         return mat?.name || "";
       })
       .filter((name) => name);
@@ -6756,143 +6775,74 @@ function BOMTab() {
       title: "Delete BOM",
       message:
         "Are you sure you want to delete this BOM? This action cannot be undone.",
-      onConfirm: () => {
-        const updated = boms.filter((b) => b.id !== id);
-        setBOMs(updated);
-        saveBOMs(updated);
-        setConfirmModal({
-          isOpen: false,
-          title: "",
-          message: "",
-          onConfirm: null,
-        });
+      onConfirm: async () => {
+        try {
+          await deleteBOM(id, token);
+          setBOMs((prev) => prev.filter((b) => b._id !== id));
+        } catch (err) {
+          setError(err.message || "Failed to delete BOM.");
+        } finally {
+          setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null });
+        }
       },
     });
   };
 
-  const handleSave = (bom) => {
-    // Auto-calculate total cost from components using FIFO cost
+  const handleSave = async (bom) => {
     const totalCost = (bom.components || []).reduce((sum, c) => {
-      const mat = materials.find((m) => m.id === c.materialId);
-      // Use FIFO cost - simulate consuming from oldest batches first
+      const mat = materials.find((m) => m._id === c.inventoryId);
       if (!mat || !mat.batches || mat.batches.length === 0) {
-        return sum + (mat?.baseCost || 0) * (c.qty || 1);
+        return sum + (mat?.baseCost || mat?.averageCost || 0) * (c.qty || 1);
       }
-
       const activeBatches = mat.batches
-        .filter((b) => (b.remainingQty || 0) > 0)
+        .filter((batch) => (batch.remainingQty || 0) > 0)
         .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
-      if (activeBatches.length === 0) {
-        return sum + (mat?.baseCost || 0) * (c.qty || 1);
-      }
-
       let remaining = c.qty || 1;
-      let batchCost = 0;
-
+      let cost = 0;
       for (const batch of activeBatches) {
         if (remaining <= 0) break;
         const take = Math.min(remaining, batch.remainingQty || 0);
-        batchCost += take * (batch.unitCost || 0);
+        cost += take * (batch.unitCost || 0);
         remaining -= take;
       }
-
-      // If backorder, use average for remaining
-      if (remaining > 0) {
-        const totalQty = activeBatches.reduce(
-          (s, b) => s + (b.remainingQty || 0),
-          0,
-        );
-        const totalValue = activeBatches.reduce(
-          (s, b) => s + (b.remainingQty || 0) * (b.unitCost || 0),
-          0,
-        );
-        const avgCost = totalQty > 0 ? totalValue / totalQty : 0;
-        batchCost += remaining * avgCost;
-      }
-
-      return sum + batchCost;
+      return sum + cost;
     }, 0);
 
-    // Ensure variantGroup is set from productGroupName (or productName) for proper grouping
-    const group = bom.productGroupName?.trim() || bom.productName?.trim() || "";
+    const payload = {
+      productName: bom.productName,
+      productGroupName: bom.variantGroup || bom.productGroupName || bom.productName,
+      variantName: bom.variantName || bom.productName,
+      variantCombo: bom.variantCombo || [],
+      components: (bom.components || []).map((c) => ({
+        inventoryId: c.inventoryId,
+        materialName: c.materialName || materials.find((m) => m._id === c.inventoryId)?.name || "",
+        qty: c.qty,
+        unit: c.unit || "",
+        unitCost: c.unitCost || 0,
+      })),
+      totalCost: parseFloat(totalCost.toFixed(4)),
+    };
 
-    let updated;
-    if (editBOM) {
-      updated = boms.map((b) => (b.id === bom.id ? { ...bom, totalCost, variantGroup: group } : b));
-    } else {
-      updated = [
-        ...boms,
-        {
-          ...bom,
-          totalCost,
-          variantGroup: group, // Explicitly set variantGroup for grouping logic
-          id: `bom-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-        },
-      ];
+    try {
+      if (bom._id) {
+        const updated = await updateBOM(bom._id, payload, token);
+        setBOMs((prev) => prev.map((b) => (b._id === updated._id ? updated : b)));
+      } else {
+        const created = await createBOM(payload, token);
+        setBOMs((prev) => [...prev, created]);
+      }
+      setShowAddModal(false);
+      setEditBOM(null);
+    } catch (err) {
+      setError(err.message || "Failed to save BOM.");
     }
-    setBOMs(updated);
-    saveBOMs(updated);
-    setShowAddModal(false);
-    setEditBOM(null);
   };
 
   // Handler for batch-saving multiple BOMs at once (from "Add All Variants")
-  const handleSaveBatch = (newBOMs) => {
-    const processedBOMs = newBOMs.map((b) => {
-      // Calculate total cost from components using FIFO cost
-      const totalCost = (b.components || []).reduce((sum, c) => {
-        const mat = materials.find((m) => m.id === c.materialId);
-        // Use FIFO cost - simulate consuming from oldest batches first
-        if (!mat || !mat.batches || mat.batches.length === 0) {
-          return sum + (mat?.baseCost || 0) * (c.qty || 1);
-        }
-
-        const activeBatches = mat.batches
-          .filter((b) => (b.remainingQty || 0) > 0)
-          .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
-        if (activeBatches.length === 0) {
-          return sum + (mat?.baseCost || 0) * (c.qty || 1);
-        }
-
-        let remaining = c.qty || 1;
-        let batchCost = 0;
-
-        for (const batch of activeBatches) {
-          if (remaining <= 0) break;
-          const take = Math.min(remaining, batch.remainingQty || 0);
-          batchCost += take * (batch.unitCost || 0);
-          remaining -= take;
-        }
-
-        // If backorder, use average for remaining
-        if (remaining > 0) {
-          const totalQty = activeBatches.reduce(
-            (s, b) => s + (b.remainingQty || 0),
-            0,
-          );
-          const totalValue = activeBatches.reduce(
-            (s, b) => s + (b.remainingQty || 0) * (b.unitCost || 0),
-            0,
-          );
-          const avgCost = totalQty > 0 ? totalValue / totalQty : 0;
-          batchCost += remaining * avgCost;
-        }
-
-        return sum + batchCost;
-      }, 0);
-
-      return {
-        ...b,
-        totalCost,
-        id: `bom-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        createdAt: new Date().toISOString(),
-      };
-    });
-
-    const updated = [...boms, ...processedBOMs];
-    setBOMs(updated);
-    saveBOMs(updated);
+  const handleSaveBatch = async (newBOMs) => {
+    for (const bom of newBOMs) {
+      await handleSave(bom);
+    }
     setShowAddModal(false);
     setEditBOM(null);
   };
@@ -6922,6 +6872,9 @@ function BOMTab() {
       <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
     </svg>
   );
+
+  if (loading) return <div style={{ padding: "2rem", color: "var(--text-muted)", textAlign: "center" }}>Loading BOMs...</div>;
+  if (error) return <div style={{ padding: "2rem", color: "var(--danger)", textAlign: "center" }}>{error}</div>;
 
   return (
     <div>
@@ -6986,7 +6939,7 @@ function BOMTab() {
         onDuplicate={(b) => {
           setEditBOM({
             ...b,
-            id: undefined,
+            _id: undefined,
             productName: `${b.productName} (Copy)`,
             sku: "",
             createdAt: new Date().toISOString(),

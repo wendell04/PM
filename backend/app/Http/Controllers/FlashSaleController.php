@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\FlashSale;
+use App\Models\Inventory;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -42,6 +43,17 @@ class FlashSaleController extends Controller
                 $sale->discountedPrice = null;
             }
 
+            // Attach live inventory stock for admin display
+            $sale->currentStock    = null;
+            $sale->isOnDemand      = false;
+            if ($product && $product->inventoryId) {
+                $inventory = Inventory::find($product->inventoryId);
+                if ($inventory) {
+                    $sale->currentStock = $inventory->isOnDemand ? null : (int) ($inventory->stockQty ?? 0);
+                    $sale->isOnDemand   = (bool) $inventory->isOnDemand;
+                }
+            }
+
             return $sale;
         });
 
@@ -67,6 +79,7 @@ class FlashSaleController extends Controller
             'startDate'     => 'required|date',
             'endDate'       => 'required|date|after:startDate',
             'isActive'      => 'boolean',
+            'stockLimit'    => 'nullable|integer|min:1',
         ])->validate();
 
         // Extra validation: product exists
@@ -89,6 +102,27 @@ class FlashSaleController extends Controller
             return response()->json([
                 'message' => 'Fixed discount must be less than the product price.',
             ], 422);
+        }
+
+        // Inventory stock check (skip for on-demand products)
+        if ($product->inventoryId) {
+            $inventory = Inventory::find($product->inventoryId);
+            if ($inventory && !$inventory->isOnDemand) {
+                $stockQty   = (int) ($inventory->stockQty ?? 0);
+                $stockLimit = isset($validated['stockLimit']) ? (int) $validated['stockLimit'] : null;
+
+                if ($stockQty <= 0) {
+                    return response()->json([
+                        'message' => 'Cannot create a flash sale for a product with zero stock.',
+                    ], 422);
+                }
+
+                if ($stockLimit !== null && $stockLimit > $stockQty) {
+                    return response()->json([
+                        'message' => "Stock limit ({$stockLimit}) exceeds available inventory ({$stockQty}).",
+                    ], 422);
+                }
+            }
         }
 
         // Overlap check
@@ -115,6 +149,8 @@ class FlashSaleController extends Controller
             'startDate'        => $validated['startDate'],
             'endDate'          => $validated['endDate'],
             'isActive'         => $validated['isActive'] ?? true,
+            'stockLimit'       => $validated['stockLimit'] ?? null,
+            'stockUsed'        => 0,
             'createdBy'        => $user?->name ?? $user?->email ?? 'admin',
         ]);
 
@@ -138,6 +174,7 @@ class FlashSaleController extends Controller
             'startDate'     => 'required|date',
             'endDate'       => 'required|date|after:startDate',
             'isActive'      => 'boolean',
+            'stockLimit'    => 'nullable|integer|min:1',
         ])->validate();
 
         // Extra validation: product exists
@@ -160,6 +197,27 @@ class FlashSaleController extends Controller
             return response()->json([
                 'message' => 'Fixed discount must be less than the product price.',
             ], 422);
+        }
+
+        // Inventory stock check (skip for on-demand products)
+        if ($product->inventoryId) {
+            $inventory = Inventory::find($product->inventoryId);
+            if ($inventory && !$inventory->isOnDemand) {
+                $stockQty   = (int) ($inventory->stockQty ?? 0);
+                $stockLimit = isset($validated['stockLimit']) ? (int) $validated['stockLimit'] : null;
+
+                if ($stockQty <= 0) {
+                    return response()->json([
+                        'message' => 'Cannot update a flash sale for a product with zero stock.',
+                    ], 422);
+                }
+
+                if ($stockLimit !== null && $stockLimit > $stockQty) {
+                    return response()->json([
+                        'message' => "Stock limit ({$stockLimit}) exceeds available inventory ({$stockQty}).",
+                    ], 422);
+                }
+            }
         }
 
         // Overlap check (exclude current sale)
@@ -188,6 +246,7 @@ class FlashSaleController extends Controller
             'startDate'        => $validated['startDate'],
             'endDate'          => $validated['endDate'],
             'isActive'         => $validated['isActive'] ?? $sale->isActive,
+            'stockLimit'       => $validated['stockLimit'] ?? null,
         ]);
 
         return response()->json($sale);
@@ -218,7 +277,30 @@ class FlashSaleController extends Controller
             return response()->json(['message' => 'Flash sale not found.'], 404);
         }
 
-        $sale->isActive = !$sale->isActive;
+        // If re-activating, re-validate stock
+        $activating = !$sale->isActive;
+        if ($activating && $sale->productId) {
+            $product = Product::find($sale->productId);
+            if ($product && $product->inventoryId) {
+                $inventory = Inventory::find($product->inventoryId);
+                if ($inventory && !$inventory->isOnDemand) {
+                    $stockQty = (int) ($inventory->stockQty ?? 0);
+                    if ($stockQty <= 0) {
+                        return response()->json([
+                            'message' => 'Cannot re-activate flash sale: product has zero stock.',
+                        ], 422);
+                    }
+                    $stockLimit = $sale->stockLimit ? (int) $sale->stockLimit : null;
+                    if ($stockLimit !== null && $stockLimit > $stockQty) {
+                        return response()->json([
+                            'message' => "Cannot re-activate: stock limit ({$stockLimit}) exceeds available inventory ({$stockQty}).",
+                        ], 422);
+                    }
+                }
+            }
+        }
+
+        $sale->isActive = $activating;
         $sale->save();
 
         return response()->json($sale);

@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import '@/app/shop/shop.css';
+import { applyVoucher } from '@/lib/voucherApi';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -17,7 +18,6 @@ export default function CheckoutPage() {
 
   // Cart payload (loaded from sessionStorage)
   const [items, setItems] = useState([]);
-  const [notes, setNotes] = useState('');
 
   // Address
   const [addresses, setAddresses] = useState([]);
@@ -37,6 +37,12 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [showCancelModal, setShowCancelModal] = useState(false);
 
+  // Voucher
+  const [voucherInput, setVoucherInput]       = useState('');
+  const [appliedVoucher, setAppliedVoucher]   = useState(null); // { code, discountAmount, discountType, discountValue }
+  const [voucherLoading, setVoucherLoading]   = useState(false);
+  const [voucherError, setVoucherError]       = useState(null);
+
   // ── EFFECT: Load cart payload from sessionStorage ──
   useEffect(() => {
     try {
@@ -51,7 +57,6 @@ export default function CheckoutPage() {
         return;
       }
       setItems(payload.items);
-      setNotes(payload.notes ?? '');
       if (payload.designUrl) {
         setDesignPreviewUrl(payload.designUrl);
       }
@@ -106,9 +111,32 @@ export default function CheckoutPage() {
   // ── Computed ──
   const selectedAddress = addresses.find(a => a.id === selectedAddressId) ?? null;
   const DELIVERY_FEE = 80;
-  const subtotal = items.reduce((sum, i) => sum + (i.unitPrice * i.qty), 0);
-  const total = subtotal;
-  const grandTotal = subtotal + DELIVERY_FEE;
+  const subtotal        = items.reduce((sum, i) => sum + (i.unitPrice * i.qty), 0);
+  const hasCustomItem = items.some(i => i.isCustom === true);
+  const voucherDiscount = appliedVoucher ? appliedVoucher.discountAmount : 0;
+  const total           = Math.max(0, subtotal - voucherDiscount);
+  const grandTotal      = total + DELIVERY_FEE;
+
+  async function handleApplyVoucher() {
+    if (!voucherInput.trim()) return;
+    setVoucherLoading(true);
+    setVoucherError(null);
+    setAppliedVoucher(null);
+    try {
+      const data = await applyVoucher(token, voucherInput.trim(), subtotal);
+      setAppliedVoucher(data.data);
+    } catch (err) {
+      setVoucherError(err.message);
+    } finally {
+      setVoucherLoading(false);
+    }
+  }
+
+  function handleRemoveVoucher() {
+    setAppliedVoucher(null);
+    setVoucherInput('');
+    setVoucherError(null);
+  }
 
   function handleDesignFileChange(e) {
     const file = e.target.files?.[0];
@@ -175,14 +203,14 @@ export default function CheckoutPage() {
       let fetchBody;
       let fetchHeaders;
 
-      if (designFile) {
+      if (hasCustomItem && designFile) {
         const formData = new FormData();
         formData.append('design_file', designFile);
         formData.append('design_notes', designNotes);
         formData.append('items', JSON.stringify(orderItems));
-        formData.append('notes', notes);
         formData.append('deliveryAddress', JSON.stringify(deliveryAddress));
         formData.append('paymentMethod', paymentMethod);
+        if (appliedVoucher?.code) formData.append('voucherCode', appliedVoucher.code);
         fetchBody = formData;
         fetchHeaders = {
           Authorization: `Bearer ${token}`,
@@ -190,10 +218,10 @@ export default function CheckoutPage() {
       } else {
         fetchBody = JSON.stringify({
           items: orderItems,
-          notes,
           deliveryAddress,
           design_notes: designNotes || null,
           paymentMethod,
+          ...(appliedVoucher?.code ? { voucherCode: appliedVoucher.code } : {}),
         });
         fetchHeaders = {
           'Content-Type': 'application/json',
@@ -395,8 +423,8 @@ export default function CheckoutPage() {
         ))}
       </div>
 
-      {/* SECTION 3B — Design Upload */}
-      <div className="checkout-card">
+      {/* SECTION 3B – Design Upload (only shown for custom print products) */}
+      {hasCustomItem && <div className="checkout-card">
         <div className="checkout-section-label" style={{ marginBottom: '0.75rem' }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -573,25 +601,7 @@ export default function CheckoutPage() {
             onChange={e => setDesignNotes(e.target.value)}
           />
         </div>
-      </div>
-
-      {/* SECTION 4 — Order Notes */}
-      <div className="checkout-card">
-        <div className="checkout-section-label">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
-          Order Notes
-        </div>
-        <textarea
-          rows={3}
-          className="checkout-notes-input"
-          placeholder="Special instructions, design requests, preferred pickup date..."
-          value={notes}
-          onChange={e => setNotes(e.target.value)}
-        />
-      </div>
+      </div>}
 
       {/* SECTION 5 — Order Summary */}
       <div className="checkout-card checkout-summary-card">
@@ -608,6 +618,75 @@ export default function CheckoutPage() {
           <span>Delivery Fee</span>
           <span>₱{DELIVERY_FEE.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
+
+        {/* Voucher Code */}
+        <div style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
+          {!appliedVoucher ? (
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                type="text"
+                value={voucherInput}
+                onChange={e => setVoucherInput(e.target.value.toUpperCase())}
+                onKeyDown={e => e.key === 'Enter' && handleApplyVoucher()}
+                placeholder="Voucher code"
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  backgroundColor: 'var(--dark)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  color: 'var(--white)',
+                  fontSize: '13px',
+                  outline: 'none',
+                  fontFamily: 'monospace',
+                  letterSpacing: '1px',
+                }}
+              />
+              <button
+                onClick={handleApplyVoucher}
+                disabled={voucherLoading || !voucherInput.trim()}
+                style={{
+                  padding: '8px 14px',
+                  background: 'var(--gold)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#000',
+                  fontWeight: 700,
+                  fontSize: '0.8rem',
+                  cursor: voucherLoading || !voucherInput.trim() ? 'not-allowed' : 'pointer',
+                  opacity: voucherLoading || !voucherInput.trim() ? 0.6 : 1,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {voucherLoading ? '…' : 'Apply'}
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '8px' }}>
+              <div>
+                <span style={{ fontSize: '0.78rem', color: 'var(--gold)', fontWeight: 700, fontFamily: 'monospace' }}>{appliedVoucher.code}</span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--gray)', marginLeft: '0.5rem' }}>
+                  {appliedVoucher.discountType === 'percentage'
+                    ? `${appliedVoucher.discountValue}% off`
+                    : `₱${Number(appliedVoucher.discountValue).toLocaleString()} off`}
+                </span>
+              </div>
+              <button onClick={handleRemoveVoucher} style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>✕</button>
+            </div>
+          )}
+          {voucherError && (
+            <div style={{ marginTop: '0.375rem', fontSize: '0.78rem', color: '#ef4444' }}>{voucherError}</div>
+          )}
+        </div>
+
+        {/* Voucher Discount Line */}
+        {appliedVoucher && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.875rem' }}>
+            <span style={{ color: '#22c55e' }}>Voucher Discount</span>
+            <span style={{ color: '#22c55e', fontWeight: 600 }}>− ₱{Number(voucherDiscount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+          </div>
+        )}
+
         <div className="checkout-summary-total">
           <span>Total</span>
           <span className="checkout-total-amount">₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>

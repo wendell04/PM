@@ -18,6 +18,8 @@ class FlashSale extends Model
         'startDate',
         'endDate',
         'isActive',
+        'stockLimit',
+        'stockUsed',
         'createdBy',
         'createdAt',
         'updatedAt',
@@ -30,10 +32,14 @@ class FlashSale extends Model
         'endDate'       => 'datetime',
         'createdAt'     => 'datetime',
         'updatedAt'     => 'datetime',
+        'stockLimit'    => 'integer',
+        'stockUsed'     => 'integer',
     ];
 
     protected $attributes = [
-        'isActive' => true,
+        'isActive'   => true,
+        'stockLimit' => null,
+        'stockUsed'  => 0,
     ];
 
     // Only isActive = true

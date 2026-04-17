@@ -16,6 +16,10 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use App\Models\ActivityLog;
 use App\Models\Notification;
+use App\Models\Voucher;
+use App\Models\FlashSale;
+use App\Models\BillOfMaterial;
+use App\Models\StockHistory;
 
 class OrderController extends Controller
 {
@@ -68,6 +72,7 @@ class OrderController extends Controller
                 'deliveryAddress.phone'       => 'nullable|string|max:30',
                 'design_file'                 => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:10240',
                 'design_notes'                => 'nullable|string|max:2000',
+                'voucherCode'                 => 'nullable|string|max:50',
             ]);
 
             // Build order items with pricing (no transaction wrapper for MongoDB compatibility)
@@ -122,6 +127,35 @@ class OrderController extends Controller
 
             $paymentMethod = $validated['paymentMethod'] ?? 'cod';
 
+            // ── Voucher discount (server-side validation) ──────────────────
+            $discountAmount  = 0.0;
+            $appliedVoucher  = null;
+
+            if (!empty($validated['voucherCode'])) {
+                $voucherCode = strtoupper(trim($validated['voucherCode']));
+                $voucher     = Voucher::where('code', $voucherCode)->first();
+                $userId      = (string) $user->_id;
+
+                $usedBy      = $voucher?->usedBy ?? [];
+                $alreadyUsed = in_array($userId, $usedBy, true);
+
+                $voucherValid = $voucher
+                    && $voucher->isActive
+                    && (!$voucher->expiresAt || $voucher->expiresAt >= now())
+                    && ($voucher->maxUses === null || $voucher->usedCount < $voucher->maxUses)
+                    && !$alreadyUsed
+                    && ($voucher->minOrderAmount === null || $totalAmount >= $voucher->minOrderAmount);
+
+                if ($voucherValid) {
+                    $discountAmount = $voucher->discountType === 'percentage'
+                        ? round($totalAmount * $voucher->discountValue / 100, 2)
+                        : min((float) $voucher->discountValue, $totalAmount);
+
+                    $totalAmount    = max(0, $totalAmount - $discountAmount);
+                    $appliedVoucher = $voucher;
+                }
+            }
+
             $order = Order::create([
                 'userId'          => (string) $user->_id,
                 'userSnapshot'    => [
@@ -131,6 +165,8 @@ class OrderController extends Controller
                 ],
                 'items'           => $orderItems,
                 'totalAmount'     => $totalAmount,
+                'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
+                'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => 'Pending',
                 'paymentStatus'   => 'unpaid',
                 'paymentMethod'   => $paymentMethod,
@@ -142,6 +178,19 @@ class OrderController extends Controller
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
+
+            // Increment voucher usage count + record userId (non-fatal)
+            if ($appliedVoucher) {
+                try {
+                    $appliedVoucher->increment('usedCount');
+                    $appliedVoucher->push('usedBy', (string) $user->_id, true);
+                } catch (\Exception $e) {
+                    Log::warning('OrderController@store: voucher increment failed', [
+                        'voucherCode' => $appliedVoucher->code,
+                        'error'       => $e->getMessage(),
+                    ]);
+                }
+            }
 
             // Notify owner
             $this->notifyOwner($order);
@@ -257,7 +306,7 @@ class OrderController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $query = Order::orderBy('createdAt', 'desc');
+            $query = Order::with('jobOrder')->orderBy('createdAt', 'desc');
 
             if ($request->filled('orderStatus')) {
                 $query->where('orderStatus', $request->orderStatus);
@@ -315,8 +364,14 @@ class OrderController extends Controller
 
                 // Payment gate — same rule as updateStatus()
                 if ($validated['orderStatus'] === 'In Production') {
-                    $downPayment = $order->downPayment ?? 0;
-                    if ($downPayment <= 0) {
+                    $downPayment    = $order->downPayment ?? 0;
+                    $paymentMethod  = $order->paymentMethod ?? '';
+                    $paymentHistory = $order->paymentHistory ?? [];
+
+                    $hasCodMethod  = $paymentMethod === 'cod';
+                    $hasAnyPayment = $downPayment > 0 || count($paymentHistory) > 0;
+
+                    if (!$hasCodMethod && !$hasAnyPayment) {
                         return response()->json([
                             'error' => 'A downpayment is required before moving this order to production. Please collect at least a partial payment first.',
                         ], 422);
@@ -465,62 +520,118 @@ class OrderController extends Controller
 
             foreach ($order->items as $item) {
                 $product = Product::find($item['productId']);
-                if (!$product || !$product->inventoryId) continue;
+                if (!$product) continue;
 
-                $inventory = Inventory::find($product->inventoryId);
-                if (!$inventory) {
-                    Log::warning('completeOrder: inventory record not found for product', [
-                        'orderId'     => $order->_id,
-                        'productId'   => $item['productId'],
-                        'inventoryId' => $product->inventoryId,
-                    ]);
-                    continue;
+                $inventory = null;
+                if ($product->inventoryId) {
+                    $inventory = Inventory::find($product->inventoryId);
+                    if (!$inventory) {
+                        Log::warning('completeOrder: inventory record not found for product', [
+                            'orderId'     => $order->_id,
+                            'productId'   => $item['productId'],
+                            'inventoryId' => $product->inventoryId,
+                        ]);
+                    }
                 }
 
-                // 1. Create Sale Record
-                // Generate UUID-based Sale ID — collision-free, no DB read required
-                $newSaleId = 'SALE-' . strtoupper(substr(str_replace('-', '',
-                    \Illuminate\Support\Str::uuid()->toString()), 0, 8));
+                if ($inventory) {
+                    // 1. Create Sale Record
+                    // Generate UUID-based Sale ID — collision-free, no DB read required
+                    $newSaleId = 'SALE-' . strtoupper(substr(str_replace('-', '',
+                        \Illuminate\Support\Str::uuid()->toString()), 0, 8));
 
-                $cost = $inventory->averageCost * $item['qty'];
-                $profit = $item['lineTotal'] - $cost;
+                    $cost = $inventory->averageCost * $item['qty'];
+                    $profit = $item['lineTotal'] - $cost;
 
-                $variantName = $item['variantName'] ?? '';
+                    $variantName = $item['variantName'] ?? '';
 
-                Sale::create([
-                    'saleId'          => $newSaleId,
-                    'inventoryId'     => (string) $inventory->_id,
-                    'productName'     => $product->name . ($variantName ? " ({$variantName})" : ""),
-                    'category'        => $product->category,
-                    'quantity'        => $item['qty'],
-                    'unitPrice'       => $item['unitPrice'],
-                    'totalPrice'      => $item['lineTotal'],
-                    'cost'            => $cost,
-                    'profit'          => $profit,
-                    'saleDate'        => now(),
-                    'customerName'    => $order->userSnapshot['name'] ?? 'Online Customer',
-                    'customerEmail'   => $order->userSnapshot['email'] ?? null,
-                    'source'          => 'online',
-                    'status'          => 'completed',
-                    'notes'           => "From Order: " . ($order->orderId ?? $order->_id),
-                    'createdAt'       => now(),
-                ]);
-
-                // 2. Deduct Inventory (only if not Upon Order)
-                if (!$inventory->isOnDemand) {
-                    $inventory->stockQty = max(0, $inventory->stockQty - $item['qty']);
-                    $inventory->save();
-
-                    // Log to StockHistory (optional but recommended)
-                    \App\Models\StockHistory::create([
-                        'inventoryId'  => (string) $inventory->_id,
-                        'quantity'     => $item['qty'],
-                        'remainingQty' => $inventory->stockQty,
-                        'unitCost'     => $inventory->averageCost,
-                        'totalCost'    => $cost,
-                        'reason'       => 'sale',
-                        'createdAt'    => now(),
+                    Sale::create([
+                        'saleId'          => $newSaleId,
+                        'inventoryId'     => (string) $inventory->_id,
+                        'productName'     => $product->name . ($variantName ? " ({$variantName})" : ""),
+                        'category'        => $product->category,
+                        'quantity'        => $item['qty'],
+                        'unitPrice'       => $item['unitPrice'],
+                        'totalPrice'      => $item['lineTotal'],
+                        'cost'            => $cost,
+                        'profit'          => $profit,
+                        'saleDate'        => now(),
+                        'customerName'    => $order->userSnapshot['name'] ?? 'Online Customer',
+                        'customerEmail'   => $order->userSnapshot['email'] ?? null,
+                        'source'          => 'online',
+                        'status'          => 'completed',
+                        'notes'           => "From Order: " . ($order->orderId ?? $order->_id),
+                        'createdAt'       => now(),
                     ]);
+
+                    // 2. Deduct Inventory (only if not Upon Order)
+                    if (!$inventory->isOnDemand) {
+                        $inventory->stockQty = max(0, $inventory->stockQty - $item['qty']);
+                        $inventory->save();
+                        // Log to StockHistory
+                        StockHistory::create([
+                            'inventoryId'  => (string) $inventory->_id,
+                            'quantity'     => $item['qty'],
+                            'remainingQty' => $inventory->stockQty,
+                            'unitCost'     => $inventory->averageCost,
+                            'totalCost'    => $cost,
+                            'reason'       => 'sale',
+                            'createdAt'    => now(),
+                        ]);
+                    }
+                }
+
+                // 3. Increment Flash Sale stockUsed (if item was part of a flash sale)
+                if (!empty($item['flashSaleId'])) {
+                    try {
+                        $flashSale = FlashSale::find($item['flashSaleId']);
+                        if ($flashSale && $flashSale->isActive) {
+                            $flashSale->stockUsed = ($flashSale->stockUsed ?? 0) + $item['qty'];
+                            if ($flashSale->stockLimit !== null &&
+                                $flashSale->stockUsed >= $flashSale->stockLimit) {
+                                $flashSale->isActive = false;
+                            }
+                            $flashSale->save();
+                        }
+                    } catch (\Exception $flashErr) {
+                        Log::warning('completeOrder: failed to update flash sale stockUsed', [
+                            'orderId'     => (string) $order->_id,
+                            'flashSaleId' => $item['flashSaleId'],
+                            'error'       => $flashErr->getMessage(),
+                        ]);
+                    }
+                }
+
+                // 4. Deduct BOM raw materials (if product has a linked BOM)
+                if (!empty($product->bomId)) {
+                    try {
+                        $bom = BillOfMaterial::find($product->bomId);
+                        if ($bom && !empty($bom->components)) {
+                            foreach ($bom->components as $component) {
+                                $rawInventory = Inventory::find($component['inventoryId']);
+                                if (!$rawInventory || $rawInventory->isOnDemand) continue;
+                                $deductQty = $component['qty'] * $item['qty'];
+                                $rawInventory->stockQty = max(0, $rawInventory->stockQty - $deductQty);
+                                $rawInventory->save();
+                                StockHistory::create([
+                                    'inventoryId'  => (string) $rawInventory->_id,
+                                    'quantity'     => $deductQty,
+                                    'remainingQty' => $rawInventory->stockQty,
+                                    'unitCost'     => $rawInventory->averageCost ?? 0,
+                                    'totalCost'    => ($rawInventory->averageCost ?? 0) * $deductQty,
+                                    'reason'       => 'bom_deduction',
+                                    'createdAt'    => now(),
+                                ]);
+                            }
+                        }
+                    } catch (\Exception $bomErr) {
+                        Log::warning('completeOrder: failed to deduct BOM components', [
+                            'orderId'   => (string) $order->_id,
+                            'productId' => $item['productId'],
+                            'bomId'     => (string) $product->bomId,
+                            'error'     => $bomErr->getMessage(),
+                        ]);
+                    }
                 }
             }
         } catch (\Exception $e) {
@@ -634,12 +745,17 @@ class OrderController extends Controller
             }
 
             // Payment gate — downpayment required before entering production
-            // All PersonalizeMe orders are custom/personalized goods.
-            // Per RA 7394 and DTI guidelines, merchants may require downpayment
-            // for bespoke orders since items cannot be resold if cancelled.
+            // COD orders are exempt from this gate if paymentMethod is 'cod'
+            // or if at least one payment has been recorded via paymentHistory.
             if ($newStatus === 'In Production') {
-                $downPayment = $order->downPayment ?? 0;
-                if ($downPayment <= 0) {
+                $downPayment    = $order->downPayment ?? 0;
+                $paymentMethod  = $order->paymentMethod ?? '';
+                $paymentHistory = $order->paymentHistory ?? [];
+
+                $hasCodMethod    = $paymentMethod === 'cod';
+                $hasAnyPayment   = $downPayment > 0 || count($paymentHistory) > 0;
+
+                if (!$hasCodMethod && !$hasAnyPayment) {
                     return response()->json([
                         'error' => 'A downpayment is required before moving this order to production. Please collect at least a partial payment first.',
                     ], 422);
@@ -767,6 +883,9 @@ class OrderController extends Controller
      */
     private function restoreInventoryOnReturn(Order $order): void
     {
+        // Raw materials consumed during printing are physically gone.
+        // We do NOT restore stockQty — that would corrupt inventory data.
+        // We only log the return event to StockHistory for audit purposes.
         try {
             foreach ($order->items as $item) {
                 $product = Product::find($item['productId']);
@@ -775,16 +894,15 @@ class OrderController extends Controller
                 $inventory = Inventory::find($product->inventoryId);
                 if (!$inventory || $inventory->isOnDemand) continue;
 
-                $inventory->stockQty = $inventory->stockQty + $item['qty'];
-                $inventory->save();
-
-                \App\Models\StockHistory::create([
+                StockHistory::create([
                     'inventoryId'  => (string) $inventory->_id,
                     'quantity'     => $item['qty'],
-                    'remainingQty' => $inventory->stockQty,
-                    'unitCost'     => $inventory->averageCost,
-                    'totalCost'    => $inventory->averageCost * $item['qty'],
-                    'reason'       => 'return',
+                    'remainingQty' => $inventory->stockQty ?? 0,
+                    'unitCost'     => $inventory->averageCost ?? 0,
+                    'totalCost'    => ($inventory->averageCost ?? 0) * $item['qty'],
+                    'reason'       => 'customer_return',
+                    'type'         => 'adjustment',
+                    'performedBy'  => 'system',
                     'createdAt'    => now(),
                 ]);
             }
@@ -869,6 +987,70 @@ class OrderController extends Controller
             ));
         } catch (\Exception $e) {
             Log::error('OrderController@notifyOwner: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/record-payment
+     * Records a cash payment against an order (COD or partial payment).
+     * Appends to paymentHistory[], recalculates downPayment and balance.
+     */
+    public function recordPayment(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+                return $this->unauthorizedResponse();
+            }
+
+            $order = Order::find($id);
+            if (!$order) {
+                return $this->notFoundResponse('Order');
+            }
+
+            if (in_array($order->orderStatus, ['Delivered', 'Cancelled', 'Returned'])) {
+                return response()->json([
+                    'error' => "Cannot record payment for an order with status: {$order->orderStatus}.",
+                ], 422);
+            }
+
+            $validated = $request->validate([
+                'amount'     => 'required|numeric|min:0.01',
+                'method'     => 'required|string|in:cash,gcash,bank_transfer,cod',
+                'note'       => 'nullable|string|max:500',
+            ]);
+
+            $recordedBy = trim("{$user->firstName} {$user->lastName}");
+
+            $newEntry = [
+                'amount'      => (float) $validated['amount'],
+                'method'      => $validated['method'],
+                'note'        => $validated['note'] ?? null,
+                'recordedBy'  => $recordedBy,
+                'recordedAt'  => now()->toISOString(),
+            ];
+
+            // Append to paymentHistory
+            $history   = $order->paymentHistory ?? [];
+            $history[] = $newEntry;
+
+            // Recalculate downPayment as sum of all recorded payments
+            $totalPaid = collect($history)->sum('amount');
+            $balance   = max(0, (float) ($order->totalAmount ?? 0) - $totalPaid);
+
+            $order->paymentHistory = $history;
+            $order->downPayment    = $totalPaid;
+            $order->balance        = $balance;
+            $order->paymentStatus  = $balance <= 0 ? 'paid' : 'partial';
+            $order->updatedAt      = now();
+            $order->save();
+
+            return $this->successResponse('Payment recorded successfully.', $order);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to record payment.');
         }
     }
 

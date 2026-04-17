@@ -26,6 +26,9 @@ class Sale extends Model
         'source',
         'status',
         'notes',
+        'orderRequestId',
+        'jobOrderId',
+        'bomSnapshot',
         'createdAt',
     ];
 
@@ -36,7 +39,8 @@ class Sale extends Model
         'cost'       => 'float',
         'profit'     => 'float',
         'saleDate'   => 'datetime',
-        'createdAt'  => 'datetime',
+        'createdAt'   => 'datetime',
+        'bomSnapshot' => 'array',
     ];
 
     protected $attributes = [
