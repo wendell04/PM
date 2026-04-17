@@ -1,302 +1,512 @@
 "use client";
 
+// StockOut / Goods Issue History Tab
+// This file is kept for reference but is no longer rendered in the UI.
+// Safe to delete once the new Movement History tab is fully validated.
+
+import CustomDropdown from "@/app/components/CustomDropdown";
 import { useMemo, useState } from "react";
 
-const REASON_LABELS = {
-  sale: { label: "Sale", color: "#22c55e" },
-  damaged: { label: "Damaged", color: "#ef4444" },
-  writeoff: { label: "Write-Off", color: "#f59e0b" },
-  missing: { label: "Missing", color: "#f59e0b" },
-  production: { label: "Production Use", color: "#8b5cf6" },
-  lost: { label: "Lost/Missing", color: "#f59e0b" },
-  return: { label: "Return to Vendor", color: "#3b82f6" },
+// ── Shared Styles ──────────────────────────────────────────────────────────────
+const thStyle = {
+  padding: "0.875rem 1rem",
+  textAlign: "left",
+  color: "var(--gray)",
+  fontWeight: 700,
+  fontSize: "0.65rem",
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
 };
 
-const FILTER_OPTIONS = [
-  { value: "all", label: "All Reasons" },
-  { value: "sale", label: "Sale" },
-  { value: "damaged", label: "Damaged" },
-  { value: "writeoff", label: "Write-Off" },
-  { value: "missing", label: "Missing" },
-  { value: "production", label: "Production Use" },
-  { value: "lost", label: "Lost/Missing" },
-  { value: "return", label: "Return to Vendor" },
-];
-
-function formatDate(val) {
-  if (!val) return "—";
-  const d = new Date(val);
-  return isNaN(d)
-    ? "—"
-    : d.toLocaleDateString("en-PH", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-}
-
-function getItemName(record, materials) {
-  if (!materials || !record) return record?.inventoryId || "—";
-  const found = materials.find((m) => (m._id || m.id) === record.inventoryId);
-  return found?.name || record?.inventoryId || "—";
-}
-
-export default function StockOutHistoryTab({ stockOuts, materials }) {
-  const [reasonFilter, setReasonFilter] = useState("all");
-  const [search, setSearch] = useState("");
-
-  const filtered = useMemo(() => {
-    if (!stockOuts) return [];
-    return stockOuts.filter((r) => {
-      const matchReason = reasonFilter === "all" || r.reason === reasonFilter;
-      const name = getItemName(r, materials).toLowerCase();
-      const matchSearch =
-        !search.trim() || name.includes(search.trim().toLowerCase());
-      return matchReason && matchSearch;
-    });
-  }, [stockOuts, reasonFilter, search, materials]);
-
-  const totalUnits = useMemo(
-    () => filtered.reduce((s, r) => s + (r.quantity || 0), 0),
-    [filtered],
-  );
-  const totalCost = useMemo(
-    () =>
-      filtered.reduce(
-        (s, r) =>
-          s + (r.totalCostValue || (r.quantity || 0) * (r.unitCost || 0)),
-        0,
-      ),
-    [filtered],
-  );
-
-  const inputStyle = {
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.1)",
-    borderRadius: "8px",
-    color: "#E5E2E1",
-    padding: "0.5rem 0.75rem",
-    fontSize: "0.82rem",
-    outline: "none",
+function IssueTypeBadge({ type }) {
+  const ISSUE_TYPES = {
+    manual_sale: {
+      label: "Sale",
+      color: "#22c55e",
+      bg: "rgba(34,197,94,0.1)",
+      border: "rgba(34,197,94,0.2)",
+    },
+    damage: {
+      label: "Damage",
+      color: "#ef4444",
+      bg: "rgba(239,68,68,0.1)",
+      border: "rgba(239,68,68,0.2)",
+    },
+    scrap: {
+      label: "Scrap",
+      color: "#f97316",
+      bg: "rgba(249,115,22,0.1)",
+      border: "rgba(249,115,22,0.2)",
+    },
+    production: {
+      label: "Production Use",
+      color: "#8b5cf6",
+      bg: "rgba(139,92,246,0.1)",
+      border: "rgba(139,92,246,0.2)",
+    },
+    lost: {
+      label: "Lost/Missing",
+      color: "#f59e0b",
+      bg: "rgba(245,158,11,0.1)",
+      border: "rgba(245,158,11,0.2)",
+    },
+    adjustment: {
+      label: "Adjustment",
+      color: "#9ca3af",
+      bg: "rgba(156,163,175,0.1)",
+      border: "rgba(156,163,175,0.2)",
+    },
   };
+  const cfg = ISSUE_TYPES[type] || ISSUE_TYPES.adjustment;
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.3rem",
+        padding: "0.2rem 0.6rem",
+        borderRadius: "6px",
+        fontSize: "0.65rem",
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+        background: cfg.bg,
+        color: cfg.color,
+        border: `1px solid ${cfg.border}`,
+      }}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STOCK-OUT HISTORY TAB — Flat table, no over-engineered nesting
+// ══════════════════════════════════════════════════════════════════════════════
+export default function StockOutHistoryTab({ stockOuts, materials }) {
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState("all");
+  const [customDateFrom, setCustomDateFrom] = useState("");
+  const [customDateTo, setCustomDateTo] = useState("");
+
+  // Calculate date range based on filter
+  const dateRange = useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (dateFilter === "today") return { start: today, end: now };
+    if (dateFilter === "week") {
+      const d = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return { start: d, end: now };
+    }
+    if (dateFilter === "month") {
+      const d = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return { start: d, end: now };
+    }
+    if (dateFilter === "year") {
+      const d = new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000);
+      return { start: d, end: now };
+    }
+    if (dateFilter === "custom" && customDateFrom && customDateTo) {
+      const from = new Date(customDateFrom);
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(customDateTo);
+      to.setHours(23, 59, 59, 999);
+      return { start: from, end: to };
+    }
+    return { start: null, end: null };
+  }, [dateFilter, customDateFrom, customDateTo]);
+
+  // Filter & sort flat list
+  const filtered = useMemo(() => {
+    return stockOuts
+      .filter((so) => {
+        const matchSearch =
+          !search ||
+          (so.materialName || "")
+            .toLowerCase()
+            .includes(search.toLowerCase()) ||
+          (so.sku || "").toLowerCase().includes(search.toLowerCase()) ||
+          (so.performedBy || "").toLowerCase().includes(search.toLowerCase());
+        const matchType = !typeFilter || so.issueType === typeFilter;
+        const matchDate =
+          !dateRange.start ||
+          (new Date(so.dateIssued || so.createdAt) >= dateRange.start &&
+            new Date(so.dateIssued || so.createdAt) <= dateRange.end);
+        return matchSearch && matchType && matchDate;
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.dateIssued || b.createdAt) -
+          new Date(a.dateIssued || a.createdAt),
+      );
+  }, [stockOuts, search, typeFilter, dateRange]);
+
+  // Summary stats
+  const summaryStats = useMemo(
+    () => ({
+      totalRecords: filtered.length,
+      totalQty: filtered.reduce((s, so) => s + Math.abs(so.quantity || 0), 0),
+      // Sales are revenue, not loss — only count actual losses (damage, scrap, lost, adjustment)
+      totalLoss: filtered
+        .filter(
+          (so) => so.issueType !== "manual_sale" && so.issueType !== "sale",
+        )
+        .reduce((s, so) => s + (so.totalLoss || 0), 0),
+    }),
+    [filtered],
+  );
 
   return (
-    <div style={{ padding: "1rem 0" }}>
-      {/* Toolbar */}
+    <div>
+      {/* ── Summary Cards ── */}
+      <div className="inventory-summary" style={{ marginBottom: "1.5rem" }}>
+        <div
+          className="summary-card"
+          style={{
+            background: "rgba(255,255,255,0.05)",
+            borderColor: "rgba(255,255,255,0.15)",
+          }}
+        >
+          <div className="summary-content">
+            <span className="summary-value" style={{ color: "#E5E2E1" }}>
+              {summaryStats.totalRecords}
+            </span>
+            <span className="summary-label">Total Records</span>
+          </div>
+        </div>
+        <div className="summary-card summary-card-danger">
+          <div className="summary-content">
+            <span className="summary-value">{summaryStats.totalQty} pcs</span>
+            <span className="summary-label">Total Qty Deducted</span>
+          </div>
+        </div>
+        <div
+          className="summary-card"
+          style={{
+            background: "rgba(34,197,94,0.08)",
+            borderColor: "rgba(34,197,94,0.3)",
+          }}
+        >
+          <div className="summary-content">
+            <span className="summary-value" style={{ color: "#22c55e" }}>
+              ₱
+              {filtered
+                .filter(
+                  (so) =>
+                    so.issueType === "manual_sale" || so.issueType === "sale",
+                )
+                .reduce((s, so) => s + (so.totalLoss || 0), 0)
+                .toLocaleString("en-PH", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+            </span>
+            <span className="summary-label">Total Revenue (Sales)</span>
+          </div>
+        </div>
+        <div
+          className="summary-card"
+          style={{
+            background: "rgba(212,168,67,0.08)",
+            borderColor: "rgba(212,168,67,0.3)",
+          }}
+        >
+          <div className="summary-content">
+            <span className="summary-value" style={{ color: "#D4A843" }}>
+              ₱
+              {summaryStats.totalLoss.toLocaleString("en-PH", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </span>
+            <span className="summary-label">Total Loss Value</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Toolbar ── */}
       <div
         style={{
           display: "flex",
           gap: "0.75rem",
           marginBottom: "1rem",
+          alignItems: "center",
           flexWrap: "wrap",
         }}
       >
-        <input
-          type="text"
-          placeholder="Search item name…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ ...inputStyle, flex: "1 1 180px", minWidth: 140 }}
-        />
-        <select
-          value={reasonFilter}
-          onChange={(e) => setReasonFilter(e.target.value)}
-          style={{ ...inputStyle, flex: "0 0 auto" }}
-        >
-          {FILTER_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Summary row */}
-      {filtered.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            gap: "1.5rem",
-            marginBottom: "1rem",
-            padding: "0.625rem 0.875rem",
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid rgba(255,255,255,0.06)",
-            borderRadius: "8px",
-            fontSize: "0.82rem",
-          }}
-        >
-          <span style={{ color: "var(--gray)" }}>
-            Records: <strong style={{ color: "#E5E2E1" }}>{filtered.length}</strong>
-          </span>
-          <span style={{ color: "var(--gray)" }}>
-            Total Units Out:{" "}
-            <strong style={{ color: "#ef4444" }}>{totalUnits}</strong>
-          </span>
-          <span style={{ color: "var(--gray)" }}>
-            Est. Cost:{" "}
-            <strong style={{ color: "#D4A843", fontFamily: "monospace" }}>
-              ₱{totalCost.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-            </strong>
-          </span>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {filtered.length === 0 && (
-        <div
-          style={{
-            padding: "2rem",
-            textAlign: "center",
-            color: "var(--gray)",
-            fontSize: "0.875rem",
-          }}
-        >
-          {stockOuts?.length === 0
-            ? "No stock-out history found."
-            : "No records match the current filter."}
-        </div>
-      )}
-
-      {/* Table */}
-      {filtered.length > 0 && (
-        <div
-          style={{
-            border: "1px solid rgba(255,255,255,0.07)",
-            borderRadius: "10px",
-            overflow: "hidden",
-          }}
-        >
-          {/* Header */}
-          <div
+        <div style={{ position: "relative", flex: 1, minWidth: "200px" }}>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search records..."
             style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 100px 80px 80px 90px 110px",
-              padding: "0.5rem 0.75rem",
-              background: "rgba(255,255,255,0.03)",
-              borderBottom: "1px solid rgba(255,255,255,0.06)",
-              fontSize: "0.7rem",
+              width: "100%",
+              padding: "0.6rem 1rem 0.6rem 2.5rem",
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid var(--border)",
+              borderRadius: "8px",
+              color: "#E5E2E1",
+              outline: "none",
+            }}
+          />
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            style={{
+              position: "absolute",
+              left: "0.75rem",
+              top: "50%",
+              transform: "translateY(-50%)",
               color: "var(--gray)",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
+              pointerEvents: "none",
             }}
           >
-            <span>Item</span>
-            <span style={{ textAlign: "center" }}>Reason</span>
-            <span style={{ textAlign: "center" }}>Qty Out</span>
-            <span style={{ textAlign: "center" }}>Unit Cost</span>
-            <span style={{ textAlign: "center" }}>Total Cost</span>
-            <span style={{ textAlign: "center" }}>Date</span>
-          </div>
-          {/* Rows */}
-          <div style={{ maxHeight: 420, overflowY: "auto" }}>
-            {filtered.map((r, idx) => {
-              const meta = REASON_LABELS[r.reason] || {
-                label: r.reason || "—",
-                color: "var(--gray)",
-              };
-              const unitCost =
-                r.unitCost ||
-                (r.quantity > 0 ? (r.totalCostValue || 0) / r.quantity : 0);
-              const totalCostVal = r.totalCostValue || (r.quantity || 0) * unitCost;
-              return (
-                <div
-                  key={r._id || idx}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 100px 80px 80px 90px 110px",
-                    padding: "0.625rem 0.75rem",
-                    borderBottom:
-                      idx < filtered.length - 1
-                        ? "1px solid rgba(255,255,255,0.04)"
-                        : "none",
-                    alignItems: "center",
-                  }}
-                >
-                  <div>
-                    <div
-                      style={{
-                        fontSize: "0.82rem",
-                        fontWeight: 600,
-                        color: "#E5E2E1",
-                      }}
-                    >
-                      {getItemName(r, materials)}
-                    </div>
-                    {r.customerName && (
-                      <div style={{ fontSize: "0.68rem", color: "var(--gray)" }}>
-                        Customer: {r.customerName}
-                      </div>
-                    )}
-                    {r.performedBy && (
-                      <div style={{ fontSize: "0.68rem", color: "var(--gray)" }}>
-                        By: {r.performedBy}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ textAlign: "center" }}>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        padding: "0.2rem 0.5rem",
-                        borderRadius: "999px",
-                        fontSize: "0.68rem",
-                        fontWeight: 700,
-                        color: meta.color,
-                        background: meta.color + "1a",
-                      }}
-                    >
-                      {meta.label}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      textAlign: "center",
-                      fontSize: "0.82rem",
-                      fontWeight: 700,
-                      color: "#ef4444",
-                    }}
-                  >
-                    {r.quantity || 0}
-                  </div>
-                  <div
-                    style={{
-                      textAlign: "center",
-                      fontSize: "0.78rem",
-                      color: "var(--gray)",
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    ₱{unitCost.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                  </div>
-                  <div
-                    style={{
-                      textAlign: "center",
-                      fontSize: "0.78rem",
-                      color: "#D4A843",
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    ₱
-                    {totalCostVal.toLocaleString("en-PH", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </div>
-                  <div
-                    style={{
-                      textAlign: "center",
-                      fontSize: "0.75rem",
-                      color: "var(--gray)",
-                    }}
-                  >
-                    {formatDate(r.createdAt || r.date || r.saleDate)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
         </div>
-      )}
+        <CustomDropdown
+          value={typeFilter}
+          onChange={setTypeFilter}
+          options={[
+            { value: "", label: "All Types" },
+            { value: "manual_sale", label: "Sale" },
+            { value: "damage", label: "Damage" },
+            { value: "scrap", label: "Scrap" },
+            { value: "lost", label: "Lost/Missing" },
+            { value: "adjustment", label: "Adjustment" },
+          ]}
+          placeholder="All Types"
+          style={{ minWidth: "140px" }}
+        />
+        <CustomDropdown
+          value={dateFilter}
+          onChange={setDateFilter}
+          options={[
+            { value: "all", label: "All Time" },
+            { value: "today", label: "Today" },
+            { value: "week", label: "This Week" },
+            { value: "month", label: "This Month" },
+            { value: "year", label: "This Year" },
+            { value: "custom", label: "Custom Range" },
+          ]}
+          placeholder="All Time"
+          style={{ minWidth: "140px" }}
+        />
+        {dateFilter === "custom" && (
+          <>
+            <input
+              type="date"
+              value={customDateFrom}
+              onChange={(e) => setCustomDateFrom(e.target.value)}
+              style={{
+                padding: "0.6rem 0.75rem",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+                color: "#E5E2E1",
+                outline: "none",
+              }}
+            />
+            <input
+              type="date"
+              value={customDateTo}
+              onChange={(e) => setCustomDateTo(e.target.value)}
+              style={{
+                padding: "0.6rem 0.75rem",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+                color: "#E5E2E1",
+                outline: "none",
+              }}
+            />
+          </>
+        )}
+      </div>
+
+      {/* ── Flat Table ── */}
+      <div
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: "12px",
+          overflow: "hidden",
+          background: "var(--dark)",
+        }}
+      >
+        {filtered.length === 0 ? (
+          <div
+            style={{
+              padding: "3rem",
+              textAlign: "center",
+              color: "var(--gray)",
+            }}
+          >
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              style={{ margin: "0 auto 1rem", opacity: 0.5 }}
+            >
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+            </svg>
+            <h3
+              style={{
+                margin: "0 0 0.5rem",
+                color: "var(--white)",
+                fontSize: "1rem",
+              }}
+            >
+              No Stock-Out Records
+            </h3>
+            <p style={{ margin: 0, fontSize: "0.85rem" }}>
+              Issued items will appear here chronologically.
+            </p>
+          </div>
+        ) : (
+          <div
+            style={{ overflowX: "auto", maxHeight: "60vh", overflowY: "auto" }}
+          >
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "0.82rem",
+              }}
+            >
+              <thead
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                  background: "rgba(0,0,0,0.5)",
+                }}
+              >
+                <tr style={{ borderBottom: "2px solid var(--border)" }}>
+                  <th style={thStyle}>Date</th>
+                  <th style={thStyle}>Material</th>
+                  <th style={{ ...thStyle, textAlign: "center" }}>Type</th>
+                  <th style={{ ...thStyle, textAlign: "center" }}>Qty</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Loss</th>
+                  <th style={thStyle}>Performed By</th>
+                  <th style={thStyle}>Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((so, idx) => (
+                  <tr
+                    key={so.id || idx}
+                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        "rgba(255,255,255,0.02)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
+                  >
+                    <td
+                      style={{
+                        padding: "0.75rem 1rem",
+                        color: "var(--gray)",
+                        fontSize: "0.78rem",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {new Date(
+                        so.dateIssued || so.createdAt,
+                      ).toLocaleDateString("en-PH")}
+                    </td>
+                    <td style={{ padding: "0.75rem 1rem" }}>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          color: "#E5E2E1",
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        {so.materialName}
+                      </div>
+                      {so.sku && (
+                        <div
+                          style={{
+                            fontSize: "0.65rem",
+                            color: "var(--gray)",
+                            fontFamily: "monospace",
+                            marginTop: "0.1rem",
+                          }}
+                        >
+                          {so.sku}
+                        </div>
+                      )}
+                    </td>
+                    <td
+                      style={{ padding: "0.75rem 1rem", textAlign: "center" }}
+                    >
+                      <IssueTypeBadge type={so.issueType} />
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.75rem 1rem",
+                        textAlign: "center",
+                        fontWeight: 700,
+                        color: "#ef4444",
+                      }}
+                    >
+                      -{Math.abs(so.quantity || 0)} {so.uom || "pcs"}
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.75rem 1rem",
+                        textAlign: "right",
+                        fontWeight: 700,
+                        color: "#ef4444",
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      ₱
+                      {(so.totalLoss || 0).toLocaleString("en-PH", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.75rem 1rem",
+                        color: "#E5E2E1",
+                        fontSize: "0.82rem",
+                      }}
+                    >
+                      {so.performedBy || "—"}
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.75rem 1rem",
+                        color: "var(--gray)",
+                        fontSize: "0.75rem",
+                        maxWidth: "200px",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {so.notes || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

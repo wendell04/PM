@@ -484,7 +484,13 @@ function StockOverviewTab({ materials, onIssueStock }) {
 
   const totalValue = materials
     .filter((m) => !m.parentId && m.procurementType !== "on-demand")
-    .reduce((sum, m) => sum + getStock(m) * (m.baseCost || m.averageCost || 0), 0);
+    .reduce((sum, m) => {
+      if (m.hasVariants) {
+        const children = materials.filter((c) => c.parentId === m._id);
+        return sum + children.reduce((cs, c) => cs + getStock(c) * (c.baseCost || c.averageCost || 0), 0);
+      }
+      return sum + getStock(m) * (m.baseCost || m.averageCost || 0);
+    }, 0);
 
   return (
     <div>

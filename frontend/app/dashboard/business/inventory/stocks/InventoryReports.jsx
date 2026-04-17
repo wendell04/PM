@@ -1,297 +1,422 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 
-const REASON_LABELS = {
-  sale: "Sale",
-  damaged: "Damaged",
-  writeoff: "Write-Off",
-  missing: "Missing",
-  production: "Production Use",
-  lost: "Lost/Missing",
-  return: "Return to Vendor",
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared Styles — design system compliant (CSS vars only)
+// ─────────────────────────────────────────────────────────────────────────────
+const thStyle = {
+  padding: "0.5rem 0.75rem",
+  textAlign: "left",
+  color: "var(--gray)",
+  fontWeight: 700,
+  fontSize: "0.65rem",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  borderBottom: "2px solid var(--border)",
 };
 
-function formatDate(val) {
-  if (!val) return "—";
-  const d = new Date(val);
-  return isNaN(d)
-    ? "—"
-    : d.toLocaleDateString("en-PH", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-}
+const selectStyle = {
+  padding: "0.6rem 0.75rem",
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid var(--border)",
+  borderRadius: "8px",
+  color: "#E5E2E1",
+  outline: "none",
+  fontSize: "0.85rem",
+  cursor: "pointer",
+  appearance: "auto",
+};
 
-function SummaryCard({ label, value, sub, color }) {
-  return (
-    <div
-      style={{
-        background: "rgba(255,255,255,0.03)",
-        border: "1px solid rgba(255,255,255,0.07)",
-        borderRadius: "10px",
-        padding: "1rem 1.25rem",
-        flex: "1 1 160px",
-      }}
-    >
-      <div
-        style={{
-          fontSize: "0.72rem",
-          color: "var(--gray)",
-          fontWeight: 600,
-          textTransform: "uppercase",
-          letterSpacing: "0.05em",
-          marginBottom: "0.375rem",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: "1.25rem",
-          fontWeight: 700,
-          color: color || "#E5E2E1",
-          fontFamily: "monospace",
-        }}
-      >
-        {value}
-      </div>
-      {sub && (
-        <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.25rem" }}>
-          {sub}
-        </div>
-      )}
-    </div>
-  );
-}
-
+// ─────────────────────────────────────────────────────────────────────────────
+// INVENTORY REPORTS — Printable Letter Size
+// Reports: Damage Report, Stock-Out Report, Stock Summary
+// ─────────────────────────────────────────────────────────────────────────────
 export default function InventoryReports({ materials, stockOuts }) {
-  const [reasonFilter, setReasonFilter] = useState("all");
+  const [reportType, setReportType] = useState("damage");
+  const [dateFilter, setDateFilter] = useState("all");
+  const [customDateFrom, setCustomDateFrom] = useState("");
+  const [customDateTo, setCustomDateTo] = useState("");
 
-  const safeOuts = useMemo(() => stockOuts || [], [stockOuts]);
-  const safeMats = useMemo(() => materials || [], [materials]);
+  const printRef = useRef(null);
 
-  const filtered = useMemo(
-    () =>
-      reasonFilter === "all"
-        ? safeOuts
-        : safeOuts.filter((r) => r.reason === reasonFilter),
-    [safeOuts, reasonFilter],
-  );
+  const dateRange = useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (dateFilter === "today") return { start: today, end: now };
+    if (dateFilter === "week") return { start: new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000), end: now };
+    if (dateFilter === "month") return { start: new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000), end: now };
+    if (dateFilter === "year") return { start: new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000), end: now };
+    if (dateFilter === "custom" && customDateFrom && customDateTo) {
+      const from = new Date(customDateFrom);
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(customDateTo);
+      to.setHours(23, 59, 59, 999);
+      return { start: from, end: to };
+    }
+    return { start: null, end: null };
+  }, [dateFilter, customDateFrom, customDateTo]);
 
-  // Summary metrics
-  const totalStockOut = useMemo(
-    () => filtered.reduce((s, r) => s + (r.quantity || 0), 0),
-    [filtered],
-  );
-  const totalCostOut = useMemo(
-    () =>
-      filtered.reduce(
-        (s, r) =>
-          s + (r.totalCostValue || (r.quantity || 0) * (r.unitCost || 0)),
-        0,
-      ),
-    [filtered],
-  );
-  const totalItems = safeMats.filter((m) => !m.hasVariants).length;
-  const lowStockItems = safeMats.filter(
-    (m) =>
-      !m.hasVariants && (m.stockQty || 0) <= (m.minStockLevel || 0),
-  ).length;
-  const zeroStockItems = safeMats.filter(
-    (m) => !m.hasVariants && (m.stockQty || 0) === 0,
-  ).length;
+  const filteredStockOuts = useMemo(() => {
+    return (stockOuts || [])
+      .filter((so) => {
+        const soDate = new Date(so.dateIssued || so.createdAt);
+        return !dateRange.start || (soDate >= dateRange.start && soDate <= dateRange.end);
+      })
+      .sort((a, b) => new Date(b.dateIssued || b.createdAt) - new Date(a.dateIssued || a.createdAt));
+  }, [stockOuts, dateRange]);
 
-  // Per-reason breakdown
-  const byReason = useMemo(() => {
-    const map = {};
-    filtered.forEach((r) => {
-      const key = r.reason || "unknown";
-      if (!map[key]) map[key] = { qty: 0, cost: 0 };
-      map[key].qty += r.quantity || 0;
-      map[key].cost += r.totalCostValue || (r.quantity || 0) * (r.unitCost || 0);
+  const damageReport = useMemo(() => {
+    const damages = filteredStockOuts.filter((so) => so.issueType === "damage" || so.issueType === "scrap");
+    const grouped = {};
+    damages.forEach((so) => {
+      const cat = materials?.find((m) => m._id === so.materialId)?.category || so.category || "Uncategorized";
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(so);
     });
-    return Object.entries(map).sort((a, b) => b[1].qty - a[1].qty);
-  }, [filtered]);
+    const totalQty = damages.reduce((s, so) => s + Math.abs(so.quantity || 0), 0);
+    const totalLoss = damages.reduce((s, so) => s + (so.totalLoss || 0), 0);
+    return { grouped, totalQty, totalLoss, count: damages.length };
+  }, [filteredStockOuts, materials]);
 
-  // Top consumed items
-  const topItems = useMemo(() => {
-    const map = {};
-    filtered.forEach((r) => {
-      const key = r.inventoryId || "unknown";
-      if (!map[key]) map[key] = { inventoryId: key, qty: 0, cost: 0 };
-      map[key].qty += r.quantity || 0;
-      map[key].cost += r.totalCostValue || (r.quantity || 0) * (r.unitCost || 0);
+  const stockOutReport = useMemo(() => {
+    const grouped = {};
+    filteredStockOuts.forEach((so) => {
+      const cat = materials?.find((m) => m._id === so.materialId)?.category || so.category || "Uncategorized";
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(so);
     });
-    return Object.values(map).sort((a, b) => b.qty - a.qty).slice(0, 10);
-  }, [filtered]);
+    const totalQty = filteredStockOuts.reduce((s, so) => s + Math.abs(so.quantity || 0), 0);
+    const totalLoss = filteredStockOuts
+      .filter((so) => so.issueType !== "manual_sale" && so.issueType !== "sale")
+      .reduce((s, so) => s + (so.totalLoss || 0), 0);
+    const totalRevenue = filteredStockOuts
+      .filter((so) => so.issueType === "manual_sale" || so.issueType === "sale")
+      .reduce((s, so) => s + (so.totalLoss || 0), 0);
+    return { grouped, totalQty, totalLoss, totalRevenue, count: filteredStockOuts.length };
+  }, [filteredStockOuts, materials]);
 
-  const inputStyle = {
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.1)",
-    borderRadius: "8px",
-    color: "#E5E2E1",
-    padding: "0.5rem 0.75rem",
-    fontSize: "0.82rem",
-    outline: "none",
+  const stockSummary = useMemo(() => {
+    const items = (materials || [])
+      .filter((m) => {
+        if (m.parentId) return false;
+        if (m.hasVariants) {
+          const children = (materials || []).filter((c) => c.parentId === m._id);
+          return children.some((c) => c.batches?.some((b) => (b.originalQty || b.qtyReceived || b.goodQty || b.qtyGood || 0) > 0));
+        }
+        return m.batches?.some((b) => (b.originalQty || b.qtyReceived || b.goodQty || b.qtyGood || 0) > 0);
+      })
+      .map((m) => {
+        let goodStock, damaged, totalStock, avgCost, goodsValue, damageValue;
+        if (m.hasVariants) {
+          const children = (materials || []).filter((c) => c.parentId === m._id);
+          const allBatches = children.flatMap((child) => child.batches || []);
+          goodStock = allBatches.reduce((s, b) => s + (b.remainingQty || 0), 0);
+          damaged = allBatches.reduce((s, b) => s + (b.damagedQty || 0), 0);
+          totalStock = goodStock + damaged;
+          avgCost = allBatches.length > 0 ? allBatches.reduce((s, b) => s + (b.unitCost || 0), 0) / allBatches.length : m.baseCost || m.averageCost || 0;
+        } else {
+          const batches = m.batches || [];
+          goodStock = batches.reduce((s, b) => s + (b.remainingQty || 0), 0);
+          damaged = batches.reduce((s, b) => s + (b.damagedQty || 0), 0);
+          totalStock = goodStock + damaged;
+          avgCost = batches.length > 0 ? batches.reduce((s, b) => s + (b.unitCost || 0), 0) / batches.length : m.baseCost || m.averageCost || 0;
+        }
+        goodsValue = goodStock * avgCost;
+        damageValue = damaged * avgCost;
+        return { ...m, goodStock, damaged, totalStock, avgCost, goodsValue, damageValue };
+      });
+
+    const totalGood = items.reduce((s, i) => s + i.goodStock, 0);
+    const totalDamaged = items.reduce((s, i) => s + i.damaged, 0);
+    const totalValue = items.reduce((s, i) => s + i.goodsValue, 0);
+    const totalDamageValue = items.reduce((s, i) => s + i.damageValue, 0);
+    return { items, totalGood, totalDamaged, totalValue, totalDamageValue };
+  }, [materials]);
+
+  const handlePrint = () => {
+    const printContent = printRef.current;
+    if (!printContent) return;
+    const printWindow = window.open("", "_blank");
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${reportType === "damage" ? "Damage Report" : reportType === "stockout" ? "Stock-Out Report" : "Stock Summary Report"}</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 1in; color: #111827; background: #fff; }
+            h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+            .subtitle { font-size: 0.85rem; color: #6b7280; margin-bottom: 1.5rem; }
+            table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+            th { padding: 0.5rem 0.75rem; text-align: left; font-weight: 700; font-size: 0.65rem; text-transform: uppercase; border-bottom: 2px solid #e5e7eb; background: #f9fafb; color: #374151; }
+            td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #f3f4f6; color: #111827; }
+            .text-right { text-align: right; }
+            .summary-row { display: flex; gap: 1.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+            .summary-item { padding: 0.75rem 1rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; min-width: 140px; }
+            .summary-label { display: block; font-size: 0.65rem; color: #6b7280; text-transform: uppercase; font-weight: 700; margin-bottom: 0.25rem; }
+            .summary-value { display: block; font-size: 1.1rem; font-weight: 800; font-family: 'Courier New', monospace; }
+            .cat-header { background: #f3f4f6; font-weight: 700; }
+            @media print { body { margin: 0.75in; } }
+          </style>
+        </head>
+        <body>${printContent.innerHTML}</body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
   };
 
-  const labelStyle = {
-    fontSize: "0.72rem",
-    color: "var(--gray)",
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-    marginBottom: "0.5rem",
-    display: "block",
-  };
+  const reportTitle = reportType === "damage" ? "Damage Report" : reportType === "stockout" ? "Stock-Out Report" : "Stock Summary Report";
+  const dateLabel = dateFilter === "all" ? "All Time" : dateFilter === "today" ? "Today" : dateFilter === "week" ? "This Week" : dateFilter === "month" ? "This Month" : dateFilter === "year" ? "This Year" : `${customDateFrom} to ${customDateTo}`;
 
   return (
-    <div style={{ padding: "1rem 0" }}>
-      {/* Filter */}
-      <div
-        style={{
-          display: "flex",
-          gap: "0.75rem",
-          marginBottom: "1.25rem",
-          alignItems: "center",
-        }}
-      >
-        <label style={{ ...labelStyle, marginBottom: 0 }}>Filter by Reason:</label>
-        <select
-          value={reasonFilter}
-          onChange={(e) => setReasonFilter(e.target.value)}
-          style={inputStyle}
-        >
-          <option value="all">All</option>
-          {Object.entries(REASON_LABELS).map(([v, l]) => (
-            <option key={v} value={v}>
-              {l}
-            </option>
-          ))}
+    <div>
+      <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.5rem", alignItems: "center", flexWrap: "wrap" }}>
+        <select value={reportType} onChange={(e) => setReportType(e.target.value)} style={{ ...selectStyle, minWidth: "180px" }}>
+          <option value="damage">Damage Report</option>
+          <option value="stockout">Stock-Out Report</option>
+          <option value="summary">Stock Summary Report</option>
         </select>
+        <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} style={{ ...selectStyle, minWidth: "140px" }}>
+          <option value="all">All Time</option>
+          <option value="today">Today</option>
+          <option value="week">This Week</option>
+          <option value="month">This Month</option>
+          <option value="year">This Year</option>
+          <option value="custom">Custom Range</option>
+        </select>
+        {dateFilter === "custom" && (
+          <>
+            <input type="date" value={customDateFrom} onChange={(e) => setCustomDateFrom(e.target.value)} style={selectStyle} />
+            <input type="date" value={customDateTo} onChange={(e) => setCustomDateTo(e.target.value)} style={selectStyle} />
+          </>
+        )}
+        <button onClick={handlePrint} style={{ padding: "0.6rem 1.25rem", background: "var(--gold)", border: "none", borderRadius: "8px", color: "#000", fontWeight: 700, cursor: "pointer", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M6 9V2h12v7" />
+            <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
+            <rect x="6" y="14" width="12" height="8" />
+          </svg>
+          Print Report
+        </button>
       </div>
 
-      {/* Summary cards */}
-      <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginBottom: "1.5rem" }}>
-        <SummaryCard label="Total Items" value={totalItems} sub="active inventory" />
-        <SummaryCard
-          label="Low Stock"
-          value={lowStockItems}
-          sub="at or below reorder point"
-          color={lowStockItems > 0 ? "#f59e0b" : "#22c55e"}
-        />
-        <SummaryCard
-          label="Zero Stock"
-          value={zeroStockItems}
-          sub="fully depleted"
-          color={zeroStockItems > 0 ? "#ef4444" : "#22c55e"}
-        />
-        <SummaryCard
-          label="Units Issued"
-          value={totalStockOut}
-          sub="filtered period"
-          color="#ef4444"
-        />
-        <SummaryCard
-          label="Cost of Issues"
-          value={`₱${totalCostOut.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`}
-          sub="filtered period"
-          color="#D4A843"
-        />
-      </div>
-
-      {/* Two-column: by reason + top items */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-        {/* By reason */}
-        <div style={{ border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", overflow: "hidden" }}>
-          <div
-            style={{
-              padding: "0.625rem 0.875rem",
-              background: "rgba(255,255,255,0.03)",
-              borderBottom: "1px solid rgba(255,255,255,0.06)",
-              fontSize: "0.72rem",
-              fontWeight: 700,
-              color: "var(--gray)",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-            }}
-          >
-            Issues by Reason
-          </div>
-          {byReason.length === 0 ? (
-            <div style={{ padding: "1.5rem", color: "var(--gray)", fontSize: "0.82rem", textAlign: "center" }}>
-              No data.
-            </div>
-          ) : (
-            byReason.map(([reason, { qty, cost }]) => (
-              <div
-                key={reason}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 60px 1fr",
-                  padding: "0.5rem 0.875rem",
-                  borderBottom: "1px solid rgba(255,255,255,0.04)",
-                  alignItems: "center",
-                  fontSize: "0.82rem",
-                }}
-              >
-                <span style={{ color: "#E5E2E1" }}>{REASON_LABELS[reason] || reason}</span>
-                <span style={{ color: "#ef4444", fontWeight: 700, textAlign: "center" }}>
-                  {qty}
-                </span>
-                <span style={{ color: "#D4A843", fontFamily: "monospace", textAlign: "right", fontSize: "0.75rem" }}>
-                  ₱{cost.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-            ))
-          )}
+      <div ref={printRef} style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", background: "var(--dark)" }}>
+        <div style={{ padding: "1.5rem 2rem", borderBottom: "1px solid var(--border)" }}>
+          <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#E5E2E1" }}>{reportTitle}</h2>
+          <p style={{ margin: "0.25rem 0 0 0", fontSize: "0.8rem", color: "var(--gray)" }}>
+            Date Range: {dateLabel} | Generated: {new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+          </p>
         </div>
 
-        {/* Top consumed items */}
-        <div style={{ border: "1px solid rgba(255,255,255,0.07)", borderRadius: "10px", overflow: "hidden" }}>
-          <div
-            style={{
-              padding: "0.625rem 0.875rem",
-              background: "rgba(255,255,255,0.03)",
-              borderBottom: "1px solid rgba(255,255,255,0.06)",
-              fontSize: "0.72rem",
-              fontWeight: 700,
-              color: "var(--gray)",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-            }}
-          >
-            Top 10 Consumed Items
-          </div>
-          {topItems.length === 0 ? (
-            <div style={{ padding: "1.5rem", color: "var(--gray)", fontSize: "0.82rem", textAlign: "center" }}>
-              No data.
-            </div>
-          ) : (
-            topItems.map((entry, idx) => {
-              const mat = safeMats.find((m) => (m._id || m.id) === entry.inventoryId);
-              return (
-                <div
-                  key={entry.inventoryId}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "24px 1fr 50px",
-                    padding: "0.5rem 0.875rem",
-                    borderBottom: "1px solid rgba(255,255,255,0.04)",
-                    alignItems: "center",
-                    fontSize: "0.82rem",
-                  }}
-                >
-                  <span style={{ color: "var(--gray)", fontSize: "0.72rem" }}>#{idx + 1}</span>
-                  <span style={{ color: "#E5E2E1" }}>{mat?.name || entry.inventoryId}</span>
-                  <span style={{ color: "#ef4444", fontWeight: 700, textAlign: "right" }}>{entry.qty}</span>
+        {reportType === "damage" && (
+          <div style={{ padding: "1.5rem 2rem" }}>
+            <div className="inventory-summary" style={{ marginBottom: "1.5rem" }}>
+              <div className="summary-card summary-card-danger">
+                <div className="summary-content">
+                  <span className="summary-value">{damageReport.totalQty} pcs</span>
+                  <span className="summary-label">Total Damaged</span>
                 </div>
-              );
-            })
-          )}
-        </div>
+              </div>
+              <div className="summary-card" style={{ background: "rgba(212,168,67,0.08)", borderColor: "rgba(212,168,67,0.3)" }}>
+                <div className="summary-content">
+                  <span className="summary-value" style={{ color: "#D4A843" }}>₱{damageReport.totalLoss.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="summary-label">Total Loss Value</span>
+                </div>
+              </div>
+              <div className="summary-card" style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.15)" }}>
+                <div className="summary-content">
+                  <span className="summary-value" style={{ color: "#E5E2E1" }}>{damageReport.count}</span>
+                  <span className="summary-label">Transactions</span>
+                </div>
+              </div>
+            </div>
+            {Object.keys(damageReport.grouped).length === 0 ? (
+              <div style={{ padding: "3rem", textAlign: "center", color: "var(--gray)" }}>No damage records for this period.</div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+                <thead>
+                  <tr style={{ background: "rgba(0,0,0,0.3)", borderBottom: "2px solid var(--border)" }}>
+                    <th style={thStyle}>Date</th>
+                    <th style={thStyle}>Material</th>
+                    <th style={{ ...thStyle, textAlign: "center" }}>Type</th>
+                    <th style={{ ...thStyle, textAlign: "center" }}>Qty</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Unit Cost</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Loss Value</th>
+                    <th style={{ ...thStyle, textAlign: "center" }}>Performed By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(damageReport.grouped).map(([cat, records]) => (
+                    <React.Fragment key={cat}>
+                      <tr>
+                        <td colSpan={7} style={{ padding: "0.5rem 0.75rem", background: "rgba(212,168,67,0.06)", fontWeight: 700, color: "#D4A843", fontSize: "0.75rem", textTransform: "uppercase" }}>{cat}</td>
+                      </tr>
+                      {records.map((so, idx) => (
+                        <tr key={so._id || so.id || idx} style={{ background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                          <td style={{ padding: "0.5rem 0.75rem", color: "var(--gray)" }}>{new Date(so.dateIssued || so.createdAt).toLocaleDateString("en-PH")}</td>
+                          <td style={{ padding: "0.5rem 0.75rem", fontWeight: 600, color: "#E5E2E1" }}>{so.materialName}</td>
+                          <td style={{ padding: "0.5rem 0.75rem", textAlign: "center" }}>
+                            <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "4px", background: so.issueType === "damage" ? "rgba(239,68,68,0.15)" : "rgba(249,115,22,0.15)", color: so.issueType === "damage" ? "#ef4444" : "#f97316" }}>
+                              {so.issueType === "damage" ? "Damage" : "Scrap"}
+                            </span>
+                          </td>
+                          <td style={{ padding: "0.5rem 0.75rem", textAlign: "center", fontWeight: 700, color: "#ef4444" }}>-{Math.abs(so.quantity || 0)} {so.uom || "pcs"}</td>
+                          <td style={{ padding: "0.5rem 0.75rem", textAlign: "right", color: "#E5E2E1", fontFamily: "monospace" }}>₱{(so.unitCost || 0).toFixed(2)}</td>
+                          <td style={{ padding: "0.5rem 0.75rem", textAlign: "right", fontWeight: 700, color: "#ef4444", fontFamily: "monospace" }}>₱{(so.totalLoss || 0).toFixed(2)}</td>
+                          <td style={{ padding: "0.5rem 0.75rem", textAlign: "center", color: "#E5E2E1", fontSize: "0.75rem" }}>{so.performedBy || "Unknown"}</td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        {reportType === "stockout" && (
+          <div style={{ padding: "1.5rem 2rem" }}>
+            <div className="inventory-summary" style={{ marginBottom: "1.5rem" }}>
+              <div className="summary-card summary-card-danger">
+                <div className="summary-content">
+                  <span className="summary-value">{stockOutReport.totalQty} pcs</span>
+                  <span className="summary-label">Total Qty Deducted</span>
+                </div>
+              </div>
+              <div className="summary-card" style={{ background: "rgba(34,197,94,0.08)", borderColor: "rgba(34,197,94,0.3)" }}>
+                <div className="summary-content">
+                  <span className="summary-value" style={{ color: "#22c55e" }}>₱{(stockOutReport.totalRevenue || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="summary-label">Revenue (Sales)</span>
+                </div>
+              </div>
+              <div className="summary-card" style={{ background: "rgba(212,168,67,0.08)", borderColor: "rgba(212,168,67,0.3)" }}>
+                <div className="summary-content">
+                  <span className="summary-value" style={{ color: "#D4A843" }}>₱{stockOutReport.totalLoss.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="summary-label">Loss Value (Non-Sales)</span>
+                </div>
+              </div>
+              <div className="summary-card" style={{ background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.15)" }}>
+                <div className="summary-content">
+                  <span className="summary-value" style={{ color: "#E5E2E1" }}>{stockOutReport.count}</span>
+                  <span className="summary-label">Transactions</span>
+                </div>
+              </div>
+            </div>
+            {Object.keys(stockOutReport.grouped).length === 0 ? (
+              <div style={{ padding: "3rem", textAlign: "center", color: "var(--gray)" }}>No stock-out records for this period.</div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+                <thead>
+                  <tr style={{ background: "rgba(0,0,0,0.3)", borderBottom: "2px solid var(--border)" }}>
+                    <th style={thStyle}>Date</th>
+                    <th style={thStyle}>Material</th>
+                    <th style={{ ...thStyle, textAlign: "center" }}>Type</th>
+                    <th style={{ ...thStyle, textAlign: "center" }}>Qty</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Loss Value</th>
+                    <th style={{ ...thStyle, textAlign: "center" }}>Performed By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(stockOutReport.grouped).map(([cat, records]) => (
+                    <React.Fragment key={cat}>
+                      <tr>
+                        <td colSpan={6} style={{ padding: "0.5rem 0.75rem", background: "rgba(212,168,67,0.06)", fontWeight: 700, color: "#D4A843", fontSize: "0.75rem", textTransform: "uppercase" }}>{cat}</td>
+                      </tr>
+                      {records.map((so, idx) => {
+                        const typeMap = {
+                          manual_sale: { label: "Sale", color: "#22c55e", bg: "rgba(34,197,94,0.15)" },
+                          sale: { label: "Sale", color: "#22c55e", bg: "rgba(34,197,94,0.15)" },
+                          damage: { label: "Damage", color: "#ef4444", bg: "rgba(239,68,68,0.15)" },
+                          scrap: { label: "Scrap", color: "#f97316", bg: "rgba(249,115,22,0.15)" },
+                          lost: { label: "Lost", color: "#f59e0b", bg: "rgba(245,158,11,0.15)" },
+                          production: { label: "Production", color: "#8b5cf6", bg: "rgba(139,92,246,0.15)" },
+                          adjustment: { label: "Adjustment", color: "#9ca3af", bg: "rgba(156,163,175,0.15)" },
+                        };
+                        const t = typeMap[so.issueType] || { label: so.issueType, color: "#9ca3af", bg: "rgba(156,163,175,0.15)" };
+                        return (
+                          <tr key={so._id || so.id || idx} style={{ background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                            <td style={{ padding: "0.5rem 0.75rem", color: "var(--gray)" }}>{new Date(so.dateIssued || so.createdAt).toLocaleDateString("en-PH")}</td>
+                            <td style={{ padding: "0.5rem 0.75rem", fontWeight: 600, color: "#E5E2E1" }}>{so.materialName}</td>
+                            <td style={{ padding: "0.5rem 0.75rem", textAlign: "center" }}>
+                              <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "4px", background: t.bg, color: t.color }}>{t.label}</span>
+                            </td>
+                            <td style={{ padding: "0.5rem 0.75rem", textAlign: "center", fontWeight: 700, color: "#ef4444" }}>-{Math.abs(so.quantity || 0)} {so.uom || "pcs"}</td>
+                            <td style={{ padding: "0.5rem 0.75rem", textAlign: "right", fontWeight: 700, color: "#ef4444", fontFamily: "monospace" }}>₱{(so.totalLoss || 0).toFixed(2)}</td>
+                            <td style={{ padding: "0.5rem 0.75rem", textAlign: "center", color: "#E5E2E1", fontSize: "0.75rem" }}>{so.performedBy || "Unknown"}</td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        {reportType === "summary" && (
+          <div style={{ padding: "1.5rem 2rem" }}>
+            <div className="inventory-summary" style={{ marginBottom: "1.5rem", gridTemplateColumns: "repeat(4, 1fr)" }}>
+              <div className="summary-card" style={{ background: "rgba(34,197,94,0.08)", borderColor: "rgba(34,197,94,0.3)" }}>
+                <div className="summary-content">
+                  <span className="summary-value" style={{ color: "#22c55e" }}>{stockSummary.totalGood} pcs</span>
+                  <span className="summary-label" style={{ color: "#22c55e" }}>Total Good Stock</span>
+                </div>
+              </div>
+              <div className="summary-card summary-card-danger">
+                <div className="summary-content">
+                  <span className="summary-value">{stockSummary.totalDamaged} pcs</span>
+                  <span className="summary-label">Total Damaged</span>
+                </div>
+              </div>
+              <div className="summary-card" style={{ background: "rgba(212,168,67,0.08)", borderColor: "rgba(212,168,67,0.3)" }}>
+                <div className="summary-content">
+                  <span className="summary-value" style={{ color: "#D4A843" }}>₱{stockSummary.totalValue.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="summary-label">Goods Value</span>
+                </div>
+              </div>
+              <div className="summary-card summary-card-danger">
+                <div className="summary-content">
+                  <span className="summary-value" style={{ color: "#ef4444" }}>₱{stockSummary.totalDamageValue.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="summary-label">Damage Value</span>
+                </div>
+              </div>
+            </div>
+            {stockSummary.items.length === 0 ? (
+              <div style={{ padding: "3rem", textAlign: "center", color: "var(--gray)" }}>No stock data available.</div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+                <thead>
+                  <tr style={{ background: "rgba(0,0,0,0.3)", borderBottom: "2px solid var(--border)" }}>
+                    <th style={thStyle}>SKU</th>
+                    <th style={thStyle}>Material Name</th>
+                    <th style={thStyle}>Category</th>
+                    <th style={{ ...thStyle, textAlign: "center" }}>Good Stock</th>
+                    <th style={{ ...thStyle, textAlign: "center" }}>Damaged</th>
+                    <th style={{ ...thStyle, textAlign: "center" }}>Total</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Unit Cost</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Goods Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stockSummary.items.map((item, idx) => (
+                    <tr key={item._id || item.id || idx} style={{ background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                      <td style={{ padding: "0.5rem 0.75rem", fontFamily: "monospace", color: "#D4A843", fontSize: "0.75rem" }}>{item.sku || "—"}</td>
+                      <td style={{ padding: "0.5rem 0.75rem", fontWeight: 600, color: "#E5E2E1" }}>{item.name}</td>
+                      <td style={{ padding: "0.5rem 0.75rem", color: "var(--gray)", fontSize: "0.75rem" }}>{item.category || "—"}</td>
+                      <td style={{ padding: "0.5rem 0.75rem", textAlign: "center", fontWeight: 700, color: "#22c55e" }}>{item.goodStock}</td>
+                      <td style={{ padding: "0.5rem 0.75rem", textAlign: "center", fontWeight: 700, color: item.damaged > 0 ? "#ef4444" : "var(--gray)" }}>{item.damaged}</td>
+                      <td style={{ padding: "0.5rem 0.75rem", textAlign: "center", fontWeight: 700, color: "#E5E2E1" }}>{item.totalStock}</td>
+                      <td style={{ padding: "0.5rem 0.75rem", textAlign: "right", color: "#D4A843", fontFamily: "monospace" }}>₱{item.avgCost.toFixed(2)}</td>
+                      <td style={{ padding: "0.5rem 0.75rem", textAlign: "right", fontWeight: 700, color: "#E5E2E1", fontFamily: "monospace" }}>₱{item.goodsValue.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
