@@ -12,37 +12,18 @@
  */
 
 import CustomDropdown from "@/app/components/CustomDropdown";
+import { useAuth } from "@/app/context/AuthContext";
+import {
+  adjustInventoryStock,
+  deleteInventory,
+  fetchAllStockHistory,
+  fetchInventory,
+} from "@/lib/inventoryApi";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import ActualStockTab from "./ActualStockTab";
 import InventoryReports from "./InventoryReports";
 import StockOutHistoryTab from "./StockOutHistoryTab";
 import StockReductionModal from "./StockReductionModal";
-
-// ── Storage Keys ───────────────────────────────────────────────────────────────
-const MATERIALS_KEY = "pmp_materials";
-const VENDORS_KEY = "pmp_vendors";
-const STOCK_OUT_KEY = "pmp_stock_out_log";
-
-// ── Storage Helpers ────────────────────────────────────────────────────────────
-function getStore(key) {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(key) || "[]");
-  } catch {
-    return [];
-  }
-}
-function setStore(key, data) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(data));
-}
-
-// ─ Number Generation ─────────────────────────────────────────────────────────
-function genDocNumber(prefix, list) {
-  const year = new Date().getFullYear();
-  const seq = String((list.length || 0) + 1).padStart(4, "0");
-  return `${prefix}-${year}-${seq}`;
-}
 
 // ── Issue Type Config ──────────────────────────────────────────────────────────
 const ISSUE_TYPES = {
@@ -439,7 +420,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
       rows.push({ type: "standalone", item: { ...m, stockQty: getStock(m) } });
     });
     groupedMaterials.parents.forEach((parent) => {
-      const children = groupedMaterials.childrenMap.get(parent.id) || [];
+      const children = groupedMaterials.childrenMap.get(parent._id) || [];
       const parentMatches = matchesFilters(parent);
       const displayChildren = children.map((c) => ({
         ...c,
@@ -481,7 +462,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
     .filter((m) => !m.parentId && m.procurementType !== "on-demand")
     .reduce((sum, m) => {
       if (m.hasVariants) {
-        const children = materials.filter((c) => c.parentId === m.id);
+        const children = materials.filter((c) => c.parentId === m._id);
         return sum + children.reduce((cSum, c) => cSum + getStock(c), 0);
       }
       return sum + getStock(m);
@@ -515,13 +496,17 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
     .filter((m) => !m.parentId && m.procurementType !== "on-demand")
     .reduce((sum, m) => {
       if (m.hasVariants) {
-        const children = materials.filter((c) => c.parentId === m.id);
+        const children = materials.filter((c) => c.parentId === m._id);
         return (
           sum +
-          children.reduce((cs, c) => cs + getStock(c) * (c.baseCost || 0), 0)
+          children.reduce(
+            (cs, c) =>
+              cs + getStock(c) * (c.baseCost || c.averageCost || 0),
+            0,
+          )
         );
       }
-      return sum + getStock(m) * (m.baseCost || 0);
+      return sum + getStock(m) * (m.baseCost || m.averageCost || 0);
     }, 0);
 
   return (
@@ -694,10 +679,11 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
               filteredRows.map((row) => {
                 if (row.type === "standalone") {
                   const m = row.item;
-                  const stockVal = (m.stockQty || 0) * (m.baseCost || 0);
+                  const stockVal =
+                    (m.stockQty || 0) * (m.baseCost || m.averageCost || 0);
                   return (
                     <tr
-                      key={m.id}
+                      key={m._id}
                       style={{
                         borderBottom: "1px solid rgba(255,255,255,0.04)",
                       }}
@@ -791,9 +777,12 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                         }}
                       >
                         ₱
-                        {(m.baseCost || 0).toLocaleString("en-PH", {
-                          minimumFractionDigits: 2,
-                        })}
+                        {(m.baseCost || m.averageCost || 0).toLocaleString(
+                          "en-PH",
+                          {
+                            minimumFractionDigits: 2,
+                          },
+                        )}
                       </td>
                       <td
                         style={{
@@ -835,7 +824,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                                   `Delete "${m.name}"? This action cannot be undone.`,
                                 )
                               ) {
-                                onDeleteZeroStock(m.id);
+                                onDeleteZeroStock(m._id);
                               }
                             }}
                             style={{
@@ -877,9 +866,11 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
 
                 const parent = row.item;
                 const children = row.children || [];
-                const isExpanded = expandedParents.has(parent.id);
+                const isExpanded = expandedParents.has(parent._id);
                 const parentStockVal = children.reduce(
-                  (s, c) => s + (c.stockQty || 0) * (c.baseCost || 0),
+                  (s, c) =>
+                    s +
+                    (c.stockQty || 0) * (c.baseCost || c.averageCost || 0),
                   0,
                 );
                 const totalChildStock = children.reduce(
@@ -888,7 +879,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                 );
 
                 return (
-                  <React.Fragment key={parent.id}>
+                  <React.Fragment key={parent._id}>
                     <tr
                       style={{
                         borderBottom: isExpanded
@@ -897,7 +888,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                         background: "rgba(212,168,67,0.02)",
                         cursor: "pointer",
                       }}
-                      onClick={() => toggleExpand(parent.id)}
+                      onClick={() => toggleExpand(parent._id)}
                       onMouseEnter={(e) =>
                         (e.currentTarget.style.background =
                           "rgba(212,168,67,0.06)")
@@ -918,7 +909,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              toggleExpand(parent.id);
+                              toggleExpand(parent._id);
                             }}
                             style={{
                               background: "none",
@@ -1036,7 +1027,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                       >
                         {(() => {
                           const costs = children
-                            .map((c) => c.baseCost || 0)
+                            .map((c) => c.baseCost || c.averageCost || 0)
                             .filter((c) => c > 0);
                           if (costs.length === 0) return "₱0.00";
                           const min = Math.min(...costs),
@@ -1090,10 +1081,11 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                     {isExpanded &&
                       children.map((child) => {
                         const childStockVal =
-                          (child.stockQty || 0) * (child.baseCost || 0);
+                          (child.stockQty || 0) *
+                          (child.baseCost || child.averageCost || 0);
                         return (
                           <tr
-                            key={child.id}
+                            key={child._id}
                             style={{
                               borderBottom: "1px solid rgba(255,255,255,0.03)",
                               background: "rgba(0,0,0,0.15)",
@@ -1185,9 +1177,12 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                               }}
                             >
                               ₱
-                              {(child.baseCost || 0).toLocaleString("en-PH", {
-                                minimumFractionDigits: 2,
-                              })}
+                              {(child.baseCost || child.averageCost || 0).toLocaleString(
+                                "en-PH",
+                                {
+                                  minimumFractionDigits: 2,
+                                },
+                              )}
                             </td>
                             <td
                               style={{
@@ -1229,7 +1224,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                                         `Delete "${child.name}"? This action cannot be undone.`,
                                       )
                                     ) {
-                                      onDeleteZeroStock(child.id);
+                                      onDeleteZeroStock(child._id);
                                     }
                                   }}
                                   style={{
@@ -1286,220 +1281,111 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function StocksPage() {
+  const { token, currentUser: user } = useAuth();
   const [activeTab, setActiveTab] = useState("goods");
   const [materials, setMaterials] = useState([]);
   const [stockOuts, setStockOuts] = useState([]);
+  const [showGoodsIssue, setShowGoodsIssue] = useState(false);
   const [showReductionModal, setShowReductionModal] = useState(false);
   const [reductionItem, setReductionItem] = useState(null);
   const [showSelectMaterial, setShowSelectMaterial] = useState(false);
   const [selectSearch, setSelectSearch] = useState("");
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedMaterials, setSelectedMaterials] = useState([]);
-  const [reductionQueue, setReductionQueue] = useState([]); // kept for single-item flow
   const [reductionItems, setReductionItems] = useState([]); // multi-select: array of items
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const refresh = useCallback(() => {
-    setMaterials(getStore(MATERIALS_KEY));
-    setStockOuts(getStore(STOCK_OUT_KEY));
-  }, []);
+  const refresh = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchInventory(token);
+      setMaterials(data);
+      const ids = data.map((m) => m._id).filter(Boolean);
+      const history = await fetchAllStockHistory(ids, token);
+      setStockOuts(history.filter((h) => h.type === "deduction"));
+    } catch (err) {
+      setError(err.message || "Failed to load inventory.");
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  // ── Batch Helper Functions ────────────────────────────────────────────────
-  const computeStockFromBatches = (batches) => {
-    if (!batches || !Array.isArray(batches) || batches.length === 0) return 0;
-    return batches.reduce(
-      (sum, b) =>
-        sum +
-        (b.remainingQty != null
-          ? b.remainingQty
-          : (b.goodQty ?? b.qtyGood ?? 0)),
-      0,
-    );
-  };
-
-  const computeAveCostFromBatches = (batches) => {
-    if (!batches || !Array.isArray(batches) || batches.length === 0) return 0;
-    const oldest = [...batches]
-      .filter((b) => (b.remainingQty || 0) > 0)
-      .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived))[0];
-    return oldest ? oldest.unitCost || 0 : 0;
-  };
-
-  // ── Stock Reduction Handler ────────────────
-  const handleStockReduction = (data) => {
-    const {
-      reason,
-      issueType: rawIssueType,
-      remarks,
-      variants,
-      totals,
-      performedBy,
-      saleRef,
-      saleDate,
-      customer,
-    } = data;
-
-    const issueTypeMap = {
-      sales: "manual_sale",
-      manual_sale: "manual_sale",
-      damaged: "damage",
-      damage: "damage",
-      writeoff: "scrap",
-      scrap: "scrap",
-      missing: "lost",
-      lost: "lost",
-      production: "production",
-      return: "return",
-      adjustment: "adjustment",
+  const handleStockReduction = async (data) => {
+    if (!token) return;
+    const { reason, remarks, variants, saleDate, customer } = data;
+    const reasonMap = {
+      sales: "sales-outside",
+      damaged: "damaged",
+      writeoff: "writeoff",
     };
-    const issueType =
-      issueTypeMap[reason] || issueTypeMap[rawIssueType] || "adjustment";
+    const apiReason = reasonMap[reason] || reason;
 
-    const now = new Date().toISOString();
-    const mats = getStore(MATERIALS_KEY);
-    const log = getStore(STOCK_OUT_KEY);
+    const calls = (variants || [])
+      .filter((v) => (v.qtyFulfilled || 0) > 0)
+      .map((variant) => {
+        const unitCost =
+          variant.qtyFulfilled > 0
+            ? (variant.totalCostValue || 0) / variant.qtyFulfilled
+            : 0;
+        const invId =
+          materials.find(
+            (m) =>
+              String(m._id) === String(variant.variantId) ||
+              (variant.sku && m.sku === variant.sku),
+          )?._id || variant.variantId;
 
-    let updatedCount = 0;
-    let failedCount = 0;
-
-    variants.forEach((variant) => {
-      const qtyFulfilled = variant.qtyFulfilled;
-      if (qtyFulfilled <= 0) {
-        failedCount++;
-        return;
-      }
-
-      // Find material
-      let mat = mats.find((m) => m.id === variant.variantId);
-      if (!mat && variant.sku) mat = mats.find((m) => m.sku === variant.sku);
-      if (!mat) mat = mats.find((m) => m.name === variant.variantName);
-
-      if (!mat) {
-        failedCount++;
-        return;
-      }
-
-      const deductions = {};
-      variant.batches.forEach((b) => {
-        deductions[String(b.batchId)] = b.take;
+        return adjustInventoryStock(
+          invId,
+          {
+            quantity: variant.qtyFulfilled,
+            adjustmentType: "subtract",
+            reason: apiReason,
+            remarks: remarks || null,
+            sellingPrice:
+              apiReason === "sales-outside" ? variant.sellingPrice || null : null,
+            saleDate: apiReason === "sales-outside" ? saleDate || null : null,
+            customerName:
+              apiReason === "sales-outside" ? customer || null : null,
+            unitCost: unitCost || null,
+            performedBy: user?.name || user?.email || null,
+          },
+          token,
+        );
       });
 
-      const currentBatches = [...(mat.batches || [])];
-
-      const updatedBatches = currentBatches.map((batch) => {
-        const deduct = deductions[String(batch.batchId)];
-        if (!deduct) return batch;
-
-        // FIX: Correct calculation logic
-        const currentRemaining =
-          batch.remainingQty != null
-            ? batch.remainingQty
-            : (batch.qtyGood ?? batch.goodQty ?? 0);
-        const newRemaining = currentRemaining - deduct;
-
-        return {
-          ...batch,
-          remainingQty: newRemaining,
-          qtyDamaged:
-            reason === "damaged"
-              ? (batch.qtyDamaged || 0) + deduct
-              : batch.qtyDamaged || 0,
-          movements: [
-            ...(batch.movements || []),
-            {
-              type: issueType,
-              qty: -deduct,
-              remainingAfter: newRemaining,
-              reason: remarks || "Adjustment",
-              date: now,
-            },
-          ],
-          status: newRemaining === 0 ? "exhausted" : "active",
-        };
-      });
-
-      const idx = mats.findIndex((m) => m.id === mat.id);
-      if (idx !== -1) {
-        const oldStock = mats[idx].stockQty;
-        const newStock = computeStockFromBatches(updatedBatches);
-        mats[idx] = {
-          ...mats[idx],
-          stockQty: newStock,
-          baseCost: computeAveCostFromBatches(updatedBatches),
-          batches: updatedBatches,
-          updatedAt: now,
-        };
-        updatedCount++;
-      } else {
-        failedCount++;
-      }
-
-      // Log entry
-      const batchBreakdown = variant.batches.map((b) => ({
-        batchId: b.batchId,
-        qty: b.take,
-        unitCost: b.unitCost || 0,
-        totalCost: b.totalCost || 0,
-      }));
-      const unitCost =
-        qtyFulfilled > 0 ? (variant.totalCostValue || 0) / qtyFulfilled : 0;
-
-      log.push({
-        id: genDocNumber("GI", log),
-        materialId: mat.id,
-        materialName: mat.name || variant.variantName,
-        variantId: mat.id,
-        variantName: variant.variantName || mat.name,
-        sku: variant.sku || mat.sku,
-        category: variant.category || mat.category || "",
-        uom: variant.uom || mat.uom || "pcs",
-        issueType,
-        quantity: -qtyFulfilled,
-        unitCost,
-        totalCost: qtyFulfilled * unitCost,
-        performedBy: performedBy || "",
-        notes: remarks || "",
-        batchBreakdown,
-        ...(issueType === "manual_sale"
-          ? {
-              saleRef: saleRef || "",
-              saleDate: saleDate || now,
-              customer: customer || "",
-              sellingPrice: variant.sellingPrice || 0,
-              totalRevenue: variant.totalRevenue || 0,
-            }
-          : {}),
-        newStock: computeStockFromBatches(updatedBatches),
-        totalLoss: variant.totalCostValue || 0,
-        dateIssued: now,
-        createdAt: now,
-      });
-    });
-
-    setStore(MATERIALS_KEY, mats);
-    setStore(STOCK_OUT_KEY, log);
-    refresh();
-
-    if (updatedCount > 0) {
+    try {
+      await Promise.all(calls);
+      setShowGoodsIssue(false);
+      setShowReductionModal(false);
+      setReductionItem(null);
+      setReductionItems([]);
+      await refresh();
       alert(
-        `✓ Stock updated successfully!\n\n${updatedCount} material(s) updated.`,
+        `✓ Stock updated successfully!\n\n${calls.length} adjustment(s) completed.`,
       );
-    } else {
-      alert(`✗ Stock update failed! Check console for details.`);
+    } catch (err) {
+      console.error("Stock reduction failed:", err);
+      alert(err?.message || "✗ Stock update failed.");
+      setError(err?.message || "Failed to adjust stock.");
     }
-
-    setShowReductionModal(false);
-    setReductionItem(null);
   };
 
-  const handleDeleteZeroStock = (materialId) => {
-    const mats = getStore(MATERIALS_KEY);
-    const updated = mats.filter((m) => m.id !== materialId);
-    setStore(MATERIALS_KEY, updated);
-    refresh();
+  const handleDeleteZeroStock = async (materialId) => {
+    if (!token) return;
+    try {
+      await deleteInventory(materialId, token);
+      await refresh();
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "Failed to delete item.");
+    }
   };
 
   const tabStyle = (tab) => ({
@@ -1565,8 +1451,19 @@ export default function StocksPage() {
         </div>
       </div>
 
+      {loading && (
+        <p style={{ padding: "2rem", color: "var(--gray)", fontSize: "0.875rem" }}>
+          Loading inventory...
+        </p>
+      )}
+      {error && (
+        <p style={{ padding: "2rem", color: "var(--danger)", fontSize: "0.875rem" }}>
+          {error}
+        </p>
+      )}
+
       {/* Tab Content */}
-      {activeTab === "goods" && (
+      {!loading && !error && activeTab === "goods" && (
         <StockOverviewTab
           materials={materials}
           onIssueStock={() => {
@@ -1575,16 +1472,16 @@ export default function StocksPage() {
           onDeleteZeroStock={handleDeleteZeroStock}
         />
       )}
-      {activeTab === "actual" && (
+      {!loading && !error && activeTab === "actual" && (
         <ActualStockTab
           materials={materials}
           onDeleteZeroStock={handleDeleteZeroStock}
         />
       )}
-      {activeTab === "history" && (
+      {!loading && !error && activeTab === "history" && (
         <StockOutHistoryTab stockOuts={stockOuts} materials={materials} />
       )}
-      {activeTab === "reports" && (
+      {!loading && !error && activeTab === "reports" && (
         <InventoryReports materials={materials} stockOuts={stockOuts} />
       )}
 
@@ -1776,7 +1673,7 @@ export default function StocksPage() {
                   if (!hasBatches && !hasStock) {
                     if (m.hasVariants) {
                       const children = materials.filter(
-                        (c) => c.parentId === m.id,
+                        (c) => c.parentId === m._id,
                       );
                       const childStock = children.reduce(
                         (s, c) => s + (c.stockQty || 0),
@@ -1818,7 +1715,7 @@ export default function StocksPage() {
                   let variantCount = 0;
                   if (m.hasVariants) {
                     const children = materials.filter(
-                      (c) => c.parentId === m.id,
+                      (c) => c.parentId === m._id,
                     );
                     // Only count children with actual batch data
                     const stockedChildren = children.filter(
@@ -1842,12 +1739,12 @@ export default function StocksPage() {
                   }
                   return (
                     <div
-                      key={m.id}
+                      key={m._id}
                       onClick={() => {
                         if (multiSelectMode) {
                           setSelectedMaterials((prev) =>
-                            prev.some((x) => x.id === m.id)
-                              ? prev.filter((x) => x.id !== m.id)
+                            prev.some((x) => x._id === m._id)
+                              ? prev.filter((x) => x._id !== m._id)
                               : [...prev, m],
                           );
                         } else {
@@ -1866,19 +1763,19 @@ export default function StocksPage() {
                         alignItems: "center",
                         background:
                           multiSelectMode &&
-                          selectedMaterials.some((x) => x.id === m.id)
+                          selectedMaterials.some((x) => x._id === m._id)
                             ? "rgba(212,168,67,0.08)"
                             : "transparent",
                         borderLeft:
                           multiSelectMode &&
-                          selectedMaterials.some((x) => x.id === m.id)
+                          selectedMaterials.some((x) => x._id === m._id)
                             ? "3px solid #D4A843"
                             : "3px solid transparent",
                       }}
                       onMouseEnter={(e) => {
                         if (
                           !multiSelectMode ||
-                          !selectedMaterials.some((x) => x.id === m.id)
+                          !selectedMaterials.some((x) => x._id === m._id)
                         )
                           e.currentTarget.style.background =
                             "rgba(212,168,67,0.06)";
@@ -1886,7 +1783,7 @@ export default function StocksPage() {
                       onMouseLeave={(e) => {
                         e.currentTarget.style.background =
                           multiSelectMode &&
-                          selectedMaterials.some((x) => x.id === m.id)
+                          selectedMaterials.some((x) => x._id === m._id)
                             ? "rgba(212,168,67,0.08)"
                             : "transparent";
                       }}
@@ -1903,7 +1800,7 @@ export default function StocksPage() {
                             type="checkbox"
                             readOnly
                             checked={selectedMaterials.some(
-                              (x) => x.id === m.id,
+                              (x) => x._id === m._id,
                             )}
                             style={{
                               width: "16px",

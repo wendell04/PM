@@ -5,19 +5,21 @@
 // Extracted from repeated patterns across all inventory module files.
 // ══════════════════════════════════════════════════════════════════════════════
 
-// ── Storage Helpers ────────────────────────────────────────────────────────────
+// ── Storage Helpers (REMOVED) ──────────────────────────────────────────────
+// localStorage-based storage has been removed. All inventory data is now
+// fetched from and persisted to the API via inventoryApi.js.
+// These stubs exist only to surface any missed call sites at runtime.
 export function getStore(key) {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(key) || "[]");
-  } catch {
-    return [];
+  if (process.env.NODE_ENV !== "production") {
+    console.error(`[DEPRECATED] getStore("${key}") called — use API instead.`);
   }
+  return [];
 }
 
 export function setStore(key, data) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(data));
+  if (process.env.NODE_ENV !== "production") {
+    console.error(`[DEPRECATED] setStore("${key}") called — use API instead.`);
+  }
 }
 
 // ── Document Number Generation ─────────────────────────────────────────────────

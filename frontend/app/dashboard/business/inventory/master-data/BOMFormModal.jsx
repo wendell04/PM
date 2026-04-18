@@ -285,8 +285,8 @@ export default function BOMFormModal({
   };
 
   const selectedMaterialIds = form.components
-    .filter((c) => c.materialId)
-    .map((c) => c.materialId);
+    .filter((c) => c.inventoryId)
+    .map((c) => c.inventoryId);
 
   // Get variant IDs to exclude from shared materials when variant picker is open
   const variantIdsToExclude = useMemo(() => {
@@ -981,7 +981,7 @@ export default function BOMFormModal({
                     const dropdownOptions = [
                       { value: "", label: "Search material…" },
                       ...(selectedMat
-                        ? [{ value: selectedMat.id, label: selectedMat.name }]
+                        ? [{ value: selectedMat._id, label: selectedMat.name }]
                         : []),
                       ...availableMaterials,
                     ];

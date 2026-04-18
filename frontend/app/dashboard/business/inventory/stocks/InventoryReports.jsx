@@ -78,7 +78,7 @@ export default function InventoryReports({ materials, stockOuts }) {
     const grouped = {};
     damages.forEach((so) => {
       const cat =
-        materials?.find((m) => m.id === so.materialId)?.category ||
+        materials?.find((m) => m._id === so.materialId)?.category ||
         so.category ||
         "Uncategorized";
       if (!grouped[cat]) grouped[cat] = [];
@@ -97,7 +97,7 @@ export default function InventoryReports({ materials, stockOuts }) {
     const grouped = {};
     filteredStockOuts.forEach((so) => {
       const cat =
-        materials?.find((m) => m.id === so.materialId)?.category ||
+        materials?.find((m) => m._id === so.materialId)?.category ||
         so.category ||
         "Uncategorized";
       if (!grouped[cat]) grouped[cat] = [];
@@ -129,57 +129,18 @@ export default function InventoryReports({ materials, stockOuts }) {
       .filter((m) => {
         if (m.parentId) return false;
         if (m.hasVariants) {
-          const children = (materials || []).filter((c) => c.parentId === m.id);
-          return children.some(
-            (c) =>
-              c.batches &&
-              c.batches.length > 0 &&
-              c.batches.some(
-                (b) =>
-                  (b.originalQty ||
-                    b.qtyReceived ||
-                    b.goodQty ||
-                    b.qtyGood ||
-                    0) > 0,
-              ),
+          const children = (materials || []).filter((c) => c.parentId === m._id);
+          return children.some((c) =>
+            c.batches?.some(
+              (b) =>
+                (b.originalQty || b.qtyReceived || b.goodQty || b.qtyGood || 0) >
+                0,
+            ),
           );
         }
-        return (
-          m.batches &&
-          m.batches.length > 0 &&
-          m.batches.some(
-            (b) =>
-              (b.originalQty || b.qtyReceived || b.goodQty || b.qtyGood || 0) >
-              0,
-          )
-        );
-      })
-      .map((m) => {
-        if (m.parentId) return false;
-        if (m.hasVariants) {
-          const children = (materials || []).filter((c) => c.parentId === m.id);
-          return children.some(
-            (c) =>
-              c.batches &&
-              c.batches.length > 0 &&
-              c.batches.some(
-                (b) =>
-                  (b.originalQty ||
-                    b.qtyReceived ||
-                    b.goodQty ||
-                    b.qtyGood ||
-                    0) > 0,
-              ),
-          );
-        }
-        return (
-          m.batches &&
-          m.batches.length > 0 &&
-          m.batches.some(
-            (b) =>
-              (b.originalQty || b.qtyReceived || b.goodQty || b.qtyGood || 0) >
-              0,
-          )
+        return m.batches?.some(
+          (b) =>
+            (b.originalQty || b.qtyReceived || b.goodQty || b.qtyGood || 0) > 0,
         );
       })
       .map((m) => {
@@ -187,49 +148,29 @@ export default function InventoryReports({ materials, stockOuts }) {
         let goodStock, damaged, totalStock, avgCost, goodsValue, damageValue;
 
         if (hasChildren) {
-          // For parents with variants, aggregate stock from children
-          const children = materials.filter((child) => child.parentId === m.id);
-          const allChildrenBatches = children.flatMap(
-            (child) => child.batches || [],
-          );
-          goodStock = allChildrenBatches.reduce(
-            (s, b) => s + (b.remainingQty || 0),
-            0,
-          );
-          damaged = allChildrenBatches.reduce(
-            (s, b) => s + (b.damagedQty || 0),
-            0,
-          );
+          const children = materials.filter((c) => c.parentId === m._id);
+          const allChildrenBatches = children.flatMap((c) => c.batches || []);
+          goodStock = allChildrenBatches.reduce((s, b) => s + (b.remainingQty || 0), 0);
+          damaged = allChildrenBatches.reduce((s, b) => s + (b.damagedQty || 0), 0);
           totalStock = goodStock + damaged;
           avgCost =
             allChildrenBatches.length > 0
-              ? allChildrenBatches.reduce((s, b) => s + (b.unitCost || 0), 0) /
-                allChildrenBatches.length
-              : m.baseCost || 0;
+              ? allChildrenBatches.reduce((s, b) => s + (b.unitCost || 0), 0) / allChildrenBatches.length
+              : m.baseCost || m.averageCost || 0;
         } else {
-          // For standalone materials, use their own batches
           const batches = m.batches || [];
           goodStock = batches.reduce((s, b) => s + (b.remainingQty || 0), 0);
           damaged = batches.reduce((s, b) => s + (b.damagedQty || 0), 0);
           totalStock = goodStock + damaged;
           avgCost =
             batches.length > 0
-              ? batches.reduce((s, b) => s + (b.unitCost || 0), 0) /
-                batches.length
-              : m.baseCost || 0;
+              ? batches.reduce((s, b) => s + (b.unitCost || 0), 0) / batches.length
+              : m.baseCost || m.averageCost || 0;
         }
 
         goodsValue = goodStock * avgCost;
         damageValue = damaged * avgCost;
-        return {
-          ...m,
-          goodStock,
-          damaged,
-          totalStock,
-          avgCost,
-          goodsValue,
-          damageValue,
-        };
+        return { ...m, goodStock, damaged, totalStock, avgCost, goodsValue, damageValue };
       });
     const totalGood = items.reduce((s, i) => s + i.goodStock, 0);
     const totalDamaged = items.reduce((s, i) => s + i.damaged, 0);
@@ -261,7 +202,7 @@ export default function InventoryReports({ materials, stockOuts }) {
             .summary-label { font-size: 0.65rem; color: #6b7280; text-transform: uppercase; font-weight: 700; }
             .summary-value { font-size: 1.2rem; font-weight: 800; font-family: 'Courier New', monospace; }
             .category-header { background: #f3f4f6; font-weight: 700; }
-            @media print { body { margin: 1in; } }
+            @media print { body { margin: 1.5in; } }
           </style>
         </head>
         <body>
@@ -1016,7 +957,7 @@ export default function InventoryReports({ materials, stockOuts }) {
               <tbody>
                 {stockSummary.items.map((item, idx) => (
                   <tr
-                    key={item.id}
+                    key={item._id}
                     style={{
                       background:
                         idx % 2 === 0

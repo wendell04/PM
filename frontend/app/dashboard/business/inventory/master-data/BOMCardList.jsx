@@ -4,7 +4,7 @@
 // FIFO = use oldest batches first (what you'll actually consume)
 function computeFifoCost(material, requiredQty = 1) {
   if (!material || !material.batches || material.batches.length === 0) {
-    return material?.baseCost || 0;
+    return material?.baseCost || material?.averageCost || 0;
   }
 
   // Get all active batches sorted by date (FIFO order - oldest first)
@@ -13,7 +13,7 @@ function computeFifoCost(material, requiredQty = 1) {
     .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
 
   if (activeBatches.length === 0) {
-    return material?.baseCost || 0;
+    return material?.baseCost || material?.averageCost || 0;
   }
 
   // Simulate FIFO consumption to calculate actual cost
@@ -48,7 +48,7 @@ function computeFifoCost(material, requiredQty = 1) {
 // Helper function to get cost statistics for a material (min, max, avg)
 function getMaterialCostStats(material) {
   if (!material || !material.batches || material.batches.length === 0) {
-    const cost = material?.baseCost || 0;
+    const cost = material?.baseCost || material?.averageCost || 0;
     return { avg: cost, min: cost, max: cost, batches: 0 };
   }
 
@@ -57,7 +57,7 @@ function getMaterialCostStats(material) {
   );
 
   if (activeBatches.length === 0) {
-    const cost = material?.baseCost || 0;
+    const cost = material?.baseCost || material?.averageCost || 0;
     return { avg: cost, min: cost, max: cost, batches: 0 };
   }
 
@@ -70,7 +70,10 @@ function getMaterialCostStats(material) {
     (sum, b) => sum + (b.remainingQty || 0),
     0,
   );
-  const avg = totalQty > 0 ? totalValue / totalQty : material?.baseCost || 0;
+  const avg =
+    totalQty > 0
+      ? totalValue / totalQty
+      : material?.baseCost || material?.averageCost || 0;
 
   return {
     avg,
