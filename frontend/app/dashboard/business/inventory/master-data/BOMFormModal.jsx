@@ -1,4 +1,4 @@
-import CustomDropdown from "@/app/components/CustomDropdown";
+﻿import CustomDropdown from "@/app/components/CustomDropdown";
 import { useEffect, useMemo, useState } from "react";
 
 function PlusIcon() {
@@ -119,7 +119,7 @@ export default function BOMFormModal({
   const addComponent = () =>
     setForm((p) => ({
       ...p,
-      components: [...p.components, { materialId: "", qty: 1 }],
+      components: [...p.components, { inventoryId: "", qty: 1 }],
     }));
   const removeComponent = (idx) =>
     setForm((p) => ({
@@ -136,17 +136,17 @@ export default function BOMFormModal({
   const sharedCost = useMemo(
     () =>
       form.components.reduce((sum, c) => {
-        const mat = materials.find((m) => m.id === c.materialId);
+        const mat = materials.find((m) => m._id === c.inventoryId);
         // Use FIFO cost - what you'll actually pay when consuming from oldest stock
         if (!mat || !mat.batches || mat.batches.length === 0) {
-          return sum + (mat?.baseCost || 0) * (c.qty || 0);
+          return sum + (mat?.baseCost || mat?.averageCost || 0) * (c.qty || 0);
         }
 
         const activeBatches = mat.batches
           .filter((b) => (b.remainingQty || 0) > 0)
           .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
         if (activeBatches.length === 0) {
-          return sum + (mat?.baseCost || 0) * (c.qty || 0);
+          return sum + (mat?.baseCost || mat?.averageCost || 0) * (c.qty || 0);
         }
 
         // Simulate FIFO consumption
@@ -184,9 +184,9 @@ export default function BOMFormModal({
       materials
         .filter((m) => m.hasVariants && !m.parentId)
         .map((m) => ({
-          id: m.id,
+          id: m._id,
           name: m.name,
-          children: materials.filter((c) => c.parentId === m.id),
+          children: materials.filter((c) => c.parentId === m._id),
         })),
     [materials],
   );
@@ -207,7 +207,7 @@ export default function BOMFormModal({
     () =>
       checkedVariants.map((v) => ({
         ...v,
-        bomCost: sharedCost + (v.baseCost || 0) * variantQty,
+        bomCost: sharedCost + (v.baseCost || v.averageCost || 0) * variantQty,
       })),
     [checkedVariants, sharedCost, variantQty],
   );
@@ -231,7 +231,7 @@ export default function BOMFormModal({
   // Builds BOM array from a given variant list — used by both buttons
   const buildBOMs = (variants) => {
     const productGroupName = form.productGroupName.trim();
-    const sharedComponents = form.components.filter((c) => c.materialId);
+    const sharedComponents = form.components.filter((c) => c.inventoryId);
     return variants.map((v, i) => {
       // Extract just the variant-specific part (e.g., "Magic Mugs 11oz" from "Mugs - Magic Mugs 11oz")
       const variantNameOnly = v.name.includes(" - ")
@@ -247,7 +247,7 @@ export default function BOMFormModal({
         variantId: v.id,
         components: [
           ...sharedComponents,
-          { materialId: v.id, qty: variantQty },
+          { inventoryId: v._id, qty: variantQty },
         ],
         createdAt: new Date().toISOString(),
       };
@@ -274,7 +274,7 @@ export default function BOMFormModal({
       errs.productGroupName = "Product group name is required";
     if (form.components.length === 0)
       errs.components = "Add at least one component";
-    if (form.components.some((c) => !c.materialId))
+    if (form.components.some((c) => !c.inventoryId))
       errs.material = "Select a material for every row";
     if (Object.keys(errs).length) {
       setErrors(errs);
@@ -298,13 +298,13 @@ export default function BOMFormModal({
     () =>
       materials
         .filter((m) => (!m.parentId && !m.hasVariants) || m.parentId)
-        .filter((m) => !selectedMaterialIds.includes(m.id))
-        .filter((m) => !variantIdsToExclude.includes(m.id)) // Exclude variants from shared materials
+        .filter((m) => !selectedMaterialIds.includes(m._id))
+        .filter((m) => !variantIdsToExclude.includes(m._id)) // Exclude variants from shared materials
         .map((m) => {
           const p = m.parentId
-            ? materials.find((x) => x.id === m.parentId)
+            ? materials.find((x) => x._id === m.parentId)
             : null;
-          return { value: m.id, label: `${m.name}${p ? ` (${p.name})` : ""}` };
+          return { value: m._id, label: `${m.name}${p ? ` (${p.name})` : ""}` };
         }),
     [materials, selectedMaterialIds, variantIdsToExclude],
   );
@@ -759,7 +759,8 @@ export default function BOMFormModal({
                         {currentVariants.map((v) => {
                           const isChecked = checkedVariantIds.has(v.id);
                           const bomCost =
-                            sharedCost + (v.baseCost || 0) * variantQty;
+                            sharedCost +
+                            (v.baseCost || v.averageCost || 0) * variantQty;
                           return (
                             <div
                               key={v.id}
@@ -971,10 +972,11 @@ export default function BOMFormModal({
                 >
                   {form.components.map((comp, idx) => {
                     const selectedMat = materials.find(
-                      (m) => m.id === comp.materialId,
+                      (m) => m._id === comp.inventoryId,
                     );
                     const componentCost = selectedMat
-                      ? (selectedMat.baseCost || 0) * (comp.qty || 0)
+                      ? (selectedMat.baseCost || selectedMat.averageCost || 0) *
+                        (comp.qty || 0)
                       : 0;
                     const dropdownOptions = [
                       { value: "", label: "Search material…" },
@@ -997,9 +999,9 @@ export default function BOMFormModal({
                         }}
                       >
                         <CustomDropdown
-                          value={comp.materialId}
+                          value={comp.inventoryId}
                           onChange={(val) => {
-                            updateComponent(idx, "materialId", val);
+                            updateComponent(idx, "inventoryId", val);
                             if (errors.material)
                               setErrors((er) => ({ ...er, material: "" }));
                           }}
@@ -1147,7 +1149,7 @@ export default function BOMFormModal({
                     errs.productGroupName = "Product group name is required";
                   if (form.components.length === 0)
                     errs.components = "Add at least one component";
-                  if (form.components.some((c) => !c.materialId))
+                  if (form.components.some((c) => !c.inventoryId))
                     errs.material = "Select a material for every row";
                   if (Object.keys(errs).length) {
                     setErrors(errs);

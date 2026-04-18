@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 
 // Helper function to calculate FIFO cost from active batches
 // FIFO = use oldest batches first (what you'll actually consume)
