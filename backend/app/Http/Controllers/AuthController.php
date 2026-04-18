@@ -160,19 +160,20 @@ class AuthController extends Controller
             $user->last_login_at = now();
             $user->save();
 
-            $requires2fa  = false;
-            $deviceToken  = $request->input('device_token');
-            $deviceTokens = $user->device_tokens ?? [];
-
-            if (!$deviceToken) {
-                // No device token sent — require 2FA
-                $requires2fa = true;
-            } else {
-                $isRecognized = collect($deviceTokens)->contains(
-                    fn($entry) => isset($entry['token']) &&
-                                  $entry['token'] === $deviceToken
-                );
-                $requires2fa = !$isRecognized;
+           $requires2fa  = false;
+            if (!in_array($user->role, ['admin', 'owner'])) {
+                $deviceToken  = $request->input('device_token');
+                $deviceTokens = $user->device_tokens ?? [];
+                if (!$deviceToken) {
+                    // No device token sent — require 2FA
+                    $requires2fa = true;
+                } else {
+                    $isRecognized = collect($deviceTokens)->contains(
+                        fn($entry) => isset($entry['token']) &&
+                                    $entry['token'] === $deviceToken
+                    );
+                    $requires2fa = !$isRecognized;
+                }
             }
 
             return $this->successResponse(
