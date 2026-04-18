@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /**
  * STOCKS PAGE
@@ -13,16 +13,31 @@
 
 import CustomDropdown from "@/app/components/CustomDropdown";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import GoodsIssueModal from "./GoodsIssueModal";
 import ActualStockTab from "./ActualStockTab";
 import InventoryReports from "./InventoryReports";
 import StockOutHistoryTab from "./StockOutHistoryTab";
-import { useAuth } from "@/app/context/AuthContext";
-import { fetchInventory, adjustInventoryStock, fetchAllStockHistory } from "@/lib/inventoryApi";
+import StockReductionModal from "./StockReductionModal";
 
-// Storage keys and localStorage helpers removed — all data via API.
+// ── Storage Keys ───────────────────────────────────────────────────────────────
+const MATERIALS_KEY = "pmp_materials";
+const VENDORS_KEY = "pmp_vendors";
+const STOCK_OUT_KEY = "pmp_stock_out_log";
 
-// ── Number Generation ──────────────────────────────────────────────────────────
+// ── Storage Helpers ────────────────────────────────────────────────────────────
+function getStore(key) {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(key) || "[]");
+  } catch {
+    return [];
+  }
+}
+function setStore(key, data) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(key, JSON.stringify(data));
+}
+
+// ─ Number Generation ─────────────────────────────────────────────────────────
 function genDocNumber(prefix, list) {
   const year = new Date().getFullYear();
   const seq = String((list.length || 0) + 1).padStart(4, "0");
@@ -335,7 +350,7 @@ function BatchAgePill({ dateReceived }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // STOCK OVERVIEW TAB (Goods Stock)
 // ══════════════════════════════════════════════════════════════════════════════
-function StockOverviewTab({ materials, onIssueStock }) {
+function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -371,10 +386,15 @@ function StockOverviewTab({ materials, onIssueStock }) {
     });
   };
 
+  // FIX: Updated logic to prioritize remainingQty if set, otherwise fallback
   const getStock = (m) => {
     if (m.batches && Array.isArray(m.batches) && m.batches.length > 0) {
       return m.batches.reduce(
-        (s, b) => s + (b.remainingQty || b.goodQty || b.qtyGood || 0),
+        (s, b) =>
+          s +
+          (b.remainingQty != null
+            ? b.remainingQty
+            : (b.goodQty ?? b.qtyGood ?? 0)),
         0,
       );
     }
@@ -405,7 +425,12 @@ function StockOverviewTab({ materials, onIssueStock }) {
           return m.procurementType === "on-demand";
         return true;
       })();
-    return matchSearch && matchCat && matchStatus;
+
+    // Logic: Show item if stock > 0 OR if it has history (batches)
+    const hasHistory = m.batches && m.batches.length > 0;
+    const isVisible = stock > 0 || hasHistory;
+
+    return matchSearch && matchCat && matchStatus && isVisible;
   };
 
   const filteredRows = useMemo(() => {
@@ -414,7 +439,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
       rows.push({ type: "standalone", item: { ...m, stockQty: getStock(m) } });
     });
     groupedMaterials.parents.forEach((parent) => {
-      const children = groupedMaterials.childrenMap.get(parent._id) || [];
+      const children = groupedMaterials.childrenMap.get(parent.id) || [];
       const parentMatches = matchesFilters(parent);
       const displayChildren = children.map((c) => ({
         ...c,
@@ -452,13 +477,11 @@ function StockOverviewTab({ materials, onIssueStock }) {
     return rows;
   }, [groupedMaterials, search, categoryFilter, statusFilter]);
 
-  // ── FIX 3: Summary cards now use getStock(m) instead of m.stockQty ──────────
   const totalStock = materials
     .filter((m) => !m.parentId && m.procurementType !== "on-demand")
     .reduce((sum, m) => {
-      // If it's a parent with variants, sum the children's stock
       if (m.hasVariants) {
-        const children = materials.filter((c) => c.parentId === m._id);
+        const children = materials.filter((c) => c.parentId === m.id);
         return sum + children.reduce((cSum, c) => cSum + getStock(c), 0);
       }
       return sum + getStock(m);
@@ -467,11 +490,17 @@ function StockOverviewTab({ materials, onIssueStock }) {
   const outOfStock = materials
     .filter((m) => m.procurementType !== "on-demand")
     .filter((m) => {
-      // Count standalone items with 0 stock
+      // Only count items that were actually stocked in (have batch data)
+      const hasBatchData =
+        m.batches &&
+        m.batches.length > 0 &&
+        m.batches.some(
+          (b) =>
+            (b.originalQty || b.qtyReceived || b.goodQty || b.qtyGood || 0) > 0,
+        );
+      if (!hasBatchData) return false;
       if (!m.parentId && !m.hasVariants) return getStock(m) === 0;
-      // Count variant children with 0 stock
       if (m.parentId) return getStock(m) === 0;
-      // Don't count parent headers directly (we count their children)
       return false;
     }).length;
 
@@ -486,10 +515,13 @@ function StockOverviewTab({ materials, onIssueStock }) {
     .filter((m) => !m.parentId && m.procurementType !== "on-demand")
     .reduce((sum, m) => {
       if (m.hasVariants) {
-        const children = materials.filter((c) => c.parentId === m._id);
-        return sum + children.reduce((cs, c) => cs + getStock(c) * (c.baseCost || c.averageCost || 0), 0);
+        const children = materials.filter((c) => c.parentId === m.id);
+        return (
+          sum +
+          children.reduce((cs, c) => cs + getStock(c) * (c.baseCost || 0), 0)
+        );
       }
-      return sum + getStock(m) * (m.baseCost || m.averageCost || 0);
+      return sum + getStock(m) * (m.baseCost || 0);
     }, 0);
 
   return (
@@ -637,13 +669,16 @@ function StockOverviewTab({ materials, onIssueStock }) {
               <th style={{ ...thStyle, textAlign: "right" }}>Unit Cost</th>
               <th style={{ ...thStyle, textAlign: "right" }}>Stock Value</th>
               <th style={{ ...thStyle, textAlign: "center" }}>Status</th>
+              <th style={{ ...thStyle, textAlign: "center", width: "60px" }}>
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   style={{
                     padding: "3rem",
                     textAlign: "center",
@@ -659,10 +694,10 @@ function StockOverviewTab({ materials, onIssueStock }) {
               filteredRows.map((row) => {
                 if (row.type === "standalone") {
                   const m = row.item;
-                  const stockVal = getStock(m) * (m.baseCost || m.averageCost || 0);
+                  const stockVal = (m.stockQty || 0) * (m.baseCost || 0);
                   return (
                     <tr
-                      key={m._id}
+                      key={m.id}
                       style={{
                         borderBottom: "1px solid rgba(255,255,255,0.04)",
                       }}
@@ -682,7 +717,6 @@ function StockOverviewTab({ materials, onIssueStock }) {
                             gap: "0.5rem",
                           }}
                         >
-                          {/* Spacer to align standalone rows with parent rows that have ChevronIcon */}
                           <div style={{ width: "14px", flexShrink: 0 }} />
                           <div>
                             <div
@@ -757,7 +791,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
                         }}
                       >
                         ₱
-                        {(m.baseCost || m.averageCost || 0).toLocaleString("en-PH", {
+                        {(m.baseCost || 0).toLocaleString("en-PH", {
                           minimumFractionDigits: 2,
                         })}
                       </td>
@@ -787,15 +821,65 @@ function StockOverviewTab({ materials, onIssueStock }) {
                           procurementType={m.procurementType}
                         />
                       </td>
+                      <td
+                        style={{
+                          padding: "0.875rem 1rem",
+                          textAlign: "center",
+                        }}
+                      >
+                        {m.stockQty === 0 && onDeleteZeroStock ? (
+                          <button
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Delete "${m.name}"? This action cannot be undone.`,
+                                )
+                              ) {
+                                onDeleteZeroStock(m.id);
+                              }
+                            }}
+                            style={{
+                              background: "rgba(239,68,68,0.1)",
+                              border: "1px solid rgba(239,68,68,0.2)",
+                              borderRadius: "6px",
+                              padding: "0.375rem",
+                              color: "#ef4444",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              margin: "0 auto",
+                            }}
+                            title="Delete this item"
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                            </svg>
+                          </button>
+                        ) : (
+                          <span
+                            style={{ color: "var(--gray)", fontSize: "0.7rem" }}
+                          >
+                            —
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 }
 
                 const parent = row.item;
                 const children = row.children || [];
-                const isExpanded = expandedParents.has(parent._id);
+                const isExpanded = expandedParents.has(parent.id);
                 const parentStockVal = children.reduce(
-                  (s, c) => s + getStock(c) * (c.baseCost || c.averageCost || 0),
+                  (s, c) => s + (c.stockQty || 0) * (c.baseCost || 0),
                   0,
                 );
                 const totalChildStock = children.reduce(
@@ -804,7 +888,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
                 );
 
                 return (
-                  <React.Fragment key={parent._id}>
+                  <React.Fragment key={parent.id}>
                     <tr
                       style={{
                         borderBottom: isExpanded
@@ -813,7 +897,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
                         background: "rgba(212,168,67,0.02)",
                         cursor: "pointer",
                       }}
-                      onClick={() => toggleExpand(parent._id)}
+                      onClick={() => toggleExpand(parent.id)}
                       onMouseEnter={(e) =>
                         (e.currentTarget.style.background =
                           "rgba(212,168,67,0.06)")
@@ -834,7 +918,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              toggleExpand(parent._id);
+                              toggleExpand(parent.id);
                             }}
                             style={{
                               background: "none",
@@ -952,7 +1036,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
                       >
                         {(() => {
                           const costs = children
-                            .map((c) => c.baseCost || c.averageCost || 0)
+                            .map((c) => c.baseCost || 0)
                             .filter((c) => c > 0);
                           if (costs.length === 0) return "₱0.00";
                           const min = Math.min(...costs),
@@ -1001,14 +1085,15 @@ function StockOverviewTab({ materials, onIssueStock }) {
                           procurementType={parent.procurementType}
                         />
                       </td>
+                      <td style={{ padding: "0.875rem 1rem" }} />
                     </tr>
                     {isExpanded &&
                       children.map((child) => {
                         const childStockVal =
-                          getStock(child) * (child.baseCost || child.averageCost || 0);
+                          (child.stockQty || 0) * (child.baseCost || 0);
                         return (
                           <tr
-                            key={child._id}
+                            key={child.id}
                             style={{
                               borderBottom: "1px solid rgba(255,255,255,0.03)",
                               background: "rgba(0,0,0,0.15)",
@@ -1100,7 +1185,7 @@ function StockOverviewTab({ materials, onIssueStock }) {
                               }}
                             >
                               ₱
-                              {(child.baseCost || child.averageCost || 0).toLocaleString("en-PH", {
+                              {(child.baseCost || 0).toLocaleString("en-PH", {
                                 minimumFractionDigits: 2,
                               })}
                             </td>
@@ -1130,6 +1215,59 @@ function StockOverviewTab({ materials, onIssueStock }) {
                                 procurementType={child.procurementType}
                               />
                             </td>
+                            <td
+                              style={{
+                                padding: "0.75rem 1rem",
+                                textAlign: "center",
+                              }}
+                            >
+                              {child.stockQty === 0 && onDeleteZeroStock ? (
+                                <button
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        `Delete "${child.name}"? This action cannot be undone.`,
+                                      )
+                                    ) {
+                                      onDeleteZeroStock(child.id);
+                                    }
+                                  }}
+                                  style={{
+                                    background: "rgba(239,68,68,0.1)",
+                                    border: "1px solid rgba(239,68,68,0.2)",
+                                    borderRadius: "6px",
+                                    padding: "0.375rem",
+                                    color: "#ef4444",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    margin: "0 auto",
+                                  }}
+                                  title="Delete this variant"
+                                >
+                                  <svg
+                                    width="14"
+                                    height="14"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                  >
+                                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                                  </svg>
+                                </button>
+                              ) : (
+                                <span
+                                  style={{
+                                    color: "var(--gray)",
+                                    fontSize: "0.7rem",
+                                  }}
+                                >
+                                  —
+                                </span>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}
@@ -1145,39 +1283,25 @@ function StockOverviewTab({ materials, onIssueStock }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// STOCK-OUT HISTORY TAB
-// ══════════════════════════════════════════════════════════════════════════════
-// STOCK-OUT HISTORY TAB — Moved to StockOutHistoryTab.jsx
-
-// ACTUAL STOCK TAB — Moved to ActualStockTab.jsx
-
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function StocksPage() {
-  const { token, user } = useAuth();
   const [activeTab, setActiveTab] = useState("goods");
   const [materials, setMaterials] = useState([]);
   const [stockOuts, setStockOuts] = useState([]);
-  const [showGoodsIssue, setShowGoodsIssue] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [showReductionModal, setShowReductionModal] = useState(false);
+  const [reductionItem, setReductionItem] = useState(null);
+  const [showSelectMaterial, setShowSelectMaterial] = useState(false);
+  const [selectSearch, setSelectSearch] = useState("");
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectedMaterials, setSelectedMaterials] = useState([]);
+  const [reductionQueue, setReductionQueue] = useState([]); // kept for single-item flow
+  const [reductionItems, setReductionItems] = useState([]); // multi-select: array of items
 
-  const refresh = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchInventory(token);
-      setMaterials(data);
-      const ids = data.map((m) => m._id).filter(Boolean);
-      const history = await fetchAllStockHistory(ids, token);
-      setStockOuts(history.filter((h) => h.type === "deduction"));
-    } catch (err) {
-      setError(err.message || "Failed to load inventory.");
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+  const refresh = useCallback(() => {
+    setMaterials(getStore(MATERIALS_KEY));
+    setStockOuts(getStore(STOCK_OUT_KEY));
+  }, []);
 
   useEffect(() => {
     refresh();
@@ -1187,13 +1311,15 @@ export default function StocksPage() {
   const computeStockFromBatches = (batches) => {
     if (!batches || !Array.isArray(batches) || batches.length === 0) return 0;
     return batches.reduce(
-      (sum, b) => sum + (b.remainingQty || b.goodQty || b.qtyGood || 0),
+      (sum, b) =>
+        sum +
+        (b.remainingQty != null
+          ? b.remainingQty
+          : (b.goodQty ?? b.qtyGood ?? 0)),
       0,
     );
   };
 
-  // FIFO cost = unit cost of the OLDEST active batch (next batch to be issued)
-  // This reflects the actual cost that will be used for the next stock-out
   const computeAveCostFromBatches = (batches) => {
     if (!batches || !Array.isArray(batches) || batches.length === 0) return 0;
     const oldest = [...batches]
@@ -1202,54 +1328,178 @@ export default function StocksPage() {
     return oldest ? oldest.unitCost || 0 : 0;
   };
 
-  // ── Stock Reduction Handler (Old Modal → New Batch System) ─────────────────
-  const handleStockReduction = async (data) => {
+  // ── Stock Reduction Handler ────────────────
+  const handleStockReduction = (data) => {
     const {
       reason,
+      issueType: rawIssueType,
       remarks,
       variants,
+      totals,
       performedBy,
       saleRef,
       saleDate,
       customer,
     } = data;
 
-    // reason comes directly from GoodsIssueModal which uses GOODS_ISSUE_TYPES
-    // IDs that already match the backend enum — no mapping needed.
-    const mappedReason = reason;
+    const issueTypeMap = {
+      sales: "manual_sale",
+      manual_sale: "manual_sale",
+      damaged: "damage",
+      damage: "damage",
+      writeoff: "scrap",
+      scrap: "scrap",
+      missing: "lost",
+      lost: "lost",
+      production: "production",
+      return: "return",
+      adjustment: "adjustment",
+    };
+    const issueType =
+      issueTypeMap[reason] || issueTypeMap[rawIssueType] || "adjustment";
 
-    const calls = (variants || [])
-      .filter((v) => (v.qtyFulfilled || 0) > 0)
-      .map((variant) => {
-        const unitCost =
-          variant.qtyFulfilled > 0
-            ? (variant.totalCostValue || 0) / variant.qtyFulfilled
-            : 0;
-        return adjustInventoryStock(
-          variant.variantId || variant.inventoryId,
-          {
-            quantity: variant.qtyFulfilled,
-            adjustmentType: "subtract",
-            reason: mappedReason,
-            remarks: remarks || null,
-            sellingPrice: variant.sellingPrice || null,
-            saleDate: saleDate || null,
-            customerName: customer || null,
-            unitCost: unitCost || null,
-            performedBy: performedBy || null,
-          },
-          token,
-        );
+    const now = new Date().toISOString();
+    const mats = getStore(MATERIALS_KEY);
+    const log = getStore(STOCK_OUT_KEY);
+
+    let updatedCount = 0;
+    let failedCount = 0;
+
+    variants.forEach((variant) => {
+      const qtyFulfilled = variant.qtyFulfilled;
+      if (qtyFulfilled <= 0) {
+        failedCount++;
+        return;
+      }
+
+      // Find material
+      let mat = mats.find((m) => m.id === variant.variantId);
+      if (!mat && variant.sku) mat = mats.find((m) => m.sku === variant.sku);
+      if (!mat) mat = mats.find((m) => m.name === variant.variantName);
+
+      if (!mat) {
+        failedCount++;
+        return;
+      }
+
+      const deductions = {};
+      variant.batches.forEach((b) => {
+        deductions[String(b.batchId)] = b.take;
       });
 
-    try {
-      await Promise.all(calls);
-      setShowGoodsIssue(false);
-      refresh();
-    } catch (err) {
-      console.error("Stock reduction failed:", err);
-      setError(err.message || "Failed to issue stock.");
+      const currentBatches = [...(mat.batches || [])];
+
+      const updatedBatches = currentBatches.map((batch) => {
+        const deduct = deductions[String(batch.batchId)];
+        if (!deduct) return batch;
+
+        // FIX: Correct calculation logic
+        const currentRemaining =
+          batch.remainingQty != null
+            ? batch.remainingQty
+            : (batch.qtyGood ?? batch.goodQty ?? 0);
+        const newRemaining = currentRemaining - deduct;
+
+        return {
+          ...batch,
+          remainingQty: newRemaining,
+          qtyDamaged:
+            reason === "damaged"
+              ? (batch.qtyDamaged || 0) + deduct
+              : batch.qtyDamaged || 0,
+          movements: [
+            ...(batch.movements || []),
+            {
+              type: issueType,
+              qty: -deduct,
+              remainingAfter: newRemaining,
+              reason: remarks || "Adjustment",
+              date: now,
+            },
+          ],
+          status: newRemaining === 0 ? "exhausted" : "active",
+        };
+      });
+
+      const idx = mats.findIndex((m) => m.id === mat.id);
+      if (idx !== -1) {
+        const oldStock = mats[idx].stockQty;
+        const newStock = computeStockFromBatches(updatedBatches);
+        mats[idx] = {
+          ...mats[idx],
+          stockQty: newStock,
+          baseCost: computeAveCostFromBatches(updatedBatches),
+          batches: updatedBatches,
+          updatedAt: now,
+        };
+        updatedCount++;
+      } else {
+        failedCount++;
+      }
+
+      // Log entry
+      const batchBreakdown = variant.batches.map((b) => ({
+        batchId: b.batchId,
+        qty: b.take,
+        unitCost: b.unitCost || 0,
+        totalCost: b.totalCost || 0,
+      }));
+      const unitCost =
+        qtyFulfilled > 0 ? (variant.totalCostValue || 0) / qtyFulfilled : 0;
+
+      log.push({
+        id: genDocNumber("GI", log),
+        materialId: mat.id,
+        materialName: mat.name || variant.variantName,
+        variantId: mat.id,
+        variantName: variant.variantName || mat.name,
+        sku: variant.sku || mat.sku,
+        category: variant.category || mat.category || "",
+        uom: variant.uom || mat.uom || "pcs",
+        issueType,
+        quantity: -qtyFulfilled,
+        unitCost,
+        totalCost: qtyFulfilled * unitCost,
+        performedBy: performedBy || "",
+        notes: remarks || "",
+        batchBreakdown,
+        ...(issueType === "manual_sale"
+          ? {
+              saleRef: saleRef || "",
+              saleDate: saleDate || now,
+              customer: customer || "",
+              sellingPrice: variant.sellingPrice || 0,
+              totalRevenue: variant.totalRevenue || 0,
+            }
+          : {}),
+        newStock: computeStockFromBatches(updatedBatches),
+        totalLoss: variant.totalCostValue || 0,
+        dateIssued: now,
+        createdAt: now,
+      });
+    });
+
+    setStore(MATERIALS_KEY, mats);
+    setStore(STOCK_OUT_KEY, log);
+    refresh();
+
+    if (updatedCount > 0) {
+      alert(
+        `✓ Stock updated successfully!\n\n${updatedCount} material(s) updated.`,
+      );
+    } else {
+      alert(`✗ Stock update failed! Check console for details.`);
     }
+
+    setShowReductionModal(false);
+    setReductionItem(null);
+  };
+
+  const handleDeleteZeroStock = (materialId) => {
+    const mats = getStore(MATERIALS_KEY);
+    const updated = mats.filter((m) => m.id !== materialId);
+    setStore(MATERIALS_KEY, updated);
+    refresh();
   };
 
   const tabStyle = (tab) => ({
@@ -1316,42 +1566,491 @@ export default function StocksPage() {
       </div>
 
       {/* Tab Content */}
-      {loading && (
-        <p style={{ padding: "2rem", color: "var(--gray)", fontSize: "0.875rem" }}>
-          Loading inventory...
-        </p>
-      )}
-      {error && (
-        <p style={{ padding: "2rem", color: "var(--danger)", fontSize: "0.875rem" }}>
-          {error}
-        </p>
-      )}
-      {!loading && !error && activeTab === "goods" && (
+      {activeTab === "goods" && (
         <StockOverviewTab
           materials={materials}
-          onIssueStock={() => setShowGoodsIssue(true)}
+          onIssueStock={() => {
+            setShowSelectMaterial(true);
+          }}
+          onDeleteZeroStock={handleDeleteZeroStock}
         />
       )}
-      {!loading && !error && activeTab === "actual" && (
+      {activeTab === "actual" && (
         <ActualStockTab
           materials={materials}
-          onStockAdded={refresh}
+          onDeleteZeroStock={handleDeleteZeroStock}
         />
       )}
-      {!loading && !error && activeTab === "history" && (
+      {activeTab === "history" && (
         <StockOutHistoryTab stockOuts={stockOuts} materials={materials} />
       )}
-      {!loading && !error && activeTab === "reports" && (
+      {activeTab === "reports" && (
         <InventoryReports materials={materials} stockOuts={stockOuts} />
       )}
 
-      {/* Goods Issue Modal — FIFO/Pick Batch/Sales/Damage/Writeoff */}
-      {showGoodsIssue && (
-        <GoodsIssueModal
-          materials={materials}
-          onClose={() => setShowGoodsIssue(false)}
+      {/* Select Material Modal */}
+      {showSelectMaterial && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.78)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            style={{
+              background: "#0E0E0E",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "14px",
+              width: "480px",
+              maxWidth: "95%",
+              maxHeight: "80vh",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: "1.5rem 1.75rem",
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+                background: "#131313",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: "0.6rem",
+                    color: "#D4A843",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.2em",
+                    fontWeight: 700,
+                    marginBottom: "0.3rem",
+                  }}
+                >
+                  Stock Adjustment
+                </div>
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: "1.2rem",
+                    fontWeight: 700,
+                    color: "#E5E2E1",
+                  }}
+                >
+                  Select Material
+                </h2>
+              </div>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+              >
+                <button
+                  onClick={() => {
+                    setMultiSelectMode((prev) => !prev);
+                    setSelectedMaterials([]);
+                  }}
+                  style={{
+                    background: multiSelectMode
+                      ? "rgba(212,168,67,0.15)"
+                      : "rgba(255,255,255,0.05)",
+                    border: multiSelectMode
+                      ? "1px solid rgba(212,168,67,0.4)"
+                      : "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "7px",
+                    padding: "0.35rem 0.75rem",
+                    fontSize: "0.7rem",
+                    fontWeight: 700,
+                    color: multiSelectMode ? "#D4A843" : "var(--gray)",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {multiSelectMode ? "✓ Multi-Select ON" : "Select Multiple"}
+                </button>
+                {/* FIXED: Moved style inside button tag */}
+                <button
+                  onClick={() => {
+                    setShowSelectMaterial(false);
+                    setSelectSearch("");
+                    setMultiSelectMode(false);
+                    setSelectedMaterials([]);
+                  }}
+                  style={{
+                    background: "rgba(255,255,255,0.05)",
+                    border: "none",
+                    borderRadius: "50%",
+                    width: "36px",
+                    height: "36px",
+                    cursor: "pointer",
+                    color: "var(--gray)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Search */}
+            <div
+              style={{
+                padding: "1rem 1.75rem",
+                borderBottom: "1px solid rgba(255,255,255,0.06)",
+              }}
+            >
+              <div style={{ position: "relative" }}>
+                <svg
+                  style={{
+                    position: "absolute",
+                    left: "0.75rem",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "var(--gray)",
+                  }}
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="M21 21l-4.35-4.35" />
+                </svg>
+                <input
+                  autoFocus
+                  placeholder="Search materials..."
+                  value={selectSearch}
+                  onChange={(e) => setSelectSearch(e.target.value)}
+                  style={{
+                    width: "100%",
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "8px",
+                    color: "#E5E2E1",
+                    padding: "0.55rem 0.75rem 0.55rem 2.25rem",
+                    fontSize: "0.85rem",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* List */}
+            <div
+              style={{
+                overflowY: "auto",
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                minHeight: 0,
+              }}
+            >
+              {materials
+                .filter((m) => {
+                  if (m.parentId) return false;
+                  const hasBatches = m.batches && m.batches.length > 0;
+                  const hasStock = (m.stockQty || 0) > 0;
+                  if (!hasBatches && !hasStock) {
+                    if (m.hasVariants) {
+                      const children = materials.filter(
+                        (c) => c.parentId === m.id,
+                      );
+                      const childStock = children.reduce(
+                        (s, c) => s + (c.stockQty || 0),
+                        0,
+                      );
+                      const childBatches = children.some(
+                        (c) => c.batches && c.batches.length > 0,
+                      );
+                      if (!childStock && !childBatches) return false;
+                    } else {
+                      return false;
+                    }
+                  }
+                  if (selectSearch) {
+                    const q = selectSearch.toLowerCase();
+                    return (
+                      m.name.toLowerCase().includes(q) ||
+                      (m.sku || "").toLowerCase().includes(q)
+                    );
+                  }
+                  return true;
+                })
+                .map((m) => {
+                  // Compute accurate stock from batches
+                  const computeAccurateStock = (mat) => {
+                    if (Array.isArray(mat.batches) && mat.batches.length > 0) {
+                      return mat.batches.reduce(
+                        (s, b) =>
+                          s +
+                          (b.remainingQty != null
+                            ? b.remainingQty
+                            : (b.goodQty ?? b.qtyGood ?? 0)),
+                        0,
+                      );
+                    }
+                    return mat.stockQty || 0;
+                  };
+                  let displayStock = computeAccurateStock(m);
+                  let variantCount = 0;
+                  if (m.hasVariants) {
+                    const children = materials.filter(
+                      (c) => c.parentId === m.id,
+                    );
+                    // Only count children with actual batch data
+                    const stockedChildren = children.filter(
+                      (c) =>
+                        Array.isArray(c.batches) &&
+                        c.batches.length > 0 &&
+                        c.batches.some(
+                          (b) =>
+                            (b.originalQty ||
+                              b.qtyReceived ||
+                              b.goodQty ||
+                              b.qtyGood ||
+                              0) > 0,
+                        ),
+                    );
+                    variantCount = stockedChildren.length;
+                    displayStock = stockedChildren.reduce(
+                      (s, c) => s + computeAccurateStock(c),
+                      0,
+                    );
+                  }
+                  return (
+                    <div
+                      key={m.id}
+                      onClick={() => {
+                        if (multiSelectMode) {
+                          setSelectedMaterials((prev) =>
+                            prev.some((x) => x.id === m.id)
+                              ? prev.filter((x) => x.id !== m.id)
+                              : [...prev, m],
+                          );
+                        } else {
+                          setReductionItem(m);
+                          setShowSelectMaterial(false);
+                          setSelectSearch("");
+                          setShowReductionModal(true);
+                        }
+                      }}
+                      style={{
+                        padding: "0.875rem 1.75rem",
+                        borderBottom: "1px solid rgba(255,255,255,0.04)",
+                        cursor: "pointer",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        background:
+                          multiSelectMode &&
+                          selectedMaterials.some((x) => x.id === m.id)
+                            ? "rgba(212,168,67,0.08)"
+                            : "transparent",
+                        borderLeft:
+                          multiSelectMode &&
+                          selectedMaterials.some((x) => x.id === m.id)
+                            ? "3px solid #D4A843"
+                            : "3px solid transparent",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (
+                          !multiSelectMode ||
+                          !selectedMaterials.some((x) => x.id === m.id)
+                        )
+                          e.currentTarget.style.background =
+                            "rgba(212,168,67,0.06)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background =
+                          multiSelectMode &&
+                          selectedMaterials.some((x) => x.id === m.id)
+                            ? "rgba(212,168,67,0.08)"
+                            : "transparent";
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.75rem",
+                        }}
+                      >
+                        {multiSelectMode && (
+                          <input
+                            type="checkbox"
+                            readOnly
+                            checked={selectedMaterials.some(
+                              (x) => x.id === m.id,
+                            )}
+                            style={{
+                              width: "16px",
+                              height: "16px",
+                              accentColor: "#D4A843",
+                              cursor: "pointer",
+                              flexShrink: 0,
+                            }}
+                          />
+                        )}
+                        <div>
+                          <div
+                            style={{
+                              fontWeight: 700,
+                              color: "#E5E2E1",
+                              fontSize: "0.875rem",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                            }}
+                          >
+                            {m.name}
+                            {variantCount > 0 && (
+                              <span
+                                style={{
+                                  fontSize: "0.6rem",
+                                  fontWeight: 700,
+                                  background: "rgba(212,168,67,0.15)",
+                                  color: "#D4A843",
+                                  padding: "0.1rem 0.4rem",
+                                  borderRadius: "4px",
+                                }}
+                              >
+                                {variantCount} variants
+                              </span>
+                            )}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "0.68rem",
+                              color: "var(--gray)",
+                              marginTop: "0.15rem",
+                            }}
+                          >
+                            {m.category || "—"}
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          textAlign: "right",
+                          flexShrink: 0,
+                          marginLeft: "1rem",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            color: displayStock === 0 ? "#ef4444" : "#D4A843",
+                            fontSize: "0.9rem",
+                          }}
+                        >
+                          {displayStock}
+                        </div>
+                        <div
+                          style={{ fontSize: "0.65rem", color: "var(--gray)" }}
+                        >
+                          {m.uom || "pcs"}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Multi-Select Footer — inside modal */}
+            {multiSelectMode && (
+              <div
+                style={{
+                  padding: "1rem 1.75rem",
+                  borderTop: "1px solid rgba(255,255,255,0.08)",
+                  background: "#131313",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexShrink: 0,
+                  borderBottomLeftRadius: "14px",
+                  borderBottomRightRadius: "14px",
+                }}
+              >
+                <span style={{ fontSize: "0.78rem", color: "var(--gray)" }}>
+                  {selectedMaterials.length > 0
+                    ? `${selectedMaterials.length} material${selectedMaterials.length !== 1 ? "s" : ""} selected`
+                    : "Check items to select"}
+                </span>
+                {/* FIXED: Moved style inside button tag */}
+                <button
+                  disabled={selectedMaterials.length === 0}
+                  onClick={() => {
+                    if (selectedMaterials.length === 0) return;
+                    setReductionItems([...selectedMaterials]);
+                    setReductionItem(null); // multi-select uses reductionItems
+                    setSelectedMaterials([]);
+                    setMultiSelectMode(false);
+                    setShowSelectMaterial(false);
+                    setSelectSearch("");
+                    setShowReductionModal(true);
+                  }}
+                  style={{
+                    background:
+                      selectedMaterials.length === 0
+                        ? "rgba(255,255,255,0.06)"
+                        : "#D4A843",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "0.55rem 1.25rem",
+                    color:
+                      selectedMaterials.length === 0 ? "var(--gray)" : "#000",
+                    fontWeight: 700,
+                    fontSize: "0.82rem",
+                    cursor:
+                      selectedMaterials.length === 0
+                        ? "not-allowed"
+                        : "pointer",
+                  }}
+                >
+                  Reduce Selected →
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* Stock Adjustment Modal */}
+      {showReductionModal && (
+        <StockReductionModal
+          isOpen={showReductionModal}
+          onClose={() => {
+            setShowReductionModal(false);
+            setReductionItem(null);
+            setReductionItems([]);
+          }}
           onConfirm={handleStockReduction}
-          currentUser={user}
+          item={reductionItem}
+          items={reductionItems}
+          inventory={materials}
+          masterlist={null}
         />
       )}
     </div>

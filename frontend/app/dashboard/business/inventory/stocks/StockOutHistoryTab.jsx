@@ -1,6 +1,6 @@
 "use client";
 
-// StockOut / Goods Issue History Tab
+// DEPRECATED — replaced by Movement History tab in stocks/page.jsx
 // This file is kept for reference but is no longer rendered in the UI.
 // Safe to delete once the new Movement History tab is fully validated.
 

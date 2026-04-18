@@ -538,8 +538,8 @@ function SupplierCombobox({ value, supplierName, onChange, suppliers, itemCatego
             <span style={{ fontSize: '0.7rem', color: 'var(--gray)', marginLeft: '0.5rem' }}>Local Market / Various Market</span>
           </button>
           {filtered.map(s => (
-            <button key={s._id || s.id} type="button" className={`combobox-item${value===(s._id||s.id)?' active':''}`}
-              onClick={() => { onChange(s._id || s.id, s.name); setOpen(false); }}>
+            <button key={s.id} type="button" className={`combobox-item${value===s.id?' active':''}`}
+              onClick={() => { onChange(s.id, s.name); setOpen(false); }}>
               {s.name}
               {s.categories?.length > 0
                 ? <span style={{ fontSize: '0.7rem', color: 'var(--gray)', marginLeft: '0.5rem' }}>({s.categories.join(', ')})</span>
@@ -1285,15 +1285,15 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
 
   const handleEdit = (supplier) => {
     // FIX: Check in-use via component state, not window global
-    const inUse = inventory.some(i => i.lastSupplierId === (supplier._id || supplier.id) && i.isActive !== false);
-    setEditingId(supplier._id || supplier.id);
+    const inUse = inventory.some(i => i.lastSupplierId === supplier.id && i.isActive !== false);
+    setEditingId(supplier.id);
     setEditingInUse(inUse);
     setForm({ name: supplier.name, contact: supplier.contact||'', phone: supplier.phone||'', address: supplier.address||'', categories: supplier.categories||[] });
     setShowForm(true);
   };
 
   const handleDeleteClick = (supplier) => {
-    const inUse = inventory.some(i => i.lastSupplierId === (supplier._id || supplier.id) && i.isActive !== false);
+    const inUse = inventory.some(i => i.lastSupplierId === supplier.id && i.isActive !== false);
     if (inUse) {
       setInfoModal({ title: 'Cannot Delete Supplier', message: `"${supplier.name}" is linked to active inventory items. Update those items to a different supplier first.` });
       return;
@@ -1304,7 +1304,7 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
   const handleSubmit = () => {
     if (!form.name.trim()) { setInfoModal({ title: 'Validation Error', message: 'Please enter a supplier name.' }); return; }
     if (!form.contact.trim()) { setInfoModal({ title: 'Validation Error', message: 'Please enter a contact person.' }); return; }
-    const isDup = suppliers.some(s => s.name.toLowerCase() === form.name.trim().toLowerCase() && (s._id || s.id) !== editingId);
+    const isDup = suppliers.some(s => s.name.toLowerCase() === form.name.trim().toLowerCase() && s.id !== editingId);
     if (isDup) { setInfoModal({ title: 'Duplicate Supplier', message: `"${form.name.trim()}" already exists.` }); return; }
     if (editingId) onUpdate(editingId, { ...form, name: form.name.trim() });
     else onAdd({ ...form, name: form.name.trim() });
@@ -1342,7 +1342,7 @@ function ManageSuppliersModal({ isOpen, onClose, suppliers, categories, inventor
                     </thead>
                     <tbody>
                       {suppliers.map(s => (
-                        <tr key={s._id || s.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <tr key={s.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                           <td style={{ padding: '0.75rem', color: 'var(--white)', fontWeight: 600 }}>{s.name}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--white)', fontSize: '0.875rem', fontWeight: 500 }}>{s.contact||'—'}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.8rem' }}>
@@ -1531,7 +1531,7 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
   // Check if item is linked to products or orders
   useEffect(() => {
     if (item) {
-      const isLinkedToProduct = products.some(p => p.inventoryId === (item._id || item.id));
+      const isLinkedToProduct = products.some(p => p.inventoryId === item.id);
       // TODO: Add orders check when orders API is integrated
       setIsLinked(isLinkedToProduct);
     } else setIsLinked(false);
@@ -1557,7 +1557,7 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
     }
     const normalizedName = form.name.trim().split(' ').map(w => w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
     // TODO: MongoDB — Replace with API: GET /api/inventory/check-duplicate?name=...&category=...
-    const dup = inventory.find(i => i.name.toLowerCase()===normalizedName.toLowerCase() && i.category.toLowerCase()===form.category.toLowerCase() && (i._id||i.id)!==(editingItem?._id||editingItem?.id));
+    const dup = inventory.find(i => i.name.toLowerCase()===normalizedName.toLowerCase() && i.category.toLowerCase()===form.category.toLowerCase() && i.id!==editingItem?.id);
     if (dup) { if (dup.isActive===false) { setArchivedItem(dup); return; } setDuplicateItem(dup); return; }
     onSave({ ...form, name: normalizedName, sku: skuPreview, minStockLevel: parseInt(form.minStockLevel)||10, stockQty: item ? item.stockQty : (stock-damaged), damagedQty: item ? item.damagedQty : damaged, lastSupplierId: form.supplierId==='unspecified'?null:form.supplierId, lastSupplierName: form.supplierName, lastUnitCost: parseFloat(form.unitCost)||0, averageCost: parseFloat(form.unitCost)||0 });
   };
@@ -1949,7 +1949,7 @@ function InventoryModal({ isOpen, onClose, onSave, onEdit, onRestoreItem, item, 
       )}
 
       <AddSupplierQuickModal isOpen={showAddSupplier} onClose={() => setShowAddSupplier(false)}
-        onAdd={async (data) => { const s = await onAddSupplier(data); if (s) setForm(p => ({ ...p, supplierId: s._id || s.id, supplierName: s.name })); }}
+        onAdd={(data) => { const s = onAddSupplier(data); setForm(p => ({ ...p, supplierId: s.id, supplierName: s.name })); }}
         categories={categories} existingSuppliers={suppliers} />
     </div>
   );
@@ -2250,7 +2250,7 @@ function StockAdditionModal({ isOpen, onClose, onConfirm, item, suppliers, categ
         </div>
       )}
       <AddSupplierQuickModal isOpen={showAddSupplier} onClose={() => setShowAddSupplier(false)}
-        onAdd={async (data) => { const s = await onAddSupplier(data); if (s) { setSupplierId(s._id || s.id); setSupplierName(s.name); } }}
+        onAdd={(data) => { const s = onAddSupplier(data); setSupplierId(s.id); setSupplierName(s.name); }}
         categories={categories} existingSuppliers={suppliers} />
       <InfoModal isOpen={!!infoModal} onClose={() => setInfoModal(null)} title={infoModal?.title||''} message={infoModal?.message||''} />
     </div>
@@ -2277,7 +2277,7 @@ function StockReductionModal({ isOpen, onClose, onConfirm, item, inventory, subm
 
   const batches = useMemo(() => {
     if (!inventory || !item) return [];
-    const inv = inventory.find(i => (i._id || i.id) === (item._id || item.id));
+    const inv = inventory.find(i => i.id === item.id);
     return (inv?.batches||[]).filter(b => b.remainingQty > 0).sort((a, b) => new Date(a.dateReceived)-new Date(b.dateReceived));
   }, [inventory, item]);
 
@@ -2515,10 +2515,6 @@ export default function InventoryPage() {
   const [selectedBatchItem, setSelectedBatchItem] = useState(null);
   const [infoModal, setInfoModal] = useState(null);
 
-  // Low Stock Alert state
-  const [showAlertPanel, setShowAlertPanel] = useState(false);
-  const [alertedIds, setAlertedIds] = useState(new Set()); // session-only, tracks alerted items
-
   // Load inventory, suppliers, and products from API on mount
   useEffect(() => {
     if (!token) return;
@@ -2576,7 +2572,7 @@ export default function InventoryPage() {
     }
 
     loadData();
-  }, [token]);
+  }, []);
 
   // NEW: Handle Add Supplier - Uses API
   const handleAddSupplier = async (supplierData) => {
@@ -2670,14 +2666,14 @@ export default function InventoryPage() {
 
   // Check for linked products and sales history before delete
   const handleDelete = async (item) => {
-    const linkedProducts = products.filter(p => p.inventoryId === (item._id || item.id));
+    const linkedProducts = products.filter(p => p.inventoryId === item.id);
 
     // Fetch orders to check for sales history
     let hasSales = false;
     try {
       const allOrders = await fetchAllOrders({}, token);
       hasSales = allOrders.some(o =>
-        o.items?.some(i => i.inventoryId === (item._id || item.id))
+        o.items?.some(i => i.inventoryId === item.id)
       );
     } catch (error) {
       console.error('Failed to fetch orders for sales check:', error);
@@ -2696,7 +2692,7 @@ export default function InventoryPage() {
     setIsSubmitting(true);
     try {
       // Archive via API (sets isActive: false)
-      const id = archiveItem._id || archiveItem.id;
+      const id = archiveItem.id || archiveItem._id;
       await deleteInventory(id, token);
 
       // Auto-archive products linked to this inventory item
@@ -2704,7 +2700,7 @@ export default function InventoryPage() {
         const allProducts = await fetchProducts(token);
         const linkedProducts = allProducts.filter(p =>
           p.inventoryId === id ||
-          p.inventoryId === (archiveItem?._id || archiveItem?.id)
+          p.inventoryId === archiveItem?.id
         );
         if (linkedProducts.length > 0) {
           await Promise.all(
@@ -2725,7 +2721,7 @@ export default function InventoryPage() {
       // Update local state
       setInventory(prev =>
         prev.map(item =>
-          ((item._id || item.id) === id)
+          (item.id === id || item._id === id)
             ? { ...item, isActive: false, deletedAt: new Date() }
             : item
         )
@@ -2749,12 +2745,12 @@ export default function InventoryPage() {
     setIsSubmitting(true);
     try {
       // Delete permanently via API
-      const id = archiveItem._id || archiveItem.id;
+      const id = archiveItem.id || archiveItem._id;
       await deleteInventory(id, token);
 
       // Remove from local state
       setInventory(prev => prev.filter(item =>
-        (item._id || item.id) !== id
+        item.id !== id && item._id !== id
       ));
 
       // Close modal and reset
@@ -2774,7 +2770,7 @@ export default function InventoryPage() {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const id = item._id || item.id;
+      const id = item.id || item._id;
 
       // Call API to restore item
       const restored = await updateInventory(id, {
@@ -2785,7 +2781,7 @@ export default function InventoryPage() {
 
       // Update local state with restored item
       setInventory(prev => prev.map(i =>
-        ((i._id || i.id) === id)
+        (i.id === id || i._id === id)
           ? { ...i, ...restored, isActive: true, deletedAt: null }
           : i
       ));
@@ -2805,7 +2801,7 @@ export default function InventoryPage() {
     const newStock = Math.max(0, adjustmentItem.stockQty - quantity);
 
     try {
-      const id = adjustmentItem._id || adjustmentItem.id;
+      const id = adjustmentItem.id || adjustmentItem._id;
 
       // Prepare adjustment data for API
       const adjustData = {
@@ -2820,11 +2816,11 @@ export default function InventoryPage() {
       };
 
       // Call API to adjust stock
-      const updated = await adjustInventoryStock(id, adjustData, token);
+      const updated = await adjustInventoryStock(id, adjustData);
 
       // Update local state with updated item
       setInventory(prev => prev.map(item =>
-        ((item._id || item.id) === id)
+        (item.id === id || item._id === id)
           ? { ...item, ...updated }
           : item
       ));
@@ -2846,7 +2842,7 @@ export default function InventoryPage() {
     if (!additionItem || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const id = additionItem._id || additionItem.id;
+      const id = additionItem.id || additionItem._id;
 
       const updated = await adjustInventoryStock(id, {
         adjustmentType: 'add',
@@ -2865,7 +2861,7 @@ export default function InventoryPage() {
 
       // Update local state with updated item
       setInventory(prev => prev.map(item =>
-        ((item._id || item.id) === id)
+        (item.id === id || item._id === id)
           ? { ...item, ...updated }
           : item
       ));
@@ -2889,7 +2885,7 @@ export default function InventoryPage() {
     if (!adjustmentItem || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const id = adjustmentItem._id || adjustmentItem.id;
+      const id = adjustmentItem.id || adjustmentItem._id;
       const { reason, quantity, sellingPrice, saleDate, remarks, customerName, batchId, batchData } = reductionData;
 
       // Prepare adjustment data for API
@@ -2905,11 +2901,11 @@ export default function InventoryPage() {
       };
 
       // Call API to adjust stock
-      const updated = await adjustInventoryStock(id, adjustData, token);
+      const updated = await adjustInventoryStock(id, adjustData);
 
       // Update local state with updated item
       setInventory(prev => prev.map(item =>
-        ((item._id || item.id) === id)
+        (item.id === id || item._id === id)
           ? { ...item, ...updated }
           : item
       ));
@@ -2933,7 +2929,7 @@ export default function InventoryPage() {
   const handleSave = (itemData) => {
     // SKU: for new items, use the preview generated in modal. For edits, keep existing.
     const finalSKU = editingItem ? editingItem.sku : (itemData.sku || generateSKU(itemData.category, itemData.name));
-    setPendingItemData({ ...itemData, id: editingItem ? (editingItem._id || editingItem.id) : crypto.randomUUID(), sku: finalSKU, isActive: true });
+    setPendingItemData({ ...itemData, id: editingItem ? editingItem.id : crypto.randomUUID(), sku: finalSKU, isActive: true });
     setIsConfirmModalOpen(true);
   };
 
@@ -2944,11 +2940,11 @@ export default function InventoryPage() {
     try {
       if (editingItem) {
         // Update existing item via API
-        const id = editingItem._id || editingItem.id;
+        const id = editingItem.id || editingItem._id;
         const updated = await updateInventory(id, pendingItemData, token);
         setInventory(prev =>
           prev.map(item =>
-            ((item._id || item.id) === id) ? updated : item
+            (item.id === id || item._id === id) ? updated : item
           )
         );
       } else {
@@ -2975,7 +2971,7 @@ export default function InventoryPage() {
   };
 
   // Inline min stock level editing
-  const handleInlineEditStart = (item) => setEditingInline({ id: item._id || item.id, value: String(item.minStockLevel) });
+  const handleInlineEditStart = (item) => setEditingInline({ id: item.id, value: String(item.minStockLevel) });
   const handleInlineEditSave = async () => {
     if (!editingInline) return;
     const newLevel = parseInt(editingInline.value) || 0;
@@ -2984,7 +2980,7 @@ export default function InventoryPage() {
         minStockLevel: newLevel
       }, token);
       setInventory(prev => prev.map(i =>
-        (i._id || i.id) === editingInline.id
+        i.id === editingInline.id
           ? { ...i, minStockLevel: newLevel }
           : i
       ));
@@ -3045,33 +3041,6 @@ export default function InventoryPage() {
             <p className="page-subtitle">Physical stocked items only. Upon Order products are managed in Add Product.</p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {(lowStockItems + outOfStockItems) > 0 && (
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => setShowAlertPanel(true)}
-                style={{
-                  background: 'color-mix(in srgb, var(--red) 15%, transparent)',
-                  border: '1px solid color-mix(in srgb, var(--red) 55%, transparent)',
-                  color: 'var(--red)',
-                  position: 'relative',
-                }}
-              >
-                <span style={{ marginRight: '0.35rem' }}>⚠</span>
-                Low Stock Alert
-                <span style={{
-                  marginLeft: '0.4rem',
-                  background: 'var(--red)',
-                  color: 'var(--dark2)',
-                  borderRadius: '10px',
-                  padding: '0.05rem 0.45rem',
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                }}>
-                  {lowStockItems + outOfStockItems}
-                </span>
-              </button>
-            )}
             <button type="button" className="btn-primary" onClick={() => setShowMasterlistModal(true)}>
 Item Masterlist
             </button>
@@ -3158,12 +3127,11 @@ Item Masterlist
             <tbody>
               {filteredInventory.map(item => {
                 const status = getStockStatus(item);
-                const itemId = item._id || item.id;
-                const isExpanded = expandedRows.has(itemId);
+                const isExpanded = expandedRows.has(item.id);
                 return (
-                  <React.Fragment key={itemId}>
+                  <React.Fragment key={item.id}>
                     <tr className="inventory-table-row">
-                      <td style={{ width: '28px', cursor: 'pointer' }} onClick={() => toggleExpand(itemId)}>
+                      <td style={{ width: '28px', cursor: 'pointer' }} onClick={() => toggleExpand(item.id)}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                           style={{ color: 'var(--gray)', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none', display: 'block' }}>
                           <path d="M9 18l6-6-6-6"/>
@@ -3192,7 +3160,7 @@ Item Masterlist
                         </div>
                       </td>
                       <td className="table-cell">
-                        {editingInline?.id === (item._id || item.id) ? (
+                        {editingInline?.id === item.id ? (
                           <IntegerInput className="form-input-inline" value={editingInline.value}
                             onChange={e => setEditingInline(p => ({ ...p, value: e.target.value }))}
                             onBlur={handleInlineEditSave}
@@ -3234,10 +3202,10 @@ Item Masterlist
               </thead>
               <tbody>
                 {archivedInventory.map(item => {
-                  const hasProducts = products.some(p => p.inventoryId === (item._id || item.id));
+                  const hasProducts = products.some(p => p.inventoryId === item.id);
                   const hasSales = false; // TODO: Add sales check when orders API is integrated
                   return (
-                    <tr key={item._id || item.id} className="inventory-table-row" style={{ opacity: 0.5 }}>
+                    <tr key={item.id} className="inventory-table-row" style={{ opacity: 0.5 }}>
                       <td className="table-cell-name"><span className="product-name" style={{ color: 'var(--gray)' }}>{item.name}</span><div style={{ fontSize: '0.73rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{item.sku||'—'}</div></td>
                       <td className="table-cell"><span className="category-badge" style={{ background: 'rgba(100,100,100,0.2)', color: 'var(--gray)' }}>{item.category}</span></td>
                       <td className="table-cell"><span style={{ color: 'var(--gray)' }}>{item.stockQty} pcs</span></td>
@@ -3322,7 +3290,7 @@ Item Masterlist
           setIsSubmitting(true);
           try {
             await updateSupplier(id, data, token);
-            setSuppliers(prev => prev.map(s => (s._id || s.id) === id ? { ...s, ...data } : s));
+            setSuppliers(prev => prev.map(s => s.id === id ? { ...s, ...data } : s));
           } catch (error) {
             console.error('Failed to update supplier in modal:', error);
           } finally {
@@ -3334,7 +3302,7 @@ Item Masterlist
           setIsSubmitting(true);
           try {
             await deleteSupplier(id, token);
-            setSuppliers(prev => prev.filter(s => (s._id || s.id) !== id));
+            setSuppliers(prev => prev.filter(s => s.id !== id));
           } catch (error) {
             console.error('Failed to delete supplier in modal:', error);
           } finally {
@@ -3344,196 +3312,6 @@ Item Masterlist
 
       <BatchDetailsModal batch={selectedBatch} item={selectedBatchItem}
         isOpen={showBatchDetailsModal} onClose={() => { setShowBatchDetailsModal(false); setSelectedBatch(null); setSelectedBatchItem(null); }} />
-
-      {/* Low Stock Alert Panel */}
-      {showAlertPanel && (() => {
-        const alertItems = inventory.filter(i =>
-          i.isActive !== false &&
-          (i.stockQty === 0 || (i.stockQty > 0 && i.stockQty <= i.minStockLevel))
-        ).sort((a, b) => a.stockQty - b.stockQty); // out-of-stock first
-
-        return (
-          <div className="modal-overlay" onClick={() => setShowAlertPanel(false)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '720px', width: '92%' }}>
-              <div className="modal-header">
-                <div>
-                  <h2 className="modal-title" style={{ color: 'var(--red)' }}>Low Stock Alert</h2>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.2rem' }}>
-                    {alertItems.length} item{alertItems.length !== 1 ? 's' : ''} need restocking
-                  </div>
-                </div>
-                <button className="modal-close" onClick={() => setShowAlertPanel(false)}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 6L6 18M6 6l12 12"/>
-                  </svg>
-                </button>
-              </div>
-
-              <div className="modal-body" style={{ maxHeight: '60vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {alertItems.length === 0 ? (
-                  <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)' }}>
-                    No low stock items found.
-                  </div>
-                ) : alertItems.map(item => {
-                  const itemId = item._id || item.id;
-                  const isOutOfStock = item.stockQty === 0;
-                  const isAlerted = alertedIds.has(itemId);
-                  const supplier = item.lastSupplierId
-                    ? suppliers.find(s => (s._id || s.id) === item.lastSupplierId)
-                    : null;
-                  const supplierName = supplier?.name || item.lastSupplierName || 'General Merchandise';
-                  const supplierPhone = supplier?.phone || null;
-                  const supplierEmail = supplier?.email || null;
-                  const supplierContact = supplier?.contactPerson || null;
-
-                  const panelBg = isAlerted
-                    ? 'color-mix(in srgb, var(--gold) 6%, transparent)'
-                    : isOutOfStock
-                      ? 'color-mix(in srgb, var(--red) 10%, transparent)'
-                      : 'color-mix(in srgb, var(--gold) 10%, transparent)';
-
-                  const panelBorder = isAlerted
-                    ? 'color-mix(in srgb, var(--gold) 28%, transparent)'
-                    : isOutOfStock
-                      ? 'color-mix(in srgb, var(--red) 35%, transparent)'
-                      : 'color-mix(in srgb, var(--gold) 28%, transparent)';
-
-                  return (
-                    <div
-                      key={itemId}
-                      style={{
-                        padding: '1rem',
-                        background: panelBg,
-                        border: `1px solid ${panelBorder}`,
-                        borderRadius: '8px',
-                        display: 'grid',
-                        gridTemplateColumns: '1fr auto',
-                        gap: '1rem',
-                        alignItems: 'center',
-                        opacity: isAlerted ? 0.65 : 1,
-                      }}
-                    >
-                      {/* Left: Item + Supplier info */}
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem', flexWrap: 'wrap' }}>
-                          <span style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.9rem' }}>{item.name}</span>
-                          <span style={{ fontSize: '0.65rem', color: 'var(--gray)', background: 'color-mix(in srgb, var(--white) 6%, transparent)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
-                            {item.category}
-                          </span>
-                          <span style={{
-                            fontSize: '0.65rem',
-                            fontWeight: 700,
-                            padding: '0.1rem 0.45rem',
-                            borderRadius: '4px',
-                            color: isOutOfStock ? 'var(--red)' : 'var(--gold)',
-                            background: isOutOfStock
-                              ? 'color-mix(in srgb, var(--red) 18%, transparent)'
-                              : 'color-mix(in srgb, var(--gold) 18%, transparent)',
-                            border: `1px solid ${isOutOfStock
-                              ? 'color-mix(in srgb, var(--red) 35%, transparent)'
-                              : 'color-mix(in srgb, var(--gold) 35%, transparent)'}`,
-                          }}>
-                            {isOutOfStock ? 'OUT OF STOCK' : `LOW: ${item.stockQty} / ${item.minStockLevel}`}
-                          </span>
-                          {isAlerted && (
-                            <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--gold)', background: 'color-mix(in srgb, var(--gold) 18%, transparent)', padding: '0.1rem 0.45rem', borderRadius: '4px', border: '1px solid color-mix(in srgb, var(--gold) 35%, transparent)' }}>
-                              ✓ ALERTED
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Supplier contact block */}
-                        <div style={{ fontSize: '0.78rem', color: 'var(--gray)', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
-                          <span>
-                            <span style={{ color: 'var(--gray)', marginRight: '0.3rem' }}>Supplier:</span>
-                            <span style={{ color: 'var(--white)', fontWeight: 500 }}>{supplierName}</span>
-                          </span>
-                          {supplierContact && (
-                            <span>
-                              <span style={{ color: 'var(--gray)', marginRight: '0.3rem' }}>Contact:</span>
-                              <span style={{ color: 'var(--white)' }}>{supplierContact}</span>
-                            </span>
-                          )}
-                          {supplierPhone && (
-                            <span>
-                              <span style={{ color: 'var(--gray)', marginRight: '0.3rem' }}>Phone:</span>
-                              <a href={`tel:${supplierPhone}`} style={{ color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}>
-                                {supplierPhone}
-                              </a>
-                            </span>
-                          )}
-                          {supplierEmail && (
-                            <span>
-                              <span style={{ color: 'var(--gray)', marginRight: '0.3rem' }}>Email:</span>
-                              <a href={`mailto:${supplierEmail}`} style={{ color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}>
-                                {supplierEmail}
-                              </a>
-                            </span>
-                          )}
-                          {!supplierPhone && !supplierEmail && (
-                            <span style={{ color: 'var(--gray)', fontStyle: 'italic', fontSize: '0.72rem' }}>
-                              No contact info — update supplier record
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Right: Mark Alerted button */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAlertedIds(prev => {
-                            const next = new Set(prev);
-                            if (next.has(itemId)) {
-                              next.delete(itemId);
-                            } else {
-                              next.add(itemId);
-                            }
-                            return next;
-                          });
-                        }}
-                        style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          padding: '0.3rem 0.7rem',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                          background: isAlerted
-                            ? 'color-mix(in srgb, var(--gold) 14%, transparent)'
-                            : 'color-mix(in srgb, var(--gold) 10%, transparent)',
-                          border: '1px solid color-mix(in srgb, var(--gold) 35%, transparent)',
-                          color: 'var(--gold)',
-                          transition: 'all 0.15s',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {isAlerted ? '✓ Alerted' : 'Mark Alerted'}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="modal-actions">
-                {alertedIds.size > 0 && (
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => setAlertedIds(new Set())}
-                    style={{ marginRight: 'auto' }}
-                  >
-                    Clear All Alerted
-                  </button>
-                )}
-                <button type="button" className="btn-secondary" onClick={() => setShowAlertPanel(false)}>
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
 
       <InfoModal isOpen={!!infoModal} onClose={() => setInfoModal(null)} title={infoModal?.title||''} message={infoModal?.message||''} />
     </div>

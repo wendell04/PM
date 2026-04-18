@@ -1,16 +1,16 @@
-﻿"use client";
+"use client";
 
 import CustomDropdown from "@/app/components/CustomDropdown";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { genDocNumber, thStyle } from "../utils";
-import AddStockModal from "../stocks/AddStockModal";
-import { useAuth } from "@/contexts/AuthContext";
-import { adjustInventoryStock, fetchInventory, fetchSuppliers, fetchAllStockHistory } from "@/lib/inventoryApi";
+import { genDocNumber, getStore, setStore, thStyle } from "../utils";
+import AddStockModal from "./AddStockModal";
 
-// ΓöÇΓöÇ Storage Keys ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// Storage keys removed — data now sourced from API
+// ── Storage Keys ───────────────────────────────────────────────────────────────
+const MATERIALS_KEY = "pmp_materials";
+const VENDORS_KEY = "pmp_vendors";
+const STOCK_IN_KEY = "pmp_stock_in_log";
 
-// ΓöÇΓöÇ Shared Input Style ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── Shared Input Style ─────────────────────────────────────────────────────────
 const inputStyle = {
   width: "100%",
   background: "rgba(255,255,255,0.06)",
@@ -23,7 +23,7 @@ const inputStyle = {
   boxSizing: "border-box",
 };
 
-// ΓöÇΓöÇ Comma Number Input ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── Comma Number Input ─────────────────────────────────────────────────────────
 function CommaNumberInput({ value, onChange, placeholder, style }) {
   const handleChange = (e) => {
     const val = e.target.value.replace(/,/g, "");
@@ -62,7 +62,7 @@ function CommaNumberInput({ value, onChange, placeholder, style }) {
   );
 }
 
-// ΓöÇΓöÇ Format Price ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── Format Price ───────────────────────────────────────────────────────────────
 function formatPrice(val) {
   const num =
     typeof val === "string" ? parseFloat(val.replace(/,/g, "")) || 0 : val || 0;
@@ -75,7 +75,7 @@ function formatPrice(val) {
   );
 }
 
-// ΓöÇΓöÇ Info Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── Info Modal ─────────────────────────────────────────────────────────────────
 function InfoModal({ isOpen, onClose, title, message }) {
   if (!isOpen) return null;
   return (
@@ -123,7 +123,7 @@ function InfoModal({ isOpen, onClose, title, message }) {
   );
 }
 
-// ΓöÇΓöÇ Add Vendor Quick Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── Add Vendor Quick Modal ─────────────────────────────────────────────────────
 function AddVendorQuickModal({
   isOpen,
   onClose,
@@ -496,7 +496,7 @@ function AddVendorQuickModal({
   );
 }
 
-// ΓöÇΓöÇ Confirm Save Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── Confirm Save Modal ─────────────────────────────────────────────────────────
 function ConfirmSaveModal({
   isOpen,
   onClose,
@@ -819,7 +819,7 @@ function ConfirmSaveModal({
   );
 }
 
-// ΓöÇΓöÇ Material Report Group (collapsible) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── Material Report Group (collapsible) ────────────────────────────────────────
 function MaterialReportGroup({ group, isLast }) {
   const [open, setOpen] = useState(false);
   const entries = group.entries || [];
@@ -1028,7 +1028,7 @@ function MaterialReportGroup({ group, isLast }) {
   );
 }
 
-// ΓöÇΓöÇ Vendor Combobox ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── Vendor Combobox ────────────────────────────────────────────────────────────
 function VendorCombobox({
   value,
   vendorName,
@@ -1051,8 +1051,7 @@ function VendorCombobox({
   const uniqueVendors = useMemo(() => {
     const seen = new Map();
     vendors.forEach((v) => {
-      const key = v._id || v.id;
-      if (!seen.has(key)) seen.set(key, v);
+      if (!seen.has(v.id)) seen.set(v.id, v);
     });
     return [...seen.values()];
   }, [vendors]);
@@ -1187,10 +1186,10 @@ function VendorCombobox({
           </button>
           {eligibleVendors.map((v) => (
             <button
-              key={v._id || v.id}
+              key={v.id}
               type="button"
               onClick={() => {
-                onChange(v._id || v.id, v.name);
+                onChange(v.id, v.name);
                 setOpen(false);
               }}
               style={{
@@ -1200,7 +1199,7 @@ function VendorCombobox({
                 justifyContent: "space-between",
                 padding: "0.65rem 0.875rem",
                 background:
-                  value === (v._id || v.id) ? "rgba(212,168,67,0.12)" : "transparent",
+                  value === v.id ? "rgba(212,168,67,0.12)" : "transparent",
                 border: "none",
                 cursor: "pointer",
                 textAlign: "left",
@@ -1212,7 +1211,7 @@ function VendorCombobox({
                   style={{
                     fontSize: "0.82rem",
                     fontWeight: 600,
-                    color: value === (v._id || v.id) ? "#D4A843" : "#E5E2E1",
+                    color: value === v.id ? "#D4A843" : "#E5E2E1",
                   }}
                 >
                   {v.name}
@@ -1233,7 +1232,7 @@ function VendorCombobox({
                     : "General supplier"}
                 </div>
               </div>
-              {value === (v._id || v.id) && (
+              {value === v.id && (
                 <svg
                   width="14"
                   height="14"
@@ -1299,11 +1298,10 @@ function VendorCombobox({
   );
 }
 
-// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN PAGE
-// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ══════════════════════════════════════════════════════════════════════════════
 export default function StockInPage() {
-  const { token } = useAuth();
   const [materials, setMaterials] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [stockInLog, setStockInLog] = useState([]);
@@ -1341,29 +1339,11 @@ export default function StockInPage() {
   const reportRef = useRef(null);
 
   useEffect(() => {
-    if (!token) return;
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        const [invRes, supRes] = await Promise.all([
-          fetchInventory(token),
-          fetchSuppliers(token),
-        ]);
-        const mats = Array.isArray(invRes) ? invRes : (invRes?.data ?? []);
-        setMaterials(mats);
-        setVendors(Array.isArray(supRes) ? supRes : (supRes?.data ?? []));
-        // Load stock-in history (addition type records) from API
-        const ids = mats.map((m) => m._id).filter(Boolean);
-        const history = await fetchAllStockHistory(ids, token);
-        setStockInLog(history.filter((h) => h.type === "addition"));
-      } catch (err) {
-        console.error("[StockInPage] Failed to load data:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, [token]);
+    setMaterials(getStore(MATERIALS_KEY));
+    setVendors(getStore(VENDORS_KEY));
+    setStockInLog(getStore(STOCK_IN_KEY));
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -1371,18 +1351,10 @@ export default function StockInPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const refreshData = async () => {
-    if (!token) return;
-    try {
-      const [invRes, supRes] = await Promise.all([
-        fetchInventory(token),
-        fetchSuppliers(token),
-      ]);
-      setMaterials(Array.isArray(invRes) ? invRes : (invRes?.data ?? []));
-      setVendors(Array.isArray(supRes) ? supRes : (supRes?.data ?? []));
-    } catch (err) {
-      console.error("[StockInPage] refreshData failed:", err);
-    }
+  const refreshData = () => {
+    setMaterials(getStore(MATERIALS_KEY));
+    setVendors(getStore(VENDORS_KEY));
+    setStockInLog(getStore(STOCK_IN_KEY));
   };
 
   const selectableMaterials = useMemo(
@@ -1399,78 +1371,137 @@ export default function StockInPage() {
     setWizardVendors([]);
   };
 
-  // Handle save from AddStockModal — API path
-  const handleSaveStock = async (stockData) => {
+  // Handle save from AddStockModal
+  const handleSaveStock = (stockData) => {
     if (!stockData || stockData.length === 0) return;
-    if (!token) return;
 
+    const allMats = getStore(MATERIALS_KEY);
+    const siLog = getStore(STOCK_IN_KEY);
     const entries = [];
-    let totalGoodAll = 0;
-    let totalDamagedAll = 0;
-    const errors = [];
+    let totalGoodAll = 0,
+      totalDamagedAll = 0;
 
-    for (const entry of stockData) {
-      const good = entry.goodQty || 0;
-      const damaged = entry.damagedQty || 0;
+    // Load existing bad orders
+    const badOrdersKey = "pmp_bad_orders";
+    let badOrders = [];
+    try {
+      badOrders = JSON.parse(localStorage.getItem(badOrdersKey) || "[]");
+    } catch {
+      badOrders = [];
+    }
+
+    stockData.forEach((entry) => {
       const received = entry.receivedQty || 0;
+      const damaged = entry.damagedQty || 0;
+      const good = entry.goodQty || 0;
       totalGoodAll += good;
       totalDamagedAll += damaged;
 
-      if (good > 0) {
-        try {
-          await adjustInventoryStock(
-            entry.materialId,
-            {
-              quantity: good,
-              reason: "restock",
-              unitCost: entry.unitCost || 0,
-              supplierId: entry.vendorId || null,
-              supplierName: entry.vendorName || null,
-              invoiceNumber: entry.invoiceNumber || null,
-              deliveryDate: entry.dateReceived || null,
-              remarks: entry.notes || null,
-            },
-            token,
-          );
-        } catch (err) {
-          errors.push(`${entry.materialName}: ${err.message}`);
-        }
-      }
-
-      // Bad orders — no API endpoint yet, log for future implementation
+      // Save bad orders with categories
       if (entry.badOrders && entry.badOrders.length > 0) {
-        console.warn(
-          "[StockInPage] Bad orders not yet persisted to API:",
-          entry.badOrders,
-        );
+        entry.badOrders.forEach((bo) => {
+          badOrders.push({
+            id: `BO-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            type: bo.type, // damaged, shortage, defective, wrong_item
+            label: bo.label, // Human-readable label
+            materialId: entry.materialId,
+            materialName: entry.materialName,
+            sku: entry.sku || "",
+            qty: bo.qty,
+            unitCost: bo.unitCost,
+            totalValue: bo.totalValue,
+            vendorId: entry.vendorId || null,
+            vendorName: entry.vendorName || "General Merchandise",
+            invoiceNumber: entry.invoiceNumber || "",
+            deliveryDate: entry.dateReceived?.split("T")[0] || "",
+            status: "pending", // pending, replaced, credited, cancelled
+            createdAt: new Date().toISOString(),
+            resolvedAt: null,
+          });
+        });
       }
 
+      const unitCost = entry.unitCost || 0;
+      const matIdx = allMats.findIndex((m) => m.id === entry.materialId);
+      if (matIdx !== -1) {
+        const matData = allMats[matIdx];
+        if (!matData.batches) matData.batches = [];
+
+        const d = new Date(entry.dateReceived);
+        const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+        const timestamp = Date.now().toString(36).slice(-4).toUpperCase();
+        const seq = Math.floor(Math.random() * 1000)
+          .toString()
+          .padStart(3, "0");
+        const batchId = `${dateStr}-${timestamp}-${seq}`;
+
+        matData.batches.push({
+          batchId,
+          materialId: entry.materialId,
+          materialName: entry.materialName,
+          sku: entry.sku || "",
+          uom: entry.uom || "pcs",
+          vendorId: entry.vendorId || null,
+          vendorName: entry.vendorName || "General Merchandise",
+          qtyGood: good,
+          qtyDamaged: damaged,
+          remainingQty: good,
+          unitCost,
+          damageType: entry.damageType || (damaged > 0 ? "arrival" : null),
+          dateReceived: entry.dateReceived,
+          invoiceNumber: entry.invoiceNumber || "",
+          notes: entry.notes || "",
+          receiptImage: entry.receiptImage || null,
+          createdAt: new Date().toISOString(),
+        });
+        const oldBatches = matData.batches.filter((b) => b.batchId !== batchId);
+        const oldGoodQty = oldBatches.reduce(
+          (s, b) => s + (b.remainingQty || b.qtyGood || 0),
+          0,
+        );
+        const oldTotal = oldBatches.reduce(
+          (s, b) => s + (b.remainingQty || b.qtyGood || 0) * (b.unitCost || 0),
+          0,
+        );
+        const newTotalQty = oldGoodQty + good;
+        if (newTotalQty > 0)
+          matData.baseCost = (oldTotal + good * unitCost) / newTotalQty;
+        matData.stockQty = (matData.stockQty || 0) + good;
+        matData.updatedAt = new Date().toISOString();
+      }
       entries.push({
         id: genDocNumber("SI"),
         materialId: entry.materialId,
         materialName: entry.materialName,
         sku: entry.sku || "",
+        category: "",
         uom: entry.uom || "pcs",
         vendorId: entry.vendorId || null,
         vendorName: entry.vendorName || "General Merchandise",
         receivedQty: received,
         goodQty: good,
         damagedQty: damaged,
-        unitCost: entry.unitCost || 0,
-        totalCost: received * (entry.unitCost || 0),
+        unitCost,
+        totalCost: received * unitCost,
         invoiceNo: entry.invoiceNumber || "",
         deliveryDate: entry.dateReceived?.split("T")[0] || "",
         notes: entry.notes || "",
+        receiptImage: entry.receiptImage || null,
         dateReceived: entry.dateReceived,
         dateAdded: new Date().toISOString(),
       });
+    });
+
+    setStore(MATERIALS_KEY, allMats);
+    siLog.push(...entries);
+    setStore(STOCK_IN_KEY, siLog);
+
+    // Save bad orders
+    if (badOrders.length > 0) {
+      localStorage.setItem(badOrdersKey, JSON.stringify(badOrders));
     }
 
-    if (errors.length > 0) {
-      setToast({ type: "error", message: `Some items failed: ${errors.join("; ")}` });
-    }
-
-    await refreshData();
+    refreshData();
     closeWizard();
     setPendingEntries(entries);
     setPendingGood(totalGoodAll);
@@ -1483,7 +1514,8 @@ export default function StockInPage() {
 
   // Reports
   const generateReport = () => {
-    let filtered = [...stockInLog];
+    const log = getStore(STOCK_IN_KEY);
+    let filtered = [...log];
     const now = new Date();
     if (reportMode === "today")
       filtered = filtered.filter(
@@ -1649,7 +1681,7 @@ export default function StockInPage() {
     ];
   }, [stockInLog]);
 
-  // ΓöÇΓöÇ Loading ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ── Loading ──────────────────────────────────────────────────────────────────
   if (loading)
     return (
       <div
@@ -1678,7 +1710,7 @@ export default function StockInPage() {
       </div>
     );
 
-  // ΓöÇΓöÇ Main Render ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ── Main Render ──────────────────────────────────────────────────────────────
   return (
     <div>
       <style>{`
@@ -1809,7 +1841,7 @@ export default function StockInPage() {
         </div>
       </div>
 
-      {/* ΓòÉΓòÉΓòÉ HISTORY TAB ΓòÉΓòÉΓòÉ */}
+      {/* ═══ HISTORY TAB ═══ */}
       {activeTab === "history" && (
         <div className="no-print">
           <div
@@ -2083,7 +2115,7 @@ export default function StockInPage() {
         </div>
       )}
 
-      {/* ΓòÉΓòÉΓòÉ REPORTS TAB ΓòÉΓòÉΓòÉ */}
+      {/* ═══ REPORTS TAB ═══ */}
       {activeTab === "reports" && (
         <div>
           <div
@@ -2243,7 +2275,7 @@ export default function StockInPage() {
                   onChange={setReportVendorFilter}
                   options={[
                     { value: "", label: "All Vendors" },
-                    ...vendors.map((v) => ({ value: v._id, label: v.name })),
+                    ...vendors.map((v) => ({ value: v.id, label: v.name })),
                   ]}
                   placeholder="All Vendors"
                   style={{ minWidth: "180px" }}
@@ -2734,10 +2766,13 @@ export default function StockInPage() {
         onAdd={(data) => {
           const nv = {
             ...data,
-            _id: `vendor-${Date.now()}`,
+            id: `vendor-${Date.now()}`,
             createdAt: new Date().toISOString(),
           };
-          setVendors((prev) => [...prev, nv]);
+          const updated = [...vendors, nv];
+          setVendors(updated);
+          setStore(VENDORS_KEY, updated);
+          setInvoice((p) => ({ ...p, vendorId: nv.id, vendorName: nv.name }));
         }}
         existingVendors={vendors}
         preFillCategories={vendorPreFillCategories}

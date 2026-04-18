@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /**
  * RETURNS TO VENDOR (RTV) PAGE
@@ -812,7 +812,7 @@ function ManualRTVFormModal({ materials, vendors, onClose, onSave }) {
       sku: material?.sku || "",
       uom: material?.uom || "pcs",
       qty: parseInt(form.qty),
-      unitCost: parseFloat(material?.baseCost) || parseFloat(material?.averageCost) || 0,
+      unitCost: parseFloat(material?.baseCost) || 0,
       reason: form.reason,
       notes: form.notes.trim(),
       poId: "",
@@ -1146,7 +1146,7 @@ function RTVListTab({ rtvs, onRefresh }) {
       if (matIdx !== -1) {
         const mat = mats[matIdx];
         const qtyToRestore = parseInt(rtv.qty) || 0;
-        const restoreCost = rtv.unitCost || mat.baseCost || mat.averageCost || 0;
+        const restoreCost = rtv.unitCost || mat.baseCost || 0;
 
         if (
           !mat.batches ||

@@ -1,13 +1,10 @@
-﻿"use client";
+"use client";
 
 import CustomDropdown from "@/app/components/CustomDropdown";
 import Link from "next/link";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import BOMCardList from "./BOMCardList";
 import BOMFormModal from "./BOMFormModal";
-import { useAuth } from "@/contexts/AuthContext";
-import { fetchBOMs, createBOM, updateBOM, deleteBOM } from "@/lib/bomApi";
-import { fetchInventory } from "@/lib/inventoryApi";
 
 // ── LocalStorage Keys ──────────────────────────────────────────────────────────
 const MATERIALS_KEY = "pmp_materials";
@@ -140,7 +137,7 @@ function hardDeleteUnit(id) {
 
 function checkUnitUsage(unitCode, vendors, materials) {
   const vendorUsage = vendors.filter((v) =>
-    (v.itemsSupplied || []).some((item) => item.uom === unitCode)
+    (v.itemsSupplied || []).some((item) => item.uom === unitCode),
   ).length;
 
   const materialUsage = materials.filter((m) => m.uom === unitCode).length;
@@ -758,7 +755,7 @@ function MaterialDetailsModal({ material, vendors, onClose }) {
                 }}
               >
                 ₱
-                {(material.baseCost || material.averageCost || 0).toLocaleString("en-PH", {
+                {(material.baseCost || 0).toLocaleString("en-PH", {
                   minimumFractionDigits: 2,
                 })}
               </div>
@@ -1617,7 +1614,7 @@ function MaterialMasterTab({
                         }}
                       >
                         ₱
-                        {(m.baseCost || m.averageCost || 0).toLocaleString("en-PH", {
+                        {(m.baseCost || 0).toLocaleString("en-PH", {
                           minimumFractionDigits: 2,
                         })}
                       </td>
@@ -1815,7 +1812,7 @@ function MaterialMasterTab({
                         {parent.hasVariants && children.length > 0
                           ? (() => {
                               const costs = children
-                                .map((c) => c.baseCost || c.averageCost || 0)
+                                .map((c) => c.baseCost || 0)
                                 .filter((c) => c > 0);
                               const min = Math.min(...costs);
                               const max = Math.max(...costs);
@@ -1857,7 +1854,7 @@ function MaterialMasterTab({
                                 </div>
                               );
                             })()
-                          : `P${(parent.baseCost || parent.averageCost || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`}
+                          : `P${(parent.baseCost || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`}
                       </td>
                       <td
                         style={{
@@ -1987,7 +1984,7 @@ function MaterialMasterTab({
                             }}
                           >
                             ₱
-                            {(child.baseCost || child.averageCost || 0).toLocaleString("en-PH", {
+                            {(child.baseCost || 0).toLocaleString("en-PH", {
                               minimumFractionDigits: 2,
                             })}
                           </td>
@@ -2276,7 +2273,7 @@ function MaterialFormModal({
               .sort((a, b) => a[0].localeCompare(b[0]))
               .map(([k, v]) => `${k}:${v}`)
               .join("|");
-            costs[key] = String(child.baseCost || child.averageCost || 0);
+            costs[key] = String(child.baseCost || 0);
           }
         });
         setVariantCosts(costs);
@@ -4161,6 +4158,7 @@ function VendorCatalogModal({ vendor, materials, onClose }) {
     if (vendor) setExpandedItems(new Set());
   }, [vendor]);
 
+  // Load purchase data
   const grs = useMemo(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -4187,6 +4185,8 @@ function VendorCatalogModal({ vendor, materials, onClose }) {
       return [];
     }
   }, []);
+
+  if (!vendor) return null;
 
   // Build vendor's PO IDs
   const vendorPOs = pos.filter((p) => p.vendorId === vendor.id);
@@ -5105,7 +5105,7 @@ function VendorDetailsModal({ vendor, materials, onClose }) {
                         }}
                       >
                         ₱
-                        {(m.baseCost || m.averageCost || 0).toLocaleString("en-PH", {
+                        {(m.baseCost || 0).toLocaleString("en-PH", {
                           minimumFractionDigits: 2,
                         })}
                       </div>
@@ -6691,14 +6691,11 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
 // BOM TAB
 // ══════════════════════════════════════════════════════════════════════════════
 function BOMTab() {
-  const { token } = useAuth();
   const [boms, setBOMs] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [editBOM, setEditBOM] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     title: "",
@@ -6707,25 +6704,9 @@ function BOMTab() {
   });
 
   useEffect(() => {
-    if (!token) return;
-    const load = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const [bomsData, matsData] = await Promise.all([
-          fetchBOMs(token),
-          fetchInventory(token),
-        ]);
-        setBOMs(bomsData);
-        setMaterials(matsData);
-      } catch (err) {
-        setError(err.message || "Failed to load BOM data.");
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [token]);
+    setBOMs(getBOMs());
+    setMaterials(getMaterials());
+  }, []);
 
   // Helper function to generate abbreviation from material name
   const abbreviateMaterial = (name) => {
@@ -6760,7 +6741,7 @@ function BOMTab() {
 
     const materialNames = bom.components
       .map((c) => {
-        const mat = materials.find((m) => m._id === c.inventoryId);
+        const mat = materials.find((m) => m.id === c.materialId);
         return mat?.name || "";
       })
       .filter((name) => name);
@@ -6790,74 +6771,145 @@ function BOMTab() {
       title: "Delete BOM",
       message:
         "Are you sure you want to delete this BOM? This action cannot be undone.",
-      onConfirm: async () => {
-        try {
-          await deleteBOM(id, token);
-          setBOMs((prev) => prev.filter((b) => b._id !== id));
-        } catch (err) {
-          setError(err.message || "Failed to delete BOM.");
-        } finally {
-          setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null });
-        }
+      onConfirm: () => {
+        const updated = boms.filter((b) => b.id !== id);
+        setBOMs(updated);
+        saveBOMs(updated);
+        setConfirmModal({
+          isOpen: false,
+          title: "",
+          message: "",
+          onConfirm: null,
+        });
       },
     });
   };
 
-  const handleSave = async (bom) => {
+  const handleSave = (bom) => {
+    // Auto-calculate total cost from components using FIFO cost
     const totalCost = (bom.components || []).reduce((sum, c) => {
-      const mat = materials.find((m) => m._id === c.inventoryId);
+      const mat = materials.find((m) => m.id === c.materialId);
+      // Use FIFO cost - simulate consuming from oldest batches first
       if (!mat || !mat.batches || mat.batches.length === 0) {
-        return sum + (mat?.baseCost || mat?.averageCost || 0) * (c.qty || 1);
+        return sum + (mat?.baseCost || 0) * (c.qty || 1);
       }
+
       const activeBatches = mat.batches
-        .filter((batch) => (batch.remainingQty || 0) > 0)
+        .filter((b) => (b.remainingQty || 0) > 0)
         .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
+      if (activeBatches.length === 0) {
+        return sum + (mat?.baseCost || 0) * (c.qty || 1);
+      }
+
       let remaining = c.qty || 1;
-      let cost = 0;
+      let batchCost = 0;
+
       for (const batch of activeBatches) {
         if (remaining <= 0) break;
         const take = Math.min(remaining, batch.remainingQty || 0);
-        cost += take * (batch.unitCost || 0);
+        batchCost += take * (batch.unitCost || 0);
         remaining -= take;
       }
-      return sum + cost;
+
+      // If backorder, use average for remaining
+      if (remaining > 0) {
+        const totalQty = activeBatches.reduce(
+          (s, b) => s + (b.remainingQty || 0),
+          0,
+        );
+        const totalValue = activeBatches.reduce(
+          (s, b) => s + (b.remainingQty || 0) * (b.unitCost || 0),
+          0,
+        );
+        const avgCost = totalQty > 0 ? totalValue / totalQty : 0;
+        batchCost += remaining * avgCost;
+      }
+
+      return sum + batchCost;
     }, 0);
 
-    const payload = {
-      productName: bom.productName,
-      productGroupName: bom.variantGroup || bom.productGroupName || bom.productName,
-      variantName: bom.variantName || bom.productName,
-      variantCombo: bom.variantCombo || [],
-      components: (bom.components || []).map((c) => ({
-        inventoryId: c.inventoryId,
-        materialName: c.materialName || materials.find((m) => m._id === c.inventoryId)?.name || "",
-        qty: c.qty,
-        unit: c.unit || "",
-        unitCost: c.unitCost || 0,
-      })),
-      totalCost: parseFloat(totalCost.toFixed(4)),
-    };
+    // Ensure variantGroup is set from productGroupName (or productName) for proper grouping
+    const group = bom.productGroupName?.trim() || bom.productName?.trim() || "";
 
-    try {
-      if (bom._id) {
-        const updated = await updateBOM(bom._id, payload, token);
-        setBOMs((prev) => prev.map((b) => (b._id === updated._id ? updated : b)));
-      } else {
-        const created = await createBOM(payload, token);
-        setBOMs((prev) => [...prev, created]);
-      }
-      setShowAddModal(false);
-      setEditBOM(null);
-    } catch (err) {
-      setError(err.message || "Failed to save BOM.");
+    let updated;
+    if (editBOM) {
+      updated = boms.map((b) =>
+        b.id === bom.id ? { ...bom, totalCost, variantGroup: group } : b,
+      );
+    } else {
+      updated = [
+        ...boms,
+        {
+          ...bom,
+          totalCost,
+          variantGroup: group, // Explicitly set variantGroup for grouping logic
+          id: `bom-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+        },
+      ];
     }
+    setBOMs(updated);
+    saveBOMs(updated);
+    setShowAddModal(false);
+    setEditBOM(null);
   };
 
   // Handler for batch-saving multiple BOMs at once (from "Add All Variants")
-  const handleSaveBatch = async (newBOMs) => {
-    for (const bom of newBOMs) {
-      await handleSave(bom);
-    }
+  const handleSaveBatch = (newBOMs) => {
+    const processedBOMs = newBOMs.map((b) => {
+      // Calculate total cost from components using FIFO cost
+      const totalCost = (b.components || []).reduce((sum, c) => {
+        const mat = materials.find((m) => m.id === c.materialId);
+        // Use FIFO cost - simulate consuming from oldest batches first
+        if (!mat || !mat.batches || mat.batches.length === 0) {
+          return sum + (mat?.baseCost || 0) * (c.qty || 1);
+        }
+
+        const activeBatches = mat.batches
+          .filter((b) => (b.remainingQty || 0) > 0)
+          .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
+        if (activeBatches.length === 0) {
+          return sum + (mat?.baseCost || 0) * (c.qty || 1);
+        }
+
+        let remaining = c.qty || 1;
+        let batchCost = 0;
+
+        for (const batch of activeBatches) {
+          if (remaining <= 0) break;
+          const take = Math.min(remaining, batch.remainingQty || 0);
+          batchCost += take * (batch.unitCost || 0);
+          remaining -= take;
+        }
+
+        // If backorder, use average for remaining
+        if (remaining > 0) {
+          const totalQty = activeBatches.reduce(
+            (s, b) => s + (b.remainingQty || 0),
+            0,
+          );
+          const totalValue = activeBatches.reduce(
+            (s, b) => s + (b.remainingQty || 0) * (b.unitCost || 0),
+            0,
+          );
+          const avgCost = totalQty > 0 ? totalValue / totalQty : 0;
+          batchCost += remaining * avgCost;
+        }
+
+        return sum + batchCost;
+      }, 0);
+
+      return {
+        ...b,
+        totalCost,
+        id: `bom-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        createdAt: new Date().toISOString(),
+      };
+    });
+
+    const updated = [...boms, ...processedBOMs];
+    setBOMs(updated);
+    saveBOMs(updated);
     setShowAddModal(false);
     setEditBOM(null);
   };
@@ -6887,9 +6939,6 @@ function BOMTab() {
       <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
     </svg>
   );
-
-  if (loading) return <div style={{ padding: "2rem", color: "var(--text-muted)", textAlign: "center" }}>Loading BOMs...</div>;
-  if (error) return <div style={{ padding: "2rem", color: "var(--danger)", textAlign: "center" }}>{error}</div>;
 
   return (
     <div>
@@ -6938,7 +6987,7 @@ function BOMTab() {
           >
             <path d="M12 5v14M5 12h14" />
           </svg>
-          Add BOM
+          Add Product
         </button>
       </div>
 
@@ -6954,7 +7003,7 @@ function BOMTab() {
         onDuplicate={(b) => {
           setEditBOM({
             ...b,
-            _id: undefined,
+            id: undefined,
             productName: `${b.productName} (Copy)`,
             sku: "",
             createdAt: new Date().toISOString(),
@@ -6998,13 +7047,22 @@ function BOMTab() {
 // ══════════════════════════════════════════════════════════════════════════════
 // UNITS OF MEASUREMENT TAB
 // ══════════════════════════════════════════════════════════════════════════════
-function UnitMasterTab({ units: initialUnits, onUnitsChange, vendors, materials }) {
+function UnitMasterTab({
+  units: initialUnits,
+  onUnitsChange,
+  vendors,
+  materials,
+}) {
   const [units, setUnits] = useState(initialUnits || []);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingUnit, setEditingUnit] = useState(null);
   const [search, setSearch] = useState("");
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, unit: null });
-  const [infoModal, setInfoModal] = useState({ isOpen: false, title: "", message: "" });
+  const [infoModal, setInfoModal] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+  });
 
   useEffect(() => {
     setUnits(initialUnits || []);
@@ -7013,7 +7071,9 @@ function UnitMasterTab({ units: initialUnits, onUnitsChange, vendors, materials 
   const handleSaveUnit = (unitData) => {
     if (editingUnit) {
       const updated = updateUnit(editingUnit.id, unitData);
-      const newUnits = units.map((u) => (u.id === editingUnit.id ? updated : u));
+      const newUnits = units.map((u) =>
+        u.id === editingUnit.id ? updated : u,
+      );
       setUnits(newUnits);
       onUnitsChange(newUnits);
     } else {
@@ -7064,7 +7124,7 @@ function UnitMasterTab({ units: initialUnits, onUnitsChange, vendors, materials 
         (u) =>
           u.name.toLowerCase().includes(searchLower) ||
           u.code.toLowerCase().includes(searchLower) ||
-          (u.description && u.description.toLowerCase().includes(searchLower))
+          (u.description && u.description.toLowerCase().includes(searchLower)),
       );
     }
     return result;
@@ -7075,7 +7135,14 @@ function UnitMasterTab({ units: initialUnits, onUnitsChange, vendors, materials 
       <div className="inventory-toolbar" style={{ marginBottom: "1rem" }}>
         <div className="search-wrapper" style={{ maxWidth: "300px" }}>
           <span className="search-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <circle cx="11" cy="11" r="8" />
               <path d="M21 21l-4.35-4.35" />
             </svg>
@@ -7099,7 +7166,14 @@ function UnitMasterTab({ units: initialUnits, onUnitsChange, vendors, materials 
             setShowAddModal(true);
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+          >
             <path d="M12 5v14M5 12h14" />
           </svg>
           Add Unit
@@ -7120,21 +7194,32 @@ function UnitMasterTab({ units: initialUnits, onUnitsChange, vendors, materials 
           <tbody>
             {filteredUnits.length === 0 ? (
               <tr>
-                <td colSpan="5" style={{ textAlign: "center", padding: "3rem", color: "var(--gray)" }}>
+                <td
+                  colSpan="5"
+                  style={{
+                    textAlign: "center",
+                    padding: "3rem",
+                    color: "var(--gray)",
+                  }}
+                >
                   No units found
                 </td>
               </tr>
             ) : (
               filteredUnits.map((unit, index) => (
                 <tr key={unit.id}>
-                  <td style={{ color: "var(--gray)", fontSize: "0.85rem" }}>{index + 1}</td>
+                  <td style={{ color: "var(--gray)", fontSize: "0.85rem" }}>
+                    {index + 1}
+                  </td>
                   <td>
-                    <code style={{
-                      background: "rgba(255,255,255,0.06)",
-                      padding: "0.25rem 0.5rem",
-                      borderRadius: "4px",
-                      fontSize: "0.85rem",
-                    }}>
+                    <code
+                      style={{
+                        background: "rgba(255,255,255,0.06)",
+                        padding: "0.25rem 0.5rem",
+                        borderRadius: "4px",
+                        fontSize: "0.85rem",
+                      }}
+                    >
                       {unit.code}
                     </code>
                   </td>
@@ -7143,7 +7228,13 @@ function UnitMasterTab({ units: initialUnits, onUnitsChange, vendors, materials 
                     {unit.description || "-"}
                   </td>
                   <td style={{ textAlign: "right" }}>
-                    <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.5rem",
+                        justifyContent: "flex-end",
+                      }}
+                    >
                       <button
                         onClick={() => handleEditUnit(unit)}
                         title="Edit unit"
@@ -7159,7 +7250,14 @@ function UnitMasterTab({ units: initialUnits, onUnitsChange, vendors, materials 
                           justifyContent: "center",
                         }}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                         </svg>
@@ -7179,7 +7277,14 @@ function UnitMasterTab({ units: initialUnits, onUnitsChange, vendors, materials 
                           justifyContent: "center",
                         }}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
                           <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
                         </svg>
                       </button>
@@ -7237,7 +7342,8 @@ function UnitFormModal({ unit, onClose, onSave }) {
     if (!formData.code.trim()) {
       newErrors.code = "Unit code is required";
     } else if (!/^[a-zA-Z0-9_-]+$/.test(formData.code)) {
-      newErrors.code = "Code can only contain letters, numbers, hyphens, and underscores";
+      newErrors.code =
+        "Code can only contain letters, numbers, hyphens, and underscores";
     } else if (formData.code.length > 20) {
       newErrors.code = "Code must be 20 characters or less";
     }
@@ -7269,34 +7375,40 @@ function UnitFormModal({ unit, onClose, onSave }) {
   };
 
   return (
-    <div style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: "rgba(0,0,0,0.7)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 1000,
-    }}>
-      <div style={{
-        background: "var(--dark)",
-        border: "1px solid var(--border)",
-        borderRadius: "12px",
-        width: "100%",
-        maxWidth: "500px",
-        maxHeight: "90vh",
-        overflow: "auto",
-      }}>
-        <div style={{
-          padding: "1.5rem",
-          borderBottom: "1px solid var(--border)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}>
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: "rgba(0,0,0,0.7)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+      }}
+    >
+      <div
+        style={{
+          background: "var(--dark)",
+          border: "1px solid var(--border)",
+          borderRadius: "12px",
+          width: "100%",
+          maxWidth: "500px",
+          maxHeight: "90vh",
+          overflow: "auto",
+        }}
+      >
+        <div
+          style={{
+            padding: "1.5rem",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 700 }}>
             {unit ? "Edit Unit" : "Add Unit of Measurement"}
           </h2>
@@ -7313,7 +7425,14 @@ function UnitFormModal({ unit, onClose, onSave }) {
               justifyContent: "center",
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
@@ -7321,7 +7440,14 @@ function UnitFormModal({ unit, onClose, onSave }) {
 
         <form onSubmit={handleSubmit} style={{ padding: "1.5rem" }}>
           <div style={{ marginBottom: "1.25rem" }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem", fontWeight: 600 }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "0.5rem",
+                fontSize: "0.875rem",
+                fontWeight: 600,
+              }}
+            >
               Unit Code <span style={{ color: "#EF4444" }}>*</span>
             </label>
             <input
@@ -7333,7 +7459,9 @@ function UnitFormModal({ unit, onClose, onSave }) {
                 width: "100%",
                 padding: "0.625rem 0.75rem",
                 background: "rgba(255,255,255,0.06)",
-                border: errors.code ? "1px solid #EF4444" : "1px solid rgba(255,255,255,0.1)",
+                border: errors.code
+                  ? "1px solid #EF4444"
+                  : "1px solid rgba(255,255,255,0.1)",
                 borderRadius: "8px",
                 color: "#E5E2E1",
                 fontSize: "0.875rem",
@@ -7341,15 +7469,36 @@ function UnitFormModal({ unit, onClose, onSave }) {
               }}
             />
             {errors.code && (
-              <p style={{ margin: "0.375rem 0 0", fontSize: "0.75rem", color: "#EF4444" }}>{errors.code}</p>
+              <p
+                style={{
+                  margin: "0.375rem 0 0",
+                  fontSize: "0.75rem",
+                  color: "#EF4444",
+                }}
+              >
+                {errors.code}
+              </p>
             )}
-            <p style={{ margin: "0.375rem 0 0", fontSize: "0.75rem", color: "var(--gray)" }}>
+            <p
+              style={{
+                margin: "0.375rem 0 0",
+                fontSize: "0.75rem",
+                color: "var(--gray)",
+              }}
+            >
               Short code used in database (e.g., pcs, kg, doz)
             </p>
           </div>
 
           <div style={{ marginBottom: "1.25rem" }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem", fontWeight: 600 }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "0.5rem",
+                fontSize: "0.875rem",
+                fontWeight: 600,
+              }}
+            >
               Unit Name <span style={{ color: "#EF4444" }}>*</span>
             </label>
             <input
@@ -7361,7 +7510,9 @@ function UnitFormModal({ unit, onClose, onSave }) {
                 width: "100%",
                 padding: "0.625rem 0.75rem",
                 background: "rgba(255,255,255,0.06)",
-                border: errors.name ? "1px solid #EF4444" : "1px solid rgba(255,255,255,0.1)",
+                border: errors.name
+                  ? "1px solid #EF4444"
+                  : "1px solid rgba(255,255,255,0.1)",
                 borderRadius: "8px",
                 color: "#E5E2E1",
                 fontSize: "0.875rem",
@@ -7369,12 +7520,27 @@ function UnitFormModal({ unit, onClose, onSave }) {
               }}
             />
             {errors.name && (
-              <p style={{ margin: "0.375rem 0 0", fontSize: "0.75rem", color: "#EF4444" }}>{errors.name}</p>
+              <p
+                style={{
+                  margin: "0.375rem 0 0",
+                  fontSize: "0.75rem",
+                  color: "#EF4444",
+                }}
+              >
+                {errors.name}
+              </p>
             )}
           </div>
 
           <div style={{ marginBottom: "1.5rem" }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem", fontWeight: 600 }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "0.5rem",
+                fontSize: "0.875rem",
+                fontWeight: 600,
+              }}
+            >
               Description
             </label>
             <textarea
@@ -7396,7 +7562,13 @@ function UnitFormModal({ unit, onClose, onSave }) {
             />
           </div>
 
-          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: "0.75rem",
+              justifyContent: "flex-end",
+            }}
+          >
             <button
               type="button"
               onClick={onClose}
@@ -7440,45 +7612,57 @@ function UnitFormModal({ unit, onClose, onSave }) {
 // ══════════════════════════════════════════════════════════════════════════════
 function DeleteConfirmModal({ unit, onClose, onConfirm }) {
   return (
-    <div style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: "rgba(0,0,0,0.7)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 1000,
-    }}>
-      <div style={{
-        background: "var(--dark)",
-        border: "1px solid var(--border)",
-        borderRadius: "12px",
-        width: "100%",
-        maxWidth: "400px",
-      }}>
-        <div style={{
-          padding: "1.5rem",
-          borderBottom: "1px solid var(--border)",
-        }}>
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: "rgba(0,0,0,0.7)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+      }}
+    >
+      <div
+        style={{
+          background: "var(--dark)",
+          border: "1px solid var(--border)",
+          borderRadius: "12px",
+          width: "100%",
+          maxWidth: "400px",
+        }}
+      >
+        <div
+          style={{
+            padding: "1.5rem",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
           <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 700 }}>
             Confirm Delete
           </h2>
         </div>
         <div style={{ padding: "1.5rem" }}>
           <p style={{ margin: 0, color: "#E5E2E1", lineHeight: 1.6 }}>
-            Are you sure you want to delete the unit <strong>"{unit.name}" ({unit.code})</strong>? This action cannot be undone.
+            Are you sure you want to delete the unit{" "}
+            <strong>
+              "{unit.name}" ({unit.code})
+            </strong>
+            ? This action cannot be undone.
           </p>
         </div>
-        <div style={{
-          padding: "1rem 1.5rem",
-          borderTop: "1px solid var(--border)",
-          display: "flex",
-          gap: "0.75rem",
-          justifyContent: "flex-end",
-        }}>
+        <div
+          style={{
+            padding: "1rem 1.5rem",
+            borderTop: "1px solid var(--border)",
+            display: "flex",
+            gap: "0.75rem",
+            justifyContent: "flex-end",
+          }}
+        >
           <button
             onClick={onClose}
             style={{
@@ -7613,9 +7797,12 @@ export default function MasterDataPage() {
             Vendor Master
           </button>
           <button style={tabStyle("bom")} onClick={() => setActiveTab("bom")}>
-            Bill of Materials
+            Product Creation
           </button>
-          <button style={tabStyle("units")} onClick={() => setActiveTab("units")}>
+          <button
+            style={tabStyle("units")}
+            onClick={() => setActiveTab("units")}
+          >
             Units
           </button>
         </div>

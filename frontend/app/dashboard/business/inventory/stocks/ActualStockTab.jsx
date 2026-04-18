@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 // DEPRECATED — replaced by Current Stock tab in stocks/page.jsx
 // This file is kept for reference but is no longer rendered in the UI.
@@ -6,7 +6,6 @@
 
 import CustomDropdown from "@/app/components/CustomDropdown";
 import React, { useEffect, useMemo, useState } from "react";
-import AddStockModal from './AddStockModal';
 
 // ── Storage Helpers ──────────────────────────────────────────────────────────────
 function getStore(key) {
@@ -52,9 +51,8 @@ function ChevronIcon({ open }) {
 // ACTUAL STOCK TAB — Simplified User-Friendly View
 // Shows: Total Stock (Goods + Damaged), In Transit/Pending PO, Summary Cards
 // ══════════════════════════════════════════════════════════════════════════════
-export default function ActualStockTab({ materials, onStockAdded }) {
+export default function ActualStockTab({ materials, onDeleteZeroStock }) {
   const [expandedMaterial, setExpandedMaterial] = useState(null);
-  const [showAddStock, setShowAddStock] = useState(false);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [viewMode, setViewMode] = useState("product");
@@ -680,7 +678,7 @@ export default function ActualStockTab({ materials, onStockAdded }) {
         });
 
         totalStock = goodStock + damaged;
-        avgCost = totalQty > 0 ? totalVal / totalQty : mat.baseCost || mat.averageCost || 0;
+        avgCost = totalQty > 0 ? totalVal / totalQty : mat.baseCost || 0;
         goodsValue = goodStock * avgCost; // FIX: Only good stock value
       } else {
         batches = mat.batches || [];
@@ -712,7 +710,7 @@ export default function ActualStockTab({ materials, onStockAdded }) {
         });
 
         totalStock = goodStock + damaged;
-        avgCost = totalQty > 0 ? totalVal / totalQty : mat.baseCost || mat.averageCost || 0;
+        avgCost = totalQty > 0 ? totalVal / totalQty : mat.baseCost || 0;
         goodsValue = goodStock * avgCost;
       }
 
@@ -753,7 +751,7 @@ export default function ActualStockTab({ materials, onStockAdded }) {
           const childAvgCost =
             childTotalQty > 0
               ? childTotalVal / childTotalQty
-              : child.baseCost || child.averageCost || 0;
+              : child.baseCost || 0;
           const childGoodsValue = childGood * childAvgCost;
 
           return {
@@ -1099,28 +1097,6 @@ export default function ActualStockTab({ materials, onStockAdded }) {
           marginBottom: "1rem",
         }}
       >
-        <button
-          onClick={() => setShowAddStock(true)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.4rem",
-            padding: "0.5rem 1rem",
-            background: "#D4A843",
-            border: "none",
-            borderRadius: "8px",
-            color: "#000",
-            fontSize: "0.82rem",
-            fontWeight: 700,
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          Add Stock
-        </button>
         <div
           className="search-wrapper"
           style={{ maxWidth: "280px", flex: "1", minWidth: "200px" }}
@@ -2807,17 +2783,6 @@ export default function ActualStockTab({ materials, onStockAdded }) {
             </div>
           </div>
         </div>
-      )}
-
-      {showAddStock && (
-        <AddStockModal
-          materials={materials}
-          onClose={() => setShowAddStock(false)}
-          onSave={(updatedMaterials) => {
-            setShowAddStock(false);
-            if (onStockAdded) onStockAdded();
-          }}
-        />
       )}
     </div>
   );

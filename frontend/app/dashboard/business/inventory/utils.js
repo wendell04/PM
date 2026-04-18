@@ -5,21 +5,19 @@
 // Extracted from repeated patterns across all inventory module files.
 // ══════════════════════════════════════════════════════════════════════════════
 
-// ── Storage Helpers (REMOVED) ──────────────────────────────────────────────
-// localStorage-based storage has been removed. All inventory data is now
-// fetched from and persisted to the API via inventoryApi.js.
-// These stubs exist only to surface any missed call sites at runtime.
+// ── Storage Helpers ────────────────────────────────────────────────────────────
 export function getStore(key) {
-  if (process.env.NODE_ENV !== "production") {
-    console.error(`[DEPRECATED] getStore("${key}") called — use API instead.`);
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(key) || "[]");
+  } catch {
+    return [];
   }
-  return [];
 }
 
 export function setStore(key, data) {
-  if (process.env.NODE_ENV !== "production") {
-    console.error(`[DEPRECATED] setStore("${key}") called — use API instead.`);
-  }
+  if (typeof window === "undefined") return;
+  localStorage.setItem(key, JSON.stringify(data));
 }
 
 // ── Document Number Generation ─────────────────────────────────────────────────
@@ -142,47 +140,35 @@ export const STOCK_IN_DAMAGE_TYPES = [
 ];
 
 // Goods Issue Types — categorized for outgoing/writeoff/return
-// IDs MUST match backend InventoryController reason enum exactly:
-// sale, sales-outside, damaged, writeoff, missing, correction-deduct, return
 export const GOODS_ISSUE_TYPES = [
   {
-    id: "sale",
+    id: "manual_sale",
     label: "Manual Sale",
     category: "outgoing",
     color: "#22c55e",
   },
   {
-    id: "sales-outside",
+    id: "production_use",
     label: "Production Use",
     category: "outgoing",
     color: "#8b5cf6",
   },
+  { id: "transfer", label: "Transfer", category: "outgoing", color: "#3b82f6" },
+  { id: "damage", label: "Damaged", category: "writeoff", color: "#ef4444" },
   {
-    id: "correction-deduct",
-    label: "Adjustment / Transfer",
-    category: "outgoing",
-    color: "#3b82f6",
-  },
-  {
-    id: "damaged",
-    label: "Damaged",
-    category: "writeoff",
-    color: "#ef4444",
-  },
-  {
-    id: "writeoff",
+    id: "scrap",
     label: "Expired / Scrap",
     category: "writeoff",
     color: "#f97316",
   },
   {
-    id: "missing",
+    id: "lost",
     label: "Missing / Lost",
     category: "writeoff",
     color: "#f59e0b",
   },
   {
-    id: "return",
+    id: "rtv",
     label: "Return to Vendor",
     category: "return",
     color: "#06b6d4",
@@ -329,7 +315,7 @@ export function deductFromBatchesFIFO(batches, qtyToDeduct) {
     if (available <= 0) continue;
     const take = Math.min(remaining, available);
     batch.remainingQty = available - take;
-    // qtyGood is the original received quantity — never mutate it
+    batch.qtyGood = batch.remainingQty;
     remaining -= take;
     deducted += take;
   }
