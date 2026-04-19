@@ -450,117 +450,97 @@ export default function BusinessDashboardLayout({ children }) {
   const isAdminOwner = ["admin", "owner"].includes(currentUser?.role);
 
   const navItems = [
-    // ── Standalone ──────────────────────────────────────────────
     {
       name: "Dashboard",
       href: "/dashboard/business/dashboardoverview",
       permKey: "dashboard",
-      icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
+      icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z",
     },
-
-    // ── Orders ──────────────────────────────────────────────────
     {
       name: "Orders",
       permKey: "orders",
       icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
       children: [
         { name: "All Orders", href: "/dashboard/business/orders" },
-        { name: "Order Requests", href: "/dashboard/business/order-requests" },
+        { name: "Requests", href: "/dashboard/business/order-requests" },
         { name: "Job Orders", href: "/dashboard/business/job-orders" },
-        { name: "Order Preview", href: "/dashboard/business/orders-preview" },
-        { name: "Production Preview", href: "/dashboard/business/production-preview" },
-        { name: "QC Preview", href: "/dashboard/business/qc-preview" },
       ],
     },
-
-    // ── POS ───────────────────────────────────────────────────────
-    // Admin/Owner only: POS triggers walk-in order creation.
     {
       name: "POS",
       href: "/dashboard/business/pos",
       permKey: "pos",
-      icon: "M4 7h16M6 7V5a2 2 0 012-2h8a2 2 0 012 2v2M6 7v14h12V7M8 11h8M8 15h2m2 0h2m2 0h2",
+      icon: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z",
     },
-
-    // ── Inventory ──────────────────────────────────────────────
     {
       name: "Inventory",
       permKey: "inventory",
-      icon: "M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4",
+      icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
       children: [
         {
           name: "Master Data",
           href: "/dashboard/business/inventory/master-data",
         },
         { name: "Stock In", href: "/dashboard/business/inventory/stock-in" },
-        { name: "Stock Overview", href: "/dashboard/business/inventory/stocks" },
+        { name: "Overview", href: "/dashboard/business/inventory/stocks" },
         { name: "Bad Orders", href: "/dashboard/business/inventory/returns" },
       ],
     },
-
-    // ── Products ────────────────────────────────────────────────
     {
       name: "Products",
       permKey: "products",
-      icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10",
+      icon: "M4 6h16M4 10h16M4 14h16M4 18h16",
       children: [
         { name: "Catalog", href: "/dashboard/business/products" },
         { name: "Banners", href: "/dashboard/business/banners" },
       ],
     },
-
-    // ── Marketing ───────────────────────────────────────────────
     {
       name: "Marketing",
       permKey: "flashSales",
+      marketingGroup: true,
       icon: "M13 10V3L4 14h7v7l9-11h-7z",
       children: [
-        { name: "Flash Sales", href: "/dashboard/business/flash-sales" },
+        {
+          name: "Flash Sales",
+          href: "/dashboard/business/flash-sales",
+          permKey: "flashSales",
+        },
+        {
+          name: "Vouchers",
+          href: "/dashboard/business/vouchers",
+          permKey: "vouchers",
+        },
       ],
     },
-
-    {
-      name: "Vouchers",
-      href: "/dashboard/business/vouchers",
-      permKey: "vouchers",
-      icon: "M4 7h16M4 12h16M4 17h10",
-    },
-
-    // ── Finance ─────────────────────────────────────────────────
     {
       name: "Finance",
       permKey: "sales",
-      icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+      icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
       children: [
         { name: "Sales", href: "/dashboard/business/sales" },
         { name: "Reports", href: "/dashboard/business/reports" },
-        { name: "Sales Forecast", href: "/dashboard/business/ssa-forecast" },
+        { name: "Forecast", href: "/dashboard/business/ssa-forecast" },
       ],
     },
-
-    // ── Standalone ──────────────────────────────────────────────
     {
       name: "Audit Logs",
       href: "/dashboard/business/audit-logs",
       permKey: "auditLogs",
-      icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01",
+      icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
     },
-
-    // ── System ──────────────────────────────────────────────────
     {
       name: "System",
       permKey: "userManagement",
-      icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
+      icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
       children: [
         { name: "Users", href: "/dashboard/business/users" },
         {
-          name: "Role Permissions",
+          name: "Permissions",
           href: "/dashboard/business/role-permissions",
         },
       ],
     },
-
-    // ── Settings ──────────────────────────────────────────────────
     {
       name: "Settings",
       href: "/dashboard/business/settings",
@@ -635,18 +615,12 @@ export default function BusinessDashboardLayout({ children }) {
         <div className="admin-sidebar-inner">
           <div className="sidebar-header">
             <div className="sidebar-logo">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/logos/PersonalizeMe logo.png"
-                alt="Personalize Me Prints"
-                className="sidebar-logo-img"
-                width={42}
-                height={42}
-              />
-              <div className="sidebar-logo-text">
-                PERSONALIZE <span>ME</span>
-                <br />
-                PRINTS
+              <div className="sidebar-logo-text sidebar-logo-brand">
+                <span className="sidebar-brand-gold">PersonalizeMe</span>
+                <span className="sidebar-brand-muted">Prints</span>
+              </div>
+              <div className="sidebar-logo-monogram" aria-hidden="true">
+                PM
               </div>
             </div>
             <div className="sidebar-header-actions">
@@ -706,12 +680,18 @@ export default function BusinessDashboardLayout({ children }) {
             {navItems
               .filter((item) => {
                 if (item.adminOnly && !isAdminOwner) return false;
+                if (item.marketingGroup) {
+                  return can("flashSales") || can("vouchers");
+                }
                 return can(item.permKey ?? "dashboard");
               })
               .map((item) => {
                 if (item.children) {
+                  const visibleChildren = item.children.filter(
+                    (c) => !c.permKey || can(c.permKey),
+                  );
                   const isExpanded = expandedItems.includes(item.name);
-                  const hasActiveChild = isChildActive(item.children);
+                  const hasActiveChild = isChildActive(visibleChildren);
 
                   return (
                     <div key={item.name} className="sidebar-nav-group">
@@ -755,7 +735,7 @@ export default function BusinessDashboardLayout({ children }) {
                       <div
                         className={`sidebar-nav-children ${isExpanded ? "expanded" : ""}`}
                       >
-                        {item.children.map((child) => (
+                        {visibleChildren.map((child) => (
                           <Link
                             key={child.name}
                             href={child.href}
@@ -770,7 +750,7 @@ export default function BusinessDashboardLayout({ children }) {
                         <div className="sidebar-nav-flyout-title">
                           {item.name}
                         </div>
-                        {item.children.map((child) => (
+                        {visibleChildren.map((child) => (
                           <Link
                             key={child.href}
                             href={child.href}
@@ -1217,7 +1197,7 @@ export default function BusinessDashboardLayout({ children }) {
                             justifyContent: "center",
                             fontSize: "28px",
                             fontWeight: "700",
-                            color: "#000",
+                            color: "var(--black)",
                           }}
                         >
                           {(currentUser?.firstName || currentUser?.email || "A")
@@ -1464,10 +1444,10 @@ export default function BusinessDashboardLayout({ children }) {
         </div>
       )}
 
-      {/* Profile Modal */}
+      {/* Profile Modal — slide-in panel */}
       {profileModalOpen && (
         <div
-          className="profile-modal-overlay"
+          className="profile-modal-overlay profile-modal-overlay--slide"
           onClick={() => {
             setProfileModalOpen(false);
             setShowAvatarFallback(false);
@@ -1483,7 +1463,7 @@ export default function BusinessDashboardLayout({ children }) {
             setProfileSnapshot(null);
           }}
         >
-          <div className="profile-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="profile-modal profile-modal--slide" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className="profile-modal-header">
               <div
@@ -1665,6 +1645,82 @@ export default function BusinessDashboardLayout({ children }) {
                 Avatar updated successfully.
               </div>
             )}
+
+            {/* Quick actions */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.5rem",
+                padding: "0 1.25rem 1rem",
+                borderBottom: "1px solid var(--border)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("personal");
+                  setProfileSnapshot({ ...profileForm });
+                  setIsEditingProfile(true);
+                }}
+                style={{
+                  width: "100%",
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "var(--white)",
+                  fontSize: "0.8125rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                Edit profile
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileModalOpen(false);
+                  router.push("/dashboard/business/settings");
+                }}
+                style={{
+                  width: "100%",
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "var(--white)",
+                  fontSize: "0.8125rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                Settings
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileModalOpen(false);
+                  handleLogout();
+                }}
+                style={{
+                  width: "100%",
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: "8px",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  background: "rgba(239,68,68,0.08)",
+                  color: "var(--red)",
+                  fontSize: "0.8125rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                Sign out
+              </button>
+            </div>
 
             {/* Tabs */}
             <div className="profile-tabs">

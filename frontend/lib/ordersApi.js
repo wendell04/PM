@@ -119,9 +119,16 @@ export async function createOrder(orderData, token) {
  * @returns {Promise<Object>} Order statistics
  */
 export async function fetchOrderStats(token) {
-  const res = await fetch(`${API_URL}/api/admin/order-stats`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await fetchWithTimeout(
+    `${API_URL}/api/admin/orders/stats`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    },
+    15000,
+  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || `Failed to fetch order stats (${res.status})`);

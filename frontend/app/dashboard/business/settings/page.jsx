@@ -77,8 +77,8 @@ const getPasswordStrength = (pwd) => {
   const levels = [
     { label: 'Too Weak',  color: 'var(--red)',   width: '20%' },
     { label: 'Weak',      color: 'var(--red)',   width: '40%' },
-    { label: 'Fair',      color: '#f59e0b',      width: '60%' },
-    { label: 'Strong',    color: '#84cc16',      width: '80%' },
+    { label: 'Fair',      color: 'var(--orange)', width: '60%' },
+    { label: 'Strong',    color: 'var(--green)', width: '80%' },
     { label: 'Very Strong', color: 'var(--green)', width: '100%' },
   ];
   return levels[score - 1] ?? levels[0];
@@ -88,7 +88,7 @@ export default function SettingsPage() {
   const { token, currentUser, setCurrentUser } = useAuth();
 
   // ── Tab ───────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('personal');
+  const [activeTab, setActiveTab] = useState('profile');
 
   // ── Loading ───────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);
@@ -120,6 +120,20 @@ export default function SettingsPage() {
   const [passwordError, setPasswordError]       = useState('');
   const [passwordSuccess, setPasswordSuccess]   = useState('');
 
+  const [businessForm, setBusinessForm] = useState({
+    businessName: '',
+    businessAddress: '',
+    operatingHours: '',
+    contactEmail: '',
+  });
+
+  const [notifPrefs, setNotifPrefs] = useState({
+    newOrders: true,
+    lowStock: true,
+    paymentReceived: true,
+    orderStatus: true,
+  });
+
   // ── Populate form from currentUser ────────────────────────
   useEffect(() => {
     if (currentUser) {
@@ -129,6 +143,12 @@ export default function SettingsPage() {
         email:       currentUser.email       || '',
         phoneNumber: currentUser.phoneNumber || '',
         address:     currentUser.address     || '',
+      });
+      setBusinessForm({
+        businessName: currentUser.businessName || '',
+        businessAddress: currentUser.address || '',
+        operatingHours: '',
+        contactEmail: currentUser.email || '',
       });
       setIsLoading(false);
     }
@@ -277,8 +297,57 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div style={{ maxWidth: '680px' }}>
+        <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start', maxWidth: '960px' }}>
+          <nav
+            aria-label="Settings sections"
+            style={{
+              width: 200,
+              flexShrink: 0,
+              position: 'sticky',
+              top: '1rem',
+              alignSelf: 'flex-start',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+              paddingRight: '1rem',
+              borderRight: '1px solid var(--border)',
+            }}
+          >
+            {[
+              { id: 'profile', label: 'Profile' },
+              { id: 'security', label: 'Security' },
+              { id: 'business', label: 'Business' },
+              { id: 'notifications', label: 'Notifications' },
+              { id: 'appearance', label: 'Appearance' },
+            ].map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                style={{
+                  height: 36,
+                  padding: '0 0.75rem',
+                  borderRadius: 8,
+                  border: 'none',
+                  margin: '1px 0',
+                  textAlign: 'left',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  background: activeTab === id ? 'rgba(212,168,67,0.12)' : 'transparent',
+                  color: activeTab === id ? 'var(--gold)' : 'var(--gray-light)',
+                  boxShadow: activeTab === id ? 'inset 2px 0 0 var(--gold)' : 'none',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
 
+          <div style={{ flex: 1, minWidth: 0, maxWidth: 640 }}>
+
+          {activeTab === 'profile' && (
+          <>
           {/* ── Avatar Card ───────────────────────────────── */}
           <div className="profile-modal" style={{
             position: 'static',
@@ -383,34 +452,7 @@ export default function SettingsPage() {
             )}
           </div>
 
-          {/* ── Tabs ──────────────────────────────────────── */}
-          <div className="profile-tabs" style={{ marginBottom: '1.5rem' }}>
-            <button
-              className={`profile-tab ${activeTab === 'personal' ? 'active' : ''}`}
-              onClick={() => setActiveTab('personal')}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-              Personal
-            </button>
-            <button
-              className={`profile-tab ${activeTab === 'security' ? 'active' : ''}`}
-              onClick={() => setActiveTab('security')}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-              </svg>
-              Security
-            </button>
-          </div>
-
-          {/* ── Personal Tab ──────────────────────────────── */}
-          {activeTab === 'personal' && (
+          {/* ── Profile: personal info ──────────────────────────────── */}
             <div style={{
               background: 'var(--dark2)', border: '1px solid var(--border)',
               borderRadius: '12px', padding: '1.5rem',
@@ -619,6 +661,7 @@ export default function SettingsPage() {
                 </>
               )}
             </div>
+          </>
           )}
 
           {/* ── Security Tab ──────────────────────────────── */}
@@ -821,6 +864,126 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {activeTab === 'business' && (
+            <div style={{
+              background: 'var(--dark2)', border: '1px solid var(--border)',
+              borderRadius: '12px', padding: '1.5rem',
+            }}>
+              <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
+                Business details
+              </h2>
+              <p style={{ margin: '0 0 1.25rem', fontSize: '0.875rem', color: 'var(--gray)' }}>
+                Information shown to customers (saved to your profile when backend fields are available).
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '480px' }}>
+                <div className="profile-form-field">
+                  <label>Business name</label>
+                  <input
+                    type="text"
+                    value={businessForm.businessName}
+                    onChange={e => setBusinessForm(f => ({ ...f, businessName: e.target.value }))}
+                    placeholder="PersonalizeMe Prints"
+                  />
+                </div>
+                <div className="profile-form-field">
+                  <label>Business address</label>
+                  <input
+                    type="text"
+                    value={businessForm.businessAddress}
+                    onChange={e => setBusinessForm(f => ({ ...f, businessAddress: e.target.value }))}
+                    placeholder="Street, city"
+                  />
+                </div>
+                <div className="profile-form-field">
+                  <label>Operating hours</label>
+                  <input
+                    type="text"
+                    value={businessForm.operatingHours}
+                    onChange={e => setBusinessForm(f => ({ ...f, operatingHours: e.target.value }))}
+                    placeholder="Mon–Sat 9:00–18:00"
+                  />
+                </div>
+                <div className="profile-form-field">
+                  <label>Customer contact email</label>
+                  <input
+                    type="email"
+                    value={businessForm.contactEmail}
+                    onChange={e => setBusinessForm(f => ({ ...f, contactEmail: e.target.value }))}
+                    placeholder="support@example.com"
+                  />
+                </div>
+                <p style={{ fontSize: '0.78rem', color: 'var(--gray)', margin: 0 }}>
+                  Logo upload and API sync for business fields can be wired in a follow-up.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'notifications' && (
+            <div style={{
+              background: 'var(--dark2)', border: '1px solid var(--border)',
+              borderRadius: '12px', padding: '1.5rem',
+            }}>
+              <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
+                Notifications
+              </h2>
+              <p style={{ margin: '0 0 1.25rem', fontSize: '0.875rem', color: 'var(--gray)' }}>
+                Preferences are stored on this device for now.
+              </p>
+              {[
+                { key: 'newOrders', label: 'New order notifications' },
+                { key: 'lowStock', label: 'Low stock alerts' },
+                { key: 'paymentReceived', label: 'Payment received' },
+                { key: 'orderStatus', label: 'Order status updates' },
+              ].map(({ key, label }) => (
+                <div
+                  key={key}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '0.75rem 0', borderBottom: '1px solid var(--border)',
+                  }}
+                >
+                  <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>{label}</span>
+                  <button
+                    type="button"
+                    aria-pressed={notifPrefs[key]}
+                    onClick={() => setNotifPrefs(p => ({ ...p, [key]: !p[key] }))}
+                    style={{
+                      width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                      background: notifPrefs[key] ? 'var(--gold)' : 'var(--border)',
+                      position: 'relative', flexShrink: 0,
+                    }}
+                  >
+                    <span style={{
+                      position: 'absolute', top: 2, left: notifPrefs[key] ? 22 : 2,
+                      width: 20, height: 20, borderRadius: '50%',
+                      background: 'var(--white)', transition: 'left 0.2s',
+                    }} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === 'appearance' && (
+            <div style={{
+              background: 'var(--dark2)', border: '1px solid var(--border)',
+              borderRadius: '12px', padding: '1.5rem',
+            }}>
+              <h2 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
+                Appearance
+              </h2>
+              <div style={{
+                padding: '2rem 1.5rem', textAlign: 'center',
+                border: '1px dashed var(--border)', borderRadius: '12px', color: 'var(--gray)',
+                fontSize: '0.875rem',
+              }}>
+                Theme options coming soon.
+              </div>
+            </div>
+          )}
+
+        </div>
         </div>
       </div>
     </ErrorBoundary>

@@ -2334,7 +2334,7 @@ function ActualStockTab({
                     marginTop: "0.25rem",
                   }}
                 >
-                  {filteredInvoices.length} invoices •{" "}
+                  {filteredInvoices.length} invoices —{" "}
                   {filteredInvoices.reduce((s, inv) => s + inv.items.length, 0)}{" "}
                   entries
                 </div>

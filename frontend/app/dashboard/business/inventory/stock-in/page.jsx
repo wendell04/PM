@@ -1310,6 +1310,7 @@ export default function StockInPage() {
   const [vendors, setVendors] = useState([]);
   const [stockInLog, setStockInLog] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [toast, setToast] = useState(null);
   const [infoModal, setInfoModal] = useState(null);
   const [showAddVendor, setShowAddVendor] = useState(false);
@@ -1350,6 +1351,7 @@ export default function StockInPage() {
       return;
     }
     setLoading(true);
+    setLoadError(null);
     try {
       const [mats, sups] = await Promise.all([
         fetchInventory(token),
@@ -1358,6 +1360,7 @@ export default function StockInPage() {
       setMaterials(mats.map((m) => ({ ...m, id: m.id ?? m._id })));
       setVendors(sups.map((v) => ({ ...v, id: v.id ?? v._id })));
     } catch (e) {
+      setLoadError(e?.message || "Failed to load");
       setInfoModal({
         title: "Could not load data",
         message: e?.message || "Failed to load inventory or suppliers.",
@@ -1713,6 +1716,35 @@ export default function StockInPage() {
           .si-wizard-step-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
+
+      {loadError && (
+        <div
+          className="no-print"
+          style={{
+            marginBottom: "1rem",
+            padding: "0.75rem 1rem",
+            borderRadius: "8px",
+            background: "rgba(239,68,68,0.12)",
+            border: "1px solid rgba(239,68,68,0.25)",
+            color: "var(--white)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "1rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: "0.875rem" }}>{loadError}</span>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setLoadError(null)}
+            style={{ fontSize: "0.75rem" }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (

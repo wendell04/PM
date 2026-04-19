@@ -13,7 +13,7 @@
  * This is a PREVIEW with mock data.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const MOCK_JOBS = [
   {
@@ -91,9 +91,28 @@ function formatTime(d) {
 }
 
 export default function ProductionPreviewPage() {
-  const [jobs] = useState(MOCK_JOBS);
+  const [jobs, setJobs] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        await new Promise((r) => setTimeout(r, 120));
+        if (!cancelled) setJobs(MOCK_JOBS);
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Failed to load');
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const filtered = useMemo(() => {
     if (filterStatus === 'all') return jobs;
@@ -105,6 +124,50 @@ export default function ProductionPreviewPage() {
     inProgress: jobs.filter((j) => j.status === 'in_progress').length,
     completed: jobs.filter((j) => j.status === 'completed').length,
   }), [jobs]);
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
+        {[...Array(5)].map((_, i) => (
+          <div
+            key={i}
+            style={{
+              height: '56px',
+              background: 'rgba(255,255,255,0.04)',
+              borderRadius: '8px',
+              marginBottom: '0.5rem',
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
+        <div
+          style={{
+            background: 'rgba(239,68,68,0.12)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            borderRadius: '8px',
+            padding: '1rem',
+            color: 'var(--white)',
+          }}
+        >
+          <p style={{ margin: 0 }}>{error}</p>
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ marginTop: '0.75rem' }}
+            onClick={() => window.location.reload()}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>

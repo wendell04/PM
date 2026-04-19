@@ -14,40 +14,14 @@ import {
   deleteInventory,
 } from "@/lib/inventoryApi";
 import { fetchBOMs, createBOM, updateBOM, deleteBOM } from "@/lib/bomApi";
+import { fetchUnits, saveUnit } from "@/lib/unitsApi";
 import VendorsApiTab from "./VendorsApiTab";
 import BOMCardList from "./BOMCardList";
 import BOMFormModal from "./BOMFormModal";
 
 // ── LocalStorage Keys ──────────────────────────────────────────────────────────
 const CATEGORIES_KEY = "pmp_material_categories";
-// TODO: No GET /api/admin/units (or equivalent) in backend yet — units stay in localStorage until an API exists.
-const UNITS_KEY = "pmp_uoms";
 const ALLOWED_CATEGORIES = ["Raw Material", "Packaging"];
-
-// ══════════════════════════════════════════════════════════════════════════════
-// TODO: BACKEND CONVERSION REQUIRED (units of measure)
-// ══════════════════════════════════════════════════════════════════════════════
-// Current: LocalStorage implementation for demo/capstone
-// Required: API endpoints with Laravel backend
-//
-// Migration Steps:
-// 1. Create database migration: unit_of_measurements table
-//    - id, code, name, description, sort_order, is_active, created_at, updated_at
-// 2. Create Laravel Model: UnitOfMeasurement
-// 3. Create API Controller with CRUD methods
-// 4. Add API routes in routes/api.php
-// 5. Replace localStorage functions with fetch() calls
-// 6. Add proper validation & error handling
-// 7. Add authentication middleware
-//
-// API Endpoints Needed:
-// - GET    /api/unit-of-measurements         (list all)
-// - POST   /api/unit-of-measurements         (create)
-// - PUT    /api/unit-of-measurements/{id}    (update)
-// - DELETE /api/unit-of-measurements/{id}    (soft delete/deactivate)
-//
-// For now, LocalStorage works for demo/capstone presentation.
-// ══════════════════════════════════════════════════════════════════════════════
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function normalizeInventoryRow(row) {
@@ -143,64 +117,6 @@ function materialToApiPayload(m, supplierNameFallback = "Unspecified") {
     procurementType: m.procurementType || "stock",
     allowBackorder: !!m.allowBackorder,
   };
-}
-
-// ── Unit of Measurement Helpers ──────────────────────────────────────────────
-// TODO: Backend Conversion - Replace with API calls
-function getUnits() {
-  if (typeof window === "undefined") return [];
-  try {
-    const stored = localStorage.getItem(UNITS_KEY);
-    if (stored) return JSON.parse(stored);
-
-    // Default units if nothing stored yet
-    return [
-      { id: 1, code: "pcs", name: "Pieces", description: "" },
-      { id: 2, code: "bottle", name: "Bottle", description: "" },
-      { id: 3, code: "liter", name: "Liter", description: "" },
-      { id: 4, code: "kg", name: "Kilogram", description: "" },
-      { id: 5, code: "meter", name: "Meter", description: "" },
-      { id: 6, code: "roll", name: "Roll", description: "" },
-      { id: 7, code: "box", name: "Box", description: "" },
-      { id: 8, code: "pack", name: "Pack", description: "" },
-      { id: 9, code: "set", name: "Set", description: "" },
-    ];
-  } catch {
-    return [];
-  }
-}
-
-function saveUnits(data) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(UNITS_KEY, JSON.stringify(data));
-}
-
-function addUnit(unit) {
-  const units = getUnits();
-  const newUnit = {
-    ...unit,
-    id: Date.now(),
-  };
-  units.push(newUnit);
-  saveUnits(units);
-  return newUnit;
-}
-
-function updateUnit(id, updates) {
-  const units = getUnits();
-  const index = units.findIndex((u) => u.id === id);
-  if (index === -1) return null;
-
-  units[index] = { ...units[index], ...updates };
-  saveUnits(units);
-  return units[index];
-}
-
-function hardDeleteUnit(id) {
-  const units = getUnits();
-  const updatedUnits = units.filter((u) => u.id !== id);
-  saveUnits(updatedUnits);
-  return updatedUnits;
 }
 
 function checkUnitUsage(unitCode, vendors, materials) {
@@ -5496,6 +5412,8 @@ function UnitMasterTab({
   onUnitsChange,
   vendors,
   materials,
+  token,
+  refreshUnits,
 }) {
   const [units, setUnits] = useState(initialUnits || []);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -5512,22 +5430,34 @@ function UnitMasterTab({
     setUnits(initialUnits || []);
   }, [initialUnits]);
 
-  const handleSaveUnit = (unitData) => {
-    if (editingUnit) {
-      const updated = updateUnit(editingUnit.id, unitData);
-      const newUnits = units.map((u) =>
-        u.id === editingUnit.id ? updated : u,
-      );
-      setUnits(newUnits);
-      onUnitsChange(newUnits);
-    } else {
-      const newUnit = addUnit(unitData);
-      const newUnits = [...units, newUnit];
-      setUnits(newUnits);
-      onUnitsChange(newUnits);
+  const handleSaveUnit = async (unitData) => {
+    if (!token) {
+      setInfoModal({
+        isOpen: true,
+        title: "Sign in required",
+        message: "Sign in as admin to manage units.",
+      });
+      return;
     }
-    setShowAddModal(false);
-    setEditingUnit(null);
+    try {
+      await saveUnit(
+        {
+          name: unitData.name,
+          abbreviation: unitData.code || "",
+          id: editingUnit ? String(editingUnit.id) : undefined,
+        },
+        token,
+      );
+      await refreshUnits();
+      setShowAddModal(false);
+      setEditingUnit(null);
+    } catch (e) {
+      setInfoModal({
+        isOpen: true,
+        title: "Could not save unit",
+        message: e?.message || "Save failed.",
+      });
+    }
   };
 
   const handleEditUnit = (unit) => {
@@ -5539,17 +5469,33 @@ function UnitMasterTab({
     setDeleteModal({ isOpen: true, unit });
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     const unit = deleteModal.unit;
     if (!unit) return;
 
     const usage = checkUnitUsage(unit.code, vendors, materials);
 
     if (usage.totalUsage === 0) {
-      const newUnits = hardDeleteUnit(unit.id);
-      setUnits(newUnits);
-      onUnitsChange(newUnits);
-      setDeleteModal({ isOpen: false, unit: null });
+      if (!token) return;
+      try {
+        await saveUnit(
+          {
+            id: String(unit.id),
+            name: unit.name,
+            abbreviation: unit.code || "",
+            isActive: false,
+          },
+          token,
+        );
+        await refreshUnits();
+        setDeleteModal({ isOpen: false, unit: null });
+      } catch (e) {
+        setInfoModal({
+          isOpen: true,
+          title: "Could not remove unit",
+          message: e?.message || "Remove failed.",
+        });
+      }
     } else {
       setInfoModal({
         isOpen: true,
@@ -5800,10 +5746,10 @@ function UnitFormModal({ unit, onClose, onSave }) {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (validate()) {
-      onSave({
+      await onSave({
         code: formData.code.toLowerCase().trim(),
         name: formData.name.trim(),
         description: formData.description.trim(),
@@ -6188,12 +6134,34 @@ export default function MasterDataPage() {
     }
   }, [token]);
 
+  const refreshUnits = useCallback(async () => {
+    if (!token) {
+      setUnits([]);
+      return;
+    }
+    try {
+      const raw = await fetchUnits(token);
+      const arr = Array.isArray(raw) ? raw : [];
+      setUnits(
+        arr.map((u) => ({
+          id: u._id || u.id,
+          code: u.abbreviation || u.code || "",
+          name: u.name,
+          description: u.description || "",
+        })),
+      );
+    } catch (e) {
+      console.error(e);
+      setUnits([]);
+    }
+  }, [token]);
+
   useEffect(() => {
-    setUnits(getUnits());
     if (!token) {
       setVendors([]);
       setMaterials([]);
       setBoms([]);
+      setUnits([]);
       setPageLoading(false);
       return;
     }
@@ -6212,13 +6180,14 @@ export default function MasterDataPage() {
         }),
       refreshMaterials(),
       refreshBoms(),
+      refreshUnits(),
     ]).finally(() => {
       if (!cancelled) setPageLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [token, refreshMaterials, refreshBoms]);
+  }, [token, refreshMaterials, refreshBoms, refreshUnits]);
 
   // Collect all unique item names from all vendors' itemsSupplied
   const itemCategories = useMemo(() => {
@@ -6371,6 +6340,8 @@ export default function MasterDataPage() {
           onUnitsChange={setUnits}
           vendors={vendors}
           materials={materials}
+          token={token}
+          refreshUnits={refreshUnits}
         />
       )}
     </div>

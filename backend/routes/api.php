@@ -147,6 +147,8 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     // ─── Masterlist ──────────────────────────────────────────────────────────
     Route::get('/admin/masterlist',                   [MasterlistController::class, 'index']);
     Route::put('/admin/masterlist',                   [MasterlistController::class, 'update']);
+    Route::get('/admin/units',                        [MasterlistController::class, 'units']);
+    Route::post('/admin/units',                      [MasterlistController::class, 'saveUnit']);
 
     // ─── Returns (RTV) ───────────────────────────────────────────────────────
     Route::get('/admin/returns',                      [InventoryReturnController::class, 'index']);

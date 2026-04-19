@@ -45,14 +45,25 @@ export default function DashboardOverviewPage() {
         fetchWithTimeout(`${API_URL}/api/admin/inventory/recent-movements`, { headers }, 30000),
       ]);
 
-      const statsJson        = statsRes.ok        ? await statsRes.json()        : null;
-      const salesJson        = salesRes.ok        ? await salesRes.json()        : null;
-      const inventoryJson    = inventoryRes.ok    ? await inventoryRes.json()    : null;
-      const ordersJson       = ordersRes.ok       ? await ordersRes.json()       : null;
-      const bannersJson      = bannersRes.ok      ? await bannersRes.json()      : null;
-      const returnsJson      = returnsRes.ok      ? await returnsRes.json()      : null;
-      const topProductsJson  = topProductsRes.ok  ? await topProductsRes.json()  : null;
-      const movementsJson    = movementsRes.ok    ? await movementsRes.json()    : null;
+      const [
+        statsJson,
+        salesJson,
+        inventoryJson,
+        ordersJson,
+        bannersJson,
+        returnsJson,
+        topProductsJson,
+        movementsJson,
+      ] = await Promise.all([
+        statsRes.ok ? statsRes.json() : Promise.resolve(null),
+        salesRes.ok ? salesRes.json() : Promise.resolve(null),
+        inventoryRes.ok ? inventoryRes.json() : Promise.resolve(null),
+        ordersRes.ok ? ordersRes.json() : Promise.resolve(null),
+        bannersRes.ok ? bannersRes.json() : Promise.resolve(null),
+        returnsRes.ok ? returnsRes.json() : Promise.resolve(null),
+        topProductsRes.ok ? topProductsRes.json() : Promise.resolve(null),
+        movementsRes.ok ? movementsRes.json() : Promise.resolve(null),
+      ]);
 
       const inventory = inventoryJson?.data ?? inventoryJson ?? [];
       const orders    = ordersJson?.data?.orders ?? ordersJson?.data ?? ordersJson?.orders ?? [];

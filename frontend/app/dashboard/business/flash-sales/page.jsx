@@ -98,13 +98,13 @@ export default function FlashSalesPage() {
   }
 
   function getStatus(sale) {
-    if (!sale.isActive) return { label: 'Inactive', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' };
+    if (!sale.isActive) return { label: 'Inactive', color: 'var(--red)', bg: 'rgba(239,68,68,0.12)' };
     const now = new Date();
     const start = new Date(sale.startDate);
     const end = new Date(sale.endDate);
-    if (now < start) return { label: 'Upcoming', color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' };
-    if (now >= start && now <= end) return { label: 'Live', color: '#4ade80', bg: 'rgba(74,222,128,0.12)' };
-    return { label: 'Expired', color: '#6b7280', bg: 'rgba(107,114,128,0.12)' };
+    if (now < start) return { label: 'Upcoming', color: 'var(--blue)', bg: 'rgba(96,165,250,0.12)' };
+    if (now >= start && now <= end) return { label: 'Live', color: 'var(--green)', bg: 'rgba(74,222,128,0.12)' };
+    return { label: 'Expired', color: 'var(--gray)', bg: 'rgba(107,114,128,0.12)' };
   }
 
   function getProductBasePrice(product) {
@@ -312,7 +312,7 @@ export default function FlashSalesPage() {
           </div>
           <button
             onClick={openCreate}
-            style={{ background: 'var(--gold)', color: '#000',
+            style={{ background: 'var(--gold)', color: 'var(--black)',
               border: 'none', borderRadius: '8px',
               padding: '0.625rem 1.25rem', fontWeight: 700,
               fontSize: '0.875rem', cursor: 'pointer',
@@ -349,13 +349,13 @@ export default function FlashSalesPage() {
         {error && (
           <div style={{ padding: '1rem', background: 'rgba(239,68,68,0.1)',
             border: '1px solid rgba(239,68,68,0.3)',
-            borderRadius: '8px', color: '#ef4444',
+            borderRadius: '8px', color: 'var(--red)',
             marginBottom: '1rem', display: 'flex',
             justifyContent: 'space-between', alignItems: 'center' }}>
             <span>{error}</span>
             <button onClick={fetchSales}
-              style={{ background: 'none', border: '1px solid #ef4444',
-                color: '#ef4444', borderRadius: '6px',
+              style={{ background: 'none', border: '1px solid var(--red)',
+                color: 'var(--red)', borderRadius: '6px',
                 padding: '0.25rem 0.75rem', cursor: 'pointer',
                 fontSize: '0.8rem' }}>
               Retry
@@ -466,7 +466,7 @@ export default function FlashSalesPage() {
                             ? 'rgba(74,222,128,0.12)'
                             : 'rgba(96,165,250,0.12)',
                           color: sale.discountType === 'percentage'
-                            ? '#4ade80' : '#60a5fa',
+                            ? 'var(--green)' : 'var(--blue)',
                           border: `1px solid ${
                             sale.discountType === 'percentage'
                               ? 'rgba(74,222,128,0.3)'
@@ -511,9 +511,9 @@ export default function FlashSalesPage() {
                           <span style={{
                             fontSize: '0.8rem', fontWeight: 600,
                             color: sale.currentStock === 0
-                              ? '#ef4444'
+                              ? 'var(--red)'
                               : sale.currentStock <= 5
-                                ? '#f59e0b'
+                                ? 'var(--orange)'
                                 : 'var(--white)',
                           }}>
                             {sale.currentStock === 0 ? 'Out of stock' : `${sale.currentStock} left`}
@@ -573,7 +573,7 @@ export default function FlashSalesPage() {
                               borderRadius: '6px', padding: '0.35rem',
                               cursor: isToggling ? 'wait' : 'pointer',
                               color: sale.isActive
-                                ? '#4ade80' : '#6b7280',
+                                ? 'var(--green)' : 'var(--gray)',
                               display: 'flex', alignItems: 'center',
                               justifyContent: 'center',
                             }}>
@@ -628,7 +628,7 @@ export default function FlashSalesPage() {
                               border: '1px solid rgba(239,68,68,0.3)',
                               borderRadius: '6px', padding: '0.35rem',
                               cursor: isDeleting ? 'wait' : 'pointer',
-                              color: '#ef4444',
+                              color: 'var(--red)',
                               display: 'flex', alignItems: 'center',
                               justifyContent: 'center',
                             }}>
@@ -726,7 +726,7 @@ export default function FlashSalesPage() {
                     color: 'var(--gray)', marginBottom: '0.5rem',
                     textTransform: 'uppercase',
                     letterSpacing: '0.04em' }}>
-                    Product <span style={{ color: '#ef4444' }}>*</span>
+                    Product <span style={{ color: 'var(--red)' }}>*</span>
                   </label>
                   <select
                     value={form.productId}
@@ -769,7 +769,7 @@ export default function FlashSalesPage() {
                     color: 'var(--gray)', marginBottom: '0.5rem',
                     textTransform: 'uppercase',
                     letterSpacing: '0.04em' }}>
-                    Discount Type <span style={{ color: '#ef4444' }}>*</span>
+                    Discount Type <span style={{ color: 'var(--red)' }}>*</span>
                   </label>
                   <select
                     value={form.discountType}
@@ -796,7 +796,7 @@ export default function FlashSalesPage() {
                     letterSpacing: '0.04em' }}>
                     {form.discountType === 'percentage'
                       ? 'Discount (%)' : 'Discount Amount (₱)'}
-                    <span style={{ color: '#ef4444' }}> *</span>
+                    <span style={{ color: 'var(--red)' }}> *</span>
                   </label>
                   <input
                     type="number"
@@ -833,7 +833,7 @@ export default function FlashSalesPage() {
                     color: 'var(--gray)', marginBottom: '0.5rem',
                     textTransform: 'uppercase',
                     letterSpacing: '0.04em' }}>
-                    Start Date <span style={{ color: '#ef4444' }}>*</span>
+                    Start Date <span style={{ color: 'var(--red)' }}>*</span>
                   </label>
                   <input
                     type="datetime-local"
@@ -858,7 +858,7 @@ export default function FlashSalesPage() {
                     color: 'var(--gray)', marginBottom: '0.5rem',
                     textTransform: 'uppercase',
                     letterSpacing: '0.04em' }}>
-                    End Date <span style={{ color: '#ef4444' }}>*</span>
+                    End Date <span style={{ color: 'var(--red)' }}>*</span>
                   </label>
                   <input
                     type="datetime-local"
@@ -909,7 +909,7 @@ export default function FlashSalesPage() {
                       : null;
                     if (!stockInfo || stockInfo.isOnDemand) return null;
                     if (stockInfo.stock == null) return null;
-                    const color = stockInfo.stock === 0 ? '#ef4444' : stockInfo.stock <= 5 ? '#f59e0b' : '#4ade80';
+                    const color = stockInfo.stock === 0 ? 'var(--red)' : stockInfo.stock <= 5 ? 'var(--orange)' : 'var(--green)';
                     const msg = stockInfo.stock === 0
                       ? 'This product is out of stock.'
                       : stockInfo.stock <= 5
@@ -947,7 +947,7 @@ export default function FlashSalesPage() {
                     padding: '0.75rem 1rem',
                     background: 'rgba(239,68,68,0.1)',
                     border: '1px solid rgba(239,68,68,0.3)',
-                    borderRadius: '8px', color: '#ef4444',
+                    borderRadius: '8px', color: 'var(--red)',
                     fontSize: '0.85rem',
                   }}>
                     {formError}
@@ -975,7 +975,7 @@ export default function FlashSalesPage() {
                     style={{
                       background: saving
                         ? 'rgba(212,168,67,0.5)' : 'var(--gold)',
-                      color: '#000', border: 'none',
+                      color: 'var(--black)', border: 'none',
                       borderRadius: '8px',
                       padding: '0.625rem 1.25rem',
                       fontWeight: 700, fontSize: '0.875rem',

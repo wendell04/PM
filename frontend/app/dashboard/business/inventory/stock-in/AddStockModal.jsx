@@ -1813,7 +1813,7 @@ export default function AddStockModal({
                           >
                             {rows.length} Variant{rows.length !== 1 ? "s" : ""}{" "}
                             {totalMaterialQty > 0 &&
-                              `• ${totalMaterialQty} pcs`}
+                              `${totalMaterialQty} pcs`}
                           </div>
                         </div>
                       </div>

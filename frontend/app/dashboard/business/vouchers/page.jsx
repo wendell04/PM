@@ -200,7 +200,7 @@ export default function VouchersPage() {
           style={{
             padding: '10px 20px',
             backgroundColor: 'var(--gold)',
-            color: '#000',
+            color: 'var(--black)',
             border: 'none',
             borderRadius: '8px',
             fontWeight: 700,
@@ -214,7 +214,7 @@ export default function VouchersPage() {
 
       {/* Error */}
       {error && (
-        <div style={{ marginBottom: '1rem', padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', fontSize: '0.875rem' }}>
+        <div style={{ marginBottom: '1rem', padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--red)', fontSize: '0.875rem' }}>
           {error}
         </div>
       )}
@@ -248,7 +248,7 @@ export default function VouchersPage() {
                     <td style={{ padding: '12px 16px', fontSize: '0.875rem', color: 'var(--white)' }}>
                       {v.usedCount ?? 0}{v.maxUses != null ? ` / ${v.maxUses}` : ' / ∞'}
                     </td>
-                    <td style={{ padding: '12px 16px', fontSize: '0.875rem', color: isExpired ? '#ef4444' : 'var(--white)' }}>
+                    <td style={{ padding: '12px 16px', fontSize: '0.875rem', color: isExpired ? 'var(--red)' : 'var(--white)' }}>
                       {v.expiresAt ? new Date(v.expiresAt).toLocaleDateString() : '—'}
                     </td>
                     <td style={{ padding: '12px 16px' }}>
@@ -258,7 +258,7 @@ export default function VouchersPage() {
                         fontSize: '0.72rem',
                         fontWeight: 600,
                         background: v.isActive && !isExpired && !isMaxed ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.12)',
-                        color: v.isActive && !isExpired && !isMaxed ? '#22c55e' : '#ef4444',
+                        color: v.isActive && !isExpired && !isMaxed ? 'var(--green)' : 'var(--red)',
                       }}>
                         {!v.isActive ? 'Inactive' : isExpired ? 'Expired' : isMaxed ? 'Maxed' : 'Active'}
                       </span>
@@ -266,10 +266,10 @@ export default function VouchersPage() {
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button onClick={() => openEdit(v)} style={{ padding: '5px 12px', background: 'var(--border)', border: 'none', borderRadius: '6px', color: 'var(--white)', fontSize: '0.78rem', cursor: 'pointer' }}>Edit</button>
-                        <button onClick={() => handleToggle(v)} style={{ padding: '5px 12px', background: v.isActive ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)', border: 'none', borderRadius: '6px', color: v.isActive ? '#ef4444' : '#22c55e', fontSize: '0.78rem', cursor: 'pointer' }}>
+                        <button onClick={() => handleToggle(v)} style={{ padding: '5px 12px', background: v.isActive ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)', border: 'none', borderRadius: '6px', color: v.isActive ? 'var(--red)' : 'var(--green)', fontSize: '0.78rem', cursor: 'pointer' }}>
                           {v.isActive ? 'Disable' : 'Enable'}
                         </button>
-                        <button onClick={() => setDeleteId(v._id ?? v.id)} style={{ padding: '5px 12px', background: 'rgba(239,68,68,0.12)', border: 'none', borderRadius: '6px', color: '#ef4444', fontSize: '0.78rem', cursor: 'pointer' }}>Delete</button>
+                        <button onClick={() => setDeleteId(v._id ?? v.id)} style={{ padding: '5px 12px', background: 'rgba(239,68,68,0.12)', border: 'none', borderRadius: '6px', color: 'var(--red)', fontSize: '0.78rem', cursor: 'pointer' }}>Delete</button>
                       </div>
                     </td>
                   </tr>
@@ -289,7 +289,7 @@ export default function VouchersPage() {
             </h2>
 
             {formError && (
-              <div style={{ marginBottom: '1rem', padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', fontSize: '0.85rem' }}>
+              <div style={{ marginBottom: '1rem', padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--red)', fontSize: '0.85rem' }}>
                 {formError}
               </div>
             )}
@@ -297,7 +297,7 @@ export default function VouchersPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {/* Code */}
               <div>
-                <label style={labelStyle}>Code <span style={{ color: '#ef4444' }}>*</span></label>
+                <label style={labelStyle}>Code <span style={{ color: 'var(--red)' }}>*</span></label>
                 <input
                   value={form.code}
                   onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
@@ -308,7 +308,7 @@ export default function VouchersPage() {
 
               {/* Discount Type */}
               <div>
-                <label style={labelStyle}>Discount Type <span style={{ color: '#ef4444' }}>*</span></label>
+                <label style={labelStyle}>Discount Type <span style={{ color: 'var(--red)' }}>*</span></label>
                 <select value={form.discountType} onChange={e => setForm(f => ({ ...f, discountType: e.target.value }))} style={inputStyle}>
                   <option value="percentage">Percentage (%)</option>
                   <option value="fixed">Fixed Amount (₱)</option>
@@ -318,7 +318,7 @@ export default function VouchersPage() {
               {/* Discount Value */}
               <div>
                 <label style={labelStyle}>
-                  {form.discountType === 'percentage' ? 'Discount (%)' : 'Discount Amount (₱)'} <span style={{ color: '#ef4444' }}>*</span>
+                  {form.discountType === 'percentage' ? 'Discount (%)' : 'Discount Amount (₱)'} <span style={{ color: 'var(--red)' }}>*</span>
                 </label>
                 <input
                   type="number"
@@ -366,7 +366,7 @@ export default function VouchersPage() {
               <button onClick={closeModal} disabled={saving} style={{ flex: 1, padding: '10px', background: 'var(--border)', border: 'none', borderRadius: '8px', color: 'var(--white)', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' }}>
                 Cancel
               </button>
-              <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '10px', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: '#000', fontWeight: 700, fontSize: '0.875rem', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+              <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '10px', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: 'var(--black)', fontWeight: 700, fontSize: '0.875rem', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
                 {saving ? 'Saving…' : editTarget ? 'Save Changes' : 'Create Voucher'}
               </button>
             </div>
@@ -382,7 +382,7 @@ export default function VouchersPage() {
             <p style={{ margin: '0 0 1.5rem', color: 'var(--gray)', fontSize: '0.875rem' }}>This action cannot be undone.</p>
             <div style={{ display: 'flex', gap: '0.75rem' }}>
               <button onClick={() => setDeleteId(null)} disabled={deleting} style={{ flex: 1, padding: '10px', background: 'var(--border)', border: 'none', borderRadius: '8px', color: 'var(--white)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-              <button onClick={handleDelete} disabled={deleting} style={{ flex: 1, padding: '10px', background: '#ef4444', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: 700, cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.7 : 1 }}>
+              <button onClick={handleDelete} disabled={deleting} style={{ flex: 1, padding: '10px', background: 'var(--red)', border: 'none', borderRadius: '8px', color: 'var(--white)', fontWeight: 700, cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.7 : 1 }}>
                 {deleting ? 'Deleting…' : 'Delete'}
               </button>
             </div>
