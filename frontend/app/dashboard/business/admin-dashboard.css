@@ -89,6 +89,15 @@ input[type="number"] {
   line-height: 0;
   font-size: 0;
 }
+.sidebar-logo-icon img {
+  width: 36px !important;
+  height: 36px !important;
+  max-width: 36px !important;
+  max-height: 36px !important;
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
+}
 
 .sidebar-logo-text {
   display: flex;
@@ -115,8 +124,8 @@ input[type="number"] {
 
 .sidebar-logo-monogram {
   display: none;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
   background: transparent;
   align-items: center;
@@ -126,6 +135,15 @@ input[type="number"] {
   position: relative;
   line-height: 0;
   font-size: 0;
+}
+.sidebar-logo-monogram img {
+  width: 32px !important;
+  height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
 }
 
 .admin-sidebar.collapsed .sidebar-logo-text,
