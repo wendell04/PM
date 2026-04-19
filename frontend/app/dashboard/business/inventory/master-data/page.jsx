@@ -6253,30 +6253,6 @@ export default function MasterDataPage() {
               Manage materials, vendors, and bill of materials.
             </p>
           </div>
-          <Link
-            href="/dashboard/business/inventory-old"
-            className="btn-secondary"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              fontSize: "0.8rem",
-              padding: "0.5rem 1rem",
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8" />
-              <path d="M3 3v5h5" />
-            </svg>
-            Old Inventory
-          </Link>
         </div>
         <div
           style={{
