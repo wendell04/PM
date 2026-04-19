@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -84,9 +84,6 @@ const getPasswordStrength = (pwd) => {
   return levels[score - 1] ?? levels[0];
 };
 
-/** Backend route DELETE /api/auth/device/{token} not present — keep UI, revoke disabled. */
-const DEVICE_REVOKE_ROUTE_AVAILABLE = false;
-
 export default function SettingsPage() {
   const { token, currentUser, setCurrentUser } = useAuth();
 
@@ -142,6 +139,13 @@ export default function SettingsPage() {
     orderStatus: true,
   });
 
+  // ── Active Sessions (Sanctum tokens) ──────────────────────
+  const [sessions, setSessions]         = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError]     = useState('');
+  const [revokingId, setRevokingId]     = useState(null);
+  const [revokeAllBusy, setRevokeAllBusy] = useState(false);
+
   // ── Populate form from currentUser ────────────────────────
   useEffect(() => {
     if (currentUser) {
@@ -170,6 +174,89 @@ export default function SettingsPage() {
       setPasswordSuccess('');
     }
   }, [activeTab]);
+
+  // ── Active Sessions + device revoke handlers ──────────────
+  const fetchSessions = useCallback(async () => {
+    if (!token) return;
+    setSessionsLoading(true);
+    setSessionsError('');
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/sessions`,
+        { headers: { Authorization: `Bearer ${token}` } },
+        10000
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to load sessions.');
+      setSessions(data.sessions ?? []);
+    } catch (err) {
+      setSessionsError(err.message);
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (activeTab === 'security') fetchSessions();
+  }, [activeTab, fetchSessions]);
+
+  const revokeSession = useCallback(async (id) => {
+    setRevokingId(id);
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/sessions/${id}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+        10000
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to revoke session.');
+      setSessions(prev => prev.filter(s => s.id !== id));
+    } catch (err) {
+      setSessionsError(err.message);
+    } finally {
+      setRevokingId(null);
+    }
+  }, [token]);
+
+  const revokeAllSessions = useCallback(async () => {
+    setRevokeAllBusy(true);
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/sessions/others/all`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+        10000
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to revoke sessions.');
+      await fetchSessions();
+    } catch (err) {
+      setSessionsError(err.message);
+    } finally {
+      setRevokeAllBusy(false);
+    }
+  }, [token, fetchSessions]);
+
+  const revokeDevice = useCallback(async (deviceToken) => {
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/2fa/device/${encodeURIComponent(deviceToken)}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+        10000
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to remove device.');
+      // Update local UI by filtering out the revoked token from currentUser.device_tokens
+      if (typeof setCurrentUser === 'function' && currentUser) {
+        const remaining = (currentUser.device_tokens ?? []).filter((entry) => {
+          const t = typeof entry === 'string' ? entry : entry?.token;
+          return t !== deviceToken;
+        });
+        setCurrentUser({ ...currentUser, device_tokens: remaining });
+      }
+    } catch (err) {
+      setSessionsError(err.message);
+    }
+  }, [token, currentUser, setCurrentUser]);
 
   // ── Avatar upload ─────────────────────────────────────────
   const handleAvatarUpload = async (e) => {
@@ -882,52 +969,36 @@ export default function SettingsPage() {
                   }}>
                     Two-factor authentication
                   </h3>
-                  {currentUser && Object.prototype.hasOwnProperty.call(currentUser, 'twoFactorEnabled') ? (
-                    <div style={{
-                      padding: '1rem',
-                      background: 'var(--dark)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '10px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.5rem',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          padding: '0.2rem 0.6rem',
-                          borderRadius: '20px',
-                          fontSize: '0.7rem',
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.06em',
-                          ...(currentUser.twoFactorEnabled
-                            ? { background: 'rgba(74,222,128,0.12)', color: 'var(--green)' }
-                            : { background: 'rgba(136,136,136,0.12)', color: 'var(--gray)' }),
-                        }}
-                        >
-                          {currentUser.twoFactorEnabled ? 'Enabled' : 'Disabled'}
-                        </span>
-                      </div>
-                      <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray-light)' }}>
-                        {currentUser.twoFactorEnabled
-                          ? 'Two-factor authentication is active'
-                          : 'Two-factor authentication is not enabled'}
-                      </p>
+                  <div style={{
+                    padding: '1rem',
+                    background: 'var(--dark)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '10px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.5rem',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: '20px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        background: 'rgba(74,222,128,0.12)',
+                        color: 'var(--green)',
+                      }}>
+                        Active
+                      </span>
                     </div>
-                  ) : (
-                    <div style={{
-                      padding: '1rem',
-                      background: 'var(--dark)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '10px',
-                      fontSize: '0.875rem',
-                      color: 'var(--gray)',
-                    }}>
-                      Status unknown — contact admin
-                    </div>
-                  )}
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray-light)' }}>
+                      Email verification is required at every login. A one-time
+                      code is sent to your registered email address.
+                    </p>
+                  </div>
                 </div>
 
                 <div style={{ marginTop: '1.5rem' }}>
@@ -966,8 +1037,7 @@ export default function SettingsPage() {
                             </code>
                             <button
                               type="button"
-                              disabled={!DEVICE_REVOKE_ROUTE_AVAILABLE}
-                              title={DEVICE_REVOKE_ROUTE_AVAILABLE ? 'Revoke this device' : 'Coming soon'}
+                              onClick={() => revokeDevice(t.token ?? t)}
                               style={{
                                 padding: '0.375rem 0.75rem',
                                 fontSize: '0.8125rem',
@@ -976,8 +1046,7 @@ export default function SettingsPage() {
                                 border: '1px solid rgba(239,68,68,0.25)',
                                 background: 'rgba(239,68,68,0.08)',
                                 color: 'var(--red)',
-                                opacity: DEVICE_REVOKE_ROUTE_AVAILABLE ? 1 : 0.45,
-                                cursor: DEVICE_REVOKE_ROUTE_AVAILABLE ? 'pointer' : 'not-allowed',
+                                cursor: 'pointer',
                                 flexShrink: 0,
                               }}
                             >
@@ -986,6 +1055,127 @@ export default function SettingsPage() {
                           </li>
                         );
                       })}
+                    </ul>
+                  )}
+                </div>
+
+                {/* Active Sessions */}
+                <div style={{ marginTop: '1.5rem' }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '0.75rem',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem',
+                  }}>
+                    <h3 style={{
+                      margin: 0,
+                      fontSize: '0.9375rem',
+                      fontWeight: 700,
+                      color: 'var(--white)',
+                    }}>
+                      Active Sessions
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={revokeAllSessions}
+                      disabled={revokeAllBusy || sessions.filter(s => !s.is_current).length === 0}
+                      style={{
+                        padding: '0.375rem 0.75rem',
+                        fontSize: '0.8125rem',
+                        fontWeight: 600,
+                        borderRadius: '8px',
+                        border: '1px solid rgba(239,68,68,0.25)',
+                        background: 'rgba(239,68,68,0.08)',
+                        color: 'var(--red)',
+                        cursor: revokeAllBusy ? 'not-allowed' : 'pointer',
+                        opacity: revokeAllBusy ? 0.6 : 1,
+                      }}
+                    >
+                      {revokeAllBusy ? 'Revoking...' : 'Revoke all other sessions'}
+                    </button>
+                  </div>
+
+                  {sessionsError && (
+                    <p style={{ margin: '0 0 0.75rem', fontSize: '0.875rem', color: 'var(--red)' }}>
+                      {sessionsError}
+                    </p>
+                  )}
+
+                  {sessionsLoading ? (
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray)' }}>
+                      Loading sessions...
+                    </p>
+                  ) : sessions.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray)' }}>
+                      No active sessions found.
+                    </p>
+                  ) : (
+                    <ul style={{
+                      listStyle: 'none', margin: 0, padding: 0,
+                      display: 'flex', flexDirection: 'column', gap: '0.5rem',
+                    }}>
+                      {sessions.map((s) => (
+                        <li
+                          key={s.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '0.75rem',
+                            padding: '0.75rem 1rem',
+                            background: 'var(--dark)',
+                            border: `1px solid ${s.is_current ? 'var(--gold)' : 'var(--border)'}`,
+                            borderRadius: '8px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                            <span style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>
+                              {s.name}
+                              {s.is_current && (
+                                <span style={{
+                                  marginLeft: '0.5rem',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 600,
+                                  padding: '0.1rem 0.4rem',
+                                  borderRadius: '20px',
+                                  background: 'rgba(234,179,8,0.12)',
+                                  color: 'var(--gold)',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.06em',
+                                }}>
+                                  Current
+                                </span>
+                              )}
+                            </span>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>
+                              Last used: {s.last_used_at} · Created: {s.created_at}
+                            </span>
+                          </div>
+                          {!s.is_current && (
+                            <button
+                              type="button"
+                              onClick={() => revokeSession(s.id)}
+                              disabled={revokingId === s.id}
+                              style={{
+                                padding: '0.375rem 0.75rem',
+                                fontSize: '0.8125rem',
+                                fontWeight: 600,
+                                borderRadius: '8px',
+                                border: '1px solid rgba(239,68,68,0.25)',
+                                background: 'rgba(239,68,68,0.08)',
+                                color: 'var(--red)',
+                                cursor: revokingId === s.id ? 'not-allowed' : 'pointer',
+                                opacity: revokingId === s.id ? 0.6 : 1,
+                                flexShrink: 0,
+                              }}
+                            >
+                              {revokingId === s.id ? 'Revoking...' : 'Revoke'}
+                            </button>
+                          )}
+                        </li>
+                      ))}
                     </ul>
                   )}
                 </div>

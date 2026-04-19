@@ -212,4 +212,29 @@ class TwoFactorController extends Controller
             return response()->json(['message' => 'Device check failed.'], 500);
         }
     }
+
+    public function revokeDevice(Request $request, string $token)
+    {
+        try {
+            $user = $request->user();
+            $tokens = $user->device_tokens ?? [];
+
+            $filtered = array_values(array_filter(
+                $tokens,
+                fn($entry) => !isset($entry['token']) || $entry['token'] !== $token
+            ));
+
+            if (count($filtered) === count($tokens)) {
+                return response()->json(['message' => 'Device token not found.'], 404);
+            }
+
+            $user->device_tokens = $filtered;
+            $user->save();
+
+            return response()->json(['message' => 'Device removed.'], 200);
+        } catch (\Exception $e) {
+            Log::error('TwoFactorController@revokeDevice: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to remove device.'], 500);
+        }
+    }
 }

@@ -38,6 +38,7 @@ class User extends Authenticatable
         'storeDescription',
         'storeEmail',
         'storePhone',
+        'otp_locked_until',
     ];
 
     protected $casts = [

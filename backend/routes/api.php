@@ -282,6 +282,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/2fa/verify',        [TwoFactorController::class, 'verifyOtp']);
     Route::post('/2fa/remember-device', [TwoFactorController::class, 'rememberDevice']);
     Route::post('/2fa/check-device',  [TwoFactorController::class, 'checkDevice']);
+
+    // Device token revoke
+    Route::delete('/2fa/device/{token}', [TwoFactorController::class, 'revokeDevice']);
 });
 
 // ─── Payments (PayMongo) ─────────────────────────────────────────────────────

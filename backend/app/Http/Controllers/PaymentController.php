@@ -57,6 +57,7 @@ class PaymentController extends Controller
                 'deliveryAddress.phone'       => 'nullable|string|max:30',
                 'design_file'                 => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:10240',
                 'design_notes'                => 'nullable|string|max:2000',
+                'shippingFee'                 => 'nullable|numeric|min:0',
             ]);
 
             // ── Resolve prices + build order items ────────────────────
@@ -118,6 +119,10 @@ class PaymentController extends Controller
                 }
             }
 
+            // Add shipping fee to total
+            $shippingFee  = (float) ($validated['shippingFee'] ?? 0);
+            $totalAmount += $shippingFee;
+
             // ── Voucher discount (server-side validation) ──────────────────────
             $discountAmount = 0.0;
             $appliedVoucher = null;
@@ -175,6 +180,7 @@ class PaymentController extends Controller
                 ],
                 'items'           => $orderItems,
                 'totalAmount'     => $totalAmount,
+                'shippingFee'     => $shippingFee,
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => 'Pending',
@@ -293,31 +299,29 @@ class PaymentController extends Controller
                 return response()->json(['error' => 'Webhook not configured.'], 500);
             }
 
-            if ($webhookSecret) {
-                $sigHeader = $request->header('Paymongo-Signature');
-                if (!$sigHeader) {
-                    Log::warning('PayMongo webhook: missing signature');
-                    return response()->json(['error' => 'Missing signature'], 401);
-                }
+            $sigHeader = $request->header('Paymongo-Signature');
+            if (!$sigHeader) {
+                Log::warning('PayMongo webhook: missing signature');
+                return response()->json(['error' => 'Missing signature'], 401);
+            }
 
-                $parts = [];
-                foreach (explode(',', $sigHeader) as $part) {
-                    [$k, $v] = explode('=', $part, 2);
-                    $parts[$k] = $v;
-                }
+            $parts = [];
+            foreach (explode(',', $sigHeader) as $part) {
+                [$k, $v] = explode('=', $part, 2);
+                $parts[$k] = $v;
+            }
 
-                $timestamp     = $parts['t']  ?? '';
-                $testSig       = $parts['te'] ?? '';
-                $liveSig       = $parts['li'] ?? '';
-                $rawBody       = $request->getContent();
-                $signedPayload = "{$timestamp}.{$rawBody}";
-                $computedSig   = hash_hmac('sha256', $signedPayload, $webhookSecret);
-                $expectedSig   = app()->environment('production') ? $liveSig : $testSig;
+            $timestamp     = $parts['t']  ?? '';
+            $testSig       = $parts['te'] ?? '';
+            $liveSig       = $parts['li'] ?? '';
+            $rawBody       = $request->getContent();
+            $signedPayload = "{$timestamp}.{$rawBody}";
+            $computedSig   = hash_hmac('sha256', $signedPayload, $webhookSecret);
+            $expectedSig   = app()->environment('production') ? $liveSig : $testSig;
 
-                if (!hash_equals($computedSig, $expectedSig)) {
-                    Log::warning('PayMongo webhook: invalid signature');
-                    return response()->json(['error' => 'Invalid signature'], 401);
-                }
+            if (!hash_equals($computedSig, $expectedSig)) {
+                Log::warning('PayMongo webhook: invalid signature');
+                return response()->json(['error' => 'Invalid signature'], 401);
             }
 
             // ── Extract event type ────────────────────────────────────
