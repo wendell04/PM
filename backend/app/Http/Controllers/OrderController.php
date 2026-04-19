@@ -851,7 +851,21 @@ class OrderController extends Controller
                 return response()->json(['error' => 'Forbidden'], 403);
             }
 
+            // Try exact _id match first
             $order = Order::find($id);
+
+            // Fall back to suffix match if not found and input looks like a short code
+            // (8 hex chars, case-insensitive — matches the #XXXXXXXX shown on receipts)
+            if (!$order && preg_match('/^[0-9a-fA-F]{8}$/', $id)) {
+                $order = Order::whereRaw([
+                    '$expr' => [
+                        '$eq' => [
+                            ['$substr' => [['$toString' => '$_id'], 16, 8]],
+                            strtolower($id),
+                        ],
+                    ],
+                ])->first();
+            }
 
             if (!$order) {
                 return response()->json(['error' => 'Order not found'], 404);

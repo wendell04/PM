@@ -493,6 +493,7 @@ export default function OrdersPage() {
               </th>
               <th style={{ width: '28px' }}></th>
               <th className="table-col-name" style={{ width: '100px' }}>Order ID</th>
+              <th className="table-header" style={{ whiteSpace: 'nowrap' }}>Ref #</th>
               <th className="table-col-category">Customer</th>
               <th className="table-col-stock">Product</th>
               <th className="table-col-min" style={{ textAlign: 'center' }}>Qty</th>
@@ -505,7 +506,7 @@ export default function OrdersPage() {
           <tbody>
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={10}>
+                <td colSpan={11}>
                   <div className="empty-state">
                     <div className="empty-icon">
                       <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -547,6 +548,15 @@ export default function OrdersPage() {
                       </td>
                       <td className="table-cell-name">
                         <div style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: 'var(--gray)' }}>{o.id}</div>
+                      </td>
+                      <td className="table-cell" style={{
+                        fontSize: '0.75rem',
+                        fontFamily: 'monospace',
+                        color: 'var(--gold)',
+                        letterSpacing: '0.04em',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        #{String(o.id ?? o._id ?? '').slice(-8).toUpperCase()}
                       </td>
                       <td className="table-cell">
                         <div style={{ fontWeight: 500 }}>{o.customerName}</div>
@@ -607,7 +617,7 @@ export default function OrdersPage() {
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={10} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
+                        <td colSpan={11} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
                           <div style={{ padding: '1rem 1.25rem 1.25rem', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
                             {/* Customer Info */}
                             <div>

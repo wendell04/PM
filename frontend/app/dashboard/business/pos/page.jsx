@@ -853,7 +853,7 @@ export default function PosPage() {
                       setCodOrder(null);
                       setCodLookupError('');
                     }}
-                    placeholder="Paste order ID (MongoDB _id)"
+                    placeholder="Order short code (e.g. A1B2C3D4)"
                     style={{ ...inputStyle, flex: 1 }}
                   />
                   <button
@@ -871,6 +871,15 @@ export default function PosPage() {
                     {codLookupLoading ? 'Looking up…' : 'Look up'}
                   </button>
                 </div>
+                <p style={{
+                  margin: '0.375rem 0 0',
+                  fontSize: '0.75rem',
+                  color: 'var(--gray)',
+                  lineHeight: 1.4,
+                }}>
+                  Find the 8-character code in the Orders table (#ID column)
+                  or the customer's receipt. You can also paste the full order ID.
+                </p>
                 {codLookupError && (
                   <p style={{ margin: '0.5rem 0 0', fontSize: '0.8rem',
                     color: 'var(--red)' }}>
