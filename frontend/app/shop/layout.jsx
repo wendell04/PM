@@ -801,6 +801,11 @@ export default function ShopLayout({ children }) {
       const storage = rememberMe ? localStorage : sessionStorage;
       storage.setItem('auth_token', token);
       storage.setItem('auth_user', JSON.stringify(userData));
+      try {
+        const bc = new BroadcastChannel('pmp_auth');
+        bc.postMessage({ type: 'AUTH_UPDATE', token, user: userData });
+        bc.close();
+      } catch {}
       sessionStorage.setItem('pending_2fa', 'true');
       // Save redirect destination for after 2FA
       const currentPath = window.location.pathname;
@@ -824,6 +829,11 @@ export default function ShopLayout({ children }) {
     const storage = rememberMe ? localStorage : sessionStorage;
     storage.setItem('auth_token', token);
     storage.setItem('auth_user', JSON.stringify(userData));
+    try {
+      const bc = new BroadcastChannel('pmp_auth');
+      bc.postMessage({ type: 'AUTH_UPDATE', token, user: userData });
+      bc.close();
+    } catch {}
 
     // Redirect admin/owner to dashboard
     const dashboardRolesLogin = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
@@ -871,6 +881,11 @@ export default function ShopLayout({ children }) {
     const storage = rememberMe ? localStorage : sessionStorage;
     storage.setItem('auth_token', token);
     storage.setItem('auth_user', JSON.stringify(userData));
+    try {
+      const bc = new BroadcastChannel('pmp_auth');
+      bc.postMessage({ type: 'AUTH_UPDATE', token, user: userData });
+      bc.close();
+    } catch {}
 
     // Redirect admin/owner to dashboard
     const dashboardRolesReg = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];

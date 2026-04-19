@@ -443,6 +443,11 @@ const LandingPage = ({onEnterShop}) => {
       const storage = rememberMe ? localStorage : sessionStorage;
       storage.setItem('auth_token', data.data.token);
       storage.setItem('auth_user', JSON.stringify(data.data.user));
+      try {
+        const bc = new BroadcastChannel('pmp_auth');
+        bc.postMessage({ type: 'AUTH_UPDATE', token: data.data.token, user: data.data.user });
+        bc.close();
+      } catch {}
       setRegisteredEmail(registerForm.email);
       setModal(null);
       setRegisterForm({firstName:'',middleInitial:'',lastName:'',address:'',phoneNumber:'',email:'',password:'',confirmPassword:'',agreeToTerms:false});
@@ -483,6 +488,11 @@ const LandingPage = ({onEnterShop}) => {
       const storage = rememberMe ? localStorage : sessionStorage;
       storage.setItem('auth_token', data.data.token);
       storage.setItem('auth_user', JSON.stringify(data.data.user));
+      try {
+        const bc = new BroadcastChannel('pmp_auth');
+        bc.postMessage({ type: 'AUTH_UPDATE', token: data.data.token, user: data.data.user });
+        bc.close();
+      } catch {}
 
       // Check 2FA requirement first
       if (data.data.requires_2fa) {

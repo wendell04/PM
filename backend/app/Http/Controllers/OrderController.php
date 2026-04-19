@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\OrderStatusUpdated;
 use App\Mail\AdminNewOrderMail;
 use App\Mail\OrderConfirmationMail;
 use App\Mail\OrderStatusMail;
@@ -73,6 +74,7 @@ class OrderController extends Controller
                 'design_file'                 => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:10240',
                 'design_notes'                => 'nullable|string|max:2000',
                 'voucherCode'                 => 'nullable|string|max:50',
+                'shippingFee'                 => 'nullable|numeric|min:0',
             ]);
 
             // Build order items with pricing (no transaction wrapper for MongoDB compatibility)
@@ -110,6 +112,10 @@ class OrderController extends Controller
                     'lineTotal'   => $lineTotal,
                 ];
             }
+
+            // Add shipping fee to total
+            $shippingFee  = (float) ($validated['shippingFee'] ?? 0);
+            $totalAmount += $shippingFee;
 
             // Handle design file upload (non-fatal)
             $designFilePath = null;
@@ -165,6 +171,7 @@ class OrderController extends Controller
                 ],
                 'items'           => $orderItems,
                 'totalAmount'     => $totalAmount,
+                'shippingFee'     => $shippingFee,
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => 'Pending',
@@ -190,6 +197,17 @@ class OrderController extends Controller
                         'error'       => $e->getMessage(),
                     ]);
                 }
+            }
+
+            // Broadcast new order to admin channel
+            try {
+                broadcast(new OrderStatusUpdated(
+                    (string) $order->_id,
+                    'pending',
+                    null
+                ));
+            } catch (\Exception $e) {
+                Log::warning('OrderController@store: broadcast failed', ['error' => $e->getMessage()]);
             }
 
             // Notify owner
@@ -840,6 +858,17 @@ class OrderController extends Controller
             $order->orderStatus = $newStatus;
             $order->updatedAt = now();
             $order->save();
+
+            // Broadcast status update to order subscribers and admin channel
+            try {
+                broadcast(new OrderStatusUpdated(
+                    (string) $order->_id,
+                    $order->orderStatus,
+                    trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null
+                ))->toOthers();
+            } catch (\Exception $e) {
+                Log::warning('OrderController@updateStatus: broadcast failed', ['error' => $e->getMessage()]);
+            }
 
             // Handle completion: create sales records and deduct inventory
             if ($order->orderStatus === 'Delivered' && $oldStatus !== 'Delivered') {

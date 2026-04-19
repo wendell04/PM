@@ -12,8 +12,10 @@
   "dependencies": {
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "laravel-echo": "^2.3.4",
     "lucide-react": "^0.475.0",
     "next": "15.3.0",
+    "pusher-js": "^8.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^3.8.1",

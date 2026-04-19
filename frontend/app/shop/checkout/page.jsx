@@ -211,6 +211,7 @@ export default function CheckoutPage() {
         formData.append('deliveryAddress', JSON.stringify(deliveryAddress));
         formData.append('paymentMethod', paymentMethod);
         if (appliedVoucher?.code) formData.append('voucherCode', appliedVoucher.code);
+        formData.append('shippingFee', String(DELIVERY_FEE));
         fetchBody = formData;
         fetchHeaders = {
           Authorization: `Bearer ${token}`,
@@ -221,6 +222,7 @@ export default function CheckoutPage() {
           deliveryAddress,
           design_notes: designNotes || null,
           paymentMethod,
+          shippingFee: DELIVERY_FEE,
           ...(appliedVoucher?.code ? { voucherCode: appliedVoucher.code } : {}),
         });
         fetchHeaders = {

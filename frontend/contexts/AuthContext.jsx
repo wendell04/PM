@@ -122,36 +122,51 @@ export function AuthProvider({children}) {
         window.addEventListener(
             'storage', handleStorageChange);
 
-        // Also poll sessionStorage every 500ms
-        // for same-tab updates (storage event
-        // does not fire for same-tab changes)
-        const interval = setInterval(() => {
-            const token =
-                sessionStorage.getItem('auth_token') ||
-                localStorage.getItem('auth_token');
-            const stored =
-                sessionStorage.getItem('auth_user') ||
-                localStorage.getItem('auth_user');
-
-            // Only update if token changed
-            if (token && stored) {
-                try {
-                    const parsed = JSON.parse(stored);
-                    setCurrentUser(prev => {
-                        // Don't update if same user
-                        if (prev?.email === parsed?.email)
-                            return prev;
-                        return parsed;
-                    });
-                    setToken(token);
-                } catch {}
-            }
-        }, 500);
+        // BroadcastChannel for same-tab/cross-tab auth sync
+        // (replaces 500ms polling — fires only on actual changes)
+        let bc;
+        try {
+            bc = new BroadcastChannel('pmp_auth');
+            bc.onmessage = (e) => {
+                if (e.data?.type === 'AUTH_UPDATE') {
+                    const { token: newToken, user: newUser } = e.data;
+                    if (newToken && newUser) {
+                        setToken(newToken);
+                        setCurrentUser(newUser);
+                    }
+                }
+                if (e.data?.type === 'AUTH_LOGOUT') {
+                    setToken(null);
+                    setCurrentUser(null);
+                }
+            };
+        } catch {
+            // BroadcastChannel not supported (rare) — fall back to
+            // a single 2s interval as a degraded fallback
+            const interval = setInterval(() => {
+                const t = sessionStorage.getItem('auth_token') ||
+                          localStorage.getItem('auth_token');
+                const s = sessionStorage.getItem('auth_user') ||
+                          localStorage.getItem('auth_user');
+                if (t && s) {
+                    try {
+                        const parsed = JSON.parse(s);
+                        setCurrentUser(prev =>
+                            prev?.email === parsed?.email ? prev : parsed
+                        );
+                        setToken(t);
+                    } catch {}
+                }
+            }, 2000);
+            return () => {
+                window.removeEventListener('storage', handleStorageChange);
+                clearInterval(interval);
+            };
+        }
 
         return () => {
-            window.removeEventListener(
-                'storage', handleStorageChange);
-            clearInterval(interval);
+            window.removeEventListener('storage', handleStorageChange);
+            if (bc) bc.close();
         };
     }, []);
 
@@ -176,6 +191,11 @@ export function AuthProvider({children}) {
             sessionStorage.removeItem('auth_user');
             setCurrentUser(null);
             setToken(null);
+            try {
+                const bc = new BroadcastChannel('pmp_auth');
+                bc.postMessage({ type: 'AUTH_LOGOUT' });
+                bc.close();
+            } catch {}
             // Always redirect to landing page — no dedicated admin login route exists
             window.location.href = '/';
         }

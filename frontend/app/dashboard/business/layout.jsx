@@ -1,6 +1,7 @@
 "use client";
 
 import { updatePassword } from "@/lib/authApi";
+import { disconnectEcho, getEcho } from "@/lib/echo";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import {
   fetchNotifications,
@@ -351,6 +352,26 @@ export default function BusinessDashboardLayout({ children }) {
     poll();
     interval = setInterval(poll, 60000);
     return () => clearInterval(interval);
+  }, [token]);
+
+  // Reverb/Echo — real-time order status updates on admin channel
+  useEffect(() => {
+    if (!token) return;
+    const echo = getEcho(token);
+    if (!echo) return;
+
+    try {
+      echo.private("admin.notifications")
+        .listen(".order.status.updated", () => {
+          setUnreadCount((prev) => prev + 1);
+        });
+    } catch {
+      // Echo/Reverb not reachable — silently ignore (HTTP polling still covers it)
+    }
+
+    return () => {
+      disconnectEcho();
+    };
   }, [token]);
 
   // Close notification panel on outside click

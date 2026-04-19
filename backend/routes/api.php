@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ProductController;
@@ -65,6 +66,11 @@ Route::get('/products/{id}',        [ProductController::class, 'show']);
 
 // ─── Protected — any authenticated user ──────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
+    // Reverb broadcasting auth
+    Route::post('/broadcasting/auth', function (Request $request) {
+        return Broadcast::auth($request);
+    });
+
     // ─── Profile ─────────────────────────────────────────────────────────────
     Route::put('/profile',               [ProfileController::class, 'update']);
     Route::put('/profile/password',      [ProfileController::class, 'updatePassword']);
