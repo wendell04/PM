@@ -211,9 +211,6 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
         }}
       >
         <div>
-          <div style={{ fontSize: "0.7rem", color: "var(--gray)", marginBottom: "0.25rem" }}>
-            Home &gt; Business Insights &gt; Overview
-          </div>
           <h2
             style={{
               margin: 0,

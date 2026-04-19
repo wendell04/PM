@@ -132,7 +132,7 @@ input[type="number"] {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  overflow: visible;
+  overflow: hidden;
   position: relative;
   line-height: 0;
   font-size: 0;
@@ -201,6 +201,10 @@ input[type="number"] {
   flex-direction: column;
   gap: 0.5rem;
   overflow-y: auto;
+  scrollbar-width: none;
+}
+.sidebar-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .sidebar-nav-item {
