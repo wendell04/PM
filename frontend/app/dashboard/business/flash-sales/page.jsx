@@ -353,11 +353,14 @@ export default function FlashSalesPage() {
             justifyContent: 'space-between', alignItems: 'center' }}>
             <span>{error}</span>
             <button onClick={fetchSales}
+              disabled={isLoading}
               style={{ background: 'none', border: '1px solid var(--red)',
                 color: 'var(--red)', borderRadius: '6px',
-                padding: '0.25rem 0.75rem', cursor: 'pointer',
+                padding: '0.25rem 0.75rem',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                opacity: isLoading ? 0.6 : 1,
                 fontSize: '0.8rem' }}>
-              Retry
+              {isLoading ? <span className="spinner" /> : 'Retry'}
             </button>
           </div>
         )}

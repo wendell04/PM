@@ -1001,7 +1001,7 @@ class OrderController extends Controller
                 ]);
             }
         } catch (\Exception $e) {
-            Log::error('restoreInventoryOnReturn: failed', [
+            Log::error('OrderController: inventory restoration failed', [
                 'orderId' => (string) $order->_id,
                 'error'   => $e->getMessage(),
             ]);

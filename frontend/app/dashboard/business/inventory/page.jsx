@@ -208,8 +208,19 @@ export default function InventoryDashboardPage() {
           }}
         >
           <p style={{ margin: '0 0 1rem' }}>{error}</p>
-          <button type="button" onClick={load} style={{ ...btnGhost, width: 'auto', display: 'inline-flex' }}>
-            Retry
+          <button
+            type="button"
+            onClick={load}
+            disabled={loading}
+            style={{
+              ...btnGhost,
+              width: 'auto',
+              display: 'inline-flex',
+              opacity: loading ? 0.6 : 1,
+              cursor: loading ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {loading ? <span className="spinner" /> : 'Retry'}
           </button>
         </div>
       ) : (

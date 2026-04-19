@@ -132,6 +132,7 @@ export default function BadOrdersPage() {
   const [dateTo, setDateTo] = useState('');
 
   const [confirm, setConfirm] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -175,11 +176,14 @@ export default function BadOrdersPage() {
   async function applyStatus(id, status) {
     if (!token) return;
     setConfirm(null);
+    setIsSubmitting(true);
     try {
       await updateBadOrderStatus(token, id, { status });
       await load();
     } catch (e) {
       setError(e.message || 'Update failed.');
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -274,8 +278,17 @@ export default function BadOrdersPage() {
           }}
         >
           <span>{error}</span>
-          <button type="button" onClick={load} style={btnGhost}>
-            Retry
+          <button
+            type="button"
+            onClick={load}
+            disabled={loading}
+            style={{
+              ...btnGhost,
+              opacity: loading ? 0.6 : 1,
+              cursor: loading ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {loading ? <span className="spinner" /> : 'Retry'}
           </button>
         </div>
       )}
@@ -399,8 +412,17 @@ export default function BadOrdersPage() {
               <button type="button" style={btnGhost} onClick={() => setConfirm(null)}>
                 Cancel
               </button>
-              <button type="button" style={btnPrimary} onClick={() => applyStatus(confirm.id, confirm.status)}>
-                Confirm
+              <button
+                type="button"
+                style={{
+                  ...btnPrimary,
+                  opacity: isSubmitting ? 0.6 : 1,
+                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                }}
+                disabled={isSubmitting}
+                onClick={() => applyStatus(confirm.id, confirm.status)}
+              >
+                {isSubmitting ? <span className="spinner" /> : 'Confirm'}
               </button>
             </div>
           </div>
