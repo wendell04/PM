@@ -251,7 +251,7 @@ export default function SettingsPage() {
           const t = typeof entry === 'string' ? entry : entry?.token;
           return t !== deviceToken;
         });
-        setCurrentUser({ ...currentUser, device_tokens: remaining });
+        setCurrentUser(prev => ({ ...prev, device_tokens: remaining }));
       }
     } catch (err) {
       setSessionsError(err.message);
@@ -1017,10 +1017,11 @@ export default function SettingsPage() {
                   ) : (
                     <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       {deviceTokens.map((t) => {
-                        const short = typeof t === 'string' && t.length > 12 ? `${t.slice(0, 12)}...` : String(t);
+                        const tokenStr = typeof t === 'string' ? t : (t?.token ?? '');
+                        const short = tokenStr.length > 12 ? `${tokenStr.slice(0, 12)}...` : (tokenStr || '(unknown)');
                         return (
                           <li
-                            key={t}
+                            key={tokenStr || JSON.stringify(t)}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
@@ -1037,7 +1038,7 @@ export default function SettingsPage() {
                             </code>
                             <button
                               type="button"
-                              onClick={() => revokeDevice(t.token ?? t)}
+                              onClick={() => revokeDevice(t.token ?? '')}
                               style={{
                                 padding: '0.375rem 0.75rem',
                                 fontSize: '0.8125rem',
