@@ -403,7 +403,7 @@ function buildColumnGroups(variantGroups, combinations, groupChecks) {
         key: `${p.value}::${checkedArr.map((s) => s.value).join("|")}`,
         primaryVal: p.value,
         secondaryVals: checkedArr.map((s) => s.value),
-        label: checkedArr.map((s) => s.value).join(" · "),
+        label: checkedArr.map((s) => s.value).join(" | "),
         comboIds,
         isMerged: true,
       });
@@ -816,7 +816,7 @@ function EditProductModal({
 
   const hasVariants = combinations.length > 0;
 
-  // Sync formData when inventory changes (e.g., Upon Order → Track Stock)
+  // Sync formData when inventory changes (e.g., Upon Order to Track Stock)
   useEffect(() => {
     const inv = inventoryList.find((i) => i.id === formData.inventoryId);
     if (inv && inv.id) {

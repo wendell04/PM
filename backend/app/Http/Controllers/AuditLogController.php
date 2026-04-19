@@ -38,7 +38,10 @@ class AuditLogController extends Controller
                 $query->where('createdAt', '<=', $request->endDate);
             }
 
-            $auditLogs = $query->limit(100)->get();
+            $limit = (int) $request->input('limit', 50);
+            $limit = max(1, min($limit, 100));
+
+            $auditLogs = $query->limit($limit)->get();
 
             return $this->successResponse('Audit logs fetched successfully.', $auditLogs);
         } catch (\Exception $e) {

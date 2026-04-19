@@ -362,7 +362,7 @@ export default function GoodsIssueModal({ materials, onClose, onConfirm, current
                           fontFamily: "monospace",
                         }}
                       >
-                        {item.sku || "—"} · {item.uom || "pcs"}
+                        {item.sku || "—"} | {item.uom || "pcs"}
                       </div>
                     </div>
                     <div

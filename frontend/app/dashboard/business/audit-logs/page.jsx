@@ -31,6 +31,7 @@ export default function AuditLogsPage() {
     setError('');
     try {
       const params = new URLSearchParams();
+      params.set('limit', '50');
       if (filterReason) params.set('reason', filterReason);
       if (filterStartDate) params.set('startDate', filterStartDate);
       if (filterEndDate) params.set('endDate', filterEndDate);

@@ -262,7 +262,7 @@ function computeAveCostFromBatches(batches) {
 // Examples: MUG-INN-0001, MUG-CER-WHT-11OZ-0001
 
 // Get 2-letter prefix from a string: 1st letter of each word (up to 2 words)
-// Examples: "Canvas Totebags" → "CT", "T-Shirts" → "TS", "Totebag" → "TO"
+// Examples: "Canvas Totebags" to "CT", "T-Shirts" to "TS", "Totebag" to "TO"
 function getPrefix(str) {
   const words = str
     .replace(/[^A-Za-z0-9\s-]/g, "")
@@ -271,16 +271,16 @@ function getPrefix(str) {
   if (words.length >= 2) {
     return (words[0][0] + words[1][0]).toUpperCase();
   }
-  // Single word → first 2 letters
+  // Single word: first 2 letters
   const cleaned = words[0] || "";
   return cleaned.substring(0, 2).toUpperCase() || "XX";
 }
 
-// Get short code from variant option (e.g., "White" → "WHT", "11oz" → "11OZ")
+// Get short code from variant option (e.g., "White" to "WHT", "11oz" to "11OZ")
 function getVariantCode(opt) {
   const cleaned = opt.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   if (/^\d/.test(cleaned)) {
-    // Starts with number (e.g., "11oz") → keep full alphanumeric
+    // Starts with number (e.g., "11oz"): keep full alphanumeric
     return cleaned;
   }
   return cleaned.substring(0, 3);
@@ -1909,7 +1909,7 @@ function MaterialMasterTab({
                                   (vt) =>
                                     `${vt.name}: ${vt.options.join(", ")}`,
                                 )
-                                .join(" · ")}
+                                .join(" | ")}
                             </div>
                           )}
                       </td>
@@ -2630,7 +2630,7 @@ function MaterialFormModal({
         hasVariants: true,
         variantTypes: form.variantTypes,
         parentId: null,
-        batches: existingBatches, // ← NEW: Batch tracking array
+        batches: existingBatches, // NEW: Batch tracking array
         createdAt: editMaterial
           ? editMaterial.createdAt
           : new Date().toISOString(),
@@ -2682,7 +2682,7 @@ function MaterialFormModal({
           variantTypes: [],
           parentId: parentId,
           variantCombo: skuInfo.comboMap,
-          batches: childBatches, // ← NEW: Batch tracking array
+          batches: childBatches, // NEW: Batch tracking array
           createdAt: existingChild
             ? existingChild.createdAt
             : new Date().toISOString(),
@@ -2712,7 +2712,7 @@ function MaterialFormModal({
           hasVariants: false,
           variantTypes: [],
           parentId: null,
-          batches: existingBatches, // ← NEW: Batch tracking array
+          batches: existingBatches, // NEW: Batch tracking array
           createdAt: editMaterial
             ? editMaterial.createdAt
             : new Date().toISOString(),
@@ -5324,11 +5324,7 @@ function BOMTab({ materials, boms, token, refreshBoms }) {
       setShowAddModal(false);
       setEditBOM(null);
     } catch (e) {
-      setInfoModal({
-        isOpen: true,
-        title: "Could not save BOM",
-        message: e?.message || "Failed to save.",
-      });
+      throw e;
     }
   };
 
@@ -5350,11 +5346,7 @@ function BOMTab({ materials, boms, token, refreshBoms }) {
       setShowAddModal(false);
       setEditBOM(null);
     } catch (e) {
-      setInfoModal({
-        isOpen: true,
-        title: "Could not save BOMs",
-        message: e?.message || "Batch save failed.",
-      });
+      throw e;
     }
   };
 
@@ -6161,6 +6153,7 @@ export default function MasterDataPage() {
   const [materials, setMaterials] = useState([]);
   const [boms, setBoms] = useState([]);
   const [units, setUnits] = useState([]);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const refreshMaterials = useCallback(async () => {
     if (!token) {
@@ -6201,18 +6194,30 @@ export default function MasterDataPage() {
       setVendors([]);
       setMaterials([]);
       setBoms([]);
+      setPageLoading(false);
       return;
     }
-    fetchSuppliers(token)
-      .then((d) => {
-        const arr = Array.isArray(d) ? d : [];
-        setVendors(arr.map((v) => ({ ...v, id: v.id ?? v._id })));
-      })
-      .catch(() => {
-        setVendors([]);
-      });
-    refreshMaterials();
-    refreshBoms();
+    let cancelled = false;
+    setPageLoading(true);
+    Promise.all([
+      fetchSuppliers(token)
+        .then((d) => {
+          const arr = Array.isArray(d) ? d : [];
+          if (!cancelled) {
+            setVendors(arr.map((v) => ({ ...v, id: v.id ?? v._id })));
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setVendors([]);
+        }),
+      refreshMaterials(),
+      refreshBoms(),
+    ]).finally(() => {
+      if (!cancelled) setPageLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [token, refreshMaterials, refreshBoms]);
 
   // Collect all unique item names from all vendors' itemsSupplied
@@ -6239,6 +6244,35 @@ export default function MasterDataPage() {
     color: activeTab === tab ? "#000" : "var(--gray)",
     transition: "all 0.15s",
   });
+
+  if (pageLoading) {
+    return (
+      <div className="page-content-wrapper">
+        <div className="skeleton-page">
+          <div className="skeleton-header">
+            <div className="skeleton-title" />
+            <div className="skeleton-subtitle" />
+          </div>
+          <div className="skeleton-cards">
+            {[...Array(4)].map((_, i) => (
+              <div className="skeleton-card" key={i} />
+            ))}
+          </div>
+          <div className="skeleton-table">
+            <div className="skeleton-table-header" />
+            {[...Array(5)].map((_, i) => (
+              <div className="skeleton-row" key={i}>
+                <div className="skeleton-cell skeleton-cell-short" />
+                <div className="skeleton-cell skeleton-cell-wide" />
+                <div className="skeleton-cell skeleton-cell-mid" />
+                <div className="skeleton-cell-badge" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-content-wrapper">

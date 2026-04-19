@@ -1,4 +1,5 @@
 ﻿import CustomDropdown from "@/app/components/CustomDropdown";
+import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useMemo, useState } from "react";
 
 function PlusIcon() {
@@ -92,6 +93,9 @@ export default function BOMFormModal({
   onSave,
   onSaveBatch,
 }) {
+  const { token } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [form, setForm] = useState({
     productName: "",
     productGroupName: "",
@@ -280,8 +284,20 @@ export default function BOMFormModal({
       setErrors(errs);
       return;
     }
+    if (!token) {
+      setSubmitError("Sign in required to save BOMs.");
+      return;
+    }
     setErrors({});
-    await onSave({ ...bom, ...form });
+    setSubmitError("");
+    setIsSubmitting(true);
+    try {
+      await onSave({ ...bom, ...form });
+    } catch (err) {
+      setSubmitError(err?.message || "Save failed.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const selectedMaterialIds = form.components
@@ -514,7 +530,7 @@ export default function BOMFormModal({
                     }}
                   >
                     {form.components.length} component
-                    {form.components.length > 1 ? "s" : ""} · variant cost added
+                    {form.components.length > 1 ? "s" : ""} | variant cost added
                     per BOM
                   </p>
                 </div>
@@ -598,8 +614,8 @@ export default function BOMFormModal({
                   Handles: no-variant (skip), single-dim, and multi-dim products.
                   Multi-dim combos (e.g. Small White) are stored as flat children
                   in Material Master, so we treat them identically to single-dim.
-                  "Add All"   → generates BOMs for EVERY child of selected parent.
-                  Checkboxes  → user picks which children get their own BOM.
+                  "Add All" generates BOMs for EVERY child of selected parent.
+                  Checkboxes: user picks which children get their own BOM.
               ──────────────────────────────────────────────────────────────────── */}
               {showVariantPicker && (
                 <div
@@ -922,7 +938,7 @@ export default function BOMFormModal({
                             marginBottom: "0.75rem",
                           }}
                         >
-                          {checkedVariantIds.size} BOMs · combined cost ₱
+                          {checkedVariantIds.size} BOMs | combined cost ₱
                           {batchTotal.toLocaleString("en-PH", {
                             minimumFractionDigits: 2,
                           })}
@@ -1111,11 +1127,24 @@ export default function BOMFormModal({
               alignItems: "center",
               gap: "1rem",
               flexShrink: 0,
+              flexWrap: "wrap",
             }}
           >
+            {submitError ? (
+              <span
+                style={{
+                  ...errorStyle,
+                  marginRight: "auto",
+                  marginTop: 0,
+                }}
+              >
+                {submitError}
+              </span>
+            ) : null}
             <button
               type="button"
               onClick={onClose}
+              disabled={isSubmitting}
               style={{
                 background: "none",
                 border: "none",
@@ -1124,8 +1153,9 @@ export default function BOMFormModal({
                 fontWeight: 700,
                 textTransform: "uppercase",
                 letterSpacing: "0.15em",
-                cursor: "pointer",
+                cursor: isSubmitting ? "not-allowed" : "pointer",
                 padding: "0.625rem 1.5rem",
+                opacity: isSubmitting ? 0.6 : 1,
               }}
             >
               Cancel
@@ -1133,15 +1163,28 @@ export default function BOMFormModal({
             <button
               type="button"
               onClick={async () => {
+                if (isSubmitting) return;
+                setSubmitError("");
+                if (!token) {
+                  setSubmitError("Sign in required to save BOMs.");
+                  return;
+                }
                 // If variants are selected, create BOMs for each
                 if (checkedVariantIds.size > 0 && onSaveBatch) {
-                  const newBOMs = buildBOMs(checkedVariants);
-                  await onSaveBatch(newBOMs);
-                  onClose();
-                  setShowVariantPicker(false);
-                  setSelectedParentId("");
-                  setCheckedVariantIds(new Set());
-                  setVariantQty(1);
+                  setIsSubmitting(true);
+                  try {
+                    const newBOMs = buildBOMs(checkedVariants);
+                    await onSaveBatch(newBOMs);
+                    onClose();
+                    setShowVariantPicker(false);
+                    setSelectedParentId("");
+                    setCheckedVariantIds(new Set());
+                    setVariantQty(1);
+                  } catch (err) {
+                    setSubmitError(err?.message || "Batch save failed.");
+                  } finally {
+                    setIsSubmitting(false);
+                  }
                 } else {
                   // Normal single BOM save
                   const errs = {};
@@ -1156,9 +1199,17 @@ export default function BOMFormModal({
                     return;
                   }
                   setErrors({});
-                  await onSave({ ...bom, ...form });
+                  setIsSubmitting(true);
+                  try {
+                    await onSave({ ...bom, ...form });
+                  } catch (err) {
+                    setSubmitError(err?.message || "Save failed.");
+                  } finally {
+                    setIsSubmitting(false);
+                  }
                 }
               }}
+              disabled={isSubmitting}
               style={{
                 background: "linear-gradient(135deg,#FFDF9F 0%,#D4A843 100%)",
                 border: "none",
@@ -1166,16 +1217,19 @@ export default function BOMFormModal({
                 color: "#000",
                 fontSize: "0.8rem",
                 fontWeight: 800,
-                cursor: "pointer",
+                cursor: isSubmitting ? "not-allowed" : "pointer",
                 padding: "0.625rem 2rem",
                 boxShadow: "0 4px 12px rgba(212,168,67,0.2)",
+                opacity: isSubmitting ? 0.75 : 1,
               }}
             >
-              {checkedVariantIds.size > 0
-                ? `Create ${checkedVariantIds.size} BOM${checkedVariantIds.size > 1 ? "s" : ""}`
-                : bom
-                  ? "Save Changes"
-                  : "Create BOM"}
+              {isSubmitting
+                ? "Saving..."
+                : checkedVariantIds.size > 0
+                  ? `Create ${checkedVariantIds.size} BOM${checkedVariantIds.size > 1 ? "s" : ""}`
+                  : bom
+                    ? "Save Changes"
+                    : "Create BOM"}
             </button>
           </div>
         </form>

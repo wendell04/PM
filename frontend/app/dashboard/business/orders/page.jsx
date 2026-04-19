@@ -719,7 +719,7 @@ export default function OrdersPage() {
                                     <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>History</div>
                                     {o.paymentHistory.map((p, idx) => (
                                       <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '0.2rem' }}>
-                                        <span style={{ color: 'var(--gray)' }}>{p.method} {p.note ? `· ${p.note}` : ''}</span>
+                                        <span style={{ color: 'var(--gray)' }}>{p.method} {p.note ? `| ${p.note}` : ''}</span>
                                         <span style={{ color: 'var(--green)', fontWeight: 600 }}>+₱{Number(p.amount).toLocaleString()}</span>
                                       </div>
                                     ))}

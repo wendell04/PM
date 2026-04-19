@@ -467,6 +467,9 @@ export default function BusinessDashboardLayout({ children }) {
         { name: "All Orders", href: "/dashboard/business/orders" },
         { name: "Order Requests", href: "/dashboard/business/order-requests" },
         { name: "Job Orders", href: "/dashboard/business/job-orders" },
+        { name: "Order Preview", href: "/dashboard/business/orders-preview" },
+        { name: "Production Preview", href: "/dashboard/business/production-preview" },
+        { name: "QC Preview", href: "/dashboard/business/qc-preview" },
       ],
     },
 

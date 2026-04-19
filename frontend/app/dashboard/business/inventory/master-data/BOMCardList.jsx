@@ -954,8 +954,9 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
                               color: "rgba(229,226,225,0.4)",
                               fontSize: "0.6rem",
                             }}
+                            aria-hidden="true"
                           >
-                            →
+                            {">"}
                           </span>
                           <span style={{ color: "rgba(229,226,225,0.6)" }}>
                             {batch.invoiceNumber || "No Invoice"}

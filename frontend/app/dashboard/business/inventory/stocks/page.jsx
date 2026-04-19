@@ -990,7 +990,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                                       (vt) =>
                                         `${vt.name}: ${vt.options.join(", ")}`,
                                     )
-                                    .join(" · ")}
+                                    .join(" | ")}
                                 </div>
                               )}
                           </div>
@@ -1962,7 +1962,7 @@ export default function StocksPage() {
                         : "pointer",
                   }}
                 >
-                  Reduce Selected →
+                  Reduce selected
                 </button>
               </div>
             )}

@@ -135,7 +135,7 @@ export default function PosPage() {
   const { token, currentUser } = useAuth();
 
   const [allProducts, setAllProducts] = useState([]);
-  const [prodLoading, setProdLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [prodError, setProdError] = useState(null);
   const [search, setSearch] = useState('');
 
@@ -161,7 +161,7 @@ export default function PosPage() {
 
   const loadProducts = useCallback(async () => {
     if (!token) return;
-    setProdLoading(true);
+    setIsLoading(true);
     setProdError(null);
     try {
       const data = await fetchProducts(token);
@@ -171,7 +171,7 @@ export default function PosPage() {
       setProdError(e.message || 'Failed to load products.');
       setAllProducts([]);
     } finally {
-      setProdLoading(false);
+      setIsLoading(false);
     }
   }, [token]);
 
@@ -368,7 +368,7 @@ export default function PosPage() {
         <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>POS / Walk-in</h1>
         <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--gray)' }}>
           Record in-person sales and update inventory instantly
-          {currentUser?.name ? ` · ${currentUser.name}` : ''}
+          {currentUser?.name ? ` | ${currentUser.name}` : ''}
         </p>
       </div>
 
@@ -385,7 +385,7 @@ export default function PosPage() {
             />
           </div>
 
-          {prodLoading ? (
+          {isLoading ? (
             <ProductGridSkeleton />
           ) : prodError ? (
             <div style={{ ...cardStyle, padding: '2rem', textAlign: 'center', color: 'var(--gray)' }}>
@@ -647,7 +647,7 @@ export default function PosPage() {
               <div>Payment: <strong style={{ color: 'var(--white)' }}>{paymentMethod === 'cash' ? 'Cash' : 'GCash'}</strong></div>
               {paymentMethod === 'cash' && (
                 <div style={{ marginTop: '0.35rem' }}>
-                  Tendered: {formatPrice(tenderNum)} · Change: {formatPrice(changeDue)}
+                  Tendered: {formatPrice(tenderNum)} | Change: {formatPrice(changeDue)}
                 </div>
               )}
               <div style={{ marginTop: '0.35rem' }}>

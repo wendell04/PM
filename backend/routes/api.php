@@ -30,11 +30,19 @@ use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\BillOfMaterialController;
 use App\Http\Controllers\VoucherController;
 use App\Http\Controllers\WalkInOrderController;
+use App\Http\Controllers\AdminAnalyticsController;
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::post('/register',        [AuthController::class, 'register'])->middleware('throttle:10,1');
 Route::post('/login',           [AuthController::class, 'login'])->middleware('throttle:10,1');
 Route::post('/logout',          [AuthController::class, 'logout'])->middleware('auth:sanctum');
+// Aliases (tooling / documentation compatibility)
+Route::post('/auth/login',      [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('/auth/logout',     [AuthController::class, 'logout'])->middleware('auth:sanctum');
+Route::get('/auth/me', function (Request $request) {
+    return response()->json($request->user());
+})->middleware('auth:sanctum');
+Route::post('/auth/verify-2fa', [TwoFactorController::class, 'verifyOtp'])->middleware('auth:sanctum');
 Route::post('/verify-email',    [AuthController::class, 'verify'])->middleware('throttle:5,1');
 Route::post('/resend-code',     [AuthController::class, 'resend'])->middleware('throttle:5,1');
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
@@ -112,6 +120,11 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     // ─── Order Stats ──────────────────────────────────────────────────────────
     Route::get('/admin/orders/stats',            [OrderController::class, 'stats']);
 
+    // ─── Dashboard & reports (stubs — see AdminAnalyticsController) ───────────
+    Route::get('/admin/dashboard/stats',         [AdminAnalyticsController::class, 'dashboardStats']);
+    Route::get('/admin/reports/sales',           [AdminAnalyticsController::class, 'reportsSales']);
+    Route::get('/admin/reports/inventory',       [AdminAnalyticsController::class, 'reportsInventory']);
+
     // ─── Products ─────────────────────────────────────────────────────────────
     Route::get('/admin/products',                [ProductController::class, 'adminIndex']);
     Route::get('/admin/products/available-inventory', [ProductController::class, 'availableInventory']);
@@ -147,6 +160,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::patch('/orders/{id}/status', [OrderController::class, 'updateStatus']);
     Route::put('/admin/orders/{id}',    [OrderController::class, 'adminUpdate']);
     Route::get('/admin/orders',         [OrderController::class, 'adminIndex']);
+    Route::get('/admin/orders/{id}',    [OrderController::class, 'show']);
 
     // ─── Job Orders ───────────────────────────────────────────────────────────
     Route::get('/admin/job-orders',              [JobOrderController::class, 'index']);
@@ -216,6 +230,10 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── QC Endpoint ───────────────────────────────────────────────────────────────────────────
     Route::post('/admin/job-orders/{id}/qc',          [JobOrderController::class, 'submitQC']);
+
+    // ─── Admin notifications (aliases — same handlers as /api/notifications) ────
+    Route::get('/admin/notifications',                 [NotificationController::class, 'index']);
+    Route::patch('/admin/notifications/{id}/read',     [NotificationController::class, 'markRead']);
 
     // ─── Record Payment ────────────────────────────────────────────────────────────────────────
     Route::post('/admin/orders/{id}/record-payment',  [OrderController::class, 'recordPayment']);

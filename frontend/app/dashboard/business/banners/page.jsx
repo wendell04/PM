@@ -611,7 +611,7 @@ export default function BannerManagementPage() {
   // FUTURE:
   //   const url = await uploadToCloudinary(file); // returns Cloudinary URL
   //   updateField('imageUrl', url);               // store URL, not base64
-  //   On banner delete → also call: DELETE /api/upload/:publicId
+  //   On banner delete also call: DELETE /api/upload/:publicId
   const handleImageUpload = async (file) => {
     if (!file) return;
     const validTypes = ['image/png', 'image/jpeg', 'image/webp'];

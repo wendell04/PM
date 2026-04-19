@@ -724,7 +724,7 @@ export default function SettingsPage() {
                                     <path d="M20 6L9 17l-5-5" />
                                   </svg>
                                 ) : (
-                                  <span style={{ opacity: 0.45 }}>·</span>
+                                  <span style={{ opacity: 0.45 }} aria-hidden="true">|</span>
                                 )}
                               </span>
                               {c.label}

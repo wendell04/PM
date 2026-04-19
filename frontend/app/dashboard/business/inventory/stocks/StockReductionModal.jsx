@@ -1826,8 +1826,8 @@ export default function StockReductionModal({
               }}
             >
               {isMulti
-                ? `${items.map((i) => i.name).join(", ")} · `
-                : `${selectedItem.category} · `}
+                ? `${items.map((i) => i.name).join(", ")} | `
+                : `${selectedItem.category} | `}
               Current stock:{" "}
               <strong style={{ color: GOLD }}>{totalStock} pcs</strong>
             </div>
@@ -2335,7 +2335,7 @@ export default function StockReductionModal({
           <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
             {totals.qty > 0 && (
               <span style={{ fontSize: "0.75rem", color: "var(--gray)" }}>
-                {totals.qty} pcs · {selectedIds.length} variant
+                {totals.qty} pcs | {selectedIds.length} variant
                 {selectedIds.length !== 1 ? "s" : ""} selected
               </span>
             )}
