@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Supplier;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class SupplierController extends Controller
@@ -40,9 +41,12 @@ class SupplierController extends Controller
                 });
             }
 
-            $suppliers = $query->orderBy('name', 'asc')->get();
+            $cacheKey = 'suppliers_list_' . (auth()->id() ?? 'guest');
+            $suppliers = Cache::remember($cacheKey, 120, function () use ($query) {
+                return $query->orderBy('name', 'asc')->get();
+            });
 
-            return $this->successResponse('Suppliers fetched successfully.', $suppliers);
+            return response()->json(['data' => $suppliers]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching suppliers.');
         }
@@ -86,6 +90,8 @@ class SupplierController extends Controller
                 'itemsSupplied' => $validated['itemsSupplied'] ?? [],
                 'isActive'      => true,
             ]);
+
+            Cache::forget('suppliers_list_' . auth()->id());
 
             return $this->successResponse('Supplier created successfully.', $supplier, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -135,6 +141,8 @@ class SupplierController extends Controller
 
             $supplier->update($validated);
 
+            Cache::forget('suppliers_list_' . auth()->id());
+
             return $this->successResponse('Supplier updated successfully.', $supplier);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
@@ -167,6 +175,8 @@ class SupplierController extends Controller
 
             // Soft delete — keep data, just hide from list
             $supplier->update(['isActive' => false]);
+
+            Cache::forget('suppliers_list_' . auth()->id());
 
             return $this->successResponse('Supplier deactivated successfully.');
         } catch (\Exception $e) {
