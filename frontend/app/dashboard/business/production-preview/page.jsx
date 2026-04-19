@@ -356,7 +356,7 @@ export default function ProductionPreviewPage() {
               {/* Actions */}
               <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {selectedJob.status === 'queued' && (
-                  <button type="button" style={{ padding: '0.625rem 0.75rem', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}>Start Production</button>
+                  <button type="button" style={{ padding: '0.625rem 0.75rem', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: 'var(--black)', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}>Start Production</button>
                 )}
                 {selectedJob.status === 'in_progress' && (
                   <>

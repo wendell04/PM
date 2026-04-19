@@ -116,8 +116,8 @@ function DateRangeFilter({ startDate, endDate, onStartChange, onEndChange, onApp
         style={{
           height: '36px',
           padding: '0 1rem',
-          background: '#D4A843',
-          color: '#000',
+          background: 'var(--gold)',
+          color: 'var(--black)',
           border: 'none',
           borderRadius: '8px',
           fontWeight: 700,
@@ -184,7 +184,7 @@ function SectionHeader({ title, onExport, exporting }) {
 
 function ErrorMessage({ message, onRetry }) {
   return (
-    <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '1rem' }}>
+    <div style={{ color: 'var(--red)', fontSize: '0.85rem', marginBottom: '1rem' }}>
       {message}
       <button
         type="button"

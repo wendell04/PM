@@ -362,7 +362,7 @@ export default function RolePermissionsPage() {
                           <span style={{ color: 'var(--gold)' }}>Saving...</span>
                         )}
                         {!saving[role] && saveSuccess[role] && (
-                          <span style={{ color: '#10b981' }}>Saved</span>
+                          <span style={{ color: 'var(--green)' }}>Saved</span>
                         )}
                         {!saving[role] && saveError[role] && (
                           <span style={{ color: 'var(--red)' }}>{saveError[role]}</span>

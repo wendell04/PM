@@ -651,7 +651,7 @@ export default function OrdersPreviewPage() {
               {!selectedOrder.jo && selectedOrder.status !== 'delivered' && (
                 <button
                   onClick={() => handleCreateJO(selectedOrder)}
-                  style={{ flex: 1, padding: '0.625rem', background: 'linear-gradient(135deg, var(--gold-light) 0%, var(--gold) 100%)', border: 'none', borderRadius: '8px', color: '#000', fontSize: '0.85rem', fontWeight: 800, cursor: 'pointer' }}
+                  style={{ flex: 1, padding: '0.625rem', background: 'linear-gradient(135deg, var(--gold-light) 0%, var(--gold) 100%)', border: 'none', borderRadius: '8px', color: 'var(--black)', fontSize: '0.85rem', fontWeight: 800, cursor: 'pointer' }}
                 >
                   Create JO
                 </button>

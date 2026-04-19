@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -84,8 +84,16 @@ const getPasswordStrength = (pwd) => {
   return levels[score - 1] ?? levels[0];
 };
 
+/** Backend route DELETE /api/auth/device/{token} not present — keep UI, revoke disabled. */
+const DEVICE_REVOKE_ROUTE_AVAILABLE = false;
+
 export default function SettingsPage() {
   const { token, currentUser, setCurrentUser } = useAuth();
+
+  const deviceTokens = useMemo(
+    () => (Array.isArray(currentUser?.device_tokens) ? currentUser.device_tokens : []),
+    [currentUser?.device_tokens],
+  );
 
   // ── Tab ───────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('profile');
@@ -860,6 +868,127 @@ export default function SettingsPage() {
                     </>
                   )}
                 </button>
+
+                <div style={{
+                  marginTop: '2rem',
+                  paddingTop: '1.5rem',
+                  borderTop: '1px solid var(--border)',
+                }}>
+                  <h3 style={{
+                    margin: '0 0 0.75rem',
+                    fontSize: '0.9375rem',
+                    fontWeight: 700,
+                    color: 'var(--white)',
+                  }}>
+                    Two-factor authentication
+                  </h3>
+                  {currentUser && Object.prototype.hasOwnProperty.call(currentUser, 'twoFactorEnabled') ? (
+                    <div style={{
+                      padding: '1rem',
+                      background: 'var(--dark)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '10px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.5rem',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '0.2rem 0.6rem',
+                          borderRadius: '20px',
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.06em',
+                          ...(currentUser.twoFactorEnabled
+                            ? { background: 'rgba(74,222,128,0.12)', color: 'var(--green)' }
+                            : { background: 'rgba(136,136,136,0.12)', color: 'var(--gray)' }),
+                        }}
+                        >
+                          {currentUser.twoFactorEnabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray-light)' }}>
+                        {currentUser.twoFactorEnabled
+                          ? 'Two-factor authentication is active'
+                          : 'Two-factor authentication is not enabled'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{
+                      padding: '1rem',
+                      background: 'var(--dark)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '10px',
+                      fontSize: '0.875rem',
+                      color: 'var(--gray)',
+                    }}>
+                      Status unknown — contact admin
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginTop: '1.5rem' }}>
+                  <h3 style={{
+                    margin: '0 0 0.75rem',
+                    fontSize: '0.9375rem',
+                    fontWeight: 700,
+                    color: 'var(--white)',
+                  }}>
+                    Connected Devices ({deviceTokens.length})
+                  </h3>
+                  {deviceTokens.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray)' }}>
+                      No connected devices recorded for this account.
+                    </p>
+                  ) : (
+                    <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {deviceTokens.map((t) => {
+                        const short = typeof t === 'string' && t.length > 12 ? `${t.slice(0, 12)}...` : String(t);
+                        return (
+                          <li
+                            key={t}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '0.75rem',
+                              padding: '0.75rem 1rem',
+                              background: 'var(--dark)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '8px',
+                            }}
+                          >
+                            <code style={{ fontSize: '0.78rem', color: 'var(--gray-light)', wordBreak: 'break-all' }}>
+                              {short}
+                            </code>
+                            <button
+                              type="button"
+                              disabled={!DEVICE_REVOKE_ROUTE_AVAILABLE}
+                              title={DEVICE_REVOKE_ROUTE_AVAILABLE ? 'Revoke this device' : 'Coming soon'}
+                              style={{
+                                padding: '0.375rem 0.75rem',
+                                fontSize: '0.8125rem',
+                                fontWeight: 600,
+                                borderRadius: '8px',
+                                border: '1px solid rgba(239,68,68,0.25)',
+                                background: 'rgba(239,68,68,0.08)',
+                                color: 'var(--red)',
+                                opacity: DEVICE_REVOKE_ROUTE_AVAILABLE ? 1 : 0.45,
+                                cursor: DEVICE_REVOKE_ROUTE_AVAILABLE ? 'pointer' : 'not-allowed',
+                                flexShrink: 0,
+                              }}
+                            >
+                              Revoke
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
               </div>
             </div>
           )}

@@ -131,26 +131,26 @@ function CalendarDropdown({ value, onChange, minDate, placeholder, onClear }) {
         onClick={() => setOpen(o => !o)}
         style={{
           display: 'flex', alignItems: 'center', gap: '0.625rem',
-          background: '#1a1a1a', border: `1px solid ${open ? '#d4a843' : '#2e2e2e'}`,
+          background: 'var(--dark)', border: `1px solid ${open ? 'var(--gold)' : 'var(--dark2)'}`,
           borderRadius: '8px', padding: '0.7rem 1rem', cursor: 'pointer',
           boxShadow: open ? '0 0 0 3px rgba(212,168,67,0.12)' : 'none',
           transition: 'border-color 0.18s, box-shadow 0.18s', userSelect: 'none',
         }}
       >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2" style={{ flexShrink: 0 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0 }}>
           <rect x="3" y="4" width="18" height="18" rx="2"/>
           <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
           <line x1="3" y1="10" x2="21" y2="10"/>
         </svg>
-        <span style={{ flex: 1, fontSize: '0.875rem', fontFamily: "'DM Sans', sans-serif", color: value ? '#e5e2e1' : '#555' }}>
+        <span style={{ flex: 1, fontSize: '0.875rem', fontFamily: "'DM Sans', sans-serif", color: value ? 'var(--white)' : 'var(--gray)' }}>
           {value ? formatDisplay(value) : placeholder}
         </span>
         {value && (
           <button
             onClick={(e) => { e.stopPropagation(); onClear(); }}
-            style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', borderRadius: '4px', transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = '#d4a843'}
-            onMouseLeave={e => e.currentTarget.style.color = '#555'}
+            style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', borderRadius: '4px', transition: 'color 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--gold)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--gray)'; }}
             title="Clear"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -159,7 +159,7 @@ function CalendarDropdown({ value, onChange, minDate, placeholder, onClear }) {
           </button>
         )}
         <svg
-          width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2.5"
+          width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2.5"
           style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
         >
           <polyline points="6 9 12 15 18 9"/>
@@ -170,7 +170,7 @@ function CalendarDropdown({ value, onChange, minDate, placeholder, onClear }) {
       {open && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 999,
-          background: '#1a1a1a', border: '1px solid #2e2e2e', borderRadius: '12px',
+          background: 'var(--dark)', border: '1px solid var(--dark2)', borderRadius: '12px',
           padding: '1rem', width: '268px', boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
           animation: 'drpIn 0.15s ease',
         }}>
@@ -196,14 +196,14 @@ function CalendarDropdown({ value, onChange, minDate, placeholder, onClear }) {
           `}</style>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
             <button className="drp-nav-btn" onClick={prevMonth}>‹</button>
-            <span style={{ fontFamily: "'Outfit', sans-serif", fontSize: '0.875rem', fontWeight: 700, color: '#e5e2e1' }}>
+            <span style={{ fontFamily: "'Outfit', sans-serif", fontSize: '0.875rem', fontWeight: 700, color: 'var(--white)' }}>
               {MONTHS[viewMonth]} {viewYear}
             </span>
             <button className="drp-nav-btn" onClick={nextMonth}>›</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
             {DAYS.map(d => (
-              <div key={d} style={{ fontSize: '0.625rem', fontWeight: 700, color: '#555', textAlign: 'center', padding: '4px 0', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{d}</div>
+              <div key={d} style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--gray)', textAlign: 'center', padding: '4px 0', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{d}</div>
             ))}
             {cells.map((day, i) => (
               <button
@@ -229,7 +229,7 @@ function DateRangePicker({ startValue, endValue, onStartChange, onEndChange }) {
   const [toggleBtnHover, setToggleBtnHover] = useState(false);
 
   const CalIcon = () => (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2">
       <rect x="3" y="4" width="18" height="18" rx="2"/>
       <line x1="16" y1="2" x2="16" y2="6"/>
       <line x1="8" y1="2" x2="8" y2="6"/>
@@ -253,7 +253,7 @@ function DateRangePicker({ startValue, endValue, onStartChange, onEndChange }) {
             gap: '0.75rem',
             padding: '1rem',
             background: toggleBtnHover ? 'rgba(212,168,67,0.1)' : 'rgba(212,168,67,0.05)',
-            border: `1px dashed ${toggleBtnHover ? '#d4a843' : 'rgba(212,168,67,0.3)'}`,
+            border: `1px dashed ${toggleBtnHover ? 'var(--gold)' : 'rgba(212,168,67,0.3)'}`,
             borderRadius: '8px',
             cursor: 'pointer',
             transition: 'all 0.2s',
@@ -269,10 +269,10 @@ function DateRangePicker({ startValue, endValue, onStartChange, onEndChange }) {
             <CalIcon />
           </span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', flex: 1 }}>
-            <span style={{ color: '#e5e2e1', fontWeight: 600, fontSize: '0.875rem', fontFamily: "'DM Sans', sans-serif" }}>
+            <span style={{ color: 'var(--white)', fontWeight: 600, fontSize: '0.875rem', fontFamily: "'DM Sans', sans-serif" }}>
               Set Date Range
             </span>
-            <span style={{ color: '#666', fontWeight: 400, fontSize: '0.75rem', fontFamily: "'DM Sans', sans-serif" }}>
+            <span style={{ color: 'var(--gray)', fontWeight: 400, fontSize: '0.75rem', fontFamily: "'DM Sans', sans-serif" }}>
               Banner will be live indefinitely
             </span>
           </div>
@@ -284,7 +284,7 @@ function DateRangePicker({ startValue, endValue, onStartChange, onEndChange }) {
   const fieldLabelStyle = {
     fontSize: '0.7rem',
     fontWeight: 700,
-    color: '#666',
+    color: 'var(--gray)',
     textTransform: 'uppercase',
     letterSpacing: '0.07em',
     display: 'flex',
@@ -331,9 +331,9 @@ function DateRangePicker({ startValue, endValue, onStartChange, onEndChange }) {
           gap: '0.5rem',
           padding: '0.5rem 0.75rem',
           background: removeBtnHover ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.1)',
-          border: `1px solid ${removeBtnHover ? '#ef4444' : 'rgba(239,68,68,0.3)'}`,
+          border: `1px solid ${removeBtnHover ? 'var(--red)' : 'rgba(239,68,68,0.3)'}`,
           borderRadius: '6px',
-          color: '#ef4444',
+          color: 'var(--red)',
           fontSize: '0.75rem',
           fontWeight: 600,
           fontFamily: "'DM Sans', sans-serif",
@@ -961,7 +961,7 @@ export default function BannerManagementPage() {
               <h2 className="banner-card-title" style={{ margin: 0 }}>Banner Image</h2>
               {isLive && (
                 <span style={{
-                  fontSize: '0.7rem', fontWeight: 600, color: '#d4a843',
+                  fontSize: '0.7rem', fontWeight: 600, color: 'var(--gold)',
                   background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)',
                   borderRadius: '4px', padding: '0.2rem 0.5rem',
                   textTransform: 'uppercase', letterSpacing: '0.05em',

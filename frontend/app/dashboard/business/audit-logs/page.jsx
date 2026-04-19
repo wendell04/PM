@@ -91,17 +91,17 @@ export default function AuditLogsPage() {
     const styles = {
       'restock': {
         background: 'rgba(74,222,128,0.12)',
-        color: '#4ade80',
+        color: 'var(--green)',
         border: '1px solid rgba(74,222,128,0.3)',
       },
       'correction-add': {
         background: 'rgba(99,102,241,0.12)',
-        color: '#818cf8',
+        color: 'var(--indigo)',
         border: '1px solid rgba(99,102,241,0.3)',
       },
       'correction-deduct': {
         background: 'rgba(251,191,36,0.12)',
-        color: '#fbbf24',
+        color: 'var(--gold)',
         border: '1px solid rgba(251,191,36,0.3)',
       },
       'sale': {
@@ -111,12 +111,12 @@ export default function AuditLogsPage() {
       },
       'return': {
         background: 'rgba(156,163,175,0.12)',
-        color: '#9ca3af',
+        color: 'var(--gray)',
         border: '1px solid rgba(156,163,175,0.3)',
       },
       'sales-outside': {
         background: 'rgba(251,146,60,0.12)',
-        color: '#fb923c',
+        color: 'var(--orange)',
         border: '1px solid rgba(251,146,60,0.3)',
       },
     };
@@ -170,7 +170,7 @@ export default function AuditLogsPage() {
                 background: isLoading ? 'var(--dark3)' : 'var(--gold)',
                 border: 'none',
                 borderRadius: '8px',
-                color: isLoading ? 'var(--gray)' : '#000',
+                color: isLoading ? 'var(--gray)' : 'var(--black)',
                 fontWeight: 600,
                 fontSize: '0.875rem',
                 cursor: isLoading ? 'not-allowed' : 'pointer',
@@ -201,7 +201,7 @@ export default function AuditLogsPage() {
                 {
                   label: 'Total Stock In',
                   value: summary.totalStockIn ?? 0,
-                  color: '#4ade80',
+                  color: 'var(--green)',
                   bg: 'rgba(74,222,128,0.08)',
                   border: 'rgba(74,222,128,0.2)',
                   icon: 'M12 5v14M5 12l7-7 7 7',
@@ -209,7 +209,7 @@ export default function AuditLogsPage() {
                 {
                   label: 'Total Stock Out',
                   value: summary.totalStockOut ?? 0,
-                  color: '#f87171',
+                  color: 'var(--red)',
                   bg: 'rgba(248,113,113,0.08)',
                   border: 'rgba(248,113,113,0.2)',
                   icon: 'M12 19V5M5 12l7 7 7-7',
@@ -225,7 +225,7 @@ export default function AuditLogsPage() {
                 {
                   label: 'Total Restocks',
                   value: summary.totalRestocks ?? 0,
-                  color: '#818cf8',
+                  color: 'var(--indigo)',
                   bg: 'rgba(99,102,241,0.08)',
                   border: 'rgba(99,102,241,0.2)',
                   icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10',
@@ -570,7 +570,7 @@ export default function AuditLogsPage() {
                             padding: '0.875rem 1rem',
                             textAlign: 'center',
                             fontWeight: 700,
-                            color: isPositive ? '#4ade80' : '#f87171',
+                            color: isPositive ? 'var(--green)' : 'var(--red)',
                             fontSize: '0.9rem',
                           }}>
                             {isPositive ? '+' : ''}{log.quantity}
@@ -654,7 +654,7 @@ export default function AuditLogsPage() {
             Showing {filtered.length} of {logs.length}
             {' '}log{logs.length !== 1 ? 's' : ''}
             {logs.length === 100 && (
-              <span style={{ color: '#fbbf24', marginLeft: '0.5rem' }}>
+              <span style={{ color: 'var(--gold)', marginLeft: '0.5rem' }}>
                 (limit: 100 — use date filters to narrow results)
               </span>
             )}

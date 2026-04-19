@@ -10,7 +10,7 @@ import {
 } from "@/lib/notificationApi";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../../contexts/AuthContext";
 import "./admin-dashboard.css";
 
@@ -24,7 +24,6 @@ export default function BusinessDashboardLayout({ children }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [permissions, setPermissions] = useState(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [adminDropdownOpen, setAdminDropdownOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -364,18 +363,6 @@ export default function BusinessDashboardLayout({ children }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Close admin dropdown on outside click
-  useEffect(() => {
-    if (!adminDropdownOpen) return;
-    const handleClickOutside = (e) => {
-      if (!e.target.closest(".admin-user-dropdown")) {
-        setAdminDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [adminDropdownOpen]);
-
   const handleOpenNotifications = useCallback(async () => {
     const isOpening = !notifOpen;
     setNotifOpen(isOpening);
@@ -572,6 +559,46 @@ export default function BusinessDashboardLayout({ children }) {
       .slice(0, 2)
       .join("");
   };
+
+  const currentPageName = useMemo(() => {
+    const map = {
+      "/dashboard/business/dashboardoverview": "Dashboard",
+      "/dashboard/business/orders": "Orders",
+      "/dashboard/business/order-requests": "Order Requests",
+      "/dashboard/business/job-orders": "Job Orders",
+      "/dashboard/business/pos": "Point of Sale",
+      "/dashboard/business/inventory/master-data": "Master Data",
+      "/dashboard/business/inventory/stock-in": "Stock In",
+      "/dashboard/business/inventory/stocks": "Stock Overview",
+      "/dashboard/business/inventory/returns": "Bad Orders",
+      "/dashboard/business/inventory": "Inventory",
+      "/dashboard/business/products": "Products",
+      "/dashboard/business/banners": "Banners",
+      "/dashboard/business/flash-sales": "Flash Sales",
+      "/dashboard/business/vouchers": "Vouchers",
+      "/dashboard/business/sales": "Sales",
+      "/dashboard/business/reports": "Reports",
+      "/dashboard/business/ssa-forecast": "Sales Forecast",
+      "/dashboard/business/audit-logs": "Audit Logs",
+      "/dashboard/business/users": "Users",
+      "/dashboard/business/role-permissions": "Role Permissions",
+      "/dashboard/business/settings": "Settings",
+    };
+    return map[pathname] || "Dashboard";
+  }, [pathname]);
+
+  const sidebarRoleLabel = useMemo(() => {
+    const labels = {
+      admin: "Admin",
+      owner: "Owner",
+      salesRep: "Sales Rep",
+      productionOperator: "Production",
+      qualityControl: "QC Staff",
+      cashier: "Cashier",
+      inventoryManager: "Inventory",
+    };
+    return labels[currentUser?.role] ?? "Staff";
+  }, [currentUser?.role]);
 
   const getPasswordStrength = (pwd) => {
     if (!pwd) return null;
@@ -791,6 +818,25 @@ export default function BusinessDashboardLayout({ children }) {
                 );
               })}
           </nav>
+
+          <div className="sidebar-footer">
+            <div className="sidebar-footer-avatar">
+              {currentUser?.avatar ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={currentUser.avatar} alt="" />
+              ) : (
+                <span>{getInitials(currentUser)}</span>
+              )}
+            </div>
+            <div className="sidebar-footer-info">
+              <div className="sidebar-footer-name">
+                {currentUser?.firstName && currentUser?.lastName
+                  ? `${currentUser.firstName} ${currentUser.lastName}`
+                  : currentUser?.email || "User"}
+              </div>
+              <span className="sidebar-footer-role">{sidebarRoleLabel}</span>
+            </div>
+          </div>
         </div>
       </aside>
 
@@ -800,34 +846,49 @@ export default function BusinessDashboardLayout({ children }) {
       >
         {/* Top bar */}
         <header className="admin-top-bar">
-          <button className="menu-toggle" onClick={() => setSidebarOpen(true)}>
-            <span></span>
-            <span></span>
-            <span></span>
-          </button>
+          <div className="top-bar-left">
+            <button
+              type="button"
+              className="top-bar-hamburger"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open menu"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M3 12h18M3 6h18M3 18h18" />
+              </svg>
+            </button>
+            <div className="top-bar-title">
+              <span className="top-bar-page-name">{currentPageName}</span>
+            </div>
+          </div>
           <div className="top-bar-right">
             <div ref={notifRef} style={{ position: "relative" }}>
               <button
                 type="button"
-                className="notification-btn"
+                className="top-bar-icon-btn"
                 onClick={handleOpenNotifications}
                 aria-label="Notifications"
               >
                 <svg
-                  width="20"
-                  height="20"
+                  width="18"
+                  height="18"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
-                  style={{ flexShrink: 0 }}
                 >
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                  <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-9.33-5 6 6 0 00-2.67 5v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
                 {unreadCount > 0 && (
-                  <span className="notification-badge">
-                    {unreadCount > 99 ? "99+" : unreadCount}
+                  <span className="top-bar-badge">
+                    {unreadCount > 9 ? "9+" : unreadCount}
                   </span>
                 )}
               </button>
@@ -1042,246 +1103,34 @@ export default function BusinessDashboardLayout({ children }) {
               )}
             </div>
 
-            {/* Admin User Dropdown */}
-            <div
-              className="admin-user-dropdown"
-              style={{ position: "relative" }}
+            <div className="top-bar-divider" />
+            <button
+              type="button"
+              className="top-bar-user"
+              onClick={() => setProfileModalOpen(true)}
             >
-              <button
-                className="admin-user-trigger"
-                onClick={() => setAdminDropdownOpen((prev) => !prev)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  background: "transparent",
-                  border: "1px solid var(--border)",
-                  borderRadius: "8px",
-                  padding: "6px 12px",
-                  cursor: "pointer",
-                  color: "var(--white)",
-                }}
+              <div className="top-bar-avatar">
+                {currentUser?.avatar ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={currentUser.avatar} alt="avatar" />
+                ) : (
+                  <span>{getInitials(currentUser)}</span>
+                )}
+              </div>
+              <span className="top-bar-username">
+                {currentUser?.firstName || "Admin"}
+              </span>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
               >
-                <div
-                  style={{
-                    width: "30px",
-                    height: "30px",
-                    minWidth: "30px",
-                    minHeight: "30px",
-                    borderRadius: "50%",
-                    overflow: "hidden",
-                    flexShrink: 0,
-                  }}
-                >
-                  {currentUser?.avatar ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={currentUser.avatar}
-                      alt={currentUser?.firstName || "Admin"}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        background: "var(--gold)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "13px",
-                        fontWeight: "600",
-                        color: "#000",
-                      }}
-                    >
-                      {(currentUser?.firstName || currentUser?.email || "A")
-                        .charAt(0)
-                        .toUpperCase()}
-                    </div>
-                  )}
-                </div>
-                <span
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    maxWidth: "120px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {currentUser?.firstName || currentUser?.email || "Admin"}
-                </span>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  style={{
-                    transform: adminDropdownOpen
-                      ? "rotate(180deg)"
-                      : "rotate(0deg)",
-                    transition: "transform 0.2s",
-                    flexShrink: 0,
-                  }}
-                >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-
-              {adminDropdownOpen && (
-                <div
-                  className="admin-user-menu"
-                  style={{
-                    position: "absolute",
-                    top: "calc(100% + 8px)",
-                    right: 0,
-                    minWidth: "280px",
-                    background: "var(--dark2)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "12px",
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-                    zIndex: 1000,
-                    overflow: "hidden",
-                  }}
-                >
-                  {/* Identity card */}
-                  <div
-                    style={{
-                      padding: "24px 20px",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      textAlign: "center",
-                    }}
-                  >
-                    {/* Avatar with gold ring */}
-                    <div
-                      style={{
-                        width: "72px",
-                        height: "72px",
-                        minWidth: "72px",
-                        minHeight: "72px",
-                        borderRadius: "50%",
-                        overflow: "hidden",
-                        border: "2px solid var(--gold)",
-                        boxShadow: "0 0 0 3px rgba(212,175,55,0.2)",
-                        marginBottom: "12px",
-                      }}
-                    >
-                      {currentUser?.avatar ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={currentUser.avatar}
-                          alt={currentUser?.firstName || "Admin"}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            background: "var(--gold)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "28px",
-                            fontWeight: "700",
-                            color: "var(--black)",
-                          }}
-                        >
-                          {(currentUser?.firstName || currentUser?.email || "A")
-                            .charAt(0)
-                            .toUpperCase()}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Full name */}
-                    <div
-                      style={{
-                        fontSize: "16px",
-                        fontWeight: "600",
-                        color: "var(--white)",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      {currentUser?.firstName
-                        ? `${currentUser.firstName}${currentUser.lastName ? " " + currentUser.lastName : ""}`
-                        : currentUser?.email || "Admin"}
-                    </div>
-
-                    {/* Email */}
-                    <div
-                      style={{
-                        fontSize: "13px",
-                        color: "var(--gray)",
-                      }}
-                    >
-                      {currentUser?.email || ""}
-                    </div>
-                  </div>
-
-                  {/* Divider */}
-                  <div style={{ borderTop: "1px solid var(--border)" }} />
-
-                  {/* Log Out */}
-                  <div style={{ padding: "6px" }}>
-                    <button
-                      onClick={() => {
-                        handleLogout();
-                        setAdminDropdownOpen(false);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "10px",
-                        width: "100%",
-                        padding: "9px 10px",
-                        background: "transparent",
-                        border: "none",
-                        borderRadius: "6px",
-                        cursor: "pointer",
-                        color: "var(--red)",
-                        fontSize: "14px",
-                        textAlign: "left",
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.background =
-                          "rgba(255,255,255,0.05)")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "transparent")
-                      }
-                    >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                        <polyline points="16 17 21 12 16 7" />
-                        <line x1="21" y1="12" x2="9" y2="12" />
-                      </svg>
-                      Log Out
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
           </div>
         </header>
 

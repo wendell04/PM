@@ -435,7 +435,7 @@ export default function CreateJOModal({ order, onClose, onSubmit }) {
               background: colors.goldGradient,
               border: 'none',
               borderRadius: 8,
-              color: '#000',
+              color: 'var(--black)',
               fontSize: '0.9rem',
               fontWeight: 800,
               cursor: 'pointer',

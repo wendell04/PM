@@ -197,7 +197,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSubmit, onCancel, isSubmitting, 
                 borderRadius: '8px',
                 border: '1px solid rgba(239,68,68,0.3)',
                 background: 'rgba(239,68,68,0.1)',
-                color: '#ef4444',
+                color: 'var(--red)',
                 cursor: 'pointer',
                 height: '36px',
               }}

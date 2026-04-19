@@ -50,7 +50,7 @@ const inputStyle = {
   backgroundColor: 'rgba(255,255,255,0.06)',
   border: '1px solid rgba(255,255,255,0.1)',
   borderRadius: '8px',
-  color: '#E5E2E1',
+  color: 'var(--white)',
   fontSize: '14px',
   outline: 'none',
   boxSizing: 'border-box',
@@ -65,7 +65,7 @@ const cardStyle = {
 const btnGold = {
   padding: '0.625rem 1rem',
   backgroundColor: 'var(--gold)',
-  color: '#000',
+  color: 'var(--black)',
   border: 'none',
   borderRadius: '8px',
   fontWeight: 700,

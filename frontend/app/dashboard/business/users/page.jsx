@@ -37,19 +37,19 @@ function getRoleBadgeStyle(role) {
   switch (role) {
     case 'admin':
     case 'owner':
-      return { background: 'var(--gold)', color: '#000' };
+      return { background: 'var(--gold)', color: 'var(--black)' };
     case 'salesRep':
-      return { background: '#3b82f6', color: '#fff' };
+      return { background: 'var(--blue)', color: 'var(--white)' };
     case 'productionOperator':
-      return { background: '#8b5cf6', color: '#fff' };
+      return { background: 'var(--purple)', color: 'var(--white)' };
     case 'qualityControl':
-      return { background: '#10b981', color: '#fff' };
+      return { background: 'var(--green)', color: 'var(--white)' };
     case 'cashier':
-      return { background: '#f97316', color: '#fff' };
+      return { background: 'var(--orange)', color: 'var(--white)' };
     case 'inventoryManager':
-      return { background: '#14b8a6', color: '#fff' };
+      return { background: 'var(--cyan)', color: 'var(--white)' };
     default:
-      return { background: 'var(--gray)', color: '#000' };
+      return { background: 'var(--gray)', color: 'var(--black)' };
   }
 }
 
@@ -356,7 +356,7 @@ export default function UserManagementPage() {
             borderRadius: '8px',
             border: 'none',
             background: 'var(--gold)',
-            color: '#000',
+            color: 'var(--black)',
             fontWeight: 700,
             fontSize: '0.875rem',
             cursor: 'pointer',
@@ -652,7 +652,7 @@ export default function UserManagementPage() {
                   borderRadius: '8px',
                   border: 'none',
                   background: 'var(--gold)',
-                  color: '#000',
+                  color: 'var(--black)',
                   fontWeight: 700,
                   cursor: submitting ? 'not-allowed' : 'pointer',
                   opacity: submitting ? 0.7 : 1,

@@ -20,7 +20,7 @@ const input = {
   background: 'rgba(255,255,255,0.06)',
   border: '1px solid rgba(255,255,255,0.1)',
   borderRadius: '8px',
-  color: '#E5E2E1',
+  color: 'var(--white)',
   fontSize: '14px',
   boxSizing: 'border-box',
 };
@@ -38,7 +38,7 @@ const th = {
 
 const btnPrimary = {
   background: 'var(--gold)',
-  color: '#000',
+  color: 'var(--black)',
   fontWeight: 700,
   border: 'none',
   borderRadius: '8px',
@@ -357,7 +357,7 @@ export default function BadOrdersPage() {
                             style={{
                               background: 'rgba(239,68,68,0.1)',
                               border: '1px solid rgba(239,68,68,0.25)',
-                              color: '#ef4444',
+                              color: 'var(--red)',
                               fontWeight: 600,
                               borderRadius: '8px',
                               padding: '0.5rem 0.75rem',
