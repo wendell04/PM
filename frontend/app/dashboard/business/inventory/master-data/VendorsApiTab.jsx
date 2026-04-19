@@ -54,7 +54,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSubmit, onCancel, isSubmitting, 
     width: '100%',
     padding: '10px 12px',
     backgroundColor: 'var(--dark)',
-    border: `1px solid ${hasError ? 'var(--danger, #ef4444)' : 'var(--border)'}`,
+    border: `1px solid ${hasError ? 'var(--red)' : 'var(--border)'}`,
     borderRadius: '8px',
     color: 'var(--white)',
     fontSize: '14px',
@@ -86,7 +86,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSubmit, onCancel, isSubmitting, 
           style={inputStyle(!!errors.name)}
         />
         {errors.name && (
-          <span style={{ fontSize: '12px', color: 'var(--danger, #ef4444)', marginTop: '4px', display: 'block' }}>
+          <span style={{ fontSize: '12px', color: 'var(--red)', marginTop: '4px', display: 'block' }}>
             {errors.name}
           </span>
         )}
@@ -118,7 +118,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSubmit, onCancel, isSubmitting, 
             style={inputStyle(!!errors.phone)}
           />
           {errors.phone && (
-            <span style={{ fontSize: '12px', color: 'var(--danger, #ef4444)', marginTop: '4px', display: 'block' }}>
+            <span style={{ fontSize: '12px', color: 'var(--red)', marginTop: '4px', display: 'block' }}>
               {errors.phone}
             </span>
           )}
@@ -134,7 +134,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSubmit, onCancel, isSubmitting, 
             style={inputStyle(!!errors.email)}
           />
           {errors.email && (
-            <span style={{ fontSize: '12px', color: 'var(--danger, #ef4444)', marginTop: '4px', display: 'block' }}>
+            <span style={{ fontSize: '12px', color: 'var(--red)', marginTop: '4px', display: 'block' }}>
               {errors.email}
             </span>
           )}
@@ -247,9 +247,9 @@ function SupplierForm({ initial = EMPTY_FORM, onSubmit, onCancel, isSubmitting, 
           padding: '10px 14px',
           borderRadius: '8px',
           backgroundColor: 'rgba(239,68,68,0.08)',
-          border: '1px solid var(--danger, #ef4444)',
+          border: '1px solid var(--red)',
           fontSize: '13px',
-          color: 'var(--danger, #ef4444)',
+          color: 'var(--red)',
         }}>
           {submitError}
         </div>
@@ -444,9 +444,7 @@ export default function VendorsApiTab({ onVendorsChange, showHeader = false }) {
           gap: '16px',
         }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>
-              Vendors
-            </h1>
+            <h1 className="page-title">Vendors</h1>
             <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: 'var(--gray)' }}>
               Manage your supply chain contacts
             </p>
@@ -517,8 +515,8 @@ export default function VendorsApiTab({ onVendorsChange, showHeader = false }) {
             padding: '16px',
             borderRadius: '8px',
             backgroundColor: 'rgba(239,68,68,0.08)',
-            border: '1px solid var(--danger, #ef4444)',
-            color: 'var(--danger, #ef4444)',
+            border: '1px solid var(--red)',
+            color: 'var(--red)',
             marginBottom: '16px',
             display: 'flex',
             justifyContent: 'space-between',
@@ -530,9 +528,9 @@ export default function VendorsApiTab({ onVendorsChange, showHeader = false }) {
               onClick={loadSuppliers}
               style={{
                 background: 'none',
-                border: '1px solid var(--danger, #ef4444)',
+                border: '1px solid var(--red)',
                 borderRadius: '6px',
-                color: 'var(--danger, #ef4444)',
+                color: 'var(--red)',
                 padding: '4px 12px',
                 fontSize: '13px',
                 cursor: 'pointer',
@@ -616,9 +614,9 @@ export default function VendorsApiTab({ onVendorsChange, showHeader = false }) {
                       onClick={() => openDelete(supplier)}
                       style={{
                         background: 'none',
-                        border: '1px solid var(--danger, #ef4444)',
+                        border: '1px solid var(--red)',
                         borderRadius: '6px',
-                        color: 'var(--danger, #ef4444)',
+                        color: 'var(--red)',
                         padding: '4px 10px',
                         fontSize: '12px',
                         cursor: 'pointer',
@@ -782,9 +780,9 @@ export default function VendorsApiTab({ onVendorsChange, showHeader = false }) {
                 padding: '10px 14px',
                 borderRadius: '8px',
                 backgroundColor: 'rgba(239,68,68,0.08)',
-                border: '1px solid var(--danger, #ef4444)',
+                border: '1px solid var(--red)',
                 fontSize: '13px',
-                color: 'var(--danger, #ef4444)',
+                color: 'var(--red)',
                 marginBottom: '20px',
               }}>
                 {deleteError}
@@ -815,7 +813,7 @@ export default function VendorsApiTab({ onVendorsChange, showHeader = false }) {
                   padding: '10px 20px',
                   borderRadius: '8px',
                   border: 'none',
-                  background: 'var(--danger, #ef4444)',
+                  background: 'var(--red)',
                   color: 'var(--white)',
                   fontSize: '14px',
                   fontWeight: 700,

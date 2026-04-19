@@ -61,28 +61,6 @@ function mergeRolePermissions(apiRow) {
   return base;
 }
 
-function LoadingSpinner() {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem 1rem' }}>
-      <div
-        style={{
-          width: '40px',
-          height: '40px',
-          borderRadius: '50%',
-          border: '3px solid var(--border)',
-          borderTopColor: 'var(--gold)',
-          animation: 'rolePermSpin 0.75s linear infinite',
-        }}
-      />
-      <style>{`
-        @keyframes rolePermSpin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-    </div>
-  );
-}
-
 function CheckIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -229,15 +207,20 @@ export default function RolePermissionsPage() {
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '2rem 1rem' }}>
       <header style={{ marginBottom: '24px' }}>
-        <h1 style={{ margin: '0 0 8px', fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>
-          Role Permissions
-        </h1>
+        <h1 className="page-title">Permissions</h1>
         <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--gray)' }}>
           Configure section access per staff role
         </p>
       </header>
 
-      {loading && <LoadingSpinner />}
+      {loading && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem',
+          padding: '1rem' }}>
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="skeleton skeleton-row" />
+          ))}
+        </div>
+      )}
 
       {!loading && error && (
         <div

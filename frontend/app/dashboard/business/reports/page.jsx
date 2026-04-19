@@ -73,7 +73,7 @@ function StatCard({ label, value, sub }) {
           fontSize: '1.75rem',
           fontWeight: 700,
           color: 'var(--white)',
-          fontFamily: 'Outfit, sans-serif',
+          fontFamily: 'inherit',
           lineHeight: 1.2,
         }}
       >

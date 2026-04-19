@@ -345,9 +345,7 @@ export default function UserManagementPage() {
           marginBottom: '24px',
         }}
       >
-        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>
-          User Management
-        </h1>
+        <h1 className="page-title">Users</h1>
         <button
           type="button"
           onClick={openCreate}

@@ -152,9 +152,7 @@ export default function QCPreviewPage() {
         <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>
           Home › Quality Control › Pending
         </div>
-        <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 800, color: 'var(--white)' }}>
-          Quality Control Dashboard
-        </h1>
+        <h1 className="page-title">Quality Control Dashboard</h1>
         <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--gray)' }}>
           Inspect completed job orders. Pass or fail with defect notes.
         </p>

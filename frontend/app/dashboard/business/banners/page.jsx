@@ -196,7 +196,7 @@ function CalendarDropdown({ value, onChange, minDate, placeholder, onClear }) {
           `}</style>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
             <button className="drp-nav-btn" onClick={prevMonth}>‹</button>
-            <span style={{ fontFamily: "'Outfit', sans-serif", fontSize: '0.875rem', fontWeight: 700, color: 'var(--white)' }}>
+            <span style={{ fontFamily: 'inherit', fontSize: '0.875rem', fontWeight: 700, color: 'var(--white)' }}>
               {MONTHS[viewMonth]} {viewYear}
             </span>
             <button className="drp-nav-btn" onClick={nextMonth}>›</button>
@@ -682,7 +682,6 @@ export default function BannerManagementPage() {
         .banner-management-container { padding: 2rem; max-width: 1400px; margin: 0 auto; background: var(--black); min-height: 100vh; }
 
         .banner-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
-        .banner-title { font-family: 'Outfit', sans-serif; font-size: 2rem; font-weight: 800; color: var(--white); margin: 0; }
         .banner-actions { display: flex; gap: 0.75rem; }
         .banner-btn { padding: 0.625rem 1.5rem; border-radius: 8px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; font-family: 'DM Sans', sans-serif; }
         .banner-btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--gray-light); }
@@ -697,7 +696,7 @@ export default function BannerManagementPage() {
 
         .banner-card { background: var(--dark); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
         .banner-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-        .banner-card-title { font-family: 'Outfit', sans-serif; font-size: 1.125rem; font-weight: 700; color: var(--white); margin: 0; }
+        .banner-card-title { font-family: 'DM Sans', sans-serif; font-size: 1.125rem; font-weight: 700; color: var(--white); margin: 0; }
 
         .banner-list { display: flex; flex-direction: column; gap: 0.75rem; }
         .banner-item { display: flex; align-items: center; gap: 1rem; padding: 1rem; background: var(--dark2); border-radius: 10px; cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; position: relative; }
@@ -741,7 +740,7 @@ export default function BannerManagementPage() {
         .banner-preview-image { width: 100%; height: 100%; object-fit: cover; object-position: center center; }
         .banner-preview-overlay { position: absolute; inset: 0; background: linear-gradient(to right, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 50%, transparent 100%); }
         .banner-preview-content { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 3rem 4rem; padding-left: 6rem; gap: 1rem; }
-        .banner-preview-headline { font-family: 'Outfit', sans-serif; font-size: 2.5rem; font-weight: 800; color: var(--white); max-width: 32rem; line-height: 1.1; text-align: left; }
+        .banner-preview-headline { font-family: 'DM Sans', sans-serif; font-size: 2.5rem; font-weight: 800; color: var(--white); max-width: 32rem; line-height: 1.1; text-align: left; }
         .banner-preview-subtext { font-size: 1rem; color: var(--gray-light); max-width: 28rem; line-height: 1.6; text-align: left; }
         .banner-preview-cta { padding-top: 1rem; }
         .banner-preview-cta-btn { background: linear-gradient(135deg, var(--gold-light), var(--gold-dark)); color: var(--black); font-weight: 700; padding: 0.75rem 2rem; border-radius: 8px; border: none; font-size: 0.875rem; cursor: pointer; }
@@ -752,7 +751,7 @@ export default function BannerManagementPage() {
 
         .banner-editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
         .banner-editor-card { background: var(--dark); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
-        .banner-editor-card-title { font-family: 'Outfit', sans-serif; font-size: 1.125rem; font-weight: 700; color: var(--white); margin: 0 0 1.5rem 0; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+        .banner-editor-card-title { font-family: 'DM Sans', sans-serif; font-size: 1.125rem; font-weight: 700; color: var(--white); margin: 0 0 1.5rem 0; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
 
         .banner-form-group { margin-bottom: 1.25rem; }
         .banner-form-label { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; font-weight: 600; color: var(--gray); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
@@ -837,7 +836,7 @@ export default function BannerManagementPage() {
         .banner-modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 2rem; }
         .banner-modal { background: var(--dark); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; max-width: 400px; width: 100%; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
         .banner-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-        .banner-modal-title { font-family: 'Outfit', sans-serif; font-size: 1.125rem; font-weight: 700; color: var(--white); margin: 0; }
+        .banner-modal-title { font-family: 'DM Sans', sans-serif; font-size: 1.125rem; font-weight: 700; color: var(--white); margin: 0; }
         .banner-modal-close { background: none; border: none; color: var(--gray); cursor: pointer; padding: 0.25rem; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: all 0.2s; }
         .banner-modal-close:hover { background: var(--dark2); color: var(--white); }
         .banner-modal-body { margin-bottom: 1.5rem; }
@@ -859,7 +858,7 @@ export default function BannerManagementPage() {
 
       {/* Header */}
       <div className="banner-header">
-        <h1 className="banner-title">Banner Management</h1>
+        <h1 className="page-title">Banners</h1>
         <div className="banner-actions">
           {isLive ? (
             <button className="banner-btn banner-btn-secondary" onClick={unpublishBanner} disabled={isSubmitting} style={{ opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}>

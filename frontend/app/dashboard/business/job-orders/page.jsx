@@ -123,7 +123,7 @@ function JobOrderForm({
     width: '100%',
     padding: '10px 12px',
     background: 'var(--dark)',
-    border: `1px solid ${hasErr ? 'var(--danger, #ef4444)' : 'var(--border)'}`,
+    border: `1px solid ${hasErr ? 'var(--red)' : 'var(--border)'}`,
     borderRadius: '8px',
     color: 'var(--white)',
     fontSize: '14px',
@@ -143,7 +143,7 @@ function JobOrderForm({
 
   const errStyle = {
     fontSize: '12px',
-    color: 'var(--danger, #ef4444)',
+    color: 'var(--red)',
     marginTop: '4px',
     display: 'block',
   };
@@ -293,7 +293,7 @@ function JobOrderForm({
               <span style={{
                 fontSize: '11px',
                 fontWeight: 700,
-                color: 'var(--danger, #ef4444)',
+                color: 'var(--red)',
                 background: 'rgba(239,68,68,0.1)',
                 padding: '2px 8px',
                 borderRadius: '999px',
@@ -324,9 +324,9 @@ function JobOrderForm({
           padding: '10px 14px',
           borderRadius: '8px',
           background: 'rgba(239,68,68,0.08)',
-          border: '1px solid var(--danger, #ef4444)',
+          border: '1px solid var(--red)',
           fontSize: '13px',
-          color: 'var(--danger, #ef4444)',
+          color: 'var(--red)',
         }}>
           {submitError}
         </div>
@@ -525,9 +525,7 @@ export default function JobOrdersPage() {
           flexWrap: 'wrap', gap: '16px',
         }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>
-              Job Orders
-            </h1>
+            <h1 className="page-title">Job Orders</h1>
             <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: 'var(--gray)' }}>
               Track and manage production job orders
             </p>
@@ -642,8 +640,8 @@ export default function JobOrdersPage() {
               <div style={{
                 padding: '16px', borderRadius: '8px',
                 background: 'rgba(239,68,68,0.08)',
-                border: '1px solid var(--danger, #ef4444)',
-                color: 'var(--danger, #ef4444)',
+                border: '1px solid var(--red)',
+                color: 'var(--red)',
                 display: 'flex', justifyContent: 'space-between',
                 alignItems: 'center', gap: '16px', marginBottom: '16px',
               }}>
@@ -652,9 +650,9 @@ export default function JobOrdersPage() {
                   onClick={loadJobOrders}
                   style={{
                     background: 'none',
-                    border: '1px solid var(--danger, #ef4444)',
+                    border: '1px solid var(--red)',
                     borderRadius: '6px',
-                    color: 'var(--danger, #ef4444)',
+                    color: 'var(--red)',
                     padding: '4px 12px', fontSize: '13px', cursor: 'pointer',
                   }}
                 >
@@ -679,7 +677,7 @@ export default function JobOrdersPage() {
                     style={{
                       ...cardStyle,
                       borderLeft: jo.isRush
-                        ? '3px solid var(--danger, #ef4444)'
+                        ? '3px solid var(--red)'
                         : '3px solid transparent',
                     }}
                   >
@@ -696,7 +694,7 @@ export default function JobOrdersPage() {
                           {jo.isRush && (
                             <span style={{
                               fontSize: '10px', fontWeight: 700,
-                              color: 'var(--danger, #ef4444)',
+                              color: 'var(--red)',
                               background: 'rgba(239,68,68,0.1)',
                               padding: '2px 7px', borderRadius: '999px',
                             }}>
@@ -861,8 +859,8 @@ export default function JobOrdersPage() {
               <div style={{
                 padding: '16px', borderRadius: '8px',
                 background: 'rgba(239,68,68,0.08)',
-                border: '1px solid var(--danger, #ef4444)',
-                color: 'var(--danger, #ef4444)',
+                border: '1px solid var(--red)',
+                color: 'var(--red)',
                 display: 'flex', justifyContent: 'space-between',
                 alignItems: 'center', gap: '16px',
               }}>
@@ -871,9 +869,9 @@ export default function JobOrdersPage() {
                   onClick={loadSchedule}
                   style={{
                     background: 'none',
-                    border: '1px solid var(--danger, #ef4444)',
+                    border: '1px solid var(--red)',
                     borderRadius: '6px',
-                    color: 'var(--danger, #ef4444)',
+                    color: 'var(--red)',
                     padding: '4px 12px', fontSize: '13px', cursor: 'pointer',
                   }}
                 >
@@ -914,7 +912,7 @@ export default function JobOrdersPage() {
                           gap: '16px',
                           flexWrap: 'wrap',
                           borderLeft: jo.isRush
-                            ? '3px solid var(--danger, #ef4444)'
+                            ? '3px solid var(--red)'
                             : '3px solid transparent',
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, flexWrap: 'wrap' }}>
@@ -925,7 +923,7 @@ export default function JobOrdersPage() {
                             {jo.isRush && (
                               <span style={{
                                 fontSize: '10px', fontWeight: 700,
-                                color: 'var(--danger, #ef4444)',
+                                color: 'var(--red)',
                                 background: 'rgba(239,68,68,0.1)',
                                 padding: '2px 7px', borderRadius: '999px',
                               }}>

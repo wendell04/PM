@@ -1397,15 +1397,7 @@ function EditProductModal({
           }}
         >
           <div>
-            <h2
-              style={{
-                fontFamily: "'Outfit', sans-serif",
-                fontSize: "1.15rem",
-                fontWeight: 700,
-                color: "var(--white)",
-                margin: 0,
-              }}
-            >
+            <h2 className="modal-title">
               {isNew ? "Add Product" : "Edit Product"}
             </h2>
             <p
@@ -3625,7 +3617,8 @@ export default function ProductListPage() {
     return (
       <div className="page-content-wrapper">
         <div className="loading-state">
-          <div className="loading-spinner"></div>
+          <div className="spinner" style={{ width: '18px', height: '18px',
+  margin: '0 auto' }} />
           <p>Loading products...</p>
         </div>
       </div>

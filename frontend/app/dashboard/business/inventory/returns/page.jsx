@@ -186,7 +186,7 @@ export default function BadOrdersPage() {
   return (
     <div style={{ padding: '1.5rem', maxWidth: '1280px', margin: '0 auto' }}>
       <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>Bad Orders</h1>
+        <h1 className="page-title">Bad Orders</h1>
         <p style={{ margin: '0.35rem 0 0', fontSize: '0.875rem', color: 'var(--gray)' }}>
           Damaged, defective, shortage, or wrong items received from suppliers
         </p>

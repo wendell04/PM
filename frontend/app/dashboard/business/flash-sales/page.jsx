@@ -293,18 +293,17 @@ export default function FlashSalesPage() {
           justifyContent: 'space-between',
           marginBottom: '1.5rem', gap: '1rem', flexWrap: 'wrap' }}>
           <div>
-            <h1 style={{ fontFamily: "'Outfit', sans-serif",
-              fontSize: '1.5rem', fontWeight: 700,
-              color: 'var(--white)', margin: 0,
-              display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <svg
                 width="22" height="22" viewBox="0 0 24 24"
                 fill="none" stroke="var(--gold)" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round">
+                strokeLinecap="round" strokeLinejoin="round"
+                aria-hidden
+              >
                 <path d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              Flash Sales
-            </h1>
+              <h1 className="page-title">Flash Sales</h1>
+            </div>
             <p style={{ color: 'var(--gray)', fontSize: '0.85rem',
               marginTop: '0.25rem' }}>
               Create and manage limited-time discounts
@@ -578,15 +577,7 @@ export default function FlashSalesPage() {
                               justifyContent: 'center',
                             }}>
                             {isToggling ? (
-                              <svg width="14" height="14"
-                                viewBox="0 0 24 24" fill="none"
-                                stroke="currentColor" strokeWidth="2"
-                                style={{ animation:
-                                  'spin 1s linear infinite' }}>
-                                <path d="M21 12a9 9 0 11-18 0
-                                  9 9 0 0118 0z" opacity=".25"/>
-                                <path d="M21 12a9 9 0 00-9-9"/>
-                              </svg>
+                              <div className="spinner" style={{ width: 14, height: 14 }} />
                             ) : (
                               <svg width="14" height="14"
                                 viewBox="0 0 24 24" fill="none"
@@ -633,15 +624,7 @@ export default function FlashSalesPage() {
                               justifyContent: 'center',
                             }}>
                             {isDeleting ? (
-                              <svg width="14" height="14"
-                                viewBox="0 0 24 24" fill="none"
-                                stroke="currentColor" strokeWidth="2"
-                                style={{ animation:
-                                  'spin 1s linear infinite' }}>
-                                <path d="M21 12a9 9 0 11-18 0
-                                  9 9 0 0118 0z" opacity=".25"/>
-                                <path d="M21 12a9 9 0 00-9-9"/>
-                              </svg>
+                              <div className="spinner" style={{ width: 14, height: 14 }} />
                             ) : (
                               <svg width="14" height="14"
                                 viewBox="0 0 24 24" fill="none"
@@ -694,9 +677,7 @@ export default function FlashSalesPage() {
                 position: 'sticky', top: 0, zIndex: 10,
                 background: 'var(--dark)',
               }}>
-                <h2 style={{ fontFamily: "'Outfit', sans-serif",
-                  fontSize: '1.1rem', fontWeight: 700,
-                  color: 'var(--white)', margin: 0 }}>
+                <h2 className="modal-title">
                   {editTarget ? 'Edit Flash Sale' : 'New Flash Sale'}
                 </h2>
                 <button onClick={closeModal} disabled={saving} style={{
@@ -991,17 +972,6 @@ export default function FlashSalesPage() {
           </div>
         )}
 
-        {/* Spin keyframe */}
-        <style>{`
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-          }
-        `}</style>
       </div>
     </ErrorBoundary>
   );

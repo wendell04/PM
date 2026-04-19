@@ -1686,14 +1686,12 @@ export default function StockInPage() {
       >
         <div style={{ textAlign: "center" }}>
           <div
+            className="spinner"
             style={{
-              width: "40px",
-              height: "40px",
-              border: "3px solid var(--border)",
-              borderTop: "3px solid var(--gold)",
-              borderRadius: "50%",
-              animation: "spin 1s linear infinite",
+              width: "18px",
+              height: "18px",
               margin: "0 auto 1rem",
+              color: "var(--gold)",
             }}
           />
           <p>Loading Stock In…</p>
@@ -1711,7 +1709,9 @@ export default function StockInPage() {
           .print-report-view { position: absolute; left: 0; top: 0; width: 100%; display: block !important; }
           .no-print { display: none !important; }
         }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .print-report-view .page-title {
+          color: #000 !important;
+        }
         @media (max-width: 768px) {
           .si-wizard-step-grid { grid-template-columns: 1fr !important; }
         }
@@ -2611,9 +2611,7 @@ export default function StockInPage() {
                     paddingBottom: "1rem",
                   }}
                 >
-                  <h1 style={{ fontSize: "1.5rem", margin: "0 0 0.5rem" }}>
-                    Stock-In Report
-                  </h1>
+                  <h1 className="page-title">Stock-In Report</h1>
                   <p style={{ fontSize: "0.75rem", margin: 0, color: "#666" }}>
                     Generated: {new Date().toLocaleString("en-PH")}
                   </p>

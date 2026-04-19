@@ -642,7 +642,10 @@ export default function BusinessDashboardLayout({ children }) {
         <div className="admin-sidebar-inner">
           <div className="sidebar-header">
             <div className="sidebar-logo">
-              <div className="sidebar-logo-text sidebar-logo-brand">
+              <div className="sidebar-logo-icon" aria-hidden="true">
+                PM
+              </div>
+              <div className="sidebar-logo-text">
                 <span className="sidebar-brand-gold">PersonalizeMe</span>
                 <span className="sidebar-brand-muted">Prints</span>
               </div>

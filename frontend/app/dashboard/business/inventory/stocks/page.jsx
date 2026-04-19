@@ -1440,7 +1440,7 @@ export default function StocksPage() {
       <div className="page-header">
         <div className="page-header-content">
           <div>
-            <h1 className="page-title">Stocks</h1>
+            <h1 className="page-title">Stock Overview</h1>
             <p className="page-subtitle">
               Monitor stock levels, track movements, and manage goods issues.
             </p>
@@ -1491,7 +1491,7 @@ export default function StocksPage() {
         </p>
       )}
       {error && (
-        <p style={{ padding: "2rem", color: "var(--danger)", fontSize: "0.875rem" }}>
+        <p style={{ padding: "2rem", color: "var(--red)", fontSize: "0.875rem" }}>
           {error}
         </p>
       )}

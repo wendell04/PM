@@ -185,7 +185,7 @@ export default function InventoryDashboardPage() {
   return (
     <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
       <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>Inventory</h1>
+        <h1 className="page-title">Inventory</h1>
         <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: 'var(--gray)' }}>
           Summary, recent stock activity, and shortcuts
         </p>

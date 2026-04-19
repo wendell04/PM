@@ -190,7 +190,7 @@ export default function VouchersPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>Vouchers</h1>
+          <h1 className="page-title">Vouchers</h1>
           <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--gray)' }}>
             Create and manage discount codes for customers
           </p>

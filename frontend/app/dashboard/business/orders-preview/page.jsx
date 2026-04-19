@@ -368,9 +368,7 @@ export default function OrdersPreviewPage() {
         <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>
           Home › Business Insights › Orders
         </div>
-        <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 800, color: 'var(--white)' }}>
-          Order Management
-        </h1>
+        <h1 className="page-title">Orders</h1>
         <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--gray)' }}>
           Manage orders, production, QC, and delivery workflow.
         </p>

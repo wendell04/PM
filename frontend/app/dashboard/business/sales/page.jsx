@@ -382,7 +382,7 @@ export default function SalesListPage() {
       <div className="page-header">
         <div className="page-header-content">
           <div>
-            <h1 className="page-title">Sales Records</h1>
+            <h1 className="page-title">Sales</h1>
             <p className="page-subtitle">View all sales transactions from the system.</p>
           </div>
           {/* NO Create button - Sales are auto-generated */}

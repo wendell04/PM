@@ -299,7 +299,7 @@ export default function OrderRequestsPage() {
             <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
             <path d="M9 12h6M9 16h6"/>
           </svg>
-          <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>Order Requests</h1>
+          <h1 className="page-title">Order Requests</h1>
         </div>
         <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.9rem' }}>Review and manage customer print orders</p>
       </div>
