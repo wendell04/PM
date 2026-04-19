@@ -29,26 +29,36 @@ class SupplierController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $query = Supplier::where('isActive', true);
+            $hasSearch = $request->filled('search');
 
-            if ($request->filled('search')) {
+            if ($hasSearch) {
+                // Search requests: never cache — build and run directly
                 $search = $request->search;
-                $query->where(function($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('contactPerson', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%")
-                      ->orWhere('phone', 'like', "%{$search}%");
+                $suppliers = Supplier::where('isActive', true)
+                    ->where(function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%")
+                          ->orWhere('contactPerson', 'like', "%{$search}%")
+                          ->orWhere('email', 'like', "%{$search}%")
+                          ->orWhere('phone', 'like', "%{$search}%");
+                    })
+                    ->orderBy('name', 'asc')
+                    ->get();
+            } else {
+                // Full list: cache for 120 seconds
+                $cacheKey = 'suppliers_list_' . (auth()->id() ?? 'guest');
+                $suppliers = Cache::remember($cacheKey, 120, function () {
+                    return Supplier::where('isActive', true)
+                        ->orderBy('name', 'asc')
+                        ->get();
                 });
             }
 
-            $cacheKey = 'suppliers_list_' . (auth()->id() ?? 'guest');
-            $suppliers = Cache::remember($cacheKey, 120, function () use ($query) {
-                return $query->orderBy('name', 'asc')->get();
-            });
-
-            return response()->json(['data' => $suppliers]);
+            return $this->successResponse('Suppliers fetched successfully.', $suppliers);
         } catch (\Exception $e) {
-            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching suppliers.');
+            return $this->serverErrorResponse(
+                $e,
+                'An unexpected error occurred while fetching suppliers.'
+            );
         }
     }
 

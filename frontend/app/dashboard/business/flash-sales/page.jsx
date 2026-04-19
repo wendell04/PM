@@ -431,8 +431,7 @@ export default function FlashSalesPage() {
                           alignItems: 'center', gap: '0.625rem' }}>
                           {sale.productThumbnail ? (
                             /* eslint-disable-next-line @next/next/no-img-element */
-                            <img src={sale.productThumbnail}
-                              alt={sale.productName}
+                            <img src={sale.productThumbnail} alt={sale.productName}
                               style={{ width: '32px', height: '32px',
                                 borderRadius: '6px',
                                 objectFit: 'cover',

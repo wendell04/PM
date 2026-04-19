@@ -1058,7 +1058,7 @@ export default function OrdersPage() {
                           {printDesignImages.map((img, idx) => (
                             <div key={idx} style={{ position: 'relative' }}>
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img 
+                              <img
                                 src={img} 
                                 alt={`Design ${idx + 1}`} 
                                 style={{ 
@@ -1201,7 +1201,7 @@ export default function OrdersPage() {
                         <h3 style="margin: 0 0 15px 0; color: #000; font-size: 14px; text-transform: uppercase; border-bottom: 2px solid #000; padding-bottom: 5px;">Design References (${printDesignImages.length} image${printDesignImages.length > 1 ? 's' : ''})</h3>
                         <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-start;">
                           ${printDesignImages.map(img => `<div style="flex: 0 1 auto; width: calc(33.333% - 10px); min-width: 150px; max-width: 250px;">
-                            <img src="${img}" style="width: 100%; height: auto; display: block; border: 1px solid #ddd; border-radius: 4px;" />
+                            <img src="${img}" alt="" style="width: 100%; height: auto; display: block; border: 1px solid #ddd; border-radius: 4px;" />
                           </div>`).join('')}
                         </div>
                       </div>` 
