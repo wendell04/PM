@@ -540,6 +540,7 @@ export default function BusinessDashboardLayout({ children }) {
         {
           name: "Settings",
           href: "/dashboard/business/settings",
+          permKey: "dashboard",
         },
       ],
     },
