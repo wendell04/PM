@@ -205,11 +205,15 @@ function normalizeOrder(apiOrder) {
 /**
  * Fetch all orders (new schema - admin view)
  * @param {string} token - Authentication token
+ * @param {{ page?: number, limit?: number }} [opts]
  * @returns {Promise<Array>} List of normalized orders
  */
-export async function fetchAllOrdersNew(token) {
+export async function fetchAllOrdersNew(token, opts = {}) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/orders`, {
+    const page = opts.page != null ? Math.max(1, parseInt(String(opts.page), 10) || 1) : 1;
+    const limit = opts.limit != null ? Math.min(200, Math.max(1, parseInt(String(opts.limit), 10) || 50)) : 50;
+    const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+    const response = await fetchWithTimeout(`${API_URL}/api/orders?${qs}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

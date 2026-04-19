@@ -5,7 +5,7 @@
 // Safe to delete once the new Movement History tab is fully validated.
 
 import CustomDropdown from "@/app/components/CustomDropdown";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 
 // ── Shared Styles ──────────────────────────────────────────────────────────────
 const thStyle = {
@@ -83,7 +83,7 @@ function IssueTypeBadge({ type }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // STOCK-OUT HISTORY TAB — Flat table, no over-engineered nesting
 // ══════════════════════════════════════════════════════════════════════════════
-export default function StockOutHistoryTab({ stockOuts, materials }) {
+function StockOutHistoryTab({ stockOuts, materials }) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
@@ -510,3 +510,5 @@ export default function StockOutHistoryTab({ stockOuts, materials }) {
     </div>
   );
 }
+
+export default memo(StockOutHistoryTab);

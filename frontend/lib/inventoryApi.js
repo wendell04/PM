@@ -20,6 +20,7 @@ export async function fetchInventory(token) {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
+        'Cache-Control': 'max-age=60',
       },
     }, 10000); // 10 second timeout
 
@@ -39,6 +40,29 @@ export async function fetchInventory(token) {
     console.error('Error fetching inventory:', error);
     throw error;
   }
+}
+
+/**
+ * Last 10 stock movements (dashboard).
+ * GET /api/admin/inventory/recent-movements
+ */
+export async function fetchRecentMovements(token) {
+  const response = await fetchWithTimeout(`${API_URL}/api/admin/inventory/recent-movements`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  }, 10000);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch recent movements: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  const inner = data.data ?? data;
+  const movements = inner?.movements ?? inner;
+  return Array.isArray(movements) ? movements : [];
 }
 
 /**

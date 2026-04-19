@@ -11,7 +11,7 @@ import ErrorBoundary from '../../../../components/ErrorBoundary';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { formatPrice } from '../../../../src/utils/format';
+import { formatPrice } from '@/src/utils/format';
 import { fetchSales } from '@/lib/salesApi';
 import { fetchInventory } from '@/lib/inventoryApi';
 
@@ -66,16 +66,16 @@ function OrderExpandRow({ order, colSpan }) {
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
           <span style={{ color: 'var(--gray)' }}>Downpayment (50%):</span>
-          <span style={{ fontWeight: 600, color: '#4ade80' }}>{formatPrice(order.downPayment || 0)}</span>
+          <span style={{ fontWeight: 600, color: 'var(--green)' }}>{formatPrice(order.downPayment || 0)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
           <span style={{ color: 'var(--gray)' }}>Balance:</span>
-          <span style={{ fontWeight: 600, color: order.balance === 0 ? '#4ade80' : '#facc15' }}>
+          <span style={{ fontWeight: 600, color: order.balance === 0 ? 'var(--green)' : 'var(--gold)' }}>
             {formatPrice(order.balance || 0)}
           </span>
         </div>
         {order.balance === 0 && (
-          <div style={{ fontSize: '0.7rem', color: '#4ade80', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          <div style={{ fontSize: '0.7rem', color: 'var(--green)', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M20 6L9 17l-5-5"/>
             </svg>
@@ -140,7 +140,7 @@ export default function SalesListPage() {
       setError(null);
       try {
         // Fetch sales from API
-        const salesResponse = await fetchSales({}, token);
+        const salesResponse = await fetchSales({ limit: 50 }, token);
         const salesData = Array.isArray(salesResponse)
           ? salesResponse : [];
 
@@ -196,22 +196,22 @@ export default function SalesListPage() {
 
   const getStatusBadge = (order) => {
     if (order.status === 'cancelled') {
-      return { label: 'Cancelled', color: '#f87171', bg: 'rgba(248, 113, 113, 0.15)', border: 'rgba(248, 113, 113, 0.4)' };
+      return { label: 'Cancelled', color: 'var(--red)', bg: 'rgba(248, 113, 113, 0.15)', border: 'rgba(248, 113, 113, 0.4)' };
     }
     
     if (order.source === 'manual') {
-      return { label: 'Outside System', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)', border: 'rgba(249, 115, 22, 0.4)' };
+      return { label: 'Outside System', color: 'var(--orange)', bg: 'rgba(249, 115, 22, 0.15)', border: 'rgba(249, 115, 22, 0.4)' };
     }
     
     if (order.balance === 0) {
-      return { label: 'Paid', color: '#4ade80', bg: 'rgba(74, 222, 128, 0.15)', border: 'rgba(74, 222, 128, 0.4)' };
+      return { label: 'Paid', color: 'var(--green)', bg: 'rgba(74, 222, 128, 0.15)', border: 'rgba(74, 222, 128, 0.4)' };
     }
     
     if (order.downPayment > 0 && order.balance > 0) {
-      return { label: 'Pending 50%', color: '#facc15', bg: 'rgba(250, 204, 21, 0.15)', border: 'rgba(250, 204, 21, 0.4)' };
+      return { label: 'Pending 50%', color: 'var(--gold)', bg: 'rgba(250, 204, 21, 0.15)', border: 'rgba(250, 204, 21, 0.4)' };
     }
     
-    return { label: 'Pending', color: '#facc15', bg: 'rgba(250, 204, 21, 0.15)', border: 'rgba(250, 204, 21, 0.4)' };
+    return { label: 'Pending', color: 'var(--gold)', bg: 'rgba(250, 204, 21, 0.15)', border: 'rgba(250, 204, 21, 0.4)' };
   };
 
   const filteredSales = useMemo(() => {
@@ -362,7 +362,7 @@ export default function SalesListPage() {
     return (
       <div className="page-content-wrapper">
         <div className="error-state" style={{ padding: '2rem', textAlign: 'center' }}>
-          <p style={{ color: '#ef4444', marginBottom: '1rem' }}>{error}</p>
+          <p style={{ color: 'var(--red)', marginBottom: '1rem' }}>{error}</p>
           <button 
             onClick={() => window.location.reload()}
             className="btn-primary"
@@ -413,8 +413,8 @@ export default function SalesListPage() {
           <div className={`summary-card${paymentFilter === 'outside-system' ? ' active' : ''}`}
             onClick={() => setPaymentFilter(paymentFilter === 'outside-system' ? '' : 'outside-system')} style={{ cursor: 'pointer', background: 'rgba(249, 115, 22, 0.08)', borderColor: 'rgba(249, 115, 22, 0.3)' }}>
             <div className="summary-content">
-              <span className="summary-value" style={{ color: '#f97316' }}>{summaryMetrics.outsideSystem}</span>
-              <span className="summary-label" style={{ color: '#f97316' }}>Outside System</span>
+              <span className="summary-value" style={{ color: 'var(--orange)' }}>{summaryMetrics.outsideSystem}</span>
+              <span className="summary-label" style={{ color: 'var(--orange)' }}>Outside System</span>
             </div>
           </div>
           <div className={`summary-card summary-card-danger${paymentFilter === 'cancelled' ? ' active' : ''}`}
@@ -460,9 +460,9 @@ export default function SalesListPage() {
               padding: '1.25rem',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                <span style={{ fontSize: '0.75rem', color: '#4ade80', textTransform: 'uppercase', fontWeight: 700 }}>Total Revenue</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--green)', textTransform: 'uppercase', fontWeight: 700 }}>Total Revenue</span>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: '#4ade80' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--green)' }}>
                 ₱{summaryMetrics.revenue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.5rem' }}>
@@ -478,9 +478,9 @@ export default function SalesListPage() {
               padding: '1.25rem',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                <span style={{ fontSize: '0.75rem', color: '#d4a843', textTransform: 'uppercase', fontWeight: 700 }}>Total Profit</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--gold)', textTransform: 'uppercase', fontWeight: 700 }}>Total Profit</span>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: '#d4a843' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--gold)' }}>
                 ₱{summaryMetrics.profit.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.5rem' }}>
@@ -496,9 +496,9 @@ export default function SalesListPage() {
               padding: '1.25rem',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                <span style={{ fontSize: '0.75rem', color: '#6366f1', textTransform: 'uppercase', fontWeight: 700 }}>Top Products</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--indigo)', textTransform: 'uppercase', fontWeight: 700 }}>Top Products</span>
               </div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: '#6366f1' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--indigo)' }}>
                 {summaryMetrics.topProductsCount}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.5rem' }}>
@@ -667,7 +667,7 @@ export default function SalesListPage() {
                         </div>
                         <div style={{ fontSize: '0.73rem', color: 'var(--gray)', marginTop: '0.15rem' }}>
                           {order.source === 'manual' && (
-                            <span style={{ color: '#f97316' }}>Outside System</span>
+                            <span style={{ color: 'var(--orange)' }}>Outside System</span>
                           )}
                         </div>
                       </td>
@@ -710,11 +710,11 @@ export default function SalesListPage() {
 
                       {/* Downpayment */}
                       <td className="table-cell">
-                        <span style={{ fontWeight: 600, color: order.downPayment > 0 ? '#4ade80' : 'var(--gray)', fontSize: '0.875rem' }}>
+                        <span style={{ fontWeight: 600, color: order.downPayment > 0 ? 'var(--green)' : 'var(--gray)', fontSize: '0.875rem' }}>
                           {order.downPayment > 0 ? formatPrice(order.downPayment) : '—'}
                         </span>
                         {order.downPayment > 0 && (
-                          <div style={{ fontSize: '0.65rem', color: '#4ade80', marginTop: '0.1rem' }}>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--green)', marginTop: '0.1rem' }}>
                             50% DP
                           </div>
                         )}
@@ -722,11 +722,11 @@ export default function SalesListPage() {
 
                       {/* Balance */}
                       <td className="table-cell">
-                        <span style={{ fontWeight: 600, color: order.balance === 0 ? '#4ade80' : (order.status === 'cancelled' ? 'var(--gray)' : '#facc15'), fontSize: '0.875rem' }}>
+                        <span style={{ fontWeight: 600, color: order.balance === 0 ? 'var(--green)' : (order.status === 'cancelled' ? 'var(--gray)' : 'var(--gold)'), fontSize: '0.875rem' }}>
                           {order.status === 'cancelled' ? '—' : formatPrice(order.balance || 0)}
                         </span>
                         {order.balance === 0 && order.status !== 'cancelled' && (
-                          <div style={{ fontSize: '0.65rem', color: '#4ade80', marginTop: '0.1rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--green)', marginTop: '0.1rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                               <path d="M20 6L9 17l-5-5"/>
                             </svg>

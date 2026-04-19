@@ -51,12 +51,16 @@ function getAvailableStock(item) {
   return item.stockQty || 0;
 }
 
+function invId(item) {
+  return String(item?.id ?? item._id ?? "");
+}
+
 export default function GoodsIssueModal({ materials, onClose, onConfirm, currentUser }) {
   const [reason, setReason] = useState("sale");
   const [remarks, setRemarks] = useState("");
   const [saleDate, setSaleDate] = useState("");
   const [customer, setCustomer] = useState("");
-  const [qtys, setQtys] = useState({}); // { [_id]: string }
+  const [qtys, setQtys] = useState({}); // { [id]: string }
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -79,14 +83,15 @@ export default function GoodsIssueModal({ materials, onClose, onConfirm, current
   const buildVariants = () => {
     return issuableItems
       .filter((item) => {
-        const q = parseFloat(qtys[item._id]);
+        const q = parseFloat(qtys[invId(item)]);
         return !isNaN(q) && q > 0;
       })
       .map((item) => {
-        const q = parseFloat(qtys[item._id]);
+        const q = parseFloat(qtys[invId(item)]);
+        const id = invId(item);
         return {
-          inventoryId: item._id,
-          variantId: item._id,
+          inventoryId: id,
+          variantId: id,
           qtyFulfilled: q,
           totalCostValue: q * item.fifoCost,
           sellingPrice: null,
@@ -98,7 +103,7 @@ export default function GoodsIssueModal({ materials, onClose, onConfirm, current
     const variants = buildVariants();
     if (variants.length === 0) return "Select at least one item with a quantity.";
     for (const item of issuableItems) {
-      const q = parseFloat(qtys[item._id]);
+      const q = parseFloat(qtys[invId(item)]);
       if (!isNaN(q) && q > 0 && q > item.availableStock) {
         return `"${item.name}" — quantity exceeds available stock (${item.availableStock} ${item.uom || "pcs"}).`;
       }
@@ -308,13 +313,13 @@ export default function GoodsIssueModal({ materials, onClose, onConfirm, current
                 </div>
               )}
               {issuableItems.map((item, idx) => {
-                const qty = qtys[item._id] || "";
+                const qty = qtys[invId(item)] || "";
                 const parsed = parseFloat(qty);
                 const overLimit = !isNaN(parsed) && parsed > item.availableStock;
                 const hasQty = !isNaN(parsed) && parsed > 0;
                 return (
                   <div
-                    key={item._id}
+                    key={invId(item)}
                     style={{
                       display: "grid",
                       gridTemplateColumns: "1fr 80px 80px 88px",
@@ -395,7 +400,7 @@ export default function GoodsIssueModal({ materials, onClose, onConfirm, current
                         max={item.availableStock}
                         placeholder="0"
                         value={qty}
-                        onChange={(e) => setQty(item._id, e.target.value)}
+                        onChange={(e) => setQty(invId(item), e.target.value)}
                         style={{
                           width: 72,
                           background: "rgba(255,255,255,0.06)",

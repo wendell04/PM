@@ -306,7 +306,18 @@ class OrderController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $query = Order::with('jobOrder')->orderBy('createdAt', 'desc');
+            $query = Order::select($this->orderListFields())
+                ->with(['jobOrder' => function ($q) {
+                    $q->select([
+                        '_id',
+                        'orderId',
+                        'joStatus',
+                        'targetCompletion',
+                        'assignedTo',
+                        'isRush',
+                    ]);
+                }])
+                ->orderBy('createdAt', 'desc');
 
             if ($request->filled('orderStatus')) {
                 $query->where('orderStatus', $request->orderStatus);
@@ -317,6 +328,52 @@ class OrderController extends Controller
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching orders.');
         }
+    }
+
+    /**
+     * MongoDB projection for admin/API order list responses (avoids loading unused fields).
+     *
+     * @return array<int, string>
+     */
+    private function orderListFields(): array
+    {
+        return [
+            '_id',
+            'orderId',
+            'userId',
+            'orderStatus',
+            'paymentStatus',
+            'customerName',
+            'customer',
+            'userSnapshot',
+            'items',
+            'subtotal',
+            'shippingFee',
+            'totalAmount',
+            'total',
+            'totalPrice',
+            'downPayment',
+            'balance',
+            'paymentMethod',
+            'paymentHistory',
+            'notes',
+            'joId',
+            'joStatus',
+            'isRush',
+            'targetCompletion',
+            'orderSource',
+            'voucherCode',
+            'discountAmount',
+            'courierName',
+            'trackingNumber',
+            'createdAt',
+            'updatedAt',
+            'shippingAddress',
+            'deliveryAddress',
+            'designNotes',
+            'designStatus',
+            'designFilePath',
+        ];
     }
 
     /**
@@ -660,7 +717,15 @@ class OrderController extends Controller
                 return response()->json(['error' => 'Forbidden'], 403);
             }
 
-            $orders = Order::orderBy('createdAt', 'desc')->get();
+            $limit = min(max((int) $request->input('limit', 50), 1), 200);
+            $page = max((int) $request->input('page', 1), 1);
+            $skip = ($page - 1) * $limit;
+
+            $orders = Order::select($this->orderListFields())
+                ->orderBy('createdAt', 'desc')
+                ->skip($skip)
+                ->limit($limit)
+                ->get();
 
             return response()->json(['orders' => $orders]);
         } catch (\Exception $e) {

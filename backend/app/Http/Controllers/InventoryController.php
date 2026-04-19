@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Inventory;
 use App\Models\StockHistory;
 use App\Models\Supplier;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -43,7 +44,34 @@ class InventoryController extends Controller
 
             $inventory = $query->orderBy('category', 'asc')
                                ->orderBy('name', 'asc')
-                               ->get();
+                               ->get([
+                                   '_id',
+                                   'name',
+                                   'sku',
+                                   'uom',
+                                   'category',
+                                   'stockQty',
+                                   'minStockLevel',
+                                   'baseCost',
+                                   'averageCost',
+                                   'lastUnitCost',
+                                   'procurementType',
+                                   'hasVariants',
+                                   'parentId',
+                                   'isActive',
+                                   'batches',
+                                   'isOnDemand',
+                                   'supplierId',
+                                   'supplierName',
+                                   'reservedQty',
+                                   'consumedQty',
+                                   'badOrderQty',
+                                   'variantTypes',
+                                   'variantCombo',
+                                   'allowBackorder',
+                                   'createdAt',
+                                   'updatedAt',
+                               ]);
 
             return $this->successResponse('Inventory fetched successfully.', $inventory);
         } catch (\Exception $e) {
@@ -92,19 +120,20 @@ class InventoryController extends Controller
     public function recentMovements(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
-                return $this->unauthorizedResponse();
-            }
-
             $movements = StockHistory::orderBy('createdAt', 'desc')
                 ->limit(10)
-                ->get(['inventoryId', 'quantity', 'reason', 'remarks', 'createdAt']);
+                ->get(['inventoryId', 'quantity', 'reason', 'remarks', 'createdAt', 'performedBy', 'type']);
 
             // Batch-load inventory names to avoid N+1
             $inventoryIds = $movements->pluck('inventoryId')->unique()->filter()->values()->toArray();
             $inventoryMap = Inventory::whereIn('_id', $inventoryIds)
                 ->get(['_id', 'name'])
                 ->keyBy(fn($i) => (string) $i->_id);
+
+            $userIds = $movements->pluck('performedBy')->unique()->filter()->values()->toArray();
+            $userMap = User::whereIn('_id', $userIds)
+                ->get(['_id', 'name'])
+                ->keyBy(fn($u) => (string) $u->_id);
 
             $typeMap = [
                 'restock'          => 'in',
@@ -115,6 +144,11 @@ class InventoryController extends Controller
                 'damaged'          => 'out',
                 'correction-deduct'=> 'out',
                 'sales-outside'    => 'out',
+                'production'       => 'out',
+                'lost'             => 'out',
+                'missing'          => 'out',
+                'adjustment'       => 'in',
+                'writeoff'         => 'out',
             ];
 
             $labelMap = [
@@ -126,19 +160,35 @@ class InventoryController extends Controller
                 'damaged'          => 'Damaged',
                 'correction-deduct'=> 'Correction (deduct)',
                 'sales-outside'    => 'Outside sale',
+                'production'       => 'Production use',
+                'lost'             => 'Lost',
+                'missing'          => 'Missing',
+                'adjustment'       => 'Adjustment',
+                'writeoff'         => 'Write-off',
             ];
 
-            $result = $movements->map(function ($m) use ($inventoryMap, $typeMap, $labelMap) {
+            $result = $movements->map(function ($m) use ($inventoryMap, $typeMap, $labelMap, $userMap) {
                 $inv  = isset($inventoryMap[(string) $m->inventoryId])
                     ? $inventoryMap[(string) $m->inventoryId]
                     : null;
-                $type = $typeMap[$m->reason] ?? 'in';
+                $dir = null;
+                if (($m->type ?? '') === 'deduction') {
+                    $dir = 'out';
+                } elseif (($m->type ?? '') === 'addition') {
+                    $dir = 'in';
+                }
+                $type = $dir ?? ($typeMap[$m->reason] ?? 'in');
+                $performerId = (string) ($m->performedBy ?? '');
+                $performedBy = ($performerId !== '' && isset($userMap[$performerId]))
+                    ? $userMap[$performerId]->name
+                    : '—';
                 return [
-                    'item'  => $inv ? $inv->name : 'Unknown Item',
-                    'qty'   => (int) $m->quantity,
-                    'type'  => $type,
-                    'label' => $labelMap[$m->reason] ?? ucfirst($m->reason ?? ''),
-                    'time'  => $m->createdAt ? $m->createdAt->format('M d, g:i A') : '',
+                    'item'        => $inv ? $inv->name : 'Unknown Item',
+                    'qty'         => (int) $m->quantity,
+                    'type'        => $type,
+                    'label'       => $labelMap[$m->reason] ?? ucfirst($m->reason ?? ''),
+                    'performedBy' => $performedBy,
+                    'time'        => $m->createdAt ? $m->createdAt->format('M d, g:i A') : '',
                 ];
             })->values()->toArray();
 
@@ -150,6 +200,24 @@ class InventoryController extends Controller
         }
     }
 
+    /**
+     * Server-side SKU when the client does not send one (master data / POS flows).
+     */
+    private function generateNextInventorySku(): string
+    {
+        $prefix = 'INV-';
+        $n      = Inventory::count() + 1;
+        do {
+            $candidate = $prefix . str_pad((string) $n, 4, '0', STR_PAD_LEFT);
+            if (! Inventory::where('sku', $candidate)->exists()) {
+                return $candidate;
+            }
+            $n++;
+        } while ($n < 999_999);
+
+        return $prefix . strtoupper(substr(str_replace('-', '', (string) \Illuminate\Support\Str::uuid()), 0, 8));
+    }
+
     public function store(Request $request)
     {
         try {
@@ -158,14 +226,24 @@ class InventoryController extends Controller
             }
 
             $validated = $request->validate([
-                'name'          => 'required|string|max:255',
-                'category'      => 'required|string|max:100',
-                'stockQty'      => 'required|integer|min:0',
-                'minStockLevel' => 'required|integer|min:0',
-                'isOnDemand'    => 'boolean',
-                'supplierId'    => 'nullable|string',
-                'supplierName'  => 'nullable|string',
-                'unitCost'      => 'required|numeric|min:0',
+                'name'             => 'required|string|max:255',
+                'category'         => 'required|string|max:100',
+                'stockQty'         => 'required|integer|min:0',
+                'minStockLevel'    => 'required|integer|min:0',
+                'isOnDemand'       => 'boolean',
+                'supplierId'       => 'nullable|string',
+                'supplierName'     => 'nullable|string',
+                'unitCost'         => 'required|numeric|min:0',
+                'sku'              => 'nullable|string|max:100',
+                'uom'              => 'nullable|string|max:50',
+                'batches'          => 'nullable|array',
+                'baseCost'         => 'nullable|numeric|min:0',
+                'parentId'         => 'nullable|string',
+                'hasVariants'      => 'nullable|boolean',
+                'variantTypes'     => 'nullable|array',
+                'variantCombo'     => 'nullable|array',
+                'procurementType'  => 'nullable|string|max:50',
+                'allowBackorder'   => 'nullable|boolean',
             ]);
 
             $duplicate = Inventory::where('name', $validated['name'])
@@ -177,19 +255,40 @@ class InventoryController extends Controller
                 return $this->errorResponse('Duplicate item: An item with this name and category already exists.', 422);
             }
 
+            $sku = isset($validated['sku']) && $validated['sku'] !== ''
+                ? $validated['sku']
+                : $this->generateNextInventorySku();
+
+            if (Inventory::where('sku', $sku)->exists()) {
+                return $this->errorResponse('Duplicate SKU: An item with this SKU already exists.', 422);
+            }
+
+            $unitCost = (float) $validated['unitCost'];
+            $baseCost = isset($validated['baseCost']) ? (float) $validated['baseCost'] : $unitCost;
+
             $inventory = Inventory::create([
-                'name'          => $validated['name'],
-                'category'      => $validated['category'],
-                'stockQty'      => $validated['stockQty'],
-                'minStockLevel' => $validated['minStockLevel'],
-                'isOnDemand'    => $validated['isOnDemand'] ?? false,
-                'isActive'      => true,
-                'supplierId'    => $validated['supplierId'] ?? null,
-                'supplierName'  => $validated['supplierName'] ?? 'Unspecified',
-                'lastUnitCost'  => $validated['unitCost'],
-                'averageCost'   => $validated['unitCost'],
-                'createdAt'     => now(),
-                'updatedAt'     => now(),
+                'name'             => $validated['name'],
+                'sku'              => $sku,
+                'uom'              => $validated['uom'] ?? 'pcs',
+                'category'         => $validated['category'],
+                'stockQty'         => $validated['stockQty'],
+                'minStockLevel'    => $validated['minStockLevel'],
+                'isOnDemand'       => $validated['isOnDemand'] ?? false,
+                'isActive'         => true,
+                'supplierId'       => $validated['supplierId'] ?? null,
+                'supplierName'     => $validated['supplierName'] ?? 'Unspecified',
+                'lastUnitCost'     => $unitCost,
+                'averageCost'      => $unitCost,
+                'baseCost'         => $baseCost,
+                'batches'          => $validated['batches'] ?? [],
+                'parentId'         => $validated['parentId'] ?? null,
+                'hasVariants'      => $validated['hasVariants'] ?? false,
+                'variantTypes'     => $validated['variantTypes'] ?? [],
+                'variantCombo'     => $validated['variantCombo'] ?? null,
+                'procurementType'  => $validated['procurementType'] ?? null,
+                'allowBackorder'   => $validated['allowBackorder'] ?? false,
+                'createdAt'        => now(),
+                'updatedAt'        => now(),
             ]);
 
             StockHistory::create([
@@ -197,8 +296,8 @@ class InventoryController extends Controller
                 'supplierId'   => $validated['supplierId'] ?? null,
                 'quantity'     => $validated['stockQty'],
                 'remainingQty' => $validated['stockQty'],
-                'unitCost'     => $validated['unitCost'],
-                'totalCost'    => $validated['stockQty'] * $validated['unitCost'],
+                'unitCost'     => $unitCost,
+                'totalCost'    => $validated['stockQty'] * $unitCost,
                 'reason'       => 'initial',
                 'createdAt'    => now(),
             ]);
@@ -225,14 +324,26 @@ class InventoryController extends Controller
             }
 
             $validated = $request->validate([
-                'name'          => 'sometimes|required|string|max:255',
-                'category'      => 'sometimes|required|string|max:100',
-                'stockQty'      => 'sometimes|required|integer|min:0',
-                'minStockLevel' => 'sometimes|required|integer|min:0',
-                'isOnDemand'    => 'sometimes|boolean',
-                'isActive'      => 'sometimes|boolean',
-                'supplierId'    => 'nullable|string',
-                'supplierName'  => 'nullable|string',
+                'name'             => 'sometimes|required|string|max:255',
+                'category'         => 'sometimes|required|string|max:100',
+                'stockQty'         => 'sometimes|required|integer|min:0',
+                'minStockLevel'    => 'sometimes|required|integer|min:0',
+                'isOnDemand'       => 'sometimes|boolean',
+                'isActive'         => 'sometimes|boolean',
+                'supplierId'       => 'nullable|string',
+                'supplierName'     => 'nullable|string',
+                'sku'              => 'nullable|string|max:100',
+                'uom'              => 'nullable|string|max:50',
+                'batches'          => 'nullable|array',
+                'baseCost'         => 'nullable|numeric|min:0',
+                'lastUnitCost'     => 'nullable|numeric|min:0',
+                'averageCost'      => 'nullable|numeric|min:0',
+                'parentId'         => 'nullable|string',
+                'hasVariants'      => 'nullable|boolean',
+                'variantTypes'     => 'nullable|array',
+                'variantCombo'     => 'nullable|array',
+                'procurementType'  => 'nullable|string|max:50',
+                'allowBackorder'   => 'nullable|boolean',
             ]);
 
             if (isset($validated['name']) || isset($validated['category'])) {
@@ -244,6 +355,15 @@ class InventoryController extends Controller
 
                 if ($duplicate) {
                     return $this->errorResponse('Duplicate item.', 422);
+                }
+            }
+
+            if (isset($validated['sku']) && $validated['sku'] !== '') {
+                $dupSku = Inventory::where('sku', $validated['sku'])
+                    ->where('_id', '!=', $id)
+                    ->first();
+                if ($dupSku) {
+                    return $this->errorResponse('Duplicate SKU: An item with this SKU already exists.', 422);
                 }
             }
 
@@ -278,7 +398,7 @@ class InventoryController extends Controller
 
             $validated = $request->validate([
                 'quantity'         => 'required|numeric',
-                'reason'           => 'required|in:restock,correction-add,correction-deduct,sale,return,sales-outside,damaged,writeoff,missing',
+                'reason'           => 'required|in:restock,correction-add,correction-deduct,sale,return,sales-outside,damaged,writeoff,production,lost,missing,adjustment',
                 'adjustmentType'   => 'nullable|in:add,subtract',
                 'supplierId'       => 'nullable|string',
                 'supplierName'     => 'nullable|string',

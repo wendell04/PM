@@ -23,7 +23,7 @@ const EMPTY_FORM = {
 export default function VouchersPage() {
   const { token } = useAuth();
   const [vouchers, setVouchers]     = useState([]);
-  const [loading, setLoading]       = useState(true);
+  const [isLoading, setIsLoading]   = useState(true);
   const [error, setError]           = useState(null);
   const [showModal, setShowModal]   = useState(false);
   const [editTarget, setEditTarget] = useState(null); // null = create, object = edit
@@ -34,8 +34,11 @@ export default function VouchersPage() {
   const [deleting, setDeleting]     = useState(false);
 
   const load = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
     setError(null);
     try {
       const data = await fetchVouchers(token);
@@ -43,7 +46,7 @@ export default function VouchersPage() {
     } catch (err) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   }, [token]);
 
@@ -159,6 +162,29 @@ export default function VouchersPage() {
     marginBottom: '0.375rem',
   };
 
+  if (isLoading) {
+    return (
+      <div style={{ padding: '2rem', maxWidth: '1100px', margin: '0 auto' }}>
+        <style>{`
+          @keyframes vchPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+        `}</style>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={i}
+              style={{
+                height: '56px',
+                borderRadius: '8px',
+                background: 'rgba(255,255,255,0.04)',
+                animation: 'vchPageSkel 1.5s ease-in-out infinite',
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '2rem', maxWidth: '1100px', margin: '0 auto' }}>
       {/* Header */}
@@ -195,9 +221,7 @@ export default function VouchersPage() {
 
       {/* Table */}
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray)' }}>Loading vouchers…</div>
-        ) : vouchers.length === 0 ? (
+        {vouchers.length === 0 ? (
           <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray)' }}>No vouchers yet. Create one to get started.</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -213,7 +237,7 @@ export default function VouchersPage() {
                 const isExpired = v.expiresAt && new Date(v.expiresAt) < new Date();
                 const isMaxed   = v.maxUses != null && v.usedCount >= v.maxUses;
                 return (
-                  <tr key={v._id ?? idx} style={{ borderBottom: '1px solid var(--border)', opacity: (!v.isActive || isExpired || isMaxed) ? 0.6 : 1 }}>
+                  <tr key={String(v.id ?? v._id ?? idx)} style={{ borderBottom: '1px solid var(--border)', opacity: (!v.isActive || isExpired || isMaxed) ? 0.6 : 1 }}>
                     <td style={{ padding: '12px 16px', fontSize: '0.875rem', color: 'var(--gold)', fontWeight: 700, fontFamily: 'monospace' }}>{v.code}</td>
                     <td style={{ padding: '12px 16px', fontSize: '0.875rem', color: 'var(--white)' }}>
                       {v.discountType === 'percentage' ? `${v.discountValue}%` : `₱${Number(v.discountValue).toLocaleString()} OFF`}

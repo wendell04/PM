@@ -6,11 +6,17 @@
 'use client';
 
 import ErrorBoundary from '../../../../components/ErrorBoundary';
+import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchAllOrdersNew, updateOrder as updateOrderApi, updateJobOrderStatus } from '@/lib/ordersApi';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStatusBadge } from '@/lib/utils/orderHelpers';
-import OrderQuickViewModal from '@/components/orders/OrderQuickViewModal';
+
+const OrderQuickViewModal = dynamic(
+  () => import('@/components/orders/OrderQuickViewModal'),
+  { ssr: false },
+);
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const YEARS = [2025, 2026, 2027, 2028];
@@ -41,7 +47,12 @@ export default function OrdersPage() {
   const [printDesignImages, setPrintDesignImages] = useState([]); // Multiple images
   const [loadError, setLoadError] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreOrders, setHasMoreOrders] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const nextFetchPageRef = useRef(2);
+  const skipPollRef = useRef(false);
+  const ORDERS_PAGE_SIZE = 50;
 
   // Order Quick View Modal state
   const [selectedOrderId, setSelectedOrderId] = useState(null);
@@ -56,39 +67,72 @@ export default function OrdersPage() {
   const [paymentError, setPaymentError] = useState('');
   const [isPaymentSubmitting, setIsPaymentSubmitting] = useState(false);
 
-  // Extract fetch orders logic into named function
-  const fetchOrders = useCallback(async () => {
-    setIsRefreshing(true);
-    setLoadError('');
-    try {
-      const data = await fetchAllOrdersNew(token);
-      setOrders(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Failed to load orders:', error);
-      setLoadError('Failed to load orders. Please refresh the page.');
-      setOrders([]);
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, []);
+  // Extract fetch orders logic into named function (paginated; poll skips after "Load more")
+  const fetchOrders = useCallback(
+    async (options = {}) => {
+      const append = options.append === true;
+      if (append) setLoadingMore(true);
+      else {
+        setIsRefreshing(true);
+        skipPollRef.current = false;
+      }
+      setLoadError('');
+      try {
+        const page = append ? nextFetchPageRef.current : 1;
+        const data = await fetchAllOrdersNew(token, {
+          page,
+          limit: ORDERS_PAGE_SIZE,
+        });
+        const list = Array.isArray(data) ? data : [];
+        setHasMoreOrders(list.length >= ORDERS_PAGE_SIZE);
+        if (!append) {
+          setOrders(list);
+          nextFetchPageRef.current = 2;
+        } else {
+          skipPollRef.current = true;
+          setOrders((prev) => {
+            const seen = new Set(prev.map((o) => String(o.id)));
+            const merged = [...prev];
+            for (const o of list) {
+              const oid = String(o.id);
+              if (!seen.has(oid)) {
+                merged.push(o);
+                seen.add(oid);
+              }
+            }
+            return merged;
+          });
+          nextFetchPageRef.current = page + 1;
+        }
+      } catch (error) {
+        console.error('Failed to load orders:', error);
+        setLoadError('Failed to load orders. Please refresh the page.');
+        if (!append) setOrders([]);
+      } finally {
+        setIsRefreshing(false);
+        setLoadingMore(false);
+      }
+    },
+    [token],
+  );
 
   // Load orders from API on mount
   useEffect(() => {
     if (!token) return;
     fetchOrders();
-  }, [token]);
+  }, [token, fetchOrders]);
 
-  // Auto-refresh every 30s — skipped when a manual refresh is already running
+  // Auto-refresh every 30s — skipped when a manual refresh is already running or after load-more
   const pollRef = useRef(null);
   useEffect(() => {
     if (!token) return;
     pollRef.current = setInterval(() => {
-      if (!isRefreshing) {
+      if (!isRefreshing && !loadingMore && !skipPollRef.current) {
         fetchOrders();
       }
     }, 30000);
     return () => clearInterval(pollRef.current);
-  }, [token, isRefreshing, fetchOrders]);
+  }, [token, isRefreshing, loadingMore, fetchOrders]);
 
   const filtered = orders.filter(o => {
     const matchSearch = !search || o.customerName?.toLowerCase().includes(search.toLowerCase()) || o.id?.toLowerCase().includes(search.toLowerCase()) || o.productName?.toLowerCase().includes(search.toLowerCase());
@@ -153,9 +197,9 @@ export default function OrdersPage() {
   };
 
   const getPaymentBadge = (status) => {
-    if (status === 'paid')    return { label: 'Paid',    color: '#4ade80', bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.3)'  };
-    if (status === 'partial') return { label: 'Partial', color: '#facc15', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.3)' };
-    return                           { label: 'Unpaid',  color: '#f87171', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.3)' };
+    if (status === 'paid')    return { label: 'Paid',    color: 'var(--green)', bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.3)'  };
+    if (status === 'partial') return { label: 'Partial', color: 'var(--gold)', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.3)' };
+    return                           { label: 'Unpaid',  color: 'var(--red)', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.3)' };
   };
 
   return (
@@ -195,8 +239,8 @@ export default function OrdersPage() {
           </div>
           <div className="summary-card summary-card-warning" style={{ background: 'rgba(249, 115, 22, 0.08)', borderColor: 'rgba(249, 115, 22, 0.3)' }}>
             <div className="summary-content">
-              <span className="summary-value" style={{ color: '#f97316' }}>{forDelivery}</span>
-              <span className="summary-label" style={{ color: '#f97316' }}>For Delivery</span>
+              <span className="summary-value" style={{ color: 'var(--orange)' }}>{forDelivery}</span>
+              <span className="summary-label" style={{ color: 'var(--orange)' }}>For Delivery</span>
             </div>
           </div>
           <div className="summary-card summary-card-success">
@@ -390,7 +434,7 @@ export default function OrdersPage() {
               return (
                 <>
                   {mixedStatus ? (
-                    <span style={{ fontSize: '0.8rem', color: '#facc15', fontStyle: 'italic' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--gold)', fontStyle: 'italic' }}>
                       Mixed status selected. Please select orders with the same status for bulk update.
                     </span>
                   ) : (
@@ -598,7 +642,7 @@ export default function OrdersPage() {
                                 <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Job Order</div>
                                 <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5 }}>
                                   <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{o.joId}</div>
-                                  <div style={{ color: o.isRush ? '#f97316' : 'var(--white)', fontWeight: 600 }}>{o.isRush ? 'Rush' : 'Standard'}</div>
+                                  <div style={{ color: o.isRush ? 'var(--orange)' : 'var(--white)', fontWeight: 600 }}>{o.isRush ? 'Rush' : 'Standard'}</div>
                                   <div style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>Target: {o.targetCompletion ? new Date(o.targetCompletion).toLocaleDateString() : 'N/A'}</div>
                                   {(() => {
                                     const today = new Date();
@@ -611,14 +655,14 @@ export default function OrdersPage() {
                                     if (isDelayed) {
                                       return (
                                         <>
-                                          <div style={{ color: '#f87171', fontWeight: 600 }}>Priority</div>
-                                          <div style={{ color: '#f87171', fontSize: '0.75rem', fontWeight: 600 }}>⚠ {daysLate} day{daysLate !== 1 ? 's' : ''} late</div>
+                                          <div style={{ color: 'var(--red)', fontWeight: 600 }}>Priority</div>
+                                          <div style={{ color: 'var(--red)', fontSize: '0.75rem', fontWeight: 600 }}>{daysLate} day{daysLate !== 1 ? 's' : ''} late</div>
                                         </>
                                       );
                                     }
                                     return (
                                       <>
-                                        <div style={{ color: o.joStatus === 'In Progress' ? '#6366f1' : '#facc15', fontWeight: 600 }}>{o.joStatus || 'Queued'}</div>
+                                        <div style={{ color: o.joStatus === 'In Progress' ? 'var(--indigo)' : 'var(--gold)', fontWeight: 600 }}>{o.joStatus || 'Queued'}</div>
                                         <div style={{ color: 'var(--gray)', fontSize: '0.75rem', fontWeight: 600 }}>{daysLeft} day{daysLeft !== 1 ? 's' : ''} left</div>
                                       </>
                                     );
@@ -667,7 +711,7 @@ export default function OrdersPage() {
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ color: 'var(--gray)' }}>Balance</span>
-                                  <span style={{ color: (o.balance ?? 0) <= 0 ? '#4ade80' : '#facc15', fontWeight: 600 }}>₱{(o.balance ?? 0).toLocaleString()}</span>
+                                  <span style={{ color: (o.balance ?? 0) <= 0 ? 'var(--green)' : 'var(--gold)', fontWeight: 600 }}>₱{(o.balance ?? 0).toLocaleString()}</span>
                                 </div>
                                 {/* Payment history entries */}
                                 {Array.isArray(o.paymentHistory) && o.paymentHistory.length > 0 && (
@@ -676,7 +720,7 @@ export default function OrdersPage() {
                                     {o.paymentHistory.map((p, idx) => (
                                       <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '0.2rem' }}>
                                         <span style={{ color: 'var(--gray)' }}>{p.method} {p.note ? `· ${p.note}` : ''}</span>
-                                        <span style={{ color: '#4ade80', fontWeight: 600 }}>+₱{Number(p.amount).toLocaleString()}</span>
+                                        <span style={{ color: 'var(--green)', fontWeight: 600 }}>+₱{Number(p.amount).toLocaleString()}</span>
                                       </div>
                                     ))}
                                   </div>
@@ -695,6 +739,25 @@ export default function OrdersPage() {
         </table>
       </div>
 
+      {hasMoreOrders && (
+        <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+          <button
+            type="button"
+            className="btn-sm btn-secondary"
+            disabled={loadingMore}
+            onClick={() => fetchOrders({ append: true })}
+            style={{
+              background: 'var(--dark2)',
+              borderColor: 'var(--border)',
+              color: 'var(--white)',
+              opacity: loadingMore ? 0.6 : 1,
+            }}
+          >
+            {loadingMore ? 'Loading…' : 'Load more orders'}
+          </button>
+        </div>
+      )}
+
       {/* JO Queuing Modal */}
       {showJOQueuing && (
         <div className="modal-overlay" onClick={() => setShowJOQueuing(false)}>
@@ -712,15 +775,15 @@ export default function OrdersPage() {
               {/* Priority Legend */}
               <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#f87171' }}></div>
+                  <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'var(--red)' }}></div>
                   <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>Delayed</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#f97316' }}></div>
+                  <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'var(--orange)' }}></div>
                   <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>Rush Order</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#facc15' }}></div>
+                  <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'var(--gold)' }}></div>
                   <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>Near Deadline</span>
                 </div>
               </div>
@@ -769,9 +832,9 @@ export default function OrdersPage() {
                     
                     // Priority colors: Delayed (red) > Rush (orange) > Near Deadline (yellow)
                     const isUrgent = !isDelayed && daysLeft !== null && daysLeft <= 2;
-                    const priorityColor = isDelayed ? '#f87171' : (o.isRush ? '#f97316' : (isUrgent ? '#facc15' : 'transparent'));
-                    const priorityTextColor = isDelayed ? '#f87171' : (o.isRush ? '#f97316' : (isUrgent ? '#facc15' : 'var(--white)'));
-                    const statusColor = o.joStatus === 'In Progress' ? '#6366f1' : '#facc15';
+                    const priorityColor = isDelayed ? 'var(--red)' : (o.isRush ? 'var(--orange)' : (isUrgent ? 'var(--gold)' : 'transparent'));
+                    const priorityTextColor = isDelayed ? 'var(--red)' : (o.isRush ? 'var(--orange)' : (isUrgent ? 'var(--gold)' : 'var(--white)'));
+                    const statusColor = o.joStatus === 'In Progress' ? 'var(--indigo)' : 'var(--gold)';
 
                     return (
                       <div key={o.id} style={{
@@ -801,7 +864,7 @@ export default function OrdersPage() {
                         <div style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>
                             {isDelayed ? (
-                              <span style={{ color: '#f87171', fontWeight: 700 }}>DELAYED</span>
+                              <span style={{ color: 'var(--red)', fontWeight: 700 }}>DELAYED</span>
                             ) : o.isRush ? (
                               'RUSH ORDER'
                             ) : (
@@ -814,7 +877,7 @@ export default function OrdersPage() {
                             </div>
                           )}
                           {daysLeft !== null && (
-                            <div style={{ fontSize: '0.75rem', color: isDelayed ? '#f87171' : (daysLeft <= 2 ? '#f87171' : 'var(--gray)') }}>
+                            <div style={{ fontSize: '0.75rem', color: isDelayed ? 'var(--red)' : (daysLeft <= 2 ? 'var(--red)' : 'var(--gray)') }}>
                               {isDelayed
                                 ? `${daysLate} day${daysLate !== 1 ? 's' : ''} late`
                                 : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`
@@ -833,8 +896,8 @@ export default function OrdersPage() {
                             fontWeight: 600,
                             background: isDelayed 
                               ? 'rgba(248, 113, 113, 0.2)' 
-                              : (statusColor === '#6366f1' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(250, 204, 21, 0.2)'),
-                            color: isDelayed ? '#f87171' : statusColor,
+                              : (statusColor === 'var(--indigo)' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(250, 204, 21, 0.2)'),
+                            color: isDelayed ? 'var(--red)' : statusColor,
                             marginBottom: '0.5rem'
                           }}>
                             {isDelayed ? 'Priority' : (o.joStatus || 'Queued')}
@@ -917,8 +980,8 @@ export default function OrdersPage() {
                     fontWeight: 700,
                     textTransform: 'uppercase',
                     border: '2px solid',
-                    color: selectedJO.isRush ? '#f87171' : '#10b981',
-                    borderColor: selectedJO.isRush ? '#f87171' : '#10b981',
+                    color: selectedJO.isRush ? 'var(--red)' : '#10b981',
+                    borderColor: selectedJO.isRush ? 'var(--red)' : '#10b981',
                     background: selectedJO.isRush ? 'rgba(248, 113, 113, 0.1)' : 'rgba(16, 185, 129, 0.1)'
                   }}>
                     {selectedJO.isRush ? 'RUSH ORDER' : 'STANDARD'}
@@ -942,7 +1005,7 @@ export default function OrdersPage() {
 
               {/* Product Specifications */}
               <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(217, 119, 6, 0.1)', borderRadius: '8px', border: '2px solid rgba(217, 119, 6, 0.3)' }}>
-                <div style={{ fontSize: '0.72rem', color: '#d97706', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 600, borderBottom: '2px solid #d97706', paddingBottom: '0.5rem' }}>Product Specifications (For Production)</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--gold-dark)', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 600, borderBottom: '2px solid var(--gold-dark)', paddingBottom: '0.5rem' }}>Product Specifications (For Production)</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem' }}>
                   <div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Product Name</div>
@@ -958,7 +1021,7 @@ export default function OrdersPage() {
                   </div>
                   <div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Quantity to Produce</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#d97706' }}>{selectedJO.quantity} pcs</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gold-dark)' }}>{selectedJO.quantity} pcs</div>
                   </div>
                 </div>
               </div>
@@ -1016,7 +1079,7 @@ export default function OrdersPage() {
                                   position: 'absolute',
                                   top: '-6px',
                                   right: '-6px',
-                                  background: '#f87171',
+                                  background: 'var(--red)',
                                   border: '2px solid var(--dark)',
                                   borderRadius: '50%',
                                   width: '24px',
@@ -1047,7 +1110,7 @@ export default function OrdersPage() {
                             border: '1px solid rgba(248, 113, 113, 0.4)',
                             borderRadius: '6px',
                             padding: '0.25rem 0.75rem',
-                            color: '#f87171',
+                            color: 'var(--red)',
                             fontSize: '0.75rem',
                             cursor: 'pointer'
                           }}
@@ -1274,8 +1337,8 @@ export default function OrdersPage() {
                           </div>
                         </div>
                         
-                        <div class="section" style="border-color: #d97706;">
-                          <h3 style="color: #d97706; border-color: #d97706;">Product Specifications (For Production)</h3>
+                        <div class="section" style="border-color: var(--gold-dark);">
+                          <h3 style="color: var(--gold-dark); border-color: var(--gold-dark);">Product Specifications (For Production)</h3>
                           <div class="grid-2" style="margin-top: 15px;">
                             <div>
                               <div class="label">Product Name</div>
@@ -1291,7 +1354,7 @@ export default function OrdersPage() {
                             </div>
                             <div>
                               <div class="label">Quantity to Produce</div>
-                              <div class="value-large" style="color: #d97706; font-size: 20px;">${selectedJO.quantity} pcs</div>
+                              <div class="value-large" style="color: var(--gold-dark); font-size: 20px;">${selectedJO.quantity} pcs</div>
                             </div>
                           </div>
                         </div>
@@ -1325,7 +1388,7 @@ export default function OrdersPage() {
         <div className="modal-overlay" onClick={() => { setShowUnpaidWarning(false); setPendingStatusUpdate(null); }}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '90%' }}>
             <div className="modal-header">
-              <h2 className="modal-title" style={{ color: '#facc15' }}>Downpayment Required</h2>
+              <h2 className="modal-title" style={{ color: 'var(--gold)' }}>Downpayment Required</h2>
               <button className="modal-close" onClick={() => { setShowUnpaidWarning(false); setPendingStatusUpdate(null); }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 6L6 18M6 6l12 12"/>
@@ -1445,7 +1508,7 @@ export default function OrdersPage() {
                   setIsSubmitting(true);
                   try {
                     const updatePromises = Array.from(pendingDeliveryOrders).map(async (orderId) => {
-                      const res = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
+                      const res = await fetchWithTimeout(`${API_URL}/api/orders/${orderId}/status`, {
                         method: 'PATCH',
                         headers: {
                           'Content-Type': 'application/json',
@@ -1456,7 +1519,7 @@ export default function OrdersPage() {
                           courierName,
                           trackingNumber: trackingNumber || null,
                         }),
-                      });
+                      }, 15000);
                       if (!res.ok) {
                         const err = await res.json().catch(() => ({}));
                         throw new Error(err.message || err.error || 'Failed to update order');
@@ -1527,7 +1590,7 @@ export default function OrdersPage() {
                   </div>
                   <div>
                     <span style={{ color: 'var(--gray)' }}>Balance </span>
-                    <span style={{ color: '#facc15', fontWeight: 600 }}>₱{(paymentTarget.balance ?? 0).toLocaleString()}</span>
+                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{(paymentTarget.balance ?? 0).toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -1625,7 +1688,7 @@ export default function OrdersPage() {
                   if (isPaymentSubmitting) return;
                   setIsPaymentSubmitting(true);
                   try {
-                    const res = await fetch(`${API_URL}/api/admin/orders/${paymentTarget.id}/record-payment`, {
+                    const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${paymentTarget.id}/record-payment`, {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json',
@@ -1636,7 +1699,7 @@ export default function OrdersPage() {
                         method: paymentMethod,
                         note: paymentNote || null,
                       }),
-                    });
+                    }, 15000);
                     if (!res.ok) {
                       const err = await res.json().catch(() => ({}));
                       setPaymentError(err.error || err.message || 'Failed to record payment.');

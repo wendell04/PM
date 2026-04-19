@@ -23,6 +23,7 @@ export async function fetchSales(filters = {}, token) {
     if (filters.startDate) queryParams.append('startDate', filters.startDate);
     if (filters.endDate) queryParams.append('endDate', filters.endDate);
     if (filters.inventoryId) queryParams.append('inventoryId', filters.inventoryId);
+    if (filters.limit != null) queryParams.append('limit', String(filters.limit));
 
     const url = `${API_URL}/api/admin/sales${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
 

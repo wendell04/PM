@@ -5,17 +5,7 @@
 // Safe to delete once the new Current Stock tab is fully validated.
 
 import CustomDropdown from "@/app/components/CustomDropdown";
-import React, { useEffect, useMemo, useState } from "react";
-
-// ── Storage Helpers ──────────────────────────────────────────────────────────────
-function getStore(key) {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(key) || "[]");
-  } catch {
-    return [];
-  }
-}
+import React, { memo, useEffect, useMemo, useState } from "react";
 
 // ── Shared Styles ──────────────────────────────────────────────────────────────
 const thStyle = {
@@ -47,11 +37,22 @@ function ChevronIcon({ open }) {
   );
 }
 
+function materialKey(m) {
+  if (!m) return "";
+  return String(m.id ?? m._id ?? "");
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ACTUAL STOCK TAB — Simplified User-Friendly View
 // Shows: Total Stock (Goods + Damaged), In Transit/Pending PO, Summary Cards
 // ══════════════════════════════════════════════════════════════════════════════
-export default function ActualStockTab({ materials, onDeleteZeroStock }) {
+function ActualStockTab({
+  materials,
+  badOrders = [],
+  pendingPOs: pendingPOsProp = [],
+  backorders = [],
+  onDeleteZeroStock,
+}) {
   const [expandedMaterial, setExpandedMaterial] = useState(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -60,60 +61,11 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
   const [showCSVPreview, setShowCSVPreview] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-  const [pendingPOs, setPendingPOs] = useState([]);
+  const pendingPOs = pendingPOsProp;
   // Date range filter (default to This Month)
   const [dateRange, setDateRange] = useState("thisMonth");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-
-  // Load bad orders from storage
-  const [badOrders, setBadOrders] = useState([]);
-  const [badOrdersRefreshKey, setBadOrdersRefreshKey] = useState(0);
-
-  // Load bad orders - re-runs when refreshKey changes
-  useEffect(() => {
-    try {
-      const bo = JSON.parse(localStorage.getItem("pmp_bad_orders") || "[]");
-      setBadOrders(bo);
-    } catch {
-      setBadOrders([]);
-    }
-  }, [badOrdersRefreshKey]);
-
-  // Listen for storage changes (when bad orders are saved in same/different tab)
-  useEffect(() => {
-    const handleStorageChange = (e) => {
-      if (e.key === "pmp_bad_orders") {
-        try {
-          const bo = JSON.parse(e.newValue || "[]");
-          setBadOrders(bo);
-        } catch {
-          setBadOrders([]);
-        }
-      }
-    };
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
-
-  // Also poll every 2 seconds to catch same-tab changes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      try {
-        const bo = JSON.parse(localStorage.getItem("pmp_bad_orders") || "[]");
-        setBadOrders((prev) => {
-          // Only update if the data actually changed
-          if (JSON.stringify(prev) !== JSON.stringify(bo)) {
-            return bo;
-          }
-          return prev;
-        });
-      } catch {
-        // ignore
-      }
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Compute date range based on selection
   useEffect(() => {
@@ -164,26 +116,23 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
       // Only count pending bad orders - replaced/credited are resolved
       if (bo.status !== "pending") return;
 
-      if (!map[bo.materialId]) {
-        map[bo.materialId] = {
+      const mid =
+        bo.materialId != null ? String(bo.materialId) : "";
+      if (!mid) return;
+
+      if (!map[mid]) {
+        map[mid] = {
           total: 0,
           byType: {},
         };
       }
-      map[bo.materialId].total += bo.qty || 0;
-      map[bo.materialId].byType[bo.type] =
-        (map[bo.materialId].byType[bo.type] || 0) + (bo.qty || 0);
+      const q = bo.qty || 0;
+      const t = bo.type || "damage";
+      map[mid].total += q;
+      map[mid].byType[t] = (map[mid].byType[t] || 0) + q;
     });
     return map;
   }, [badOrders]);
-
-  // Load pending POs for In Transit calculation
-  useEffect(() => {
-    const allPOs = getStore("pmp_purchase_orders");
-    setPendingPOs(
-      allPOs.filter((p) => p.status === "pending" || p.status === "partial"),
-    );
-  }, []);
 
   // Calculate In Transit per material from pending/partial POs
   const inTransitMap = useMemo(() => {
@@ -356,7 +305,7 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
           parentBadOrderQty = 0;
 
         children.forEach((child) => {
-          const childBadOrder = badOrdersMap[child.id]?.total || 0;
+          const childBadOrder = badOrdersMap[materialKey(child)]?.total || 0;
           parentBadOrderQty += childBadOrder;
           const childBatches = child.batches || [];
 
@@ -435,7 +384,7 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
         // FIX: Total Goods = good stock only (what can be sold)
         totalStock += goodStock;
         // FIX: Total Actual = good stock + bad orders (total physical inventory)
-        const standAloneBO = badOrdersMap[m.id]?.total || 0;
+        const standAloneBO = badOrdersMap[materialKey(m)]?.total || 0;
         totalActualStock += goodStock + standAloneBO;
         totalWaste += damaged;
 
@@ -450,9 +399,8 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
       }
     });
 
-    // Calculate total backorders
-    const backorders = getStore("pmp_backorders");
-    totalBackorders = backorders
+    // Backorders: supplied by parent when an API exists; default none
+    totalBackorders = (backorders || [])
       .filter((bo) => bo.status === "pending")
       .reduce((sum, bo) => sum + (bo.qty || 0), 0);
 
@@ -479,7 +427,7 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
       arrivalDamageValue,
       internalDamageValue,
     };
-  }, [materials, inTransitMap, badOrders]);
+  }, [materials, inTransitMap, badOrders, backorders]);
 
   const categories = [
     ...new Set(
@@ -558,7 +506,7 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
           total: good + damaged,
           unitCost: b.unitCost || 0,
           value: good * (b.unitCost || 0), // FIX: Value only for good stock (exclude damaged)
-          badOrder: badOrdersMap[m.id]?.total || 0,
+          badOrder: badOrdersMap[materialKey(m)]?.total || 0,
         });
       });
     });
@@ -653,7 +601,7 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
 
         // Calculate bad orders from children batches
         children.forEach((child) => {
-          const childBO = badOrdersMap[child.id]?.total || 0;
+          const childBO = badOrdersMap[materialKey(child)]?.total || 0;
           parentBadOrderQty += childBO;
         });
 
@@ -784,7 +732,7 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
         childrenStats,
         badOrderQty: hasChildren
           ? parentBadOrderQty
-          : badOrdersMap[mat.id]?.total || 0,
+          : badOrdersMap[materialKey(mat)]?.total || 0,
       });
     });
 
@@ -1634,7 +1582,8 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
                               return children.reduce((sum, child) => {
                                 const childPendingBO = badOrders.filter(
                                   (bo) =>
-                                    bo.materialId === child.id &&
+                                    String(bo.materialId) ===
+                                      materialKey(child) &&
                                     bo.status === "pending",
                                 );
                                 return (
@@ -1649,7 +1598,7 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
                             // For standalone materials, use direct material ID
                             const pendingBO = badOrders.filter(
                               (bo) =>
-                                bo.materialId === mat.id &&
+                                String(bo.materialId) === materialKey(mat) &&
                                 bo.status === "pending",
                             );
                             return pendingBO.reduce(
@@ -1829,7 +1778,7 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
                                         const childInternalDamaged =
                                           child.internalDamaged;
                                         const childBadOrder =
-                                          badOrdersMap[child.id]?.total || 0;
+                                          badOrdersMap[materialKey(child)]?.total || 0;
                                         const childTotal =
                                           childGood + childBadOrder;
                                         const childCost = child.avgCost;
@@ -1883,14 +1832,14 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
                                                 padding: "0.4rem 0.6rem",
                                                 textAlign: "center",
                                                 color:
-                                                  (badOrdersMap[child.id]
+                                                  (badOrdersMap[materialKey(child)]
                                                     ?.total || 0) > 0
                                                     ? "#f59e0b"
                                                     : "#6b7280",
                                                 fontWeight: 600,
                                               }}
                                             >
-                                              {badOrdersMap[child.id]?.total ||
+                                              {badOrdersMap[materialKey(child)]?.total ||
                                                 0}
                                             </td>
                                             <td
@@ -1947,8 +1896,8 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
                                                 const pendingBO =
                                                   badOrders.filter(
                                                     (bo) =>
-                                                      bo.materialId ===
-                                                        child.id &&
+                                                      String(bo.materialId) ===
+                                                        materialKey(child) &&
                                                       bo.status === "pending",
                                                   );
                                                 return pendingBO.reduce(
@@ -2787,3 +2736,5 @@ export default function ActualStockTab({ materials, onDeleteZeroStock }) {
     </div>
   );
 }
+
+export default memo(ActualStockTab);

@@ -1,7 +1,7 @@
 "use client";
 
 import CustomDropdown from "@/app/components/CustomDropdown";
-import React, { useMemo, useRef, useState } from "react";
+import React, { memo, useMemo, useRef, useState } from "react";
 
 // ── Shared Styles ──────────────────────────────────────────────────────────────
 const thStyle = {
@@ -19,7 +19,7 @@ const thStyle = {
 // INVENTORY REPORTS — Printable Letter Size
 // Reports: Damage Report, Stock-Out Report, Stock Summary
 // ══════════════════════════════════════════════════════════════════════════════
-export default function InventoryReports({ materials, stockOuts }) {
+function InventoryReports({ materials, stockOuts }) {
   const [reportType, setReportType] = useState("damage");
   const [dateFilter, setDateFilter] = useState("all");
   const [customDateFrom, setCustomDateFrom] = useState("");
@@ -957,7 +957,7 @@ export default function InventoryReports({ materials, stockOuts }) {
               <tbody>
                 {stockSummary.items.map((item, idx) => (
                   <tr
-                    key={item._id}
+                    key={String(item.id ?? item._id ?? idx)}
                     style={{
                       background:
                         idx % 2 === 0
@@ -1055,3 +1055,5 @@ export default function InventoryReports({ materials, stockOuts }) {
     </div>
   );
 }
+
+export default memo(InventoryReports);

@@ -13,17 +13,24 @@
 
 import CustomDropdown from "@/app/components/CustomDropdown";
 import { useAuth } from "@/app/context/AuthContext";
+import { fetchBadOrders } from "@/lib/badOrdersApi";
 import {
   adjustInventoryStock,
   deleteInventory,
   fetchAllStockHistory,
   fetchInventory,
 } from "@/lib/inventoryApi";
+import dynamic from "next/dynamic";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import ActualStockTab from "./ActualStockTab";
-import InventoryReports from "./InventoryReports";
 import StockOutHistoryTab from "./StockOutHistoryTab";
-import StockReductionModal from "./StockReductionModal";
+
+const InventoryReports = dynamic(() => import("./InventoryReports"), {
+  ssr: false,
+});
+const StockReductionModal = dynamic(() => import("./StockReductionModal"), {
+  ssr: false,
+});
 
 // ── Issue Type Config ──────────────────────────────────────────────────────────
 const ISSUE_TYPES = {
@@ -98,6 +105,20 @@ const thStyle = {
   textTransform: "uppercase",
   letterSpacing: "0.1em",
 };
+
+function normalizeStockBadOrder(r) {
+  const rawMid = r.materialId ?? r.inventoryId;
+  const materialId = rawMid != null ? String(rawMid) : "";
+  const qty = Number(r.quantity ?? r.qty ?? 0) || 0;
+  return {
+    ...r,
+    materialId,
+    qty,
+    type: r.damageType || r.type || "damage",
+    totalValue: Number(r.totalLoss ?? r.totalValue ?? 0) || 0,
+    status: (r.status || "pending").toLowerCase(),
+  };
+}
 
 // ── Reusable Input Components ──────────────────────────────────────────────────
 function IntInput({
@@ -683,7 +704,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                     (m.stockQty || 0) * (m.baseCost || m.averageCost || 0);
                   return (
                     <tr
-                      key={m._id}
+                      key={String(m.id ?? m._id)}
                       style={{
                         borderBottom: "1px solid rgba(255,255,255,0.04)",
                       }}
@@ -866,7 +887,9 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
 
                 const parent = row.item;
                 const children = row.children || [];
-                const isExpanded = expandedParents.has(parent._id);
+                const isExpanded = expandedParents.has(
+                  String(parent.id ?? parent._id),
+                );
                 const parentStockVal = children.reduce(
                   (s, c) =>
                     s +
@@ -879,7 +902,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                 );
 
                 return (
-                  <React.Fragment key={parent._id}>
+                  <React.Fragment key={String(parent.id ?? parent._id)}>
                     <tr
                       style={{
                         borderBottom: isExpanded
@@ -888,7 +911,9 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                         background: "rgba(212,168,67,0.02)",
                         cursor: "pointer",
                       }}
-                      onClick={() => toggleExpand(parent._id)}
+                      onClick={() =>
+                        toggleExpand(String(parent.id ?? parent._id))
+                      }
                       onMouseEnter={(e) =>
                         (e.currentTarget.style.background =
                           "rgba(212,168,67,0.06)")
@@ -909,7 +934,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              toggleExpand(parent._id);
+                              toggleExpand(String(parent.id ?? parent._id));
                             }}
                             style={{
                               background: "none",
@@ -1085,7 +1110,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                           (child.baseCost || child.averageCost || 0);
                         return (
                           <tr
-                            key={child._id}
+                            key={String(child.id ?? child._id)}
                             style={{
                               borderBottom: "1px solid rgba(255,255,255,0.03)",
                               background: "rgba(0,0,0,0.15)",
@@ -1295,15 +1320,24 @@ export default function StocksPage() {
   const [reductionItems, setReductionItems] = useState([]); // multi-select: array of items
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [badOrders, setBadOrders] = useState([]);
 
   const refresh = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchInventory(token);
+      const [data, badRaw] = await Promise.all([
+        fetchInventory(token),
+        fetchBadOrders(token).catch(() => []),
+      ]);
       setMaterials(data);
-      const ids = data.map((m) => m._id).filter(Boolean);
+      setBadOrders(
+        (Array.isArray(badRaw) ? badRaw : []).map(normalizeStockBadOrder),
+      );
+      const ids = data
+        .map((m) => m.id ?? m._id)
+        .filter(Boolean);
       const history = await fetchAllStockHistory(ids, token);
       setStockOuts(history.filter((h) => h.type === "deduction"));
     } catch (err) {
@@ -1368,7 +1402,7 @@ export default function StocksPage() {
       setReductionItems([]);
       await refresh();
       alert(
-        `✓ Stock updated successfully!\n\n${calls.length} adjustment(s) completed.`,
+        `Stock updated successfully!\n\n${calls.length} adjustment(s) completed.`,
       );
     } catch (err) {
       console.error("Stock reduction failed:", err);
@@ -1475,6 +1509,7 @@ export default function StocksPage() {
       {!loading && !error && activeTab === "actual" && (
         <ActualStockTab
           materials={materials}
+          badOrders={badOrders}
           onDeleteZeroStock={handleDeleteZeroStock}
         />
       )}
@@ -1572,7 +1607,7 @@ export default function StocksPage() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {multiSelectMode ? "✓ Multi-Select ON" : "Select Multiple"}
+                  {multiSelectMode ? "Multi-Select ON" : "Select Multiple"}
                 </button>
                 {/* FIXED: Moved style inside button tag */}
                 <button
@@ -1739,7 +1774,7 @@ export default function StocksPage() {
                   }
                   return (
                     <div
-                      key={m._id}
+                      key={String(m.id ?? m._id)}
                       onClick={() => {
                         if (multiSelectMode) {
                           setSelectedMaterials((prev) =>
