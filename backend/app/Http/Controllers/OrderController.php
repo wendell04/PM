@@ -639,20 +639,15 @@ class OrderController extends Controller
                         'createdAt'       => now(),
                     ]);
 
-                    // 2. Deduct Inventory (only if not Upon Order)
+                    // 2. Deduct Inventory FIFO (only if not Upon Order)
                     if (!$inventory->isOnDemand) {
-                        $inventory->stockQty = max(0, $inventory->stockQty - $item['qty']);
-                        $inventory->save();
-                        // Log to StockHistory
-                        StockHistory::create([
-                            'inventoryId'  => (string) $inventory->_id,
-                            'quantity'     => $item['qty'],
-                            'remainingQty' => $inventory->stockQty,
-                            'unitCost'     => $inventory->averageCost,
-                            'totalCost'    => $cost,
-                            'reason'       => 'sale',
-                            'createdAt'    => now(),
-                        ]);
+                        $this->deductInventoryFIFO(
+                            inventory:    $inventory,
+                            qty:          (int) $item['qty'],
+                            reason:       'sale',
+                            unitPrice:    (float) ($item['unitPrice'] ?? 0),
+                            orderId:      (string) $order->_id,
+                        );
                     }
                 }
 
@@ -686,17 +681,13 @@ class OrderController extends Controller
                                 $rawInventory = Inventory::find($component['inventoryId']);
                                 if (!$rawInventory || $rawInventory->isOnDemand) continue;
                                 $deductQty = $component['qty'] * $item['qty'];
-                                $rawInventory->stockQty = max(0, $rawInventory->stockQty - $deductQty);
-                                $rawInventory->save();
-                                StockHistory::create([
-                                    'inventoryId'  => (string) $rawInventory->_id,
-                                    'quantity'     => $deductQty,
-                                    'remainingQty' => $rawInventory->stockQty,
-                                    'unitCost'     => $rawInventory->averageCost ?? 0,
-                                    'totalCost'    => ($rawInventory->averageCost ?? 0) * $deductQty,
-                                    'reason'       => 'bom_deduction',
-                                    'createdAt'    => now(),
-                                ]);
+                                $this->deductInventoryFIFO(
+                                    inventory:    $rawInventory,
+                                    qty:          (int) $deductQty,
+                                    reason:       'bom_deduction',
+                                    unitPrice:    0.0,
+                                    orderId:      (string) $order->_id,
+                                );
                             }
                         }
                     } catch (\Exception $bomErr) {
@@ -713,6 +704,98 @@ class OrderController extends Controller
             Log::error('OrderController@completeOrder: Failed for order ' . $order->_id, ['error' => $e->getMessage()]);
             // We don't throw exception here to avoid failing the order update,
             // but we log it for manual intervention.
+        }
+    }
+
+    /**
+     * Deduct inventory via FIFO across batches.
+     * Mirrors WalkInOrderController::deductInventoryFIFO but takes a
+     * $reason for the StockHistory record.
+     */
+    private function deductInventoryFIFO(
+        Inventory $inventory,
+        int $qty,
+        string $reason,
+        float $unitPrice = 0.0,
+        ?string $orderId = null,
+    ): void {
+        $qty = max(0, $qty);
+        if ($qty <= 0) return;
+
+        $batches = $inventory->batches ?? [];
+        usort($batches, function ($a, $b) {
+            return strtotime($a['dateReceived'] ?? '0')
+                <=> strtotime($b['dateReceived'] ?? '0');
+        });
+
+        $available = array_reduce($batches, function ($carry, $b) {
+            return $carry + ($b['remainingQty'] ?? $b['goodQty'] ?? 0);
+        }, 0);
+
+        if ($available < $qty) {
+            Log::warning('OrderController@deductInventoryFIFO: insufficient batch stock', [
+                'inventoryId' => (string) $inventory->_id,
+                'requested'   => $qty,
+                'available'   => $available,
+            ]);
+            // Fall back to stockQty only — batches may be unpopulated
+            $inventory->stockQty = max(0, (int) ($inventory->stockQty ?? 0) - $qty);
+            $inventory->updatedAt = now();
+            $inventory->save();
+            StockHistory::create([
+                'inventoryId'  => (string) $inventory->_id,
+                'quantity'     => $qty,
+                'remainingQty' => $inventory->stockQty,
+                'unitCost'     => $inventory->averageCost ?? 0,
+                'totalCost'    => ($inventory->averageCost ?? 0) * $qty,
+                'reason'       => $reason,
+                'type'         => 'deduction',
+                'remarks'      => $orderId ? "Order: {$orderId}" : null,
+                'createdAt'    => now(),
+            ]);
+            return;
+        }
+
+        $remaining = $qty;
+        $batchDeductions = [];
+        foreach ($batches as &$batch) {
+            if ($remaining <= 0) break;
+            $batchQty = $batch['remainingQty'] ?? $batch['goodQty'] ?? 0;
+            if ($batchQty <= 0) continue;
+            $deduct = min($batchQty, $remaining);
+            $batch['remainingQty'] = $batchQty - $deduct;
+            $remaining -= $deduct;
+            $batchDeductions[] = [
+                'batchId'  => $batch['batchId'] ?? null,
+                'qty'      => $deduct,
+                'unitCost' => $batch['unitCost'] ?? 0,
+            ];
+        }
+        unset($batch);
+
+        $newStock = max(0, (int) ($inventory->stockQty ?? 0) - $qty);
+        $inventory->batches   = $batches;
+        $inventory->stockQty  = $newStock;
+        $inventory->updatedAt = now();
+        $inventory->save();
+
+        $runningRemaining = $newStock + $qty;
+        foreach ($batchDeductions as $bd) {
+            $runningRemaining -= $bd['qty'];
+            StockHistory::create([
+                'inventoryId'  => (string) $inventory->_id,
+                'quantity'     => $bd['qty'],
+                'remainingQty' => $runningRemaining,
+                'unitCost'     => $bd['unitCost'],
+                'totalCost'    => $bd['qty'] * $bd['unitCost'],
+                'reason'       => $reason,
+                'type'         => 'deduction',
+                'batchId'      => $bd['batchId'],
+                'sellingPrice' => $unitPrice,
+                'remarks'      => $orderId ? "Order: {$orderId}" : null,
+                'performedBy'  => 'system',
+                'createdAt'    => now(),
+            ]);
         }
     }
 
@@ -1102,10 +1185,25 @@ class OrderController extends Controller
                 return $this->notFoundResponse('Order');
             }
 
-            if (in_array($order->orderStatus, ['Delivered', 'Cancelled', 'Returned'])) {
+            if (in_array($order->orderStatus, ['Cancelled', 'Returned'])) {
                 return response()->json([
                     'error' => "Cannot record payment for an order with status: {$order->orderStatus}.",
                 ], 422);
+            }
+
+            // Allow payment recording on Delivered orders only if:
+            // - payment method is COD (courier collects after delivery), AND
+            // - order is not already fully paid
+            if ($order->orderStatus === 'Delivered') {
+                $isCod       = ($order->paymentMethod ?? '') === 'cod';
+                $isFullyPaid = ($order->paymentStatus ?? '') === 'paid';
+                if (!$isCod || $isFullyPaid) {
+                    return response()->json([
+                        'error' => $isFullyPaid
+                            ? 'This order has already been fully paid.'
+                            : 'Cannot record payment for a delivered non-COD order.',
+                    ], 422);
+                }
             }
 
             $validated = $request->validate([

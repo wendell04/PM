@@ -606,6 +606,62 @@ export default function OrdersHistoryPage() {
                           }
                         </div>
                       ))}
+                      {selectedOrder.designStatus && (
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '0.625rem 0',
+                          borderBottom: '1px solid var(--border)',
+                        }}>
+                          <span style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>
+                            Design Status
+                          </span>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '0.2rem 0.6rem',
+                            borderRadius: '20px',
+                            fontSize: '0.7rem',
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.06em',
+                            background: selectedOrder.designStatus === 'approved'
+                              ? 'rgba(74,222,128,0.12)'
+                              : selectedOrder.designStatus === 'rejected'
+                                ? 'rgba(239,68,68,0.12)'
+                                : 'rgba(234,179,8,0.12)',
+                            color: selectedOrder.designStatus === 'approved'
+                              ? 'var(--green)'
+                              : selectedOrder.designStatus === 'rejected'
+                                ? 'var(--red)'
+                                : 'var(--gold)',
+                          }}>
+                            {selectedOrder.designStatus === 'pending_review'
+                              ? 'Under Review'
+                              : selectedOrder.designStatus === 'approved'
+                                ? 'Approved'
+                                : selectedOrder.designStatus === 'rejected'
+                                  ? 'Rejected'
+                                  : selectedOrder.designStatus}
+                          </span>
+                        </div>
+                      )}
+
+                      {selectedOrder.designStatus === 'rejected' && selectedOrder.designRejectionReason && (
+                        <div style={{
+                          padding: '0.625rem 0.75rem',
+                          background: 'rgba(239,68,68,0.06)',
+                          border: '1px solid rgba(239,68,68,0.2)',
+                          borderRadius: '8px',
+                          fontSize: '0.8rem',
+                          color: 'var(--gray)',
+                          marginTop: '0.5rem',
+                        }}>
+                          <strong style={{ color: 'var(--red)' }}>Rejection reason: </strong>
+                          {selectedOrder.designRejectionReason}
+                        </div>
+                      )}
                     </div>
                   </div>
 

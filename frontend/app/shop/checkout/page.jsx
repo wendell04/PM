@@ -244,7 +244,7 @@ export default function CheckoutPage() {
         const orderId = (data.data?._id ?? data.data?.id ?? data._id ?? data.id);
         if (!orderId) throw new Error('Order created but no ID returned. Please check your orders.');
         sessionStorage.removeItem('checkout_payload');
-        window.location.href = `/shop/payment-success?id=${orderId}&method=cod`;
+        router.push(`/shop/payment-success?id=${orderId}&method=cod`);
 
       } else {
         // Online payment path — POST to PaymentController::createLink

@@ -116,7 +116,24 @@ class SaleController extends Controller
                 if ($inventory->stockQty < $validated['quantity']) {
                     throw new \Exception("Insufficient stock for '{$inventory->name}'. Available: {$inventory->stockQty}");
                 }
-                $inventory->stockQty -= $validated['quantity'];
+                // FIFO batch deduction inline (SaleController has no shared helper)
+                $qty     = (int) $validated['quantity'];
+                $batches = $inventory->batches ?? [];
+                usort($batches, fn($a, $b) =>
+                    strtotime($a['dateReceived'] ?? '0') <=>
+                    strtotime($b['dateReceived'] ?? '0'));
+                $rem = $qty;
+                foreach ($batches as &$batch) {
+                    if ($rem <= 0) break;
+                    $bq = $batch['remainingQty'] ?? $batch['goodQty'] ?? 0;
+                    if ($bq <= 0) continue;
+                    $d = min($bq, $rem);
+                    $batch['remainingQty'] = $bq - $d;
+                    $rem -= $d;
+                }
+                unset($batch);
+                $inventory->batches  = $batches;
+                $inventory->stockQty = max(0, $inventory->stockQty - $qty);
                 $inventory->save();
             }
 

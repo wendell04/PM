@@ -5,7 +5,10 @@ import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchProducts } from '@/lib/productApi';
 import { submitWalkInOrder } from '@/lib/posApi';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import ErrorBoundary from '@/components/ErrorBoundary';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 // ── Price resolver (mirrors backend resolvePrice) ────────────────────────────
 function resolvePrice(product, qty = 1, variantId = null) {
@@ -159,6 +162,19 @@ export default function PosPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [receipt, setReceipt] = useState(null);
+
+  const [posMode, setPosMode] = useState('walkin');
+  // COD Collection mode state
+  const [codOrderId, setCodOrderId]             = useState('');
+  const [codOrder, setCodOrder]                 = useState(null);
+  const [codLookupLoading, setCodLookupLoading] = useState(false);
+  const [codLookupError, setCodLookupError]     = useState('');
+  const [codPaymentAmount, setCodPaymentAmount] = useState('');
+  const [codPaymentMethod, setCodPaymentMethod] = useState('cash');
+  const [codPaymentNote, setCodPaymentNote]     = useState('');
+  const [codSubmitting, setCodSubmitting]       = useState(false);
+  const [codSuccess, setCodSuccess]             = useState(null);
+  const [codError, setCodError]                 = useState('');
 
   const loadProducts = useCallback(async () => {
     if (!token) return;
@@ -328,6 +344,92 @@ export default function PosPage() {
     }
   }
 
+  const lookupCodOrder = useCallback(async () => {
+    if (!codOrderId.trim()) return;
+    setCodLookupLoading(true);
+    setCodLookupError('');
+    setCodOrder(null);
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/admin/orders/${codOrderId.trim()}`,
+        { headers: { Authorization: `Bearer ${token}`,
+          'ngrok-skip-browser-warning': '1' } },
+        10000
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setCodLookupError(data.message || data.error || 'Order not found.');
+        return;
+      }
+      const order = data.data ?? data;
+      if (order.paymentMethod !== 'cod') {
+        setCodLookupError('This order is not a COD order.');
+        return;
+      }
+      if (order.paymentStatus === 'paid') {
+        setCodLookupError('This order has already been fully paid.');
+        return;
+      }
+      setCodOrder(order);
+      const balance = (order.balance ?? order.totalAmount ?? 0);
+      setCodPaymentAmount(String(Number(balance).toFixed(2)));
+    } catch (err) {
+      setCodLookupError(err.message || 'Failed to lookup order.');
+    } finally {
+      setCodLookupLoading(false);
+    }
+  }, [codOrderId, token]);
+
+  const submitCodPayment = useCallback(async () => {
+    if (!codOrder || !codPaymentAmount) return;
+    const amt = parseFloat(codPaymentAmount);
+    if (isNaN(amt) || amt <= 0) {
+      setCodError('Enter a valid amount.');
+      return;
+    }
+    setCodSubmitting(true);
+    setCodError('');
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/admin/orders/${codOrder._id ?? codOrder.id}/record-payment`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            'ngrok-skip-browser-warning': '1',
+          },
+          body: JSON.stringify({
+            amount: amt,
+            method: codPaymentMethod,
+            note: codPaymentNote || 'COD payment collected by courier',
+          }),
+        },
+        10000
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setCodError(data.error || data.message || 'Failed to record payment.');
+        return;
+      }
+      setCodSuccess({
+        orderId: codOrder._id ?? codOrder.id,
+        amount: amt,
+        customerName: data.order?.userSnapshot?.name
+          ?? codOrder.userSnapshot?.name
+          ?? 'Customer',
+      });
+      setCodOrderId('');
+      setCodOrder(null);
+      setCodPaymentAmount('');
+      setCodPaymentNote('');
+    } catch (err) {
+      setCodError(err.message || 'Network error.');
+    } finally {
+      setCodSubmitting(false);
+    }
+  }, [codOrder, codPaymentAmount, codPaymentMethod, codPaymentNote, token]);
+
   if (receipt) {
     return (
       <div style={{ padding: '2rem', maxWidth: '500px', margin: '4rem auto', textAlign: 'center' }}>
@@ -365,15 +467,53 @@ export default function PosPage() {
 
   return (
     <ErrorBoundary>
-    <div style={{ padding: '1.5rem', maxWidth: '1300px', margin: '0 auto' }}>
+    <div style={{ padding: '2rem 1.5rem', maxWidth: '900px', margin: '0 auto' }}>
+
+      {/* Page header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 className="page-title">Point of Sale</h1>
-        <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--gray)' }}>
-          Record in-person sales and update inventory instantly
+        <p style={{ color: 'var(--gray)', fontSize: '0.875rem', margin: '0.25rem 0 1rem' }}>
+          Walk-in counter sales and COD payment collection
           {currentUser?.name ? ` | ${currentUser.name}` : ''}
         </p>
+
+        {/* Mode toggle */}
+        <div style={{ display: 'inline-flex', borderRadius: '10px',
+          border: '1px solid var(--border)', overflow: 'hidden',
+          background: 'var(--dark)' }}>
+          {[
+            { key: 'walkin', label: 'Walk-in Sale' },
+            { key: 'cod',    label: 'COD Collection' },
+          ].map(m => (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => {
+                setPosMode(m.key);
+                setCodSuccess(null);
+                setCodError('');
+                setCodLookupError('');
+              }}
+              style={{
+                padding: '0.5rem 1.25rem',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+                background: posMode === m.key ? 'var(--gold)' : 'transparent',
+                color: posMode === m.key ? 'var(--black)' : 'var(--gray)',
+                transition: 'all 0.15s',
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {/* Walk-in Sale mode */}
+      {posMode === 'walkin' && (
+        <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '1.5rem', alignItems: 'start' }}>
 
         <div>
@@ -666,6 +806,202 @@ export default function PosPage() {
           </div>
         </div>
       )}
+        </>
+      )}
+
+      {/* COD Collection mode */}
+      {posMode === 'cod' && (
+        <div style={{ display: 'flex', flexDirection: 'column',
+          gap: '1rem', maxWidth: '520px' }}>
+
+          {codSuccess ? (
+            <div style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
+              <IconSuccess />
+              <h2 style={{ margin: '1rem 0 0.5rem', color: 'var(--white)',
+                fontSize: '1.125rem' }}>
+                Payment Recorded
+              </h2>
+              <p style={{ color: 'var(--gray)', fontSize: '0.875rem',
+                margin: '0 0 1.5rem' }}>
+                ₱{Number(codSuccess.amount).toLocaleString('en-PH',
+                  { minimumFractionDigits: 2 })} collected from{' '}
+                {codSuccess.customerName} for order{' '}
+                #{String(codSuccess.orderId).slice(-8).toUpperCase()}
+              </p>
+              <button
+                type="button"
+                onClick={() => { setCodSuccess(null); }}
+                style={{ ...btnGold }}
+              >
+                Record Another
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Step 1 — Order lookup */}
+              <div style={{ ...cardStyle, padding: '1.25rem' }}>
+                <h3 style={{ margin: '0 0 1rem', fontSize: '0.9375rem',
+                  fontWeight: 700, color: 'var(--white)' }}>
+                  Step 1 — Find Order
+                </h3>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    type="text"
+                    value={codOrderId}
+                    onChange={e => {
+                      setCodOrderId(e.target.value);
+                      setCodOrder(null);
+                      setCodLookupError('');
+                    }}
+                    placeholder="Paste order ID (MongoDB _id)"
+                    style={{ ...inputStyle, flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={lookupCodOrder}
+                    disabled={codLookupLoading || !codOrderId.trim()}
+                    style={{
+                      ...btnGold,
+                      opacity: codLookupLoading || !codOrderId.trim() ? 0.6 : 1,
+                      cursor: codLookupLoading || !codOrderId.trim()
+                        ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {codLookupLoading ? 'Looking up…' : 'Look up'}
+                  </button>
+                </div>
+                {codLookupError && (
+                  <p style={{ margin: '0.5rem 0 0', fontSize: '0.8rem',
+                    color: 'var(--red)' }}>
+                    {codLookupError}
+                  </p>
+                )}
+                {codOrder && (
+                  <div style={{ marginTop: '0.75rem', padding: '0.75rem',
+                    background: 'rgba(212,168,67,0.06)',
+                    border: '1px solid rgba(212,168,67,0.2)',
+                    borderRadius: '8px', fontSize: '0.875rem' }}>
+                    <div style={{ fontWeight: 700, color: 'var(--white)',
+                      marginBottom: '0.25rem' }}>
+                      Order #{String(codOrder._id ?? codOrder.id)
+                        .slice(-8).toUpperCase()}
+                    </div>
+                    <div style={{ color: 'var(--gray)' }}>
+                      Customer: {codOrder.userSnapshot?.name ?? '—'}
+                    </div>
+                    <div style={{ color: 'var(--gray)' }}>
+                      Total: ₱{Number(codOrder.totalAmount ?? 0)
+                        .toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </div>
+                    <div style={{ color: 'var(--gray)' }}>
+                      Paid so far: ₱{Number(codOrder.downPayment ?? 0)
+                        .toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </div>
+                    <div style={{ fontWeight: 700,
+                      color: 'var(--gold)', marginTop: '0.25rem' }}>
+                      Balance due: ₱{Number(
+                        codOrder.balance ?? codOrder.totalAmount ?? 0)
+                        .toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Step 2 — Record payment (only shown after lookup) */}
+              {codOrder && (
+                <div style={{ ...cardStyle, padding: '1.25rem' }}>
+                  <h3 style={{ margin: '0 0 1rem',
+                    fontSize: '0.9375rem', fontWeight: 700,
+                    color: 'var(--white)' }}>
+                    Step 2 — Record Payment
+                  </h3>
+
+                  <label style={{ display: 'block', fontSize: '0.75rem',
+                    color: 'var(--gray)', marginBottom: '0.375rem',
+                    fontWeight: 500 }}>
+                    Amount Collected (₱)
+                  </label>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={codPaymentAmount}
+                    onChange={e => setCodPaymentAmount(e.target.value)}
+                    style={{ ...inputStyle, marginBottom: '0.75rem' }}
+                  />
+
+                  <label style={{ display: 'block', fontSize: '0.75rem',
+                    color: 'var(--gray)', marginBottom: '0.375rem',
+                    fontWeight: 500 }}>
+                    Payment Method
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.5rem',
+                    marginBottom: '0.75rem' }}>
+                    {['cash', 'gcash', 'bank_transfer'].map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setCodPaymentMethod(m)}
+                        style={{
+                          ...btnGhost,
+                          flex: 1,
+                          background: codPaymentMethod === m
+                            ? 'rgba(212,168,67,0.15)' : undefined,
+                          borderColor: codPaymentMethod === m
+                            ? 'var(--gold)' : undefined,
+                          color: codPaymentMethod === m
+                            ? 'var(--gold)' : undefined,
+                        }}
+                      >
+                        {m === 'bank_transfer' ? 'Bank' :
+                          m.charAt(0).toUpperCase() + m.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <label style={{ display: 'block', fontSize: '0.75rem',
+                    color: 'var(--gray)', marginBottom: '0.375rem',
+                    fontWeight: 500 }}>
+                    Note (optional)
+                  </label>
+                  <textarea
+                    value={codPaymentNote}
+                    onChange={e => setCodPaymentNote(e.target.value)}
+                    placeholder="e.g. Collected by courier — JRS Express"
+                    rows={2}
+                    style={{ ...inputStyle, marginBottom: '0.75rem',
+                      resize: 'vertical' }}
+                  />
+
+                  {codError && (
+                    <p style={{ margin: '0 0 0.75rem',
+                      fontSize: '0.8rem', color: 'var(--red)' }}>
+                      {codError}
+                    </p>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={submitCodPayment}
+                    disabled={codSubmitting ||
+                      !codPaymentAmount || parseFloat(codPaymentAmount) <= 0}
+                    style={{
+                      ...btnGold,
+                      width: '100%',
+                      opacity: codSubmitting ? 0.7 : 1,
+                      cursor: codSubmitting ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {codSubmitting ? 'Recording…' : 'Confirm Payment'}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
     </div>
     </ErrorBoundary>
   );
