@@ -417,13 +417,7 @@ export default function OrdersPage() {
                   }));
                 } catch (error) {
                   console.error('Failed to update order status:', error);
-                  // Fallback: update local state optimistically
-                  setOrders(prev => prev.map(ord => {
-                    if (selectedOrders.has(ord.id)) {
-                      return { ...ord, orderStatus: newStatus };
-                    }
-                    return ord;
-                  }));
+                  setLoadError(error.message || 'Failed to update order status. Please try again.');
                 } finally {
                   setIsSubmitting(false);
                 }
@@ -918,8 +912,13 @@ export default function OrdersPage() {
                             {!isDelayed && o.joStatus !== 'In Progress' && (
                               <button
                                 className="btn-sm btn-primary"
-                                onClick={() => {
-                                  // Start production - update JO status to In Progress
+                                onClick={async () => {
+                                  if (!o.joId) return;
+                                  try {
+                                    await updateJobOrderStatus(o.joId, 'In Progress', token);
+                                  } catch (err) {
+                                    console.error('Failed to start job order:', err);
+                                  }
                                   setOrders(prev => prev.map(ord =>
                                     ord.id === o.id ? { ...ord, joStatus: 'In Progress' } : ord
                                   ));

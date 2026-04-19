@@ -209,11 +209,29 @@ class OrderRequestController extends Controller
             'status'    => $validated['status'],
             'timestamp' => now()->toJSON(),
             'note'      => $validated['note'] ?? null,
-            'updatedBy' => $user?->name ?? $user?->email ?? 'admin',
+            'updatedBy' => $user ? trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) : 'admin',
         ];
 
         $history = $req->statusHistory ?? [];
         $history[] = $newEntry;
+
+        // Enforce valid status transitions
+        $transitions = [
+            'pending_review' => ['confirmed', 'cancelled'],
+            'confirmed'      => ['processing', 'cancelled'],
+            'processing'     => ['ready', 'cancelled'],
+            'ready'          => ['delivered', 'cancelled'],
+            'delivered'      => [],
+            'cancelled'      => [],
+        ];
+        $currentStatus = $req->status ?? 'pending_review';
+        $allowed = $transitions[$currentStatus] ?? [];
+        if (!in_array($validated['status'], $allowed, true)) {
+            return response()->json([
+                'message' => "Invalid status transition: cannot move from '{$currentStatus}' to '{$validated['status']}'.",
+            ], 422);
+        }
+
         $req->status = $validated['status'];
         $req->statusHistory = $history;
 

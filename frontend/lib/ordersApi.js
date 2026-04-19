@@ -13,67 +13,6 @@ import { fetchWithTimeout } from './fetchWithTimeout';
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Fetch current user's orders (customer view)
- * @returns {Promise<Array>} List of user's orders
- */
-export async function fetchMyOrders(token) {
-  try {
-    if (!token) throw new Error('Unauthorized');
-    const response = await fetchWithTimeout(`${API_URL}/api/orders/my`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-    }, 20000); // 20 second timeout
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('Unauthenticated: Please login to view orders');
-      }
-      throw new Error(`Failed to fetch orders: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error fetching my orders:', error);
-    throw error;
-  }
-}
-
-/**
- * Fetch a single order by ID (customer view)
- * @param {string} orderId - MongoDB order ID
- * @returns {Promise<Object>} Order details
- */
-export async function fetchMyOrder(orderId, token) {
-  try {
-    if (!token) throw new Error('Unauthorized');
-    const response = await fetchWithTimeout(`${API_URL}/api/orders/my/${orderId}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-    }, 20000); // 20 second timeout
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        throw new Error('Order not found');
-      }
-      throw new Error(`Failed to fetch order: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error fetching order:', error);
-    throw error;
-  }
-}
-
-/**
  * Create a new order (customer places order)
  * @param {Object} orderData - Order data to create
  * @returns {Promise<Object>} Created order
@@ -178,7 +117,7 @@ function normalizeOrder(apiOrder) {
     totalPrice: apiOrder.total || apiOrder.totalAmount || apiOrder.totalPrice || 0,
     downPayment: apiOrder.down_payment || apiOrder.downPayment || 0,
     balance: apiOrder.balance || 0,
-    orderStatus: apiOrder.order_status || apiOrder.orderStatus || apiOrder.status || 'Pending',
+    orderStatus: apiOrder.orderStatus || apiOrder.status || 'Pending',
     paymentStatus: apiOrder.payment_status || apiOrder.paymentStatus || 'unpaid',
     paymentMethod: apiOrder.payment_method || apiOrder.paymentMethod || '',
     shippingAddress: apiOrder.shipping_address || apiOrder.shippingAddress || {},
@@ -290,7 +229,7 @@ export async function updateOrderStatusNew(orderId, status, token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ order_status: status }),
+      body: JSON.stringify({ orderStatus: status }),
     }, 15000);
 
     if (!response.ok) {

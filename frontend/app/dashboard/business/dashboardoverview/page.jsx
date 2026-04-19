@@ -34,7 +34,7 @@ export default function DashboardOverviewPage() {
         'ngrok-skip-browser-warning': 'true',
       };
 
-      const [statsRes, salesRes, inventoryRes, ordersRes, bannersRes, returnsRes, topProductsRes, movementsRes] = await Promise.all([
+      const settled = await Promise.allSettled([
         fetchWithTimeout(`${API_URL}/api/admin/orders/stats`,              { headers }, 30000),
         fetchWithTimeout(`${API_URL}/api/admin/sales/summary`,             { headers }, 30000),
         fetchWithTimeout(`${API_URL}/api/admin/inventory`,                  { headers }, 30000),
@@ -45,6 +45,13 @@ export default function DashboardOverviewPage() {
         fetchWithTimeout(`${API_URL}/api/admin/inventory/recent-movements`, { headers }, 30000),
       ]);
 
+      const safeJson = async (result) => {
+        if (result.status !== 'fulfilled') return null;
+        const res = result.value;
+        if (!res || !res.ok) return null;
+        return res.json().catch(() => null);
+      };
+
       const [
         statsJson,
         salesJson,
@@ -54,16 +61,7 @@ export default function DashboardOverviewPage() {
         returnsJson,
         topProductsJson,
         movementsJson,
-      ] = await Promise.all([
-        statsRes.ok ? statsRes.json() : Promise.resolve(null),
-        salesRes.ok ? salesRes.json() : Promise.resolve(null),
-        inventoryRes.ok ? inventoryRes.json() : Promise.resolve(null),
-        ordersRes.ok ? ordersRes.json() : Promise.resolve(null),
-        bannersRes.ok ? bannersRes.json() : Promise.resolve(null),
-        returnsRes.ok ? returnsRes.json() : Promise.resolve(null),
-        topProductsRes.ok ? topProductsRes.json() : Promise.resolve(null),
-        movementsRes.ok ? movementsRes.json() : Promise.resolve(null),
-      ]);
+      ] = await Promise.all(settled.map(safeJson));
 
       const inventory = inventoryJson?.data ?? inventoryJson ?? [];
       const orders    = ordersJson?.data?.orders ?? ordersJson?.data ?? ordersJson?.orders ?? [];
