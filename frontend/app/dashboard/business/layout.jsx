@@ -9,7 +9,6 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/lib/notificationApi";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -675,13 +674,12 @@ export default function BusinessDashboardLayout({ children }) {
           <div className="sidebar-header">
             <div className="sidebar-logo">
               <div className="sidebar-logo-icon" aria-hidden="true">
-                <Image
+                <img
                   src="/logos/NEW logo no BG.png"
                   alt="PersonalizeMe Prints"
-                  fill
-                  sizes="36px"
-                  style={{ objectFit: "contain" }}
-                  priority
+                  width={36}
+                  height={36}
+                  style={{ objectFit: "contain", width: "36px", height: "36px", display: "block" }}
                 />
               </div>
               <div className="sidebar-logo-text">
@@ -689,13 +687,12 @@ export default function BusinessDashboardLayout({ children }) {
                 <span className="sidebar-brand-muted">Prints</span>
               </div>
               <div className="sidebar-logo-monogram" aria-hidden="true">
-                <Image
+                <img
                   src="/logos/NEW logo no BG.png"
                   alt="PersonalizeMe Prints"
-                  fill
-                  sizes="36px"
-                  style={{ objectFit: "contain" }}
-                  priority
+                  width={36}
+                  height={36}
+                  style={{ objectFit: "contain", width: "36px", height: "36px", display: "block" }}
                 />
               </div>
             </div>
