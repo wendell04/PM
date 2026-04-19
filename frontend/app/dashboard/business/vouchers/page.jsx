@@ -9,6 +9,7 @@ import {
   deleteVoucher,
   toggleVoucher,
 } from '@/lib/voucherApi';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const EMPTY_FORM = {
   code: '',
@@ -186,6 +187,7 @@ export default function VouchersPage() {
   }
 
   return (
+    <ErrorBoundary>
     <div style={{ padding: '2rem', maxWidth: '1100px', margin: '0 auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
@@ -390,6 +392,7 @@ export default function VouchersPage() {
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }
 

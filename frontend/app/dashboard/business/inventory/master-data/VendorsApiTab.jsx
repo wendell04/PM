@@ -161,7 +161,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSubmit, onCancel, isSubmitting, 
           Optional list of product lines this vendor supplies (name + unit).
         </p>
         {(form.itemsSupplied || []).map((row, idx) => (
-          <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 36px', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+          <div key={`${idx}-${row.name}`} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 36px', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
             <input
               type="text"
               value={row.name || ''}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardOverview from './DashboardOverview';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -125,18 +126,20 @@ export default function DashboardOverviewPage() {
   }
 
   return (
-    <div className="page-content-wrapper">
-      <DashboardOverview
-        orderStats={data.orderStats}
-        salesSummary={data.salesSummary}
-        inventory={data.inventory}
-        recentOrders={data.recentOrders}
-        activeBanners={data.activeBanners}
-        pendingReturns={data.pendingReturns}
-        topProducts={data.topProducts}
-        recentMovements={data.recentMovements}
-        onRefresh={fetchDashboard}
-      />
-    </div>
+    <ErrorBoundary>
+      <div className="page-content-wrapper">
+        <DashboardOverview
+          orderStats={data.orderStats}
+          salesSummary={data.salesSummary}
+          inventory={data.inventory}
+          recentOrders={data.recentOrders}
+          activeBanners={data.activeBanners}
+          pendingReturns={data.pendingReturns}
+          topProducts={data.topProducts}
+          recentMovements={data.recentMovements}
+          onRefresh={fetchDashboard}
+        />
+      </div>
+    </ErrorBoundary>
   );
 }

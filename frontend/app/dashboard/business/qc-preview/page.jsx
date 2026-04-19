@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const MOCK_QC_JOBS = [
   {
@@ -146,6 +147,7 @@ export default function QCPreviewPage() {
   }
 
   return (
+    <ErrorBoundary>
     <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
       {/* Page Header */}
       <div style={{ marginBottom: '1.5rem' }}>
@@ -375,5 +377,6 @@ export default function QCPreviewPage() {
         </>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

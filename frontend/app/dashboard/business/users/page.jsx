@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -328,6 +329,7 @@ export default function UserManagementPage() {
   const fieldGap = { marginBottom: '16px' };
 
   return (
+    <ErrorBoundary>
     <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1rem' }}>
       <style>{`
         @keyframes usersSkelPulse {
@@ -746,5 +748,6 @@ export default function UserManagementPage() {
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

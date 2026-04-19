@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const MOCK_JOBS = [
   {
@@ -170,6 +171,7 @@ export default function ProductionPreviewPage() {
   }
 
   return (
+    <ErrorBoundary>
     <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
       {/* Page Header */}
       <div style={{ marginBottom: '1.5rem' }}>
@@ -381,5 +383,6 @@ export default function ProductionPreviewPage() {
         </>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

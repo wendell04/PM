@@ -6,6 +6,7 @@ import {
   fetchOrderRequests,
   updateOrderRequestStatus,
 } from '@/lib/orderRequestApi';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const STATUS_LABELS = {
   pending_review: 'Pending Review',
@@ -290,6 +291,7 @@ export default function OrderRequestsPage() {
   }
 
   return (
+    <ErrorBoundary>
     <div style={{ padding: '2rem' }}>
       {/* Page Header */}
       <div style={{ marginBottom: '2rem' }}>
@@ -862,5 +864,6 @@ export default function OrderRequestsPage() {
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

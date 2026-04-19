@@ -7,6 +7,7 @@ import {
   fetchBadOrderStats,
   updateBadOrderStatus,
 } from '@/lib/badOrdersApi';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const card = {
   background: 'rgba(255,255,255,0.03)',
@@ -188,6 +189,7 @@ export default function BadOrdersPage() {
   }
 
   return (
+    <ErrorBoundary>
     <div style={{ padding: '1.5rem', maxWidth: '1280px', margin: '0 auto' }}>
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 className="page-title">Bad Orders</h1>
@@ -429,5 +431,6 @@ export default function BadOrdersPage() {
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

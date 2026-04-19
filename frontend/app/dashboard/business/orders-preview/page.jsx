@@ -27,6 +27,7 @@ import {
 } from '@/lib/ordersApi';
 import { OrderStatusBadge, JOStatusBadge, PaymentBadge } from './components/StatusBadges';
 import OrderTimeline from './components/OrderTimeline';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const DesignViewer = dynamic(() => import('./components/DesignViewer'), { ssr: false });
 const PaymentTracker = dynamic(() => import('./components/PaymentTracker'), { ssr: false });
@@ -362,6 +363,7 @@ export default function OrdersPreviewPage() {
   };
 
   return (
+    <ErrorBoundary>
     <div style={{ padding: '1.5rem', maxWidth: '1400px', margin: '0 auto' }}>
       {/* Page Header */}
       <div style={{ marginBottom: '1.5rem' }}>
@@ -757,5 +759,6 @@ export default function OrdersPreviewPage() {
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

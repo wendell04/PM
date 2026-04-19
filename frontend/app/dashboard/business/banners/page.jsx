@@ -16,6 +16,7 @@ import {
   publishBanner as apiPublishBanner,
   unpublishBanner as apiUnpublishBanner,
 } from '@/lib/bannerUtils';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 // UX limit — keeps carousel manageable regardless of storage backend
 // Safe to keep even after MongoDB migration (enforced at API level too)
@@ -677,6 +678,7 @@ export default function BannerManagementPage() {
   }
 
   return (
+    <ErrorBoundary>
     <div className="banner-management-container">
       <style jsx>{`
         .banner-management-container { padding: 2rem; max-width: 1400px; margin: 0 auto; background: var(--black); min-height: 100vh; }
@@ -1134,5 +1136,6 @@ export default function BannerManagementPage() {
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

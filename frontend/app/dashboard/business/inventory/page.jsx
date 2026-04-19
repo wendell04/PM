@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchInventory, fetchRecentMovements } from '@/lib/inventoryApi';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 function formatMoney(n) {
   if (n == null || Number.isNaN(n)) return '—';
@@ -183,6 +184,7 @@ export default function InventoryDashboardPage() {
   ];
 
   return (
+    <ErrorBoundary>
     <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 className="page-title">Inventory</h1>
@@ -314,5 +316,6 @@ export default function InventoryDashboardPage() {
         </>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

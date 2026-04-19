@@ -18,6 +18,7 @@ import { fetchUnits, saveUnit } from "@/lib/unitsApi";
 import VendorsApiTab from "./VendorsApiTab";
 import BOMCardList from "./BOMCardList";
 import BOMFormModal from "./BOMFormModal";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 // ── LocalStorage Keys ──────────────────────────────────────────────────────────
 const CATEGORIES_KEY = "pmp_material_categories";
@@ -4235,7 +4236,7 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
         }
       });
     });
-    return items.sort();
+    return [...items].sort();
   }, [allVendors]);
 
   // Filter suggestions based on current input
@@ -6244,6 +6245,7 @@ export default function MasterDataPage() {
   }
 
   return (
+    <ErrorBoundary>
     <div className="page-content-wrapper">
       <div className="page-header">
         <div className="page-header-content">
@@ -6321,5 +6323,6 @@ export default function MasterDataPage() {
         />
       )}
     </div>
+    </ErrorBoundary>
   );
 }

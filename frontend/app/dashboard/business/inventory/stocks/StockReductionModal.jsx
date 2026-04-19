@@ -542,34 +542,11 @@ export default function StockReductionModal({
 
   // FIFO calc
   const fifoCalc = useMemo(() => {
-    console.log(
-      "[StockReduction] fifoCalc - selectedIds:",
-      selectedIds,
-      "variantQtys:",
-      variantQtys,
-      "variants:",
-      variants,
-    );
     const res = {};
     selectedIds.forEach((id) => {
       const v = variants.find((x) => x.id === id),
         qty = parseInt(variantQtys[id]) || 0;
-      console.log(
-        "[StockReduction] fifoCalc processing id:",
-        id,
-        "variant:",
-        v?.variantName,
-        "qty:",
-        qty,
-      );
-      if (!v || qty <= 0) {
-        console.warn(
-          "[StockReduction] Skipping id:",
-          id,
-          "no variant or qty <= 0",
-        );
-        return;
-      }
+      if (!v || qty <= 0) return;
       const consumption = [];
       let rem = qty;
       for (const b of v.batches) {
@@ -586,14 +563,6 @@ export default function StockReductionModal({
         });
         rem -= take;
       }
-      console.log(
-        "[StockReduction] fifoCalc result for id:",
-        id,
-        "qtyFulfilled:",
-        qty - rem,
-        "unfulfilledQty:",
-        rem,
-      );
       res[id] = {
         variantId: id,
         variantName: v.variantName,
@@ -605,7 +574,6 @@ export default function StockReductionModal({
         consumption,
       };
     });
-    console.log("[StockReduction] fifoCalc final result:", res);
     return res;
   }, [selectedIds, variantQtys, variants]);
 
@@ -659,30 +627,15 @@ export default function StockReductionModal({
       cost = 0,
       revenue = 0;
     const calc = batchMode === "fifo" ? fifoCalc : pickCalc;
-    console.log(
-      "[StockReduction] totals calc - batchMode:",
-      batchMode,
-      "selectedIds:",
-      selectedIds,
-      "fifoCalc:",
-      fifoCalc,
-      "pickCalc:",
-      pickCalc,
-    );
     selectedIds.forEach((id) => {
       const c = calc[id];
-      if (!c) {
-        console.warn("[StockReduction] No calc entry for id:", id);
-        return;
-      }
+      if (!c) return;
       const ful =
         batchMode === "fifo" ? c.qtyFulfilled || 0 : c.qtyAssigned || 0;
-      console.log("[StockReduction] Adding qty for id:", id, "fulfilled:", ful);
       qty += ful;
       cost += c.totalCostValue;
       if (isSale) revenue += ful * (parseFloat(effectivePrices[id]) || 0);
     });
-    console.log("[StockReduction] totals result:", { qty, cost, revenue });
     return { qty, cost, revenue };
   }, [batchMode, fifoCalc, pickCalc, selectedIds, isSale, effectivePrices]);
 

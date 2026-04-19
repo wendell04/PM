@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchProducts } from '@/lib/productApi';
 import { submitWalkInOrder } from '@/lib/posApi';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 // ── Price resolver (mirrors backend resolvePrice) ────────────────────────────
 function resolvePrice(product, qty = 1, variantId = null) {
@@ -363,6 +364,7 @@ export default function PosPage() {
   }
 
   return (
+    <ErrorBoundary>
     <div style={{ padding: '1.5rem', maxWidth: '1300px', margin: '0 auto' }}>
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 className="page-title">Point of Sale</h1>
@@ -665,5 +667,6 @@ export default function PosPage() {
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

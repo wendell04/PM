@@ -24,6 +24,7 @@ import dynamic from "next/dynamic";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import ActualStockTab from "./ActualStockTab";
 import StockOutHistoryTab from "./StockOutHistoryTab";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 const InventoryReports = dynamic(() => import("./InventoryReports"), {
   ssr: false,
@@ -1435,6 +1436,7 @@ export default function StocksPage() {
   });
 
   return (
+    <ErrorBoundary>
     <div className="page-content-wrapper">
       {/* Page Header */}
       <div className="page-header">
@@ -1986,5 +1988,6 @@ export default function StocksPage() {
         />
       )}
     </div>
+    </ErrorBoundary>
   );
 }

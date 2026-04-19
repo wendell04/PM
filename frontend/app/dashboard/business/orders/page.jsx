@@ -783,7 +783,6 @@ export default function OrdersPage() {
               </div>
 
               {/* JO Cards - Sorted by priority (Delayed first, then Rush, then by deadline) */}
-              {/* TODO: MongoDB - Replace with API call: GET /api/job-orders?status=active&sort=priority */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {orders
                   .filter(o => o.downPayment > 0 && o.orderStatus === 'In Production' && o.joStatus !== 'Completed')

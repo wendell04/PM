@@ -12,6 +12,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 // ── Shared Styles ──────────────────────────────────────────────────────────────
 const cardStyle = {
@@ -142,6 +143,7 @@ function ProgressBar({ value, color = "var(--gold)" }) {
 
 // ── Main Dashboard Component ───────────────────────────────────────────────────
 export default function DashboardOverview({ orderStats, salesSummary, inventory = [], recentOrders = [], activeBanners = 0, pendingReturns = 0, topProducts = [], recentMovements = [], onRefresh }) {
+  const router = useRouter();
   const [chartPeriod, setChartPeriod] = useState("daily");
 
   // ── Compute inventory metrics from real API data ─────────────────────────
@@ -487,7 +489,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
         >
           <div
             style={{ ...cardStyle, borderLeft: "3px solid var(--red)", cursor: "pointer" }}
-            onClick={() => (window.location.href = "/dashboard/business/inventory")}
+            onClick={() => router.push("/dashboard/business/inventory")}
           >
             <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--red)" }}>
               {inventoryMetrics.outOfStock}
@@ -508,7 +510,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
           </div>
           <div
             style={{ ...cardStyle, borderLeft: "3px solid var(--color-text-warning)", cursor: "pointer" }}
-            onClick={() => (window.location.href = "/dashboard/business/inventory")}
+            onClick={() => router.push("/dashboard/business/inventory")}
           >
             <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--color-text-warning)" }}>
               {inventoryMetrics.lowStock}
@@ -529,7 +531,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
           </div>
           <div
             style={{ ...cardStyle, borderLeft: "3px solid var(--color-text-warning)", cursor: "pointer" }}
-            onClick={() => (window.location.href = "/dashboard/business/inventory/returns")}
+            onClick={() => router.push("/dashboard/business/inventory/returns")}
           >
             <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--color-text-warning)" }}>
               {pendingReturns}
@@ -550,7 +552,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
           </div>
           <div
             style={{ ...cardStyle, borderLeft: "3px solid var(--color-text-warning)", cursor: "pointer" }}
-            onClick={() => (window.location.href = "/dashboard/business/banners")}
+            onClick={() => router.push("/dashboard/business/banners")}
           >
             <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--color-text-warning)" }}>
               {activeBanners}

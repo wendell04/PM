@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { genDocNumber, thStyle } from "../utils";
 import AddStockModal from "./AddStockModal";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 // ── Shared Input Style ─────────────────────────────────────────────────────────
 const inputStyle = {
@@ -1701,6 +1702,7 @@ export default function StockInPage() {
 
   // ── Main Render ──────────────────────────────────────────────────────────────
   return (
+    <ErrorBoundary>
     <div>
       <style>{`
         @media print {
@@ -3188,5 +3190,6 @@ export default function StockInPage() {
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

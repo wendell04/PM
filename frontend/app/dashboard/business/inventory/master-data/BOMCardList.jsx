@@ -841,7 +841,7 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
             style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
           >
             {componentDetails.map((cd, i) => (
-              <div key={i}>
+              <div key={cd.materialId ?? i}>
                 {/* Main component row */}
                 <div
                   style={{
@@ -932,7 +932,7 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
                   >
                     {cd.batchBreakdown.map((batch, j) => (
                       <div
-                        key={j}
+                        key={batch.batchId ?? j}
                         style={{
                           display: "flex",
                           justifyContent: "space-between",

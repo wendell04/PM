@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -205,6 +206,7 @@ export default function RolePermissionsPage() {
   const cellBorder = '1px solid var(--border)';
 
   return (
+    <ErrorBoundary>
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '2rem 1rem' }}>
       <header style={{ marginBottom: '24px' }}>
         <h1 className="page-title">Permissions</h1>
@@ -407,5 +409,6 @@ export default function RolePermissionsPage() {
         </>
       )}
     </div>
+    </ErrorBoundary>
   );
 }
