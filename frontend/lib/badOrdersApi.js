@@ -14,7 +14,7 @@ export async function fetchBadOrders(token, params = {}) {
   if (params.status) q.set('status', params.status);
   if (params.materialId) q.set('materialId', params.materialId);
   const url = `${API_URL}/api/admin/returns${q.toString() ? `?${q}` : ''}`;
-  const res = await fetchWithTimeout(url, { method: 'GET', headers: authHeaders(token) }, 15000);
+  const res = await fetchWithTimeout(url, { method: 'GET', headers: authHeaders(token) }, 20000);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || 'Failed to load bad orders.');
   const inner = data.data ?? data;
@@ -25,7 +25,7 @@ export async function fetchBadOrderStats(token) {
   const res = await fetchWithTimeout(`${API_URL}/api/admin/returns/stats`, {
     method: 'GET',
     headers: authHeaders(token),
-  }, 15000);
+  }, 20000);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || 'Failed to load stats.');
   return data.data ?? data;
@@ -36,7 +36,7 @@ export async function updateBadOrderStatus(token, id, body) {
     method: 'PUT',
     headers: authHeaders(token),
     body: JSON.stringify(body),
-  }, 15000);
+  }, 20000);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || 'Failed to update status.');
   return data.data ?? data;

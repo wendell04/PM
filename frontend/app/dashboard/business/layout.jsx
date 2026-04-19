@@ -408,9 +408,15 @@ export default function BusinessDashboardLayout({ children }) {
 
   const [expandedItems, setExpandedItems] = useState([]);
 
+  const permsCacheRef = useRef(null);
+
   // Fetch role permissions on mount
   useEffect(() => {
     if (!token) return;
+    if (permsCacheRef.current?.token === token) {
+      setPermissions(permsCacheRef.current.permissions);
+      return;
+    }
     fetch(`${API_URL}/api/my/permissions`, {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -421,6 +427,10 @@ export default function BusinessDashboardLayout({ children }) {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.data?.permissions) {
+          permsCacheRef.current = {
+            token,
+            permissions: data.data.permissions,
+          };
           setPermissions(data.data.permissions);
         }
       })

@@ -8,7 +8,7 @@ export async function fetchMyOrders(token) {
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
     },
-  }, 10000);
+  }, 20000);
   if (res.status === 401) {
     throw new Error('Unauthorized');
   }
@@ -27,7 +27,7 @@ export async function fetchMyOrder(token, id) {
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
     },
-  }, 10000);
+  }, 20000);
   if (res.status === 401) {
     throw new Error('Unauthorized');
   }

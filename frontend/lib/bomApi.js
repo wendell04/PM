@@ -17,7 +17,7 @@ export async function fetchBOMs(token) {
   const res = await fetchWithTimeout(
     `${API_URL}/api/admin/bom`,
     { method: "GET", headers: authHeaders(token) },
-    15000,
+    20000,
   );
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || "Failed to fetch BOMs.");
@@ -31,7 +31,7 @@ export async function fetchBOMsByProduct(productGroupName, token) {
   const res = await fetchWithTimeout(
     `${API_URL}/api/admin/bom/by-product/${encodeURIComponent(productGroupName)}`,
     { method: "GET", headers: authHeaders(token) },
-    15000,
+    20000,
   );
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || "Failed to fetch BOMs by product.");
@@ -73,7 +73,7 @@ export async function deleteBOM(id, token) {
   const res = await fetchWithTimeout(`${API_URL}/api/admin/bom/${id}`, {
     method: "DELETE",
     headers: authHeaders(token),
-  }, 15000);
+  }, 20000);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || "Failed to delete BOM.");
   return true;

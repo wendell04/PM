@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\Inventory;
 use MongoDB\BSON\Regex;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use App\Models\ActivityLog;
 use Illuminate\Support\Facades\Http;
@@ -82,7 +83,10 @@ class ProductController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $products = Product::with('inventory')->orderBy('createdAt', 'desc')->get();
+            $cacheKey = 'admin_products_list';
+            $products = Cache::remember($cacheKey, 120, function () {
+                return Product::with('inventory')->orderBy('createdAt', 'desc')->get();
+            });
             return $this->successResponse('Products fetched successfully.', $products);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching products.');
@@ -231,6 +235,8 @@ class ProductController extends Controller
 
             $product = Product::create($validated);
 
+            Cache::forget('admin_products_list');
+
             return $this->successResponse('Product created successfully.', $product, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
@@ -338,6 +344,8 @@ class ProductController extends Controller
 
             $product->update($validated);
 
+            Cache::forget('admin_products_list');
+
             return $this->successResponse('Product updated successfully.', $product);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
@@ -365,6 +373,8 @@ class ProductController extends Controller
 
             // Soft delete — keep data, just hide from store
             $product->update(['isActive' => false, 'isArchived' => true, 'updatedAt' => now()]);
+
+            Cache::forget('admin_products_list');
 
             return $this->successResponse('Product deactivated successfully.');
         } catch (\Exception $e) {
@@ -418,6 +428,8 @@ class ProductController extends Controller
                     'error' => $logErr->getMessage(),
                 ]);
             }
+
+            Cache::forget('admin_products_list');
 
             return $this->successResponse('Product publish status updated.', [
                 'isPublished' => $product->isPublished

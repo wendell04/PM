@@ -22,7 +22,7 @@ export async function fetchInventory(token) {
         'Authorization': `Bearer ${token}`,
         'Cache-Control': 'max-age=60',
       },
-    }, 10000); // 10 second timeout
+    }, 30000); // 30 second timeout
 
     if (!response.ok) {
       if (response.status === 403) {
@@ -53,7 +53,7 @@ export async function fetchRecentMovements(token) {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-  }, 10000);
+  }, 20000);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch recent movements: ${response.statusText}`);
@@ -79,7 +79,7 @@ export async function fetchInventoryItem(inventoryId, token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       if (response.status === 404) {
@@ -110,7 +110,7 @@ export async function fetchInventoryHistory(inventoryId, token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       throw new Error(`Failed to fetch inventory history: ${response.statusText}`);
@@ -248,7 +248,7 @@ export async function deleteInventory(inventoryId, token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -282,7 +282,7 @@ export async function fetchSuppliers(token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -371,7 +371,7 @@ export async function fetchMasterlist(token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000);
+    }, 20000);
 
     if (!response.ok) {
       if (response.status === 401) throw new Error('Unauthenticated: Please login again');
@@ -434,7 +434,7 @@ export async function deleteSupplier(supplierId, token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

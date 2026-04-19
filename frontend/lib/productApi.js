@@ -21,7 +21,7 @@ export async function fetchProducts(token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       if (response.status === 403) {
@@ -54,7 +54,7 @@ export async function fetchAvailableInventory(token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       throw new Error('Failed to fetch available inventory');
@@ -158,7 +158,7 @@ export async function deleteProduct(productId, token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

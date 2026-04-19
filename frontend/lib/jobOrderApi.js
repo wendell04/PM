@@ -15,7 +15,7 @@ export async function fetchJobOrders(token, filters = {}) {
   const url = `${API_URL}/api/admin/job-orders${params.toString() ? `?${params}` : ''}`;
   const res = await fetchWithTimeout(url, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  }, 10000);
+  }, 20000);
   if (res.status === 401) throw new Error('Unauthorized');
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
@@ -31,7 +31,7 @@ export async function fetchJobOrders(token, filters = {}) {
 export async function fetchJobOrder(token, id) {
   const res = await fetchWithTimeout(`${API_URL}/api/admin/job-orders/${id}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  }, 10000);
+  }, 20000);
   if (res.status === 401) throw new Error('Unauthorized');
   if (res.status === 404) throw new Error('Job order not found');
   if (!res.ok) {
@@ -100,7 +100,7 @@ export async function fetchJobOrderSchedule(token, range = {}) {
   const url = `${API_URL}/api/admin/job-orders/schedule${params.toString() ? `?${params}` : ''}`;
   const res = await fetchWithTimeout(url, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  }, 10000);
+  }, 20000);
   if (res.status === 401) throw new Error('Unauthorized');
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));

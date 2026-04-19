@@ -25,7 +25,7 @@ export async function fetchNotifications(token) {
           'ngrok-skip-browser-warning': 'true',
         },
       },
-      10000
+      15000
     );
     if (!response.ok) {
       throw new Error(`Failed to fetch notifications: ${response.statusText}`);
@@ -54,7 +54,7 @@ export async function fetchUnreadCount(token) {
           'ngrok-skip-browser-warning': 'true',
         },
       },
-      10000
+      15000
     );
     if (!response.ok) {
       throw new Error(`Failed to fetch unread count: ${response.statusText}`);
@@ -84,7 +84,7 @@ export async function markNotificationRead(id, token) {
           'ngrok-skip-browser-warning': 'true',
         },
       },
-      10000
+      15000
     );
     if (!response.ok) {
       throw new Error(`Failed to mark notification read: ${response.statusText}`);
@@ -113,7 +113,7 @@ export async function markAllNotificationsRead(token) {
           'ngrok-skip-browser-warning': 'true',
         },
       },
-      10000
+      15000
     );
     if (!response.ok) {
       throw new Error(`Failed to mark all read: ${response.statusText}`);

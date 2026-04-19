@@ -25,7 +25,7 @@ export async function fetchMyOrders(token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       if (response.status === 401) {
@@ -56,7 +56,7 @@ export async function fetchMyOrder(orderId, token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       if (response.status === 404) {
@@ -226,7 +226,7 @@ export async function fetchAllOrdersNew(token, opts = {}) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000);
+    }, 20000);
 
     if (!response.ok) {
       if (response.status === 403) {
@@ -258,7 +258,7 @@ export async function fetchOrderNew(orderId, token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000);
+    }, 20000);
 
     if (!response.ok) {
       if (response.status === 404) {
@@ -410,7 +410,7 @@ export async function fetchAdminOrders(token) {
         'Authorization': `Bearer ${token}`,
       },
     },
-    10000
+    20000
   );
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

@@ -16,7 +16,7 @@ export async function fetchUnits(token) {
   const res = await fetchWithTimeout(
     `${API_URL}/api/admin/units`,
     { method: "GET", headers: authHeaders(token) },
-    15000,
+    20000,
   );
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || "Failed to fetch units.");
@@ -34,7 +34,7 @@ export async function saveUnit(payload, token) {
       headers: authHeaders(token),
       body: JSON.stringify(payload),
     },
-    15000,
+    20000,
   );
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || "Failed to save unit.");

@@ -674,7 +674,7 @@ input[type="number"] {
 }
 
 .form-section-title {
-  font-family: 'Outfit', sans-serif;
+  font-family: inherit;
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--gold);
@@ -851,7 +851,7 @@ input[type="text"][inputMode="numeric"] {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-family: 'Outfit', sans-serif;
+  font-family: inherit;
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--white);
@@ -1937,7 +1937,7 @@ input[type="text"][inputMode="numeric"] {
   background: var(--gold-dark);
 }
 .preview-modal-header { padding: 1.5rem 1.5rem 1rem; border-bottom: 1px solid var(--border); position: relative; }
-.preview-modal-title { font-family: 'Outfit', sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--white); margin-bottom: 0.25rem; }
+.preview-modal-title { font-family: inherit; font-size: 1.1rem; font-weight: 700; color: var(--white); margin-bottom: 0.25rem; }
 .preview-modal-subtitle { font-size: 0.8rem; color: var(--gray); }
 .preview-close {
   position: absolute; top: 1.25rem; right: 1.25rem;
@@ -2356,7 +2356,7 @@ input[type="text"][inputMode="numeric"] {
 }
 
 .summary-value {
-  font-family: 'Outfit', sans-serif;
+  font-family: inherit;
   font-size: 1.75rem;
   font-weight: 800;
   color: var(--white);
@@ -2519,7 +2519,7 @@ input[type="text"][inputMode="numeric"] {
 }
 
 .empty-title {
-  font-family: 'Outfit', sans-serif;
+  font-family: inherit;
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--white);
@@ -3296,7 +3296,7 @@ input[type="text"][inputMode="numeric"] {
   font-weight: 700;
   color: var(--white);
   margin: 0;
-  font-family: 'Outfit', sans-serif;
+  font-family: inherit;
 }
 
 .profile-modal-header p {

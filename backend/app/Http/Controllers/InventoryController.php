@@ -7,10 +7,21 @@ use App\Models\StockHistory;
 use App\Models\Supplier;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class InventoryController extends Controller
 {
+    private function bustInventoryListCache(): void
+    {
+        $uid = auth()->id();
+        if ($uid === null) {
+            return;
+        }
+        $k = 'inventory_list_ver_'.$uid;
+        Cache::put($k, (int) Cache::get($k, 0) + 1, 86400);
+    }
+
     /**
      * GET /api/inventory
      * Returns all active inventory items
@@ -18,31 +29,40 @@ class InventoryController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = Inventory::where('isActive', true);
+            $ver = (int) Cache::get('inventory_list_ver_'.auth()->id(), 0);
+            $filterSig = md5(json_encode([
+                'category' => $request->query('category'),
+                'search' => $request->query('search'),
+                'status' => $request->query('status'),
+            ]));
+            $cacheKey = 'inventory_list_'.auth()->id().'_'.$ver.'_'.$filterSig;
 
-            if ($request->filled('category')) {
-                $query->where('category', $request->category);
-            }
+            $inventory = Cache::remember($cacheKey, 60, function () use ($request) {
+                $query = Inventory::where('isActive', true);
 
-            if ($request->filled('search')) {
-                $search = $request->search;
-                $query->where(function($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('category', 'like', "%{$search}%");
-                });
-            }
-
-            if ($request->filled('status')) {
-                if ($request->status === 'low-stock') {
-                    $query->whereColumn('stockQty', '<=', 'minStockLevel');
-                } elseif ($request->status === 'out-of-stock') {
-                    $query->where('stockQty', 0);
-                } elseif ($request->status === 'upon-order') {
-                    $query->where('isOnDemand', true);
+                if ($request->filled('category')) {
+                    $query->where('category', $request->category);
                 }
-            }
 
-            $inventory = $query->orderBy('category', 'asc')
+                if ($request->filled('search')) {
+                    $search = $request->search;
+                    $query->where(function($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%")
+                          ->orWhere('category', 'like', "%{$search}%");
+                    });
+                }
+
+                if ($request->filled('status')) {
+                    if ($request->status === 'low-stock') {
+                        $query->whereColumn('stockQty', '<=', 'minStockLevel');
+                    } elseif ($request->status === 'out-of-stock') {
+                        $query->where('stockQty', 0);
+                    } elseif ($request->status === 'upon-order') {
+                        $query->where('isOnDemand', true);
+                    }
+                }
+
+                return $query->orderBy('category', 'asc')
                                ->orderBy('name', 'asc')
                                ->get([
                                    '_id',
@@ -72,6 +92,7 @@ class InventoryController extends Controller
                                    'createdAt',
                                    'updatedAt',
                                ]);
+            });
 
             return $this->successResponse('Inventory fetched successfully.', $inventory);
         } catch (\Exception $e) {
@@ -302,6 +323,8 @@ class InventoryController extends Controller
                 'createdAt'    => now(),
             ]);
 
+            $this->bustInventoryListCache();
+
             return $this->successResponse('Inventory item created successfully.', $inventory, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
@@ -370,6 +393,8 @@ class InventoryController extends Controller
             $inventory->update($validated);
             $inventory->updatedAt = now();
             $inventory->save();
+
+            $this->bustInventoryListCache();
 
             return $this->successResponse('Inventory item updated successfully.', $inventory);
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -550,6 +575,8 @@ class InventoryController extends Controller
                 ]);
             }
 
+            $this->bustInventoryListCache();
+
             return $this->successResponse('Stock adjusted successfully.', $inventory);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
@@ -579,6 +606,8 @@ class InventoryController extends Controller
             $inventory->isActive = false;
             $inventory->deletedAt = now();
             $inventory->save();
+
+            $this->bustInventoryListCache();
 
             return $this->successResponse('Inventory item deactivated successfully.');
         } catch (\Exception $e) {

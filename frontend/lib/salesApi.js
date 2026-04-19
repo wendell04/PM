@@ -33,7 +33,7 @@ export async function fetchSales(filters = {}, token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       if (response.status === 403) {
@@ -74,7 +74,7 @@ export async function fetchSalesSummary(filters = {}, token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       if (response.status === 403) {
@@ -108,7 +108,7 @@ export async function fetchSale(saleId, token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       if (response.status === 404) {

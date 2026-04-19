@@ -1,32 +1,45 @@
-/**
- * Fetch with timeout support
- * @param {string} url - The URL to fetch
- * @param {Object} options - Fetch options
- * @param {number} timeout - Timeout in milliseconds (default: 30000)
- * @returns {Promise<Response>} Fetch response
- */
-export async function fetchWithTimeout(url, options = {}, timeout = 30000) {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-
-  try {
-    const isNgrok = typeof url === 'string' && url.includes('ngrok');
-    const headers = isNgrok
-      ? { 'ngrok-skip-browser-warning': '1', ...(options.headers || {}) }
-      : options.headers;
-    const response = await fetch(url, {
-      ...options,
-      headers,
-      signal: controller.signal,
-    });
-    return response;
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      console.error(`Request timeout after ${timeout}ms for ${url}`);
-      throw new Error(`Request timed out after ${timeout}ms`);
+export async function fetchWithTimeout(
+  url,
+  options = {},
+  timeout = 30000,
+  retries = 1
+) {
+  const attempt = async () => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+      const headers = {
+        'ngrok-skip-browser-warning': '1',
+        ...(options.headers || {}),
+      };
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+      return response;
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error(`Request timed out after ${timeout}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(id);
     }
-    throw error;
-  } finally {
-    clearTimeout(id);
+  };
+
+  let lastError;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      lastError = err;
+      if (i < retries) {
+        // Wait 1s before retry
+        await new Promise(res => setTimeout(res, 1000));
+      }
+    }
   }
+  console.error(`Request failed after ${retries + 1} attempts: ${url}`);
+  throw lastError;
 }

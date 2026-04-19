@@ -28,7 +28,7 @@ export async function fetchProducts(filters = {}) {
       headers: {
         'Content-Type': 'application/json',
       },
-    }, 10000);
+    }, 20000);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch products: ${response.statusText}`);
@@ -54,7 +54,7 @@ export async function fetchProduct(productId) {
       headers: {
         'Content-Type': 'application/json',
       },
-    }, 10000);
+    }, 20000);
 
     if (!response.ok) {
       if (response.status === 404) {

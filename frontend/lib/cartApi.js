@@ -126,7 +126,7 @@ export async function clearCart(token) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
