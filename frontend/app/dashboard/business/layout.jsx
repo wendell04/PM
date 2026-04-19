@@ -657,9 +657,9 @@ export default function BusinessDashboardLayout({ children }) {
                 <Image
                   src="/logos/NEW logo no BG.png"
                   alt="PersonalizeMe Prints"
-                  width={28}
-                  height={28}
-                  style={{ objectFit: "contain", width: "100%", height: "100%" }}
+                  fill
+                  sizes="36px"
+                  style={{ objectFit: "contain" }}
                   priority
                 />
               </div>
@@ -671,9 +671,9 @@ export default function BusinessDashboardLayout({ children }) {
                 <Image
                   src="/logos/NEW logo no BG.png"
                   alt="PersonalizeMe Prints"
-                  width={28}
-                  height={28}
-                  style={{ objectFit: "contain", width: "100%", height: "100%" }}
+                  fill
+                  sizes="36px"
+                  style={{ objectFit: "contain" }}
                   priority
                 />
               </div>
