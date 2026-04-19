@@ -62,6 +62,9 @@ class SupplierController extends Controller
                 'email'         => 'nullable|email|max:255',
                 'address'       => 'nullable|string|max:500',
                 'notes'         => 'nullable|string',
+                'itemsSupplied' => 'nullable|array',
+                'itemsSupplied.*.name' => 'nullable|string|max:255',
+                'itemsSupplied.*.uom'  => 'nullable|string|max:50',
             ]);
 
             // Check for duplicate supplier name
@@ -80,6 +83,7 @@ class SupplierController extends Controller
                 'email'         => $validated['email'] ?? null,
                 'address'       => $validated['address'] ?? null,
                 'notes'         => $validated['notes'] ?? null,
+                'itemsSupplied' => $validated['itemsSupplied'] ?? [],
                 'isActive'      => true,
             ]);
 
@@ -111,6 +115,9 @@ class SupplierController extends Controller
                 'email'         => 'nullable|email|max:255',
                 'address'       => 'nullable|string|max:500',
                 'notes'         => 'nullable|string',
+                'itemsSupplied' => 'nullable|array',
+                'itemsSupplied.*.name' => 'nullable|string|max:255',
+                'itemsSupplied.*.uom'  => 'nullable|string|max:50',
                 'isActive'      => 'sometimes|boolean',
             ]);
 

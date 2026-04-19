@@ -1,36 +1,31 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-/**
- * Fetch all active + published products for the POS product picker.
- * Reuses the existing public products endpoint.
- */
-export async function fetchPosProducts(token, search = '') {
-  const params = new URLSearchParams();
-  if (search) params.set('search', search);
-
-  const res = await fetch(`${API_URL}/api/products?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error('Failed to fetch products.');
-  const data = await res.json();
-  // Support both { data: [] } and plain array shapes
-  return Array.isArray(data) ? data : (data.data ?? []);
-}
+import { fetchWithTimeout } from './fetchWithTimeout';
 
 /**
  * Submit a walk-in / POS order.
+ * POST /api/admin/orders/walk-in
  */
 export async function submitWalkInOrder(token, payload) {
-  const res = await fetch(`${API_URL}/api/admin/orders/walk-in`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+  const res = await fetchWithTimeout(
+    `${API_URL}/api/admin/orders/walk-in`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || 'Failed to submit walk-in order.');
+    30000
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg =
+      data.message ||
+      (typeof data.errors === 'object' && data.errors && JSON.stringify(data.errors)) ||
+      'Failed to submit walk-in order.';
+    throw new Error(msg);
+  }
   return data;
 }
-

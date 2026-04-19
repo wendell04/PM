@@ -16,11 +16,13 @@ class Supplier extends Model
         'email',
         'address',
         'notes',
+        'itemsSupplied',
         'isActive',
     ];
 
     protected $casts = [
         'isActive' => 'boolean',
+        'itemsSupplied' => 'array',
     ];
 
     protected $attributes = [

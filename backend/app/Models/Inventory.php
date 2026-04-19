@@ -8,25 +8,30 @@ class Inventory extends Model
     protected $connection = 'mongodb';  
     protected $collection = 'inventory';  
   
-    protected $fillable = [  
-        'name', 'sku', 'uom', 'category', 'stockQty', 'minStockLevel', 'isOnDemand',  
-        'isActive', 'deletedAt', 'supplierId', 'supplierName',  
+    protected $fillable = [
+        'name', 'sku', 'uom', 'category', 'stockQty', 'minStockLevel', 'isOnDemand',
+        'isActive', 'deletedAt', 'supplierId', 'supplierName',
         'lastUnitCost', 'averageCost', 'baseCost',
         'reservedQty', 'consumedQty', 'badOrderQty',
         'batches',
-        'createdAt', 'updatedAt',  
+        'parentId', 'hasVariants', 'variantTypes', 'variantCombo',
+        'procurementType', 'allowBackorder',
+        'createdAt', 'updatedAt',
     ]; 
   
     protected $casts = [
         'sku'      => 'string',  'uom' => 'string',
         'stockQty' => 'integer', 'minStockLevel' => 'integer',
         'isOnDemand' => 'boolean', 'isActive' => 'boolean',
+        'hasVariants' => 'boolean', 'allowBackorder' => 'boolean',
         'deletedAt' => 'datetime', 'lastUnitCost' => 'float',
         'averageCost'  => 'float', 'baseCost' => 'float',
         'reservedQty'  => 'integer',
         'consumedQty'  => 'integer',
         'badOrderQty'  => 'integer',
         'batches'      => 'array',
+        'variantTypes' => 'array',
+        'variantCombo' => 'array',
         'createdAt' => 'datetime',
         'updatedAt' => 'datetime',
     ];

@@ -2,20 +2,30 @@
 
 import CustomDropdown from "@/app/components/CustomDropdown";
 import Link from "next/link";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  fetchSuppliers,
+  createSupplier,
+  updateSupplier,
+  fetchInventory,
+  createInventory,
+  updateInventory,
+  deleteInventory,
+} from "@/lib/inventoryApi";
+import { fetchBOMs, createBOM, updateBOM, deleteBOM } from "@/lib/bomApi";
+import VendorsApiTab from "./VendorsApiTab";
 import BOMCardList from "./BOMCardList";
 import BOMFormModal from "./BOMFormModal";
 
 // ── LocalStorage Keys ──────────────────────────────────────────────────────────
-const MATERIALS_KEY = "pmp_materials";
-const VENDORS_KEY = "pmp_vendors";
-const BOM_KEY = "pmp_bom";
 const CATEGORIES_KEY = "pmp_material_categories";
-const UNITS_KEY = "pmp_uoms"; // Unit of Measurements - TODO: Backend Conversion
+// TODO: No GET /api/admin/units (or equivalent) in backend yet — units stay in localStorage until an API exists.
+const UNITS_KEY = "pmp_uoms";
 const ALLOWED_CATEGORIES = ["Raw Material", "Packaging"];
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ⚠️  TODO: BACKEND CONVERSION REQUIRED
+// TODO: BACKEND CONVERSION REQUIRED (units of measure)
 // ══════════════════════════════════════════════════════════════════════════════
 // Current: LocalStorage implementation for demo/capstone
 // Required: API endpoints with Laravel backend
@@ -36,45 +46,103 @@ const ALLOWED_CATEGORIES = ["Raw Material", "Packaging"];
 // - PUT    /api/unit-of-measurements/{id}    (update)
 // - DELETE /api/unit-of-measurements/{id}    (soft delete/deactivate)
 //
-// For now, LocalStorage works for demo/capstone presentation ✅
+// For now, LocalStorage works for demo/capstone presentation.
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function getMaterials() {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(MATERIALS_KEY) || "[]");
-  } catch {
-    return [];
+function normalizeInventoryRow(row) {
+  if (!row) return row;
+  return { ...row, id: row.id ?? row._id };
+}
+
+function isLikelyMongoId(id) {
+  return typeof id === "string" && /^[a-f\d]{24}$/i.test(id);
+}
+
+function fifoUnitCostForBom(mat, qty) {
+  const q = Number(qty) || 1;
+  if (!mat) return 0;
+  if (!mat.batches?.length)
+    return Number(mat.baseCost ?? mat.averageCost ?? 0);
+  const active = [...mat.batches]
+    .filter((b) => (b.remainingQty || 0) > 0)
+    .sort(
+      (a, b) =>
+        new Date(a.dateReceived) - new Date(b.dateReceived),
+    );
+  if (!active.length)
+    return Number(mat.baseCost ?? mat.averageCost ?? 0);
+  let remaining = q;
+  let cost = 0;
+  for (const batch of active) {
+    if (remaining <= 0) break;
+    const take = Math.min(remaining, batch.remainingQty || 0);
+    cost += take * (batch.unitCost || 0);
+    remaining -= take;
   }
-}
-function saveMaterials(data) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(MATERIALS_KEY, JSON.stringify(data));
-}
-function getVendors() {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(VENDORS_KEY) || "[]");
-  } catch {
-    return [];
+  if (remaining > 0) {
+    const totalQty = active.reduce((s, b) => s + (b.remainingQty || 0), 0);
+    const totalValue = active.reduce(
+      (s, b) => s + (b.remainingQty || 0) * (b.unitCost || 0),
+      0,
+    );
+    const avg = totalQty > 0 ? totalValue / totalQty : mat.baseCost || 0;
+    cost += remaining * avg;
   }
+  return cost / q;
 }
-function saveVendors(data) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(VENDORS_KEY, JSON.stringify(data));
+
+function bomToApiPayload(bom, materials) {
+  const components = (bom.components || []).map((c) => {
+    const invId = c.inventoryId ?? c.materialId;
+    const mat = materials.find(
+      (m) => String(m.id ?? m._id) === String(invId),
+    );
+    const qty = Number(c.qty) || 1;
+    const uc = fifoUnitCostForBom(mat, qty);
+    return {
+      inventoryId: String(invId),
+      materialName: mat?.name || c.materialName || "Unknown",
+      qty,
+      unit: mat?.uom || c.unit || "pcs",
+      unitCost: Number(c.unitCost ?? uc) || 0,
+    };
+  });
+  const variantName =
+    (bom.variantName && String(bom.variantName).trim()) ||
+    (bom.productName && String(bom.productName).trim()) ||
+    "Default";
+  return {
+    productName: bom.productName,
+    productGroupName: bom.productGroupName || bom.productName,
+    variantName,
+    variantCombo: bom.variantCombo ?? null,
+    components,
+  };
 }
-function getBOMs() {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(BOM_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-function saveBOMs(data) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(BOM_KEY, JSON.stringify(data));
+
+function materialToApiPayload(m, supplierNameFallback = "Unspecified") {
+  const unitCost = Number(m.baseCost ?? m.averageCost ?? 0);
+  return {
+    name: m.name,
+    category: m.category || "Uncategorized",
+    stockQty: Number(m.stockQty ?? 0),
+    minStockLevel: Number(m.minStock ?? 10),
+    isOnDemand: m.procurementType === "on-demand",
+    supplierId: m.preferredVendorId || null,
+    supplierName: supplierNameFallback,
+    unitCost,
+    sku: m.sku || undefined,
+    uom: m.uom || "pcs",
+    batches: m.batches || [],
+    baseCost: Number(m.baseCost ?? unitCost),
+    parentId: m.parentId ? String(m.parentId) : null,
+    hasVariants: !!m.hasVariants,
+    variantTypes: m.variantTypes || [],
+    variantCombo: m.variantCombo ?? undefined,
+    procurementType: m.procurementType || "stock",
+    allowBackorder: !!m.allowBackorder,
+  };
 }
 
 // ── Unit of Measurement Helpers ──────────────────────────────────────────────
@@ -189,32 +257,9 @@ function computeAveCostFromBatches(batches) {
   return oldest ? oldest.unitCost || 0 : 0;
 }
 
-// ── SKU Generation ────────────────────────────────────────────────────────────
+// ── SKU Generation (client preview only; persistence uses API / server SKU when saving) ──
 // Format: {CAT}-{PRODUCT}-{VARIANTS}-{SEQ}
-// Examples: MUG-INN-0001, MUG-CER-WHT-11OZ-0001, MUG-CER-BLK-15OZ-0002
-
-const SKU_SEQ_KEY = "pmp_sku_sequences";
-
-function getSKUSequences() {
-  if (typeof window === "undefined") return {};
-  try {
-    return JSON.parse(localStorage.getItem(SKU_SEQ_KEY) || "{}");
-  } catch {
-    return {};
-  }
-}
-function saveSKUSequences(data) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(SKU_SEQ_KEY, JSON.stringify(data));
-}
-
-function getNextSequence(key) {
-  const seqs = getSKUSequences();
-  const next = (seqs[key] || 0) + 1;
-  seqs[key] = next;
-  saveSKUSequences(seqs);
-  return next;
-}
+// Examples: MUG-INN-0001, MUG-CER-WHT-11OZ-0001
 
 // Get 2-letter prefix from a string: 1st letter of each word (up to 2 words)
 // Examples: "Canvas Totebags" → "CT", "T-Shirts" → "TS", "Totebag" → "TO"
@@ -252,8 +297,7 @@ function genAutoSKU(category, productName, existingMaterials) {
     (m) => m.sku && m.sku.startsWith(baseKey + "-") && !m.parentId,
   ).length;
 
-  const seq = getNextSequence(baseKey);
-  const finalSeq = Math.max(seq, existingCount + 1);
+  const finalSeq = existingCount + 1;
   return `${baseKey}-${String(finalSeq).padStart(4, "0")}`;
 }
 
@@ -284,8 +328,7 @@ function genComboSKU(
     (m) => m.sku && m.sku.startsWith(baseKey + "-") && m.parentId,
   ).length;
 
-  const seq = getNextSequence(baseKey);
-  const finalSeq = Math.max(seq, existingCount + 1);
+  const finalSeq = existingCount + 1;
   return `${baseKey}-${String(finalSeq).padStart(4, "0")}`;
 }
 
@@ -1021,13 +1064,42 @@ function MaterialDetailsModal({ material, vendors, onClose }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // MATERIAL MASTER TAB
 // ══════════════════════════════════════════════════════════════════════════════
+function supplierPayloadFromVendorRecord(v) {
+  const items = (v.itemsSupplied || [])
+    .map((item) => {
+      if (typeof item === "string") return { name: item, uom: "pcs" };
+      return {
+        name: (item.name || "").trim(),
+        uom: item.uom || "pcs",
+      };
+    })
+    .filter((i) => i.name);
+
+  return {
+    name: (v.name || "").trim(),
+    contactPerson:
+      Array.isArray(v.contact) && v.contact[0]
+        ? v.contact[0]
+        : v.contactPerson || "",
+    phone:
+      Array.isArray(v.phone) && v.phone[0] ? v.phone[0] : v.phone || "",
+    email:
+      Array.isArray(v.email) && v.email[0] ? v.email[0] : v.email || "",
+    address: v.address || "",
+    notes: v.notes || "",
+    itemsSupplied: items,
+  };
+}
+
 function MaterialMasterTab({
   itemCategories,
   materials,
-  onMaterialsChange,
+  vendors,
+  token,
+  boms,
+  refreshMaterials,
   onVendorsChange,
 }) {
-  const [vendors, setVendors] = useState([]);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [expandedParents, setExpandedParents] = useState(new Set());
@@ -1050,63 +1122,11 @@ function MaterialMasterTab({
   const [showCategoryInput, setShowCategoryInput] = useState(false);
 
   useEffect(() => {
-    let vendorsData = getVendors();
-
-    // Cleanup: Remove duplicate items from itemsSupplied (fix existing data)
-    vendorsData = vendorsData.map((v) => {
-      const items = v.itemsSupplied || [];
-      if (items.length === 0) return v;
-
-      const seen = new Set();
-      const deduped = [];
-      items.forEach((item) => {
-        const name = (
-          typeof item === "string" ? item : item.name || ""
-        ).toLowerCase();
-        if (!seen.has(name)) {
-          seen.add(name);
-          deduped.push(
-            typeof item === "string" ? { name: item, uom: "pcs" } : item,
-          );
-        }
-      });
-
-      return deduped.length !== items.length
-        ? { ...v, itemsSupplied: deduped }
-        : v;
-    });
-
-    // Save cleaned data if duplicates were found
-    const hasDuplicates = vendorsData.some((v, i) => {
-      const origItems = getVendors()[i]?.itemsSupplied || [];
-      return v.itemsSupplied?.length !== origItems?.length;
-    });
-
-    if (hasDuplicates) {
-      saveVendors(vendorsData);
-    }
-
-    setVendors(vendorsData);
-
-    // Listen for storage events from other tabs AND focus events for same-tab navigation
-    const handleStorageChange = (e) => {
-      if (e.key === MATERIALS_KEY) {
-        onMaterialsChange(getMaterials());
-      }
-    };
-
-    // Refetch materials when tab gains focus (user navigates back from purchasing)
-    const handleFocus = () => {
-      onMaterialsChange(getMaterials());
-    };
-
-    window.addEventListener("storage", handleStorageChange);
+    if (!refreshMaterials) return;
+    const handleFocus = () => refreshMaterials();
     window.addEventListener("focus", handleFocus);
-    return () => {
-      window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("focus", handleFocus);
-    };
-  }, [onMaterialsChange]);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [refreshMaterials]);
 
   // ── Batch Helper: Compute stock from batches ──────────────────────────────
   const getStockQty = (material) => {
@@ -1129,7 +1149,7 @@ function MaterialMasterTab({
     setNewCategoryInput("");
   };
 
-  const handleSaveCategory = () => {
+  const handleSaveCategory = async () => {
     const trimmed = newCategoryInput.trim();
     if (!trimmed) {
       setShowCategoryInput(false);
@@ -1139,7 +1159,6 @@ function MaterialMasterTab({
       setShowCategoryInput(false);
       return;
     }
-    // Add to all vendors' itemsSupplied - check for duplicates properly (items are objects {name, uom})
     const updatedVendors = vendors.map((v) => {
       const items = v.itemsSupplied || [];
       const alreadyExists = items.some(
@@ -1154,9 +1173,36 @@ function MaterialMasterTab({
           : [...items, { name: trimmed, uom: "pcs" }],
       };
     });
-    setVendors(updatedVendors);
-    saveVendors(updatedVendors);
-    if (onVendorsChange) onVendorsChange(updatedVendors);
+
+    if (!token) {
+      onVendorsChange?.(updatedVendors);
+      setShowCategoryInput(false);
+      setNewCategoryInput("");
+      return;
+    }
+
+    try {
+      await Promise.all(
+        updatedVendors.map(async (v, i) => {
+          const prev = vendors[i];
+          const prevItems = JSON.stringify(prev?.itemsSupplied || []);
+          const nextItems = JSON.stringify(v.itemsSupplied || []);
+          if (prevItems === nextItems) return;
+          const id = v.id ?? v._id;
+          if (!id) return;
+          await updateSupplier(id, supplierPayloadFromVendorRecord(v), token);
+        }),
+      );
+      const data = await fetchSuppliers(token);
+      const arr = Array.isArray(data) ? data : [];
+      onVendorsChange?.(arr.map((x) => ({ ...x, id: x.id ?? x._id })));
+    } catch (e) {
+      setInfoModal({
+        isOpen: true,
+        title: "Could not update vendors",
+        message: e?.message || "Failed to sync item categories.",
+      });
+    }
     setShowCategoryInput(false);
     setNewCategoryInput("");
   };
@@ -1168,21 +1214,30 @@ function MaterialMasterTab({
     setShowVendorModal(true);
   };
 
-  const handleSaveVendorFromMaterial = (vendor) => {
-    const updated = [
-      ...vendors,
-      {
-        ...vendor,
-        id: `vendor-${Date.now()}`,
-        createdAt: new Date().toISOString(),
-      },
-    ];
-    setVendors(updated);
-    saveVendors(updated);
-    if (onVendorsChange) onVendorsChange(updated);
-    setShowVendorModal(false);
-    // Re-open material modal
-    setShowAddModal(true);
+  const handleSaveVendorFromMaterial = async (vendor) => {
+    if (!token) {
+      setInfoModal({
+        isOpen: true,
+        title: "Sign in required",
+        message: "Add vendors from the API while signed in as admin.",
+      });
+      return;
+    }
+    try {
+      const payload = supplierPayloadFromVendorRecord(vendor);
+      await createSupplier(payload, token);
+      const data = await fetchSuppliers(token);
+      const arr = Array.isArray(data) ? data : [];
+      onVendorsChange?.(arr.map((x) => ({ ...x, id: x.id ?? x._id })));
+      setShowVendorModal(false);
+      setShowAddModal(true);
+    } catch (e) {
+      setInfoModal({
+        isOpen: true,
+        title: "Could not create vendor",
+        message: e?.message || "Failed to save supplier.",
+      });
+    }
   };
 
   const groupedMaterials = useMemo(() => {
@@ -1257,10 +1312,11 @@ function MaterialMasterTab({
         (c.batches || []).some((b) => (b.remainingQty || b.qtyGood || 0) > 0),
     );
 
-    // Check if material is used in any BOM
-    const boms = JSON.parse(localStorage.getItem("pmp_bom") || "[]");
-    const isUsedInBOM = boms.some((bom) =>
-      (bom.components || []).some((comp) => comp.materialId === id),
+    const isUsedInBOM = (boms || []).some((bom) =>
+      (bom.components || []).some(
+        (comp) =>
+          String(comp.materialId ?? comp.inventoryId ?? "") === String(id),
+      ),
     );
 
     if (hasStock || childrenHaveStock) {
@@ -1286,12 +1342,35 @@ function MaterialMasterTab({
       title: "Delete Material",
       message:
         "Are you sure you want to delete this material? Children will also be deleted. This action cannot be undone.",
-      onConfirm: () => {
-        const updated = materials.filter(
-          (m) => m.id !== id && m.parentId !== id,
-        );
-        onMaterialsChange(updated);
-        saveMaterials(updated);
+      onConfirm: async () => {
+        if (!token) {
+          setInfoModal({
+            isOpen: true,
+            title: "Sign in required",
+            message: "Sign in as admin to delete inventory.",
+          });
+          setConfirmModal({
+            isOpen: false,
+            title: "",
+            message: "",
+            onConfirm: null,
+          });
+          return;
+        }
+        try {
+          const childRows = materials.filter((m) => m.parentId === id);
+          for (const c of childRows) {
+            if (isLikelyMongoId(c.id)) await deleteInventory(c.id, token);
+          }
+          if (isLikelyMongoId(id)) await deleteInventory(id, token);
+          await refreshMaterials();
+        } catch (e) {
+          setInfoModal({
+            isOpen: true,
+            title: "Delete failed",
+            message: e?.message || "Could not delete material.",
+          });
+        }
         setConfirmModal({
           isOpen: false,
           title: "",
@@ -1302,34 +1381,75 @@ function MaterialMasterTab({
     });
   };
 
-  const handleSave = (material, children, oldChildIds = []) => {
-    let updated;
-    if (editMaterial) {
-      // Update existing
-      updated = materials.map((m) => {
-        if (m.id === editMaterial.id)
-          return { ...m, ...material, updatedAt: new Date().toISOString() };
-        return m;
+  const handleSave = async (material, children = [], oldChildIds = []) => {
+    if (!token) {
+      setInfoModal({
+        isOpen: true,
+        title: "Sign in required",
+        message: "Sign in as admin to save materials.",
       });
-      // Remove old children if updating variants
-      if (editMaterial.hasVariants) {
-        updated = updated.filter((m) => m.parentId !== editMaterial.id);
-      }
-      // Also remove any old children that were deleted (no longer in new children list)
-      if (oldChildIds.length > 0) {
-        updated = updated.filter((m) => !oldChildIds.includes(m.id));
-      }
-      if (children && children.length > 0) updated = [...updated, ...children];
-    } else {
-      // Add new
-      const parentId = material.id || `mat-${Date.now()}`;
-      updated = [...materials, material];
-      if (children && children.length > 0) updated = [...updated, ...children];
+      return;
     }
-    onMaterialsChange(updated);
-    saveMaterials(updated);
-    setShowAddModal(false);
-    setEditMaterial(null);
+    const supplierName =
+      vendors.find((v) => v.id === material.preferredVendorId)?.name ||
+      "Unspecified";
+
+    try {
+      if (editMaterial) {
+        await updateInventory(
+          editMaterial.id,
+          materialToApiPayload(material, supplierName),
+          token,
+        );
+        for (const oid of oldChildIds) {
+          if (isLikelyMongoId(oid)) await deleteInventory(oid, token);
+        }
+        for (const ch of children || []) {
+          const base = {
+            ...ch,
+            preferredVendorId: material.preferredVendorId,
+            parentId: editMaterial.id,
+          };
+          const payload = materialToApiPayload(base, supplierName);
+          if (isLikelyMongoId(ch.id)) {
+            await updateInventory(ch.id, payload, token);
+          } else {
+            await createInventory(
+              { ...payload, parentId: String(editMaterial.id) },
+              token,
+            );
+          }
+        }
+      } else {
+        const created = await createInventory(
+          materialToApiPayload({ ...material, parentId: null }, supplierName),
+          token,
+        );
+        const pid = created.id ?? created._id;
+        for (const ch of children || []) {
+          await createInventory(
+            materialToApiPayload(
+              {
+                ...ch,
+                parentId: pid,
+                preferredVendorId: material.preferredVendorId,
+              },
+              supplierName,
+            ),
+            token,
+          );
+        }
+      }
+      await refreshMaterials();
+      setShowAddModal(false);
+      setEditMaterial(null);
+    } catch (e) {
+      setInfoModal({
+        isOpen: true,
+        title: "Could not save material",
+        message: e?.message || "Failed to save.",
+      });
+    }
   };
 
   const totalMaterials =
@@ -2439,7 +2559,7 @@ function MaterialFormModal({
     }, 1);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const newErrors = {};
     if (!form.preferredVendorId) newErrors.vendor = "Please select a vendor";
@@ -2573,9 +2693,9 @@ function MaterialFormModal({
       const oldChildIds = existingChildren
         .map((ec) => ec.id)
         .filter((id) => !children.some((c) => c.id === id));
-      onSave(parent, children, oldChildIds);
+      await onSave(parent, children, oldChildIds);
     } else {
-      onSave(
+      await onSave(
         {
           id: parentId,
           name: form.name,
@@ -2727,7 +2847,7 @@ function MaterialFormModal({
                     marginTop: "0.3rem",
                   }}
                 >
-                  ⚠ Add a vendor first in the Vendor Master tab
+                  Add a vendor first in the Vendor Master tab
                 </div>
               )}
             </div>
@@ -4150,1638 +4270,6 @@ function MaterialFormModal({
   );
 }
 
-// ── Vendor Catalog Modal — matches screenshot design ──────────────────────
-function VendorCatalogModal({ vendor, materials, onClose }) {
-  const [expandedItems, setExpandedItems] = useState(new Set());
-
-  useEffect(() => {
-    if (vendor) setExpandedItems(new Set());
-  }, [vendor]);
-
-  // Load purchase data
-  const grs = useMemo(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      return JSON.parse(localStorage.getItem("pmp_goods_receipts") || "[]");
-    } catch {
-      return [];
-    }
-  }, []);
-
-  const pos = useMemo(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      return JSON.parse(localStorage.getItem("pmp_purchase_orders") || "[]");
-    } catch {
-      return [];
-    }
-  }, []);
-
-  const stockIns = useMemo(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      return JSON.parse(localStorage.getItem("pmp_stock_in_log") || "[]");
-    } catch {
-      return [];
-    }
-  }, []);
-
-  if (!vendor) return null;
-
-  // Build vendor's PO IDs
-  const vendorPOs = pos.filter((p) => p.vendorId === vendor.id);
-  const vendorPOIds = new Set(vendorPOs.map((p) => p.id));
-
-  // Collect all purchase batches from this vendor (GR + manual stock-in)
-  const allBatches = useMemo(() => {
-    const batches = [];
-    // From Goods Receipts (PO-based)
-    grs.forEach((gr) => {
-      if (vendorPOIds.has(gr.poId)) {
-        (gr.items || []).forEach((item) => {
-          batches.push({
-            materialId: item.materialId,
-            materialName: item.materialName,
-            sku: item.sku || "",
-            uom: item.uom || "pcs",
-            unitCost: item.unitCost || 0,
-            qty: item.receivedQty || 0,
-            totalCost: (item.receivedQty || 0) * (item.unitCost || 0),
-            dateReceived: gr.receivedDate || gr.createdAt,
-            poNumber: gr.poNumber || "",
-            grNumber: gr.grNumber || "",
-            invoiceNumber: gr.invoiceNo || "",
-          });
-        });
-      }
-    });
-    // From manual stock-in
-    stockIns.forEach((si) => {
-      if (si.vendorId === vendor.id || si.vendorName === vendor.name) {
-        batches.push({
-          materialId: si.materialId,
-          materialName: si.materialName,
-          sku: si.sku || "",
-          uom: si.uom || "pcs",
-          unitCost: si.unitCost || 0,
-          qty: si.receivedQty || si.goodQty || 0,
-          totalCost: si.totalCost || (si.receivedQty || 0) * (si.unitCost || 0),
-          dateReceived: si.dateReceived,
-          poNumber: si.poNumber || "",
-          grNumber: si.grNumber || "",
-          invoiceNumber: si.referenceNo || "",
-        });
-      }
-    });
-    return batches;
-  }, [grs, pos, stockIns, vendorPOIds, vendor]);
-
-  // Group batches by material
-  const groupedByMaterial = useMemo(() => {
-    const map = new Map();
-    allBatches.forEach((b) => {
-      if (!map.has(b.materialId)) {
-        map.set(b.materialId, {
-          materialId: b.materialId,
-          materialName: b.materialName,
-          sku: b.sku || "",
-          uom: b.uom || "pcs",
-          priceHistory: [],
-          totalSpent: 0,
-          totalQty: 0,
-        });
-      }
-      const item = map.get(b.materialId);
-      item.priceHistory.push(b);
-      item.totalSpent += b.totalCost;
-      item.totalQty += b.qty;
-    });
-    // Sort each material's history by date (oldest first for trend calc)
-    map.forEach((item) => {
-      item.priceHistory.sort(
-        (a, b) => new Date(a.dateReceived) - new Date(b.dateReceived),
-      );
-    });
-    return [...map.values()].sort((a, b) =>
-      a.materialName.localeCompare(b.materialName),
-    );
-  }, [allBatches]);
-
-  // Summary stats
-  const totalSpent = allBatches.reduce((s, b) => s + b.totalCost, 0);
-  const totalBatches = allBatches.length;
-  const totalItems = allBatches.reduce((s, b) => s + b.qty, 0);
-
-  const toggleExpand = (materialId) => {
-    setExpandedItems((prev) => {
-      const next = new Set(prev);
-      next.has(materialId) ? next.delete(materialId) : next.add(materialId);
-      return next;
-    });
-  };
-
-  return (
-    <div className="modal-overlay">
-      <div
-        className="modal-content"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: "700px",
-          width: "95%",
-          maxHeight: "85vh",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <div className="modal-header" style={{ flexShrink: 0 }}>
-          <div>
-            <h2 className="modal-title">{vendor.name} — Catalog</h2>
-            <p
-              style={{
-                fontSize: "0.75rem",
-                color: "var(--gray)",
-                marginTop: "0.2rem",
-              }}
-            >
-              Purchase history & per-batch pricing from this supplier.
-            </p>
-          </div>
-          <button className="modal-close" onClick={onClose}>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="modal-body" style={{ flex: 1, overflowY: "auto" }}>
-          {/* Summary Cards */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: "0.75rem",
-              marginBottom: "1.5rem",
-            }}
-          >
-            <div
-              style={{
-                padding: "0.875rem",
-                background: "rgba(0,0,0,0.2)",
-                borderRadius: "8px",
-                textAlign: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "0.68rem",
-                  color: "var(--gray)",
-                  textTransform: "uppercase",
-                  marginBottom: "0.4rem",
-                }}
-              >
-                Total Spent
-              </div>
-              <div
-                style={{ fontSize: "1rem", fontWeight: 700, color: "#facc15" }}
-              >
-                ₱
-                {totalSpent.toLocaleString("en-PH", {
-                  minimumFractionDigits: 2,
-                })}
-              </div>
-            </div>
-            <div
-              style={{
-                padding: "0.875rem",
-                background: "rgba(0,0,0,0.2)",
-                borderRadius: "8px",
-                textAlign: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "0.68rem",
-                  color: "var(--gray)",
-                  textTransform: "uppercase",
-                  marginBottom: "0.4rem",
-                }}
-              >
-                Purchases
-              </div>
-              <div
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: 700,
-                  color: "var(--gold)",
-                }}
-              >
-                {totalBatches} batch{totalBatches !== 1 ? "es" : ""}
-              </div>
-            </div>
-            <div
-              style={{
-                padding: "0.875rem",
-                background: "rgba(0,0,0,0.2)",
-                borderRadius: "8px",
-                textAlign: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "0.68rem",
-                  color: "var(--gray)",
-                  textTransform: "uppercase",
-                  marginBottom: "0.4rem",
-                }}
-              >
-                Items Received
-              </div>
-              <div
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: 700,
-                  color: "var(--white)",
-                }}
-              >
-                {totalItems} pcs
-              </div>
-            </div>
-          </div>
-
-          {groupedByMaterial.length === 0 ? (
-            <div
-              style={{
-                padding: "2rem",
-                textAlign: "center",
-                color: "var(--gray)",
-                fontStyle: "italic",
-              }}
-            >
-              No purchase history yet from this supplier.
-            </div>
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.75rem",
-              }}
-            >
-              {groupedByMaterial.map((item) => {
-                const isExpanded = expandedItems.has(item.materialId);
-                const latest = item.priceHistory[item.priceHistory.length - 1];
-                const prev =
-                  item.priceHistory.length >= 2
-                    ? item.priceHistory[item.priceHistory.length - 2]
-                    : null;
-                const priceChange = prev ? latest.unitCost - prev.unitCost : 0;
-                const isUp = priceChange > 0;
-
-                return (
-                  <div
-                    key={item.materialId}
-                    style={{
-                      background: "rgba(255,255,255,0.02)",
-                      border: "1px solid rgba(255,255,255,0.06)",
-                      borderRadius: "10px",
-                      overflow: "hidden",
-                      cursor: "pointer",
-                    }}
-                    onClick={() => toggleExpand(item.materialId)}
-                  >
-                    {/* Header Row */}
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        padding: "1rem 1.25rem",
-                      }}
-                    >
-                      <div>
-                        <div
-                          style={{
-                            fontWeight: 700,
-                            color: "#E5E2E1",
-                            fontSize: "0.95rem",
-                          }}
-                        >
-                          {item.materialName}
-                        </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "0.75rem",
-                            marginTop: "0.2rem",
-                            fontSize: "0.72rem",
-                            color: "var(--gray)",
-                          }}
-                        >
-                          {item.sku && (
-                            <span style={{ fontFamily: "monospace" }}>
-                              {item.sku}
-                            </span>
-                          )}
-                          <span>
-                            {item.priceHistory.length} purchase
-                            {item.priceHistory.length !== 1 ? "s" : ""}
-                          </span>
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.75rem",
-                        }}
-                      >
-                        {priceChange !== 0 && (
-                          <span
-                            style={{
-                              fontSize: "0.65rem",
-                              fontWeight: 700,
-                              color: isUp ? "#f87171" : "#4ade80",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.2rem",
-                            }}
-                          >
-                            <svg
-                              width="10"
-                              height="10"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="3"
-                            >
-                              {isUp ? (
-                                <path d="M18 15l-6-6-6 6" />
-                              ) : (
-                                <path d="M6 9l6 6 6-6" />
-                              )}
-                            </svg>
-                            ₱
-                            {Math.abs(priceChange).toLocaleString("en-PH", {
-                              minimumFractionDigits: 2,
-                            })}
-                          </span>
-                        )}
-                        <div style={{ textAlign: "right" }}>
-                          <div
-                            style={{
-                              fontSize: "1.1rem",
-                              fontWeight: 800,
-                              color: "#D4A843",
-                              fontFamily: "monospace",
-                            }}
-                          >
-                            ₱
-                            {(latest?.unitCost || 0).toLocaleString("en-PH", {
-                              minimumFractionDigits: 2,
-                            })}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "0.6rem",
-                              color: "var(--gray)",
-                              textTransform: "uppercase",
-                            }}
-                          >
-                            Latest Price
-                          </div>
-                        </div>
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          style={{
-                            transform: isExpanded ? "rotate(90deg)" : "none",
-                            transition: "transform 0.2s",
-                            color: "var(--gray)",
-                          }}
-                        >
-                          <path d="M9 18l6-6-6-6" />
-                        </svg>
-                      </div>
-                    </div>
-
-                    {/* Expanded: Price History Table */}
-                    {isExpanded && (
-                      <div
-                        style={{
-                          borderTop: "1px solid rgba(255,255,255,0.04)",
-                          background: "rgba(0,0,0,0.15)",
-                        }}
-                      >
-                        <table
-                          style={{
-                            width: "100%",
-                            fontSize: "0.8rem",
-                            borderCollapse: "collapse",
-                          }}
-                        >
-                          <thead>
-                            <tr
-                              style={{
-                                borderBottom:
-                                  "1px solid rgba(255,255,255,0.06)",
-                              }}
-                            >
-                              <th
-                                style={{
-                                  padding: "0.5rem 1rem",
-                                  textAlign: "left",
-                                  color: "var(--gray)",
-                                  fontWeight: 600,
-                                  fontSize: "0.65rem",
-                                  textTransform: "uppercase",
-                                }}
-                              >
-                                Date
-                              </th>
-                              <th
-                                style={{
-                                  padding: "0.5rem 1rem",
-                                  textAlign: "center",
-                                  color: "var(--gray)",
-                                  fontWeight: 600,
-                                  fontSize: "0.65rem",
-                                  textTransform: "uppercase",
-                                }}
-                              >
-                                Qty
-                              </th>
-                              <th
-                                style={{
-                                  padding: "0.5rem 1rem",
-                                  textAlign: "right",
-                                  color: "var(--gray)",
-                                  fontWeight: 600,
-                                  fontSize: "0.65rem",
-                                  textTransform: "uppercase",
-                                }}
-                              >
-                                Unit Cost
-                              </th>
-                              <th
-                                style={{
-                                  padding: "0.5rem 1rem",
-                                  textAlign: "right",
-                                  color: "var(--gray)",
-                                  fontWeight: 600,
-                                  fontSize: "0.65rem",
-                                  textTransform: "uppercase",
-                                }}
-                              >
-                                Total
-                              </th>
-                              <th
-                                style={{
-                                  padding: "0.5rem 1rem",
-                                  textAlign: "center",
-                                  color: "var(--gray)",
-                                  fontWeight: 600,
-                                  fontSize: "0.65rem",
-                                  textTransform: "uppercase",
-                                }}
-                              >
-                                Ref
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {[...item.priceHistory].reverse().map((ph, idx) => {
-                              const prevEntry =
-                                idx < item.priceHistory.length - 1
-                                  ? item.priceHistory[
-                                      item.priceHistory.length - 1 - idx - 1
-                                    ]
-                                  : null;
-                              const change = prevEntry
-                                ? ph.unitCost - prevEntry.unitCost
-                                : 0;
-                              const isUp = change > 0;
-                              return (
-                                <tr
-                                  key={idx}
-                                  style={{
-                                    borderBottom:
-                                      "1px solid rgba(255,255,255,0.03)",
-                                  }}
-                                >
-                                  <td
-                                    style={{
-                                      padding: "0.5rem 1rem",
-                                      color: "#E5E2E1",
-                                      fontSize: "0.78rem",
-                                    }}
-                                  >
-                                    {new Date(
-                                      ph.dateReceived,
-                                    ).toLocaleDateString("en-PH", {
-                                      month: "short",
-                                      day: "numeric",
-                                      year: "numeric",
-                                    })}
-                                  </td>
-                                  <td
-                                    style={{
-                                      padding: "0.5rem 1rem",
-                                      textAlign: "center",
-                                      color: "#D4A843",
-                                      fontWeight: 600,
-                                    }}
-                                  >
-                                    {ph.qty}
-                                  </td>
-                                  <td
-                                    style={{
-                                      padding: "0.5rem 1rem",
-                                      textAlign: "right",
-                                      fontWeight: 700,
-                                      fontFamily: "monospace",
-                                      color: "#E5E2E1",
-                                    }}
-                                  >
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "flex-end",
-                                        gap: "0.4rem",
-                                      }}
-                                    >
-                                      ₱
-                                      {ph.unitCost.toLocaleString("en-PH", {
-                                        minimumFractionDigits: 2,
-                                      })}
-                                      {change !== 0 && (
-                                        <span
-                                          style={{
-                                            fontSize: "0.65rem",
-                                            fontWeight: 700,
-                                            color: isUp ? "#f87171" : "#4ade80",
-                                          }}
-                                        >
-                                          {isUp ? "↑" : "↓"}₱
-                                          {Math.abs(change).toLocaleString(
-                                            "en-PH",
-                                            { minimumFractionDigits: 2 },
-                                          )}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td
-                                    style={{
-                                      padding: "0.5rem 1rem",
-                                      textAlign: "right",
-                                      color: "#facc15",
-                                      fontWeight: 600,
-                                      fontFamily: "monospace",
-                                    }}
-                                  >
-                                    ₱
-                                    {(ph.qty * ph.unitCost).toLocaleString(
-                                      "en-PH",
-                                      { minimumFractionDigits: 2 },
-                                    )}
-                                  </td>
-                                  <td
-                                    style={{
-                                      padding: "0.5rem 1rem",
-                                      textAlign: "center",
-                                      color: "var(--gray)",
-                                      fontSize: "0.72rem",
-                                      fontFamily: "monospace",
-                                    }}
-                                  >
-                                    {ph.poNumber ||
-                                      ph.grNumber ||
-                                      ph.invoiceNumber ||
-                                      "—"}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div
-          className="modal-actions"
-          style={{ flexShrink: 0, justifyContent: "flex-end" }}
-        >
-          <button type="button" className="btn-secondary" onClick={onClose}>
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Vendor Details Modal (Read-only) ───────────────────────────────────────────
-function VendorDetailsModal({ vendor, materials, onClose }) {
-  if (!vendor) return null;
-
-  // Find materials matching this vendor's categories
-  const vendorCategories = vendor.itemsSupplied || [];
-  const catalogMaterials = materials.filter(
-    (m) =>
-      vendorCategories.includes(m.category) && (!m.hasVariants || m.parentId),
-  );
-
-  return (
-    <div className="modal-overlay">
-      <div
-        className="modal-content"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: "600px",
-          maxHeight: "85vh",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <div className="modal-header" style={{ flexShrink: 0 }}>
-          <div>
-            <h2 className="modal-title" style={{ fontSize: "1.1rem" }}>
-              {vendor.name}
-            </h2>
-            {vendor.itemsSupplied && vendor.itemsSupplied.length > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "0.3rem",
-                  marginTop: "0.4rem",
-                }}
-              >
-                {vendor.itemsSupplied.map((item, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      fontSize: "0.65rem",
-                      color: "#D4A843",
-                      background: "rgba(212,168,67,0.1)",
-                      border: "1px solid rgba(212,168,67,0.2)",
-                      padding: "0.15rem 0.5rem",
-                      borderRadius: "4px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {item}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-          <button className="modal-close" onClick={onClose}>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem 2rem" }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "1.25rem",
-              marginBottom: "1.5rem",
-            }}
-          >
-            {vendor.contact && (
-              <div>
-                <div
-                  style={{
-                    fontSize: "0.65rem",
-                    color: "var(--gray)",
-                    textTransform: "uppercase",
-                    fontWeight: 700,
-                    marginBottom: "0.3rem",
-                  }}
-                >
-                  Contact Person
-                  {(Array.isArray(vendor.contact)
-                    ? vendor.contact
-                    : [vendor.contact]
-                  ).length > 1
-                    ? "s"
-                    : ""}
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.25rem",
-                  }}
-                >
-                  {(Array.isArray(vendor.contact)
-                    ? vendor.contact
-                    : [vendor.contact]
-                  ).map((c, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        fontSize: "0.95rem",
-                        color: "#E5E2E1",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {c}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {vendor.email && (
-              <div>
-                <div
-                  style={{
-                    fontSize: "0.65rem",
-                    color: "var(--gray)",
-                    textTransform: "uppercase",
-                    fontWeight: 700,
-                    marginBottom: "0.3rem",
-                  }}
-                >
-                  Email
-                  {(Array.isArray(vendor.email) ? vendor.email : [vendor.email])
-                    .length > 1
-                    ? "s"
-                    : ""}
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.25rem",
-                  }}
-                >
-                  {(Array.isArray(vendor.email)
-                    ? vendor.email
-                    : [vendor.email]
-                  ).map((em, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        fontSize: "0.95rem",
-                        color: "#3b82f6",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {em}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {vendor.phone && (
-              <div>
-                <div
-                  style={{
-                    fontSize: "0.65rem",
-                    color: "var(--gray)",
-                    textTransform: "uppercase",
-                    fontWeight: 700,
-                    marginBottom: "0.3rem",
-                  }}
-                >
-                  Phone
-                  {(Array.isArray(vendor.phone) ? vendor.phone : [vendor.phone])
-                    .length > 1
-                    ? "s"
-                    : ""}
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.25rem",
-                  }}
-                >
-                  {(Array.isArray(vendor.phone)
-                    ? vendor.phone
-                    : [vendor.phone]
-                  ).map((ph, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        fontSize: "0.95rem",
-                        color: "#E5E2E1",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {ph}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {vendor.address && (
-              <div style={{ gridColumn: "1 / -1" }}>
-                <div
-                  style={{
-                    fontSize: "0.65rem",
-                    color: "var(--gray)",
-                    textTransform: "uppercase",
-                    fontWeight: 700,
-                    marginBottom: "0.3rem",
-                  }}
-                >
-                  Address
-                </div>
-                <div
-                  style={{
-                    fontSize: "0.95rem",
-                    color: "#E5E2E1",
-                    fontWeight: 600,
-                  }}
-                >
-                  {vendor.address}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Available Materials / Catalog */}
-          {catalogMaterials.length > 0 && (
-            <div>
-              <div
-                style={{
-                  fontSize: "0.7rem",
-                  color: "var(--gray)",
-                  textTransform: "uppercase",
-                  fontWeight: 700,
-                  marginBottom: "0.75rem",
-                  letterSpacing: "0.08em",
-                }}
-              >
-                Available Materials ({catalogMaterials.length})
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.5rem",
-                }}
-              >
-                {catalogMaterials.map((m) => (
-                  <div
-                    key={m.id}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "0.625rem 0.75rem",
-                      background: "rgba(255,255,255,0.02)",
-                      borderRadius: "8px",
-                      border: "1px solid rgba(255,255,255,0.05)",
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          color: "#E5E2E1",
-                          fontSize: "0.825rem",
-                        }}
-                      >
-                        {m.name}
-                      </div>
-                      {m.sku && (
-                        <div
-                          style={{
-                            fontSize: "0.65rem",
-                            color: "var(--gray)",
-                            fontFamily: "monospace",
-                          }}
-                        >
-                          {m.sku}
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "#22c55e",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {getStockQty(m)} {m.uom || "pcs"}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "#D4A843",
-                          fontFamily: "monospace",
-                        }}
-                      >
-                        ₱
-                        {(m.baseCost || 0).toLocaleString("en-PH", {
-                          minimumFractionDigits: 2,
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-        <div
-          className="modal-actions"
-          style={{ flexShrink: 0, justifyContent: "flex-end" }}
-        >
-          <button type="button" className="btn-secondary" onClick={onClose}>
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// VENDOR MASTER TAB — Card Layout with Catalog
-// ══════════════════════════════════════════════════════════════════════════════
-function VendorMasterTab({ materials, onVendorsChange }) {
-  const [vendors, setVendors] = useState([]);
-  const [search, setSearch] = useState("");
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editVendor, setEditVendor] = useState(null);
-  const [viewVendor, setViewVendor] = useState(null);
-  const [catalogVendor, setCatalogVendor] = useState(null);
-  const [infoModal, setInfoModal] = useState({
-    isOpen: false,
-    title: "",
-    message: "",
-  });
-  const [confirmModal, setConfirmModal] = useState({
-    isOpen: false,
-    title: "",
-    message: "",
-    onConfirm: null,
-  });
-
-  useEffect(() => {
-    setVendors(getVendors());
-  }, []);
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return vendors.filter(
-      (v) =>
-        !q ||
-        v.name.toLowerCase().includes(q) ||
-        (v.contact || "").toLowerCase().includes(q) ||
-        (v.category || "").toLowerCase().includes(q),
-    );
-  }, [vendors, search]);
-
-  const handleDelete = (id) => {
-    const linkedMaterials = materials.filter((m) => m.preferredVendorId === id);
-    if (linkedMaterials.length > 0) {
-      const names = linkedMaterials.map((m) => `• ${m.name}`).join("\n");
-      setInfoModal({
-        isOpen: true,
-        title: "Cannot Delete Vendor",
-        message: `This vendor is currently linked to the following materials:\n\n${names}\n\nPlease update or delete these materials first.`,
-      });
-      return;
-    }
-    setConfirmModal({
-      isOpen: true,
-      title: "Delete Vendor",
-      message:
-        "Are you sure you want to delete this vendor? This action cannot be undone.",
-      onConfirm: () => {
-        const updated = vendors.filter((v) => v.id !== id);
-        setVendors(updated);
-        saveVendors(updated);
-        if (onVendorsChange) onVendorsChange(updated);
-        setConfirmModal({
-          isOpen: false,
-          title: "",
-          message: "",
-          onConfirm: null,
-        });
-      },
-    });
-  };
-
-  const handleSave = (vendor) => {
-    let updated;
-    if (editVendor) {
-      updated = vendors.map((v) =>
-        v.id === editVendor.id ? { ...v, ...vendor } : v,
-      );
-    } else {
-      updated = [
-        ...vendors,
-        {
-          ...vendor,
-          id: `vendor-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-        },
-      ];
-    }
-    setVendors(updated);
-    saveVendors(updated);
-    if (onVendorsChange) onVendorsChange(updated);
-    setShowAddModal(false);
-    setEditVendor(null);
-  };
-
-  const TrashIcon = () => (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-    >
-      <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-    </svg>
-  );
-  const EditIcon = () => (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-    >
-      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-    </svg>
-  );
-
-  return (
-    <div>
-      <div className="inventory-summary" style={{ marginBottom: "1.5rem" }}>
-        <div className="summary-card">
-          <div className="summary-content">
-            <span className="summary-value">{vendors.length}</span>
-            <span className="summary-label">Total Vendors</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="inventory-toolbar" style={{ marginBottom: "1.5rem" }}>
-        <div className="search-wrapper" style={{ maxWidth: "300px" }}>
-          <span className="search-icon">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <path d="M21 21l-4.35-4.35" />
-            </svg>
-          </span>
-          <input
-            className="search-input"
-            placeholder="Search vendors..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button className="search-clear" onClick={() => setSearch("")}>
-              x
-            </button>
-          )}
-        </div>
-        <button
-          className="btn-primary"
-          onClick={() => {
-            setEditVendor(null);
-            setShowAddModal(true);
-          }}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-          >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          Add New Supplier
-        </button>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-          gap: "1rem",
-        }}
-      >
-        {filtered.map((v) => {
-          const activeMaterials = materials.filter(
-            (m) => m.preferredVendorId === v.id && !m.parentId,
-          );
-          return (
-            <div
-              key={v.id}
-              style={{
-                background: "var(--dark)",
-                border: "1px solid var(--border)",
-                borderRadius: "14px",
-                padding: "1.5rem",
-                display: "flex",
-                flexDirection: "column",
-                gap: "1rem",
-                transition: "border-color 0.2s",
-              }}
-            >
-              {/* Header */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.75rem",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "44px",
-                      height: "44px",
-                      borderRadius: "12px",
-                      background: "rgba(212,168,67,0.1)",
-                      border: "1px solid rgba(212,168,67,0.2)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "1.1rem",
-                      fontWeight: 800,
-                      color: "#D4A843",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <rect x="1" y="3" width="15" height="13" />
-                      <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
-                      <circle cx="5.5" cy="18.5" r="2.5" />
-                      <circle cx="18.5" cy="18.5" r="2.5" />
-                    </svg>
-                  </div>
-                  <div>
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        color: "#E5E2E1",
-                        fontSize: "1.05rem",
-                      }}
-                    >
-                      {v.name}
-                    </div>
-                    {v.category && (
-                      <span
-                        style={{
-                          display: "inline-block",
-                          fontSize: "0.6rem",
-                          color: "var(--gray)",
-                          background: "rgba(255,255,255,0.04)",
-                          border: "1px solid rgba(255,255,255,0.08)",
-                          padding: "0.15rem 0.5rem",
-                          borderRadius: "4px",
-                          marginTop: "0.25rem",
-                          textTransform: "uppercase",
-                          fontWeight: 600,
-                          letterSpacing: "0.05em",
-                        }}
-                      >
-                        {v.category}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div
-                  style={{ display: "flex", gap: "0.25rem" }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={() => {
-                      setEditVendor(v);
-                      setShowAddModal(true);
-                    }}
-                    style={{
-                      background: "rgba(255,255,255,0.05)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "6px",
-                      padding: "0.35rem",
-                      cursor: "pointer",
-                      color: "var(--gray)",
-                    }}
-                  >
-                    <EditIcon />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(v.id)}
-                    style={{
-                      background: "rgba(239,68,68,0.1)",
-                      border: "1px solid rgba(239,68,68,0.2)",
-                      borderRadius: "6px",
-                      padding: "0.35rem",
-                      cursor: "pointer",
-                      color: "#f87171",
-                    }}
-                  >
-                    <TrashIcon />
-                  </button>
-                </div>
-              </div>
-
-              {/* Contact Info */}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.5rem",
-                  fontSize: "0.825rem",
-                }}
-              >
-                {/* Contact Persons */}
-                {(Array.isArray(v.contact)
-                  ? v.contact
-                  : v.contact
-                    ? [v.contact]
-                    : []
-                ).map((c, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      color: "#E5E2E1",
-                    }}
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="var(--gray)"
-                      strokeWidth="2"
-                    >
-                      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-                      <circle cx="12" cy="7" r="4" />
-                    </svg>
-                    {c}
-                  </div>
-                ))}
-                {/* Phones */}
-                {(Array.isArray(v.phone)
-                  ? v.phone
-                  : v.phone
-                    ? [v.phone]
-                    : []
-                ).map((ph, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      color: "#E5E2E1",
-                    }}
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="var(--gray)"
-                      strokeWidth="2"
-                    >
-                      <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-                    </svg>
-                    {ph}
-                  </div>
-                ))}
-                {/* Emails */}
-                {(Array.isArray(v.email)
-                  ? v.email
-                  : v.email
-                    ? [v.email]
-                    : []
-                ).map((em, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      color: "var(--gray)",
-                    }}
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                      <polyline points="22,6 12,13 2,6" />
-                    </svg>
-                    {em}
-                  </div>
-                ))}
-              </div>
-
-              {/* Items Supplied — individual boxes */}
-              {(v.itemsSupplied || []).length > 0 && (
-                <div>
-                  <div
-                    style={{
-                      fontSize: "0.6rem",
-                      color: "var(--gray)",
-                      textTransform: "uppercase",
-                      fontWeight: 700,
-                      marginBottom: "0.4rem",
-                      letterSpacing: "0.05em",
-                    }}
-                  >
-                    Items Supplied ({v.itemsSupplied.length})
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "0.35rem",
-                    }}
-                  >
-                    {(v.itemsSupplied || []).map((item, i) => {
-                      const name = typeof item === "string" ? item : item.name;
-                      const uom =
-                        typeof item === "string" ? "pcs" : item.uom || "pcs";
-                      return (
-                        <div
-                          key={i}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: "0.5rem",
-                            padding: "0.4rem 0.6rem",
-                            background: "rgba(255,255,255,0.03)",
-                            border: "1px solid rgba(255,255,255,0.06)",
-                            borderRadius: "6px",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: "0.78rem",
-                              color: "#E5E2E1",
-                              fontWeight: 500,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {name}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: "0.6rem",
-                              color: "var(--gray)",
-                              textTransform: "uppercase",
-                              background: "rgba(255,255,255,0.04)",
-                              padding: "0.1rem 0.35rem",
-                              borderRadius: "4px",
-                              fontWeight: 600,
-                              flexShrink: 0,
-                            }}
-                          >
-                            {uom}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Footer: Active Materials + View Catalog */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  paddingTop: "0.75rem",
-                  borderTop: "1px solid rgba(255,255,255,0.06)",
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontSize: "0.6rem",
-                      color: "var(--gray)",
-                      textTransform: "uppercase",
-                      fontWeight: 700,
-                      letterSpacing: "0.05em",
-                    }}
-                  >
-                    Active Materials
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "1.1rem",
-                      fontWeight: 800,
-                      color: "#E5E2E1",
-                    }}
-                  >
-                    {activeMaterials.length}
-                  </div>
-                </div>
-                <button
-                  onClick={() => setCatalogVendor(v)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#D4A843",
-                    fontSize: "0.8rem",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.3rem",
-                  }}
-                >
-                  View Catalog
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                  >
-                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                    <polyline points="15 3 21 3 21 9" />
-                    <line x1="10" y1="14" x2="21" y2="3" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Add New Vendor Card */}
-        <div
-          onClick={() => {
-            setEditVendor(null);
-            setShowAddModal(true);
-          }}
-          style={{
-            background: "transparent",
-            border: "2px dashed rgba(255,255,255,0.1)",
-            borderRadius: "14px",
-            padding: "1.5rem",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "0.75rem",
-            cursor: "pointer",
-            minHeight: "240px",
-            transition: "border-color 0.2s, background 0.2s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "rgba(212,168,67,0.3)";
-            e.currentTarget.style.background = "rgba(212,168,67,0.03)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
-            e.currentTarget.style.background = "transparent";
-          }}
-        >
-          <svg
-            width="32"
-            height="32"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="var(--gray)"
-            strokeWidth="1.5"
-          >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          <span
-            style={{
-              fontSize: "0.875rem",
-              color: "var(--gray)",
-              fontWeight: 600,
-            }}
-          >
-            Add New Supplier
-          </span>
-        </div>
-      </div>
-
-      {showAddModal && (
-        <VendorFormModal
-          vendor={editVendor}
-          allVendors={vendors}
-          materials={materials}
-          onClose={() => {
-            setShowAddModal(false);
-            setEditVendor(null);
-          }}
-          onSave={handleSave}
-        />
-      )}
-      {viewVendor && (
-        <VendorDetailsModal
-          vendor={viewVendor}
-          materials={materials}
-          onClose={() => setViewVendor(null)}
-        />
-      )}
-      {catalogVendor && (
-        <VendorCatalogModal
-          vendor={catalogVendor}
-          materials={materials}
-          onClose={() => setCatalogVendor(null)}
-        />
-      )}
-      <InfoModal
-        isOpen={infoModal.isOpen}
-        onClose={() => setInfoModal({ isOpen: false, title: "", message: "" })}
-        title={infoModal.title}
-        message={infoModal.message}
-      />
-      <ConfirmModal
-        isOpen={confirmModal.isOpen}
-        onClose={() =>
-          setConfirmModal({
-            isOpen: false,
-            title: "",
-            message: "",
-            onConfirm: null,
-          })
-        }
-        onConfirm={confirmModal.onConfirm}
-        title={confirmModal.title}
-        message={confirmModal.message}
-        confirmLabel="Delete"
-        confirmClass="btn-danger"
-      />
-    </div>
-  );
-}
 
 function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
   const [form, setForm] = useState({
@@ -6690,23 +5178,21 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // BOM TAB
 // ══════════════════════════════════════════════════════════════════════════════
-function BOMTab() {
-  const [boms, setBOMs] = useState([]);
-  const [materials, setMaterials] = useState([]);
+function BOMTab({ materials, boms, token, refreshBoms }) {
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [editBOM, setEditBOM] = useState(null);
+  const [infoModal, setInfoModal] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+  });
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     title: "",
     message: "",
     onConfirm: null,
   });
-
-  useEffect(() => {
-    setBOMs(getBOMs());
-    setMaterials(getMaterials());
-  }, []);
 
   // Helper function to generate abbreviation from material name
   const abbreviateMaterial = (name) => {
@@ -6741,7 +5227,10 @@ function BOMTab() {
 
     const materialNames = bom.components
       .map((c) => {
-        const mat = materials.find((m) => m.id === c.materialId);
+        const mid = c.materialId ?? c.inventoryId;
+        const mat = materials.find(
+          (m) => String(m.id ?? m._id) === String(mid),
+        );
         return mat?.name || "";
       })
       .filter((name) => name);
@@ -6771,10 +5260,31 @@ function BOMTab() {
       title: "Delete BOM",
       message:
         "Are you sure you want to delete this BOM? This action cannot be undone.",
-      onConfirm: () => {
-        const updated = boms.filter((b) => b.id !== id);
-        setBOMs(updated);
-        saveBOMs(updated);
+      onConfirm: async () => {
+        if (!token) {
+          setInfoModal({
+            isOpen: true,
+            title: "Sign in required",
+            message: "Sign in as admin to delete BOMs.",
+          });
+          setConfirmModal({
+            isOpen: false,
+            title: "",
+            message: "",
+            onConfirm: null,
+          });
+          return;
+        }
+        try {
+          await deleteBOM(id, token);
+          await refreshBoms();
+        } catch (e) {
+          setInfoModal({
+            isOpen: true,
+            title: "Delete failed",
+            message: e?.message || "Could not delete BOM.",
+          });
+        }
         setConfirmModal({
           isOpen: false,
           title: "",
@@ -6785,133 +5295,67 @@ function BOMTab() {
     });
   };
 
-  const handleSave = (bom) => {
-    // Auto-calculate total cost from components using FIFO cost
-    const totalCost = (bom.components || []).reduce((sum, c) => {
-      const mat = materials.find((m) => m.id === c.materialId);
-      // Use FIFO cost - simulate consuming from oldest batches first
-      if (!mat || !mat.batches || mat.batches.length === 0) {
-        return sum + (mat?.baseCost || 0) * (c.qty || 1);
-      }
-
-      const activeBatches = mat.batches
-        .filter((b) => (b.remainingQty || 0) > 0)
-        .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
-      if (activeBatches.length === 0) {
-        return sum + (mat?.baseCost || 0) * (c.qty || 1);
-      }
-
-      let remaining = c.qty || 1;
-      let batchCost = 0;
-
-      for (const batch of activeBatches) {
-        if (remaining <= 0) break;
-        const take = Math.min(remaining, batch.remainingQty || 0);
-        batchCost += take * (batch.unitCost || 0);
-        remaining -= take;
-      }
-
-      // If backorder, use average for remaining
-      if (remaining > 0) {
-        const totalQty = activeBatches.reduce(
-          (s, b) => s + (b.remainingQty || 0),
-          0,
-        );
-        const totalValue = activeBatches.reduce(
-          (s, b) => s + (b.remainingQty || 0) * (b.unitCost || 0),
-          0,
-        );
-        const avgCost = totalQty > 0 ? totalValue / totalQty : 0;
-        batchCost += remaining * avgCost;
-      }
-
-      return sum + batchCost;
-    }, 0);
-
-    // Ensure variantGroup is set from productGroupName (or productName) for proper grouping
-    const group = bom.productGroupName?.trim() || bom.productName?.trim() || "";
-
-    let updated;
-    if (editBOM) {
-      updated = boms.map((b) =>
-        b.id === bom.id ? { ...bom, totalCost, variantGroup: group } : b,
-      );
-    } else {
-      updated = [
-        ...boms,
-        {
-          ...bom,
-          totalCost,
-          variantGroup: group, // Explicitly set variantGroup for grouping logic
-          id: `bom-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-        },
-      ];
+  const handleSave = async (bom) => {
+    if (!token) {
+      setInfoModal({
+        isOpen: true,
+        title: "Sign in required",
+        message: "Sign in as admin to save BOMs.",
+      });
+      return;
     }
-    setBOMs(updated);
-    saveBOMs(updated);
-    setShowAddModal(false);
-    setEditBOM(null);
+    try {
+      const merged = {
+        ...bom,
+        variantName:
+          bom.variantName ||
+          bom.productName?.split(" - ").slice(-1)[0] ||
+          bom.productName ||
+          "Default",
+      };
+      const payload = bomToApiPayload(merged, materials);
+      if (editBOM) {
+        const bid = editBOM.id ?? editBOM._id;
+        await updateBOM(bid, payload, token);
+      } else {
+        await createBOM(payload, token);
+      }
+      await refreshBoms();
+      setShowAddModal(false);
+      setEditBOM(null);
+    } catch (e) {
+      setInfoModal({
+        isOpen: true,
+        title: "Could not save BOM",
+        message: e?.message || "Failed to save.",
+      });
+    }
   };
 
-  // Handler for batch-saving multiple BOMs at once (from "Add All Variants")
-  const handleSaveBatch = (newBOMs) => {
-    const processedBOMs = newBOMs.map((b) => {
-      // Calculate total cost from components using FIFO cost
-      const totalCost = (b.components || []).reduce((sum, c) => {
-        const mat = materials.find((m) => m.id === c.materialId);
-        // Use FIFO cost - simulate consuming from oldest batches first
-        if (!mat || !mat.batches || mat.batches.length === 0) {
-          return sum + (mat?.baseCost || 0) * (c.qty || 1);
-        }
-
-        const activeBatches = mat.batches
-          .filter((b) => (b.remainingQty || 0) > 0)
-          .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
-        if (activeBatches.length === 0) {
-          return sum + (mat?.baseCost || 0) * (c.qty || 1);
-        }
-
-        let remaining = c.qty || 1;
-        let batchCost = 0;
-
-        for (const batch of activeBatches) {
-          if (remaining <= 0) break;
-          const take = Math.min(remaining, batch.remainingQty || 0);
-          batchCost += take * (batch.unitCost || 0);
-          remaining -= take;
-        }
-
-        // If backorder, use average for remaining
-        if (remaining > 0) {
-          const totalQty = activeBatches.reduce(
-            (s, b) => s + (b.remainingQty || 0),
-            0,
-          );
-          const totalValue = activeBatches.reduce(
-            (s, b) => s + (b.remainingQty || 0) * (b.unitCost || 0),
-            0,
-          );
-          const avgCost = totalQty > 0 ? totalValue / totalQty : 0;
-          batchCost += remaining * avgCost;
-        }
-
-        return sum + batchCost;
-      }, 0);
-
-      return {
-        ...b,
-        totalCost,
-        id: `bom-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        createdAt: new Date().toISOString(),
-      };
-    });
-
-    const updated = [...boms, ...processedBOMs];
-    setBOMs(updated);
-    saveBOMs(updated);
-    setShowAddModal(false);
-    setEditBOM(null);
+  const handleSaveBatch = async (newBOMs) => {
+    if (!token) return;
+    try {
+      for (const b of newBOMs) {
+        const merged = {
+          ...b,
+          variantName:
+            b.variantName ||
+            b.productName?.split(" - ").slice(-1)[0] ||
+            b.productName ||
+            "Default",
+        };
+        await createBOM(bomToApiPayload(merged, materials), token);
+      }
+      await refreshBoms();
+      setShowAddModal(false);
+      setEditBOM(null);
+    } catch (e) {
+      setInfoModal({
+        isOpen: true,
+        title: "Could not save BOMs",
+        message: e?.message || "Batch save failed.",
+      });
+    }
   };
 
   const EditIcon = () => (
@@ -7024,6 +5468,14 @@ function BOMTab() {
           onSaveBatch={handleSaveBatch}
         />
       )}
+      <InfoModal
+        isOpen={infoModal.isOpen}
+        onClose={() =>
+          setInfoModal({ isOpen: false, title: "", message: "" })
+        }
+        title={infoModal.title}
+        message={infoModal.message}
+      />
       <ConfirmModal
         isOpen={confirmModal.isOpen}
         onClose={() =>
@@ -7703,16 +6155,65 @@ function DeleteConfirmModal({ unit, onClose, onConfirm }) {
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function MasterDataPage() {
+  const { token } = useAuth();
   const [activeTab, setActiveTab] = useState("materials");
   const [vendors, setVendors] = useState([]);
   const [materials, setMaterials] = useState([]);
+  const [boms, setBoms] = useState([]);
   const [units, setUnits] = useState([]);
 
+  const refreshMaterials = useCallback(async () => {
+    if (!token) {
+      setMaterials([]);
+      return;
+    }
+    try {
+      const data = await fetchInventory(token);
+      setMaterials((Array.isArray(data) ? data : []).map(normalizeInventoryRow));
+    } catch (e) {
+      console.error(e);
+      setMaterials([]);
+    }
+  }, [token]);
+
+  const refreshBoms = useCallback(async () => {
+    if (!token) {
+      setBoms([]);
+      return;
+    }
+    try {
+      const data = await fetchBOMs(token);
+      setBoms(
+        (Array.isArray(data) ? data : []).map((b) => ({
+          ...b,
+          id: b.id ?? b._id,
+        })),
+      );
+    } catch (e) {
+      console.error(e);
+      setBoms([]);
+    }
+  }, [token]);
+
   useEffect(() => {
-    setVendors(getVendors());
-    setMaterials(getMaterials());
     setUnits(getUnits());
-  }, []);
+    if (!token) {
+      setVendors([]);
+      setMaterials([]);
+      setBoms([]);
+      return;
+    }
+    fetchSuppliers(token)
+      .then((d) => {
+        const arr = Array.isArray(d) ? d : [];
+        setVendors(arr.map((v) => ({ ...v, id: v.id ?? v._id })));
+      })
+      .catch(() => {
+        setVendors([]);
+      });
+    refreshMaterials();
+    refreshBoms();
+  }, [token, refreshMaterials, refreshBoms]);
 
   // Collect all unique item names from all vendors' itemsSupplied
   const itemCategories = useMemo(() => {
@@ -7794,7 +6295,7 @@ export default function MasterDataPage() {
             style={tabStyle("vendors")}
             onClick={() => setActiveTab("vendors")}
           >
-            Vendor Master
+            Vendors
           </button>
           <button style={tabStyle("bom")} onClick={() => setActiveTab("bom")}>
             Product Creation
@@ -7812,14 +6313,24 @@ export default function MasterDataPage() {
         <MaterialMasterTab
           itemCategories={itemCategories}
           materials={materials}
-          onMaterialsChange={setMaterials}
+          vendors={vendors}
+          token={token}
+          boms={boms}
+          refreshMaterials={refreshMaterials}
           onVendorsChange={setVendors}
         />
       )}
       {activeTab === "vendors" && (
-        <VendorMasterTab materials={materials} onVendorsChange={setVendors} />
+        <VendorsApiTab onVendorsChange={setVendors} />
       )}
-      {activeTab === "bom" && <BOMTab />}
+      {activeTab === "bom" && (
+        <BOMTab
+          materials={materials}
+          boms={boms}
+          token={token}
+          refreshBoms={refreshBoms}
+        />
+      )}
       {activeTab === "units" && (
         <UnitMasterTab
           units={units}

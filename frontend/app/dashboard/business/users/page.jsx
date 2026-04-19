@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -128,9 +129,9 @@ export default function UserManagementPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/staff`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/staff`, {
         headers: HEADERS(token),
-      });
+      }, 15000);
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || 'Failed to load staff.');
@@ -236,11 +237,11 @@ export default function UserManagementPage() {
           role: form.role,
           phoneNumber: form.phoneNumber.trim(),
         };
-        const res = await fetch(`${API_URL}/api/admin/staff`, {
+        const res = await fetchWithTimeout(`${API_URL}/api/admin/staff`, {
           method: 'POST',
           headers: HEADERS(token),
           body: JSON.stringify(body),
-        });
+        }, 15000);
         const data = await res.json();
         if (!res.ok) {
           const m = data.message || (data.errors && Object.values(data.errors).flat().join(' ')) || 'Create failed.';
@@ -256,11 +257,11 @@ export default function UserManagementPage() {
         if (form.password && form.password.length >= 8) {
           payload.password = form.password;
         }
-        const res = await fetch(`${API_URL}/api/admin/staff/${encodeURIComponent(String(id))}`, {
+        const res = await fetchWithTimeout(`${API_URL}/api/admin/staff/${encodeURIComponent(String(id))}`, {
           method: 'PUT',
           headers: HEADERS(token),
           body: JSON.stringify(payload),
-        });
+        }, 15000);
         const data = await res.json();
         if (!res.ok) {
           const m = data.message || (data.errors && Object.values(data.errors).flat().join(' ')) || 'Update failed.';
@@ -290,10 +291,10 @@ export default function UserManagementPage() {
     setDeleteError(null);
     try {
       const id = deleteTarget._id ?? deleteTarget.id;
-      const res = await fetch(`${API_URL}/api/admin/staff/${encodeURIComponent(String(id))}`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/staff/${encodeURIComponent(String(id))}`, {
         method: 'DELETE',
         headers: HEADERS(token),
-      });
+      }, 15000);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.message || 'Failed to delete account.');

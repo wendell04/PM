@@ -17,8 +17,8 @@ const JO_STATUSES = ['Queued', 'In Progress', 'Completed'];
 
 const STATUS_COLORS = {
   'Queued':      { bg: 'rgba(234,179,8,0.12)',  color: 'var(--gold)' },
-  'In Progress': { bg: 'rgba(59,130,246,0.12)', color: '#60a5fa' },
-  'Completed':   { bg: 'rgba(34,197,94,0.12)',  color: '#4ade80' },
+  'In Progress': { bg: 'rgba(59,130,246,0.12)', color: 'var(--blue)' },
+  'Completed':   { bg: 'rgba(34,197,94,0.12)',  color: 'var(--green)' },
 };
 
 const EMPTY_FORM = {
@@ -367,7 +367,7 @@ export default function JobOrdersPage() {
 
   // List tab state
   const [jobOrders, setJobOrders]       = useState([]);
-  const [loading, setLoading]           = useState(true);
+  const [isLoading, setIsLoading]       = useState(true);
   const [error, setError]               = useState(null);
   const [filters, setFilters]           = useState({ status: '', isRush: '' });
 
@@ -390,8 +390,8 @@ export default function JobOrdersPage() {
 
   // ── Load job orders ───────────────────────────────────
   const loadJobOrders = useCallback(async () => {
-    if (!token) { setLoading(false); return; }
-    setLoading(true);
+    if (!token) { setIsLoading(false); return; }
+    setIsLoading(true);
     setError(null);
     try {
       const f = {};
@@ -403,7 +403,7 @@ export default function JobOrdersPage() {
       if (err.message === 'Unauthorized') { router.push('/'); return; }
       setError(err.message || 'Failed to load job orders.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   }, [token, filters, router]);
 
@@ -616,14 +616,29 @@ export default function JobOrdersPage() {
             </div>
 
             {/* Loading */}
-            {loading && (
-              <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray)' }}>
-                Loading job orders...
-              </div>
+            {isLoading && (
+              <>
+                <style>{`
+                  @keyframes joPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+                `}</style>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 0 1rem' }}>
+                  {[...Array(5)].map((_, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        height: '56px',
+                        borderRadius: '8px',
+                        background: 'rgba(255,255,255,0.04)',
+                        animation: 'joPageSkel 1.5s ease-in-out infinite',
+                      }}
+                    />
+                  ))}
+                </div>
+              </>
             )}
 
             {/* Error */}
-            {!loading && error && (
+            {!isLoading && error && (
               <div style={{
                 padding: '16px', borderRadius: '8px',
                 background: 'rgba(239,68,68,0.08)',
@@ -649,14 +664,14 @@ export default function JobOrdersPage() {
             )}
 
             {/* Empty */}
-            {!loading && !error && jobOrders.length === 0 && (
+            {!isLoading && !error && jobOrders.length === 0 && (
               <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--gray)' }}>
                 No job orders found.
               </div>
             )}
 
             {/* Job order cards */}
-            {!loading && !error && jobOrders.length > 0 && (
+            {!isLoading && !error && jobOrders.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {jobOrders.map(jo => (
                   <div

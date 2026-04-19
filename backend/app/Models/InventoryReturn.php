@@ -11,6 +11,7 @@ class InventoryReturn extends Model
 
     protected $fillable = [
         'returnId',
+        // Legacy fields (kept for backwards compatibility / older records)
         'inventoryId',
         'inventoryName',
         'supplierId',
@@ -18,6 +19,15 @@ class InventoryReturn extends Model
         'qty',
         'unitCost',
         'reason',
+        // Current "Bad Orders" fields (supplier receiving issues)
+        'materialId',
+        'materialName',
+        'vendorId',
+        'vendorName',
+        'batchId',
+        'damageType',
+        'quantity',
+        'totalLoss',
         'status',
         'notes',
         'resolvedAt',
@@ -27,22 +37,27 @@ class InventoryReturn extends Model
 
     protected $casts = [
         'qty'        => 'integer',
+        'quantity'   => 'integer',
         'unitCost'   => 'float',
+        'totalLoss'  => 'float',
         'resolvedAt' => 'datetime',
         'createdAt'  => 'datetime',
         'updatedAt'  => 'datetime',
     ];
 
     protected $attributes = [
-        'qty'      => 0,
-        'unitCost' => 0,
-        'status'   => 'pending',
-        'notes'    => '',
+        'qty'       => 0,
+        'quantity'  => 0,
+        'unitCost'  => 0,
+        'totalLoss' => 0,
+        'status'    => 'pending',
+        'notes'     => '',
     ];
 
     protected $indexes = [
         ['key' => ['status'      => 1]],
         ['key' => ['inventoryId' => 1]],
+        ['key' => ['materialId'  => 1]],
         ['key' => ['createdAt'   => -1]],
     ];
 

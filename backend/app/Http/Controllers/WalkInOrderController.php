@@ -6,6 +6,7 @@ use App\Models\Inventory;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Sale;
+use App\Models\StockHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -20,7 +21,7 @@ class WalkInOrderController extends Controller
      * - orderSource = 'walk-in'
      * - orderStatus  = 'Delivered'  (instant — customer takes goods immediately)
      * - paymentStatus = 'paid'
-     * - paymentMethod = 'cash'
+     * - paymentMethod = 'cash' | 'gcash'
      * - Immediately creates Sale records + deducts inventory (same as completeOrder)
      */
     public function store(Request $request)
@@ -32,15 +33,23 @@ class WalkInOrderController extends Controller
             }
 
             $v = Validator::make($request->all(), [
-                'customerName'  => 'required|string|max:120',
-                'customerPhone' => 'nullable|string|max:30',
-                'items'         => 'required|array|min:1',
-                'items.*.productId'  => 'required|string',
-                'items.*.variantId'  => 'nullable|string',
-                'items.*.variantName'=> 'nullable|string',
-                'items.*.qty'        => 'required|integer|min:1',
-                'items.*.unitPrice'  => 'required|numeric|min:0',
-                'notes'         => 'nullable|string|max:1000',
+                // POS contract (frontend) — keep backward-compatible aliases
+                'customerName'    => 'nullable|string|max:120',
+                'items'           => 'required|array|min:1',
+                'items.*.productId'     => 'required|string',
+                'items.*.name'          => 'nullable|string|max:255',
+                'items.*.variantLabel'  => 'nullable|string|max:255',
+                'items.*.quantity'      => 'nullable|integer|min:1',
+                'items.*.price'         => 'nullable|numeric|min:0',
+                // legacy keys (older POS / admin tooling)
+                'items.*.variantId'     => 'nullable|string',
+                'items.*.variantName'   => 'nullable|string',
+                'items.*.qty'           => 'nullable|integer|min:1',
+                'items.*.unitPrice'     => 'nullable|numeric|min:0',
+                'paymentMethod'  => 'required|in:cash,gcash',
+                'amountTendered' => 'nullable|numeric|min:0',
+                'discount'       => 'nullable|numeric|min:0',
+                'notes'          => 'nullable|string|max:1000',
             ]);
 
             if ($v->fails()) {
@@ -48,7 +57,7 @@ class WalkInOrderController extends Controller
             }
 
             $validated = $request->only([
-                'customerName', 'customerPhone', 'items', 'notes',
+                'customerName', 'items', 'paymentMethod', 'amountTendered', 'discount', 'notes',
             ]);
 
             // Build order items — resolve price server-side as a sanity check
@@ -61,8 +70,11 @@ class WalkInOrderController extends Controller
                     return response()->json(['message' => "Product not found: {$item['productId']}"], 422);
                 }
 
-                $qty       = (int) $item['qty'];
-                $unitPrice = (float) $item['unitPrice'];
+                $qty       = (int) ($item['quantity'] ?? $item['qty'] ?? 0);
+                $unitPrice = (float) ($item['price'] ?? $item['unitPrice'] ?? 0);
+                if ($qty < 1) {
+                    return response()->json(['message' => 'Invalid quantity.'], 422);
+                }
 
                 // Server-side price sanity: resolve expected price and reject
                 // if client price deviates by more than 1 peso (rounding tolerance)
@@ -80,40 +92,42 @@ class WalkInOrderController extends Controller
                     'productId'   => (string) $product->_id,
                     'productName' => $product->name,
                     'variantId'   => $item['variantId']   ?? null,
-                    'variantName' => $item['variantName'] ?? null,
+                    'variantName' => $item['variantLabel'] ?? ($item['variantName'] ?? null),
                     'qty'         => $qty,
                     'unitPrice'   => $unitPrice,
                     'lineTotal'   => $lineTotal,
                 ];
             }
 
-            $customerName  = trim($validated['customerName']);
-            $customerPhone = trim($validated['customerPhone'] ?? '');
+            $customerName = trim($validated['customerName'] ?? '') ?: 'Walk-in Customer';
+            $discount     = (float) ($validated['discount'] ?? 0);
+            $discount     = max(0, $discount);
+            $netAmount    = max(0, round($totalAmount - $discount, 2));
 
             $order = Order::create([
                 'userId'          => null,
                 'userSnapshot'    => [
                     'name'  => $customerName,
                     'email' => null,
-                    'phone' => $customerPhone ?: null,
+                    'phone' => null,
                 ],
                 'items'           => $orderItems,
-                'totalAmount'     => $totalAmount,
-                'discountAmount'  => null,
+                'totalAmount'     => $netAmount,
+                'discountAmount'  => $discount > 0 ? $discount : null,
                 'voucherCode'     => null,
                 'orderStatus'     => 'Delivered',
                 'paymentStatus'   => 'paid',
-                'paymentMethod'   => 'cash',
+                'paymentMethod'   => $validated['paymentMethod'],
                 'orderSource'     => 'walk-in',
                 'deliveryAddress' => null,
                 'notes'           => $validated['notes'] ?? null,
                 'isRush'          => false,
                 'checkoutRestricted' => false,
-                'downPayment'     => $totalAmount,
+                'downPayment'     => $netAmount,
                 'balance'         => 0,
                 'paymentHistory'  => [[
-                    'amount'    => $totalAmount,
-                    'method'    => 'cash',
+                    'amount'    => $netAmount,
+                    'method'    => $validated['paymentMethod'],
                     'note'      => 'Walk-in / POS payment',
                     'recordedBy'=> (string) $user->_id,
                     'createdAt' => now()->toISOString(),
@@ -123,16 +137,18 @@ class WalkInOrderController extends Controller
             ]);
 
             // Immediately create Sale records + deduct inventory
-            $this->recordSales($order, $customerName, $customerPhone);
+            $this->recordSalesAndDeductInventory($order, $customerName, (string) $user->_id);
 
             $orderRef = strtoupper(substr((string) $order->_id, -8));
 
             return response()->json([
-                'message' => "Walk-in order #{$orderRef} created successfully.",
                 'data'    => [
                     'orderId'    => (string) $order->_id,
                     'orderRef'   => $orderRef,
-                    'totalAmount'=> $totalAmount,
+                    'totalAmount'=> $netAmount,
+                    'discount'   => $discount,
+                    'paymentMethod' => $validated['paymentMethod'],
+                    'amountTendered' => (float) ($validated['amountTendered'] ?? 0),
                     'items'      => $orderItems,
                 ],
             ], 201);
@@ -147,7 +163,7 @@ class WalkInOrderController extends Controller
 
     // ── Private helpers ──────────────────────────────────────────────────────
 
-    private function recordSales(Order $order, string $customerName, string $customerPhone): void
+    private function recordSalesAndDeductInventory(Order $order, string $customerName, string $performedByUserId): void
     {
         try {
             foreach ($order->items as $item) {
@@ -180,7 +196,7 @@ class WalkInOrderController extends Controller
                     'profit'          => $profit,
                     'saleDate'        => now(),
                     'customerName'    => $customerName,
-                    'customerContact' => $customerPhone ?: null,
+                    'customerContact' => null,
                     'customerEmail'   => null,
                     'source'          => 'walk-in',
                     'status'          => 'completed',
@@ -188,15 +204,96 @@ class WalkInOrderController extends Controller
                     'createdAt'       => now(),
                 ]);
 
-                // Deduct inventory (only if not on-demand)
+                // Deduct inventory batches FIFO + write StockHistory for traceability (only if not on-demand)
                 if (!$inventory->isOnDemand) {
-                    $inventory->stockQty = max(0, (int) ($inventory->stockQty ?? 0) - (int) $item['qty']);
-                    $inventory->save();
+                    $this->deductInventoryFIFO(
+                        inventory: $inventory,
+                        qty: (int) $item['qty'],
+                        reason: 'sales-outside',
+                        sellingPrice: (float) ($item['unitPrice'] ?? 0),
+                        customerName: $customerName,
+                        performedBy: $performedByUserId,
+                        remarks: "Walk-in POS Order: " . (string) $order->_id,
+                    );
                 }
             }
         } catch (\Exception $e) {
             Log::error('WalkInOrderController@recordSales: ' . $e->getMessage(), [
                 'orderId' => (string) $order->_id,
+            ]);
+        }
+    }
+
+    /**
+     * Deducts stock from batches FIFO (oldest first) and writes StockHistory records per-batch.
+     */
+    private function deductInventoryFIFO(
+        Inventory $inventory,
+        int $qty,
+        string $reason,
+        float $sellingPrice,
+        string $customerName,
+        string $performedBy,
+        ?string $remarks = null,
+    ): void {
+        $qty = max(0, $qty);
+        if ($qty <= 0) return;
+
+        $batches = $inventory->batches ?? [];
+        usort($batches, function ($a, $b) {
+            return strtotime($a['dateReceived'] ?? '0') <=> strtotime($b['dateReceived'] ?? '0');
+        });
+
+        $available = array_reduce($batches, function ($carry, $b) {
+            return $carry + ($b['remainingQty'] ?? $b['goodQty'] ?? 0);
+        }, 0);
+
+        if ($available < $qty) {
+            throw new \Exception('Insufficient stock.');
+        }
+
+        $remaining = $qty;
+        $batchDeductions = [];
+        foreach ($batches as &$batch) {
+            if ($remaining <= 0) break;
+            $batchQty = $batch['remainingQty'] ?? $batch['goodQty'] ?? 0;
+            if ($batchQty <= 0) continue;
+            $deduct = min($batchQty, $remaining);
+            $batch['remainingQty'] = $batchQty - $deduct;
+            $remaining -= $deduct;
+            $batchDeductions[] = [
+                'batchId'  => $batch['batchId'] ?? null,
+                'qty'      => $deduct,
+                'unitCost' => $batch['unitCost'] ?? 0,
+            ];
+        }
+        unset($batch);
+
+        $newStock = max(0, (int) ($inventory->stockQty ?? 0) - $qty);
+        $inventory->batches   = $batches;
+        $inventory->stockQty  = $newStock;
+        $inventory->updatedAt = now();
+        $inventory->save();
+
+        // Write per-batch StockHistory records (mirrors InventoryController@adjustStock behavior)
+        $runningRemaining = $newStock + $qty; // pre-deduction
+        foreach ($batchDeductions as $bd) {
+            $runningRemaining -= $bd['qty'];
+            StockHistory::create([
+                'inventoryId'   => $inventory->_id,
+                'quantity'      => $bd['qty'],
+                'remainingQty'  => $runningRemaining,
+                'unitCost'      => $bd['unitCost'],
+                'totalCost'     => $bd['qty'] * $bd['unitCost'],
+                'reason'        => $reason,
+                'type'          => 'deduction',
+                'batchId'       => $bd['batchId'],
+                'sellingPrice'  => $sellingPrice,
+                'saleDate'      => now(),
+                'customerName'  => $customerName,
+                'remarks'       => $remarks,
+                'performedBy'   => $performedBy,
+                'createdAt'     => now(),
             ]);
         }
     }

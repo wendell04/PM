@@ -13,7 +13,7 @@ export default function FlashSalesPage() {
 
   // Data
   const [sales, setSales] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(null);
@@ -37,8 +37,11 @@ export default function FlashSalesPage() {
 
   // Fetch
   const fetchSales = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
     setError(null);
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/flash-sales`, {
@@ -50,7 +53,7 @@ export default function FlashSalesPage() {
     } catch (err) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   }, [token]);
 
@@ -256,6 +259,31 @@ export default function FlashSalesPage() {
     s.isActive && new Date(s.startDate) > now
   ).length;
 
+  if (isLoading) {
+    return (
+      <ErrorBoundary>
+        <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+          <style>{`
+            @keyframes fsPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+          `}</style>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {[...Array(5)].map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  height: '56px',
+                  borderRadius: '8px',
+                  background: 'rgba(255,255,255,0.04)',
+                  animation: 'fsPageSkel 1.5s ease-in-out infinite',
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
@@ -300,9 +328,9 @@ export default function FlashSalesPage() {
             { label: 'Total', value: sales.length,
               color: 'var(--white)' },
             { label: 'Live Now', value: liveCount,
-              color: '#4ade80' },
+              color: 'var(--green)' },
             { label: 'Upcoming', value: upcomingCount,
-              color: '#60a5fa' },
+              color: 'var(--blue)' },
           ].map(chip => (
             <div key={chip.label} style={{
               background: 'var(--dark2)',
@@ -335,23 +363,8 @@ export default function FlashSalesPage() {
           </div>
         )}
 
-        {/* Loading */}
-        {loading && (
-          <div style={{ border: '1px solid var(--border)',
-            borderRadius: '10px', overflow: 'hidden' }}>
-            {[...Array(5)].map((_, i) => (
-              <div key={i} style={{
-                height: '60px', background: 'var(--dark2)',
-                borderBottom: i < 4 ? '1px solid var(--border)' : 'none',
-                opacity: 1 - i * 0.15,
-                animation: 'pulse 1.5s ease-in-out infinite',
-              }} />
-            ))}
-          </div>
-        )}
-
         {/* Empty */}
-        {!loading && !error && sales.length === 0 && (
+        {!error && sales.length === 0 && (
           <div style={{ textAlign: 'center', padding: '4rem 2rem',
             color: 'var(--gray)', border: '1px solid var(--border)',
             borderRadius: '10px' }}>
@@ -375,7 +388,7 @@ export default function FlashSalesPage() {
         )}
 
         {/* Table */}
-        {!loading && !error && sales.length > 0 && (
+        {!error && sales.length > 0 && (
           <div style={{ border: '1px solid var(--border)',
             borderRadius: '10px', overflowX: 'auto',
             scrollbarWidth: 'thin',
@@ -503,7 +516,7 @@ export default function FlashSalesPage() {
                                 ? '#f59e0b'
                                 : 'var(--white)',
                           }}>
-                            {sale.currentStock === 0 ? '⚠ Out of stock' : `${sale.currentStock} left`}
+                            {sale.currentStock === 0 ? 'Out of stock' : `${sale.currentStock} left`}
                             {sale.stockLimit != null && (
                               <span style={{ color: 'var(--gray)', fontWeight: 400 }}>
                                 {' '}/ {sale.stockLimit} cap
@@ -898,10 +911,10 @@ export default function FlashSalesPage() {
                     if (stockInfo.stock == null) return null;
                     const color = stockInfo.stock === 0 ? '#ef4444' : stockInfo.stock <= 5 ? '#f59e0b' : '#4ade80';
                     const msg = stockInfo.stock === 0
-                      ? '⚠ This product is out of stock.'
+                      ? 'This product is out of stock.'
                       : stockInfo.stock <= 5
-                        ? `⚠ Only ${stockInfo.stock} units in stock.`
-                        : `✓ ${stockInfo.stock} units available.`;
+                        ? `Only ${stockInfo.stock} units in stock.`
+                        : `${stockInfo.stock} units available.`;
                     return (
                       <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color }}>
                         {msg}

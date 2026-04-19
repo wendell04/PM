@@ -374,6 +374,7 @@ export default function BannerManagementPage() {
   useEffect(() => {
     if (!token) return;
     async function loadBanners() {
+      setIsLoading(true);
       try {
         const loadedBanners = await getBanners(token);
         if (loadedBanners.length > 0) {
@@ -606,7 +607,7 @@ export default function BannerManagementPage() {
   // ── Image Upload ─────────────────────────────────────────────────────────────
   // TODO: Cloudinary — Replace base64 with Cloudinary upload
   // CURRENT: Converts image to base64 string, stored directly in localStorage
-  //          ⚠️ localStorage has a ~5MB limit — large images will cause errors
+  //          NOTE: localStorage has a ~5MB limit — large images will cause errors
   // FUTURE:
   //   const url = await uploadToCloudinary(file); // returns Cloudinary URL
   //   updateField('imageUrl', url);               // store URL, not base64
@@ -655,13 +656,20 @@ export default function BannerManagementPage() {
   if (isLoading) {
     return (
       <div className="skeleton-page" style={{ padding: "2rem" }}>
-        <div className="skeleton-header">
-          <div className="skeleton-title" />
-          <div className="skeleton-subtitle" />
-        </div>
-        <div className="skeleton-cards">
-          {[...Array(3)].map((_, i) => (
-            <div className="skeleton-card" key={i} style={{ height: "160px" }} />
+        <style>{`
+          @keyframes bnPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+        `}</style>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxWidth: "1400px", margin: "0 auto" }}>
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={i}
+              style={{
+                height: "56px",
+                borderRadius: "8px",
+                background: "rgba(255,255,255,0.04)",
+                animation: "bnPageSkel 1.5s ease-in-out infinite",
+              }}
+            />
           ))}
         </div>
       </div>
@@ -1068,7 +1076,7 @@ export default function BannerManagementPage() {
             <div className="banner-editor-card">
               <h3 className="banner-editor-card-title">Schedule</h3>
 
-              {/* ✅ Custom dark calendar — no browser default inputs */}
+              {/* Custom dark calendar — no browser default inputs */}
               <DateRangePicker
                 startValue={editedBanner?.scheduleStart || ''}
                 endValue={editedBanner?.scheduleEnd || ''}

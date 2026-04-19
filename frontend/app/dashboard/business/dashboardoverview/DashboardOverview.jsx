@@ -15,16 +15,16 @@ import { useMemo, useState } from "react";
 
 // ── Shared Styles ──────────────────────────────────────────────────────────────
 const cardStyle = {
-  background: "rgba(255,255,255,0.04)",
+  background: "rgba(255,255,255,0.03)",
   borderRadius: "12px",
   padding: "1.25rem",
-  border: "1px solid rgba(255,255,255,0.08)",
+  border: "1px solid var(--border)",
 };
 
 const sectionTitleStyle = {
   fontSize: "0.75rem",
   fontWeight: 700,
-  color: "#9ca3af",
+  color: "var(--gray)",
   textTransform: "uppercase",
   letterSpacing: "0.1em",
   marginBottom: "1rem",
@@ -32,7 +32,7 @@ const sectionTitleStyle = {
 
 const metricLabelStyle = {
   fontSize: "0.7rem",
-  color: "#9ca3af",
+  color: "var(--gray)",
   marginBottom: "0.25rem",
   fontWeight: 600,
 };
@@ -40,7 +40,7 @@ const metricLabelStyle = {
 const metricValueStyle = {
   fontSize: "1.75rem",
   fontWeight: 800,
-  color: "#E5E2E1",
+  color: "var(--white)",
   lineHeight: 1.2,
 };
 
@@ -57,7 +57,7 @@ const trendStyle = {
 function TrendArrow({ value, prefix = "vs Yesterday" }) {
   if (!value) return null;
   const isPositive = value > 0;
-  const color = isPositive ? "#22c55e" : "#ef4444";
+  const color = isPositive ? "var(--green)" : "var(--red)";
 
   return (
     <div style={{ ...trendStyle, color }}>
@@ -92,7 +92,7 @@ function ChartPlaceholder({ label }) {
         marginTop: "1rem",
       }}
     >
-      <div style={{ textAlign: "center", color: "#6b7280" }}>
+      <div style={{ textAlign: "center", color: "var(--gray)" }}>
         <svg
           width="32"
           height="32"
@@ -116,7 +116,7 @@ function ChartPlaceholder({ label }) {
 }
 
 // ── Progress Bar Component ─────────────────────────────────────────────────────
-function ProgressBar({ value, color = "#D4A843" }) {
+function ProgressBar({ value, color = "var(--gold)" }) {
   return (
     <div
       style={{
@@ -184,18 +184,18 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
   // ── Status badge helper ──────────────────────────────────────────────────────
   const getStatusColor = (status) => {
     const colors = {
-      Pending: "#f59e0b",
-      Processing: "#3b82f6",
-      Delivered: "#22c55e",
-      Cancelled: "#ef4444",
+      Pending: "var(--color-text-warning)",
+      Processing: "var(--blue)",
+      Delivered: "var(--green)",
+      Cancelled: "var(--red)",
     };
-    return colors[status] || "#9ca3af";
+    return colors[status] || "var(--gray)";
   };
 
   const getMovementColor = (type) => {
-    if (type === "in") return "#22c55e";
-    if (type === "out") return "#ef4444";
-    return "#9ca3af";
+    if (type === "in") return "var(--green)";
+    if (type === "out") return "var(--red)";
+    return "var(--gray)";
   };
 
   return (
@@ -211,7 +211,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
         }}
       >
         <div>
-          <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginBottom: "0.25rem" }}>
+          <div style={{ fontSize: "0.7rem", color: "var(--gray)", marginBottom: "0.25rem" }}>
             Home &gt; Business Insights &gt; Overview
           </div>
           <h2
@@ -219,7 +219,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
               margin: 0,
               fontSize: "1.5rem",
               fontWeight: 700,
-              color: "#E5E2E1",
+              color: "var(--white)",
             }}
           >
             Dashboard Overview
@@ -233,7 +233,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
               background: "rgba(255,255,255,0.06)",
               border: "1px solid rgba(255,255,255,0.1)",
               borderRadius: "8px",
-              color: "#E5E2E1",
+              color: "var(--white)",
               padding: "0.5rem 0.75rem",
               fontSize: "0.85rem",
               outline: "none",
@@ -250,7 +250,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
               background: "rgba(212,168,67,0.15)",
               border: "1px solid rgba(212,168,67,0.3)",
               borderRadius: "8px",
-              color: "#D4A843",
+              color: "var(--gold)",
               fontSize: "0.85rem",
               fontWeight: 600,
               cursor: "pointer",
@@ -294,7 +294,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
               marginBottom: "1rem",
             }}
           >
-            <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "#E5E2E1" }}>
+            <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "var(--white)" }}>
               Sales Metrics
             </h3>
           </div>
@@ -305,7 +305,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
               style={{
                 fontSize: "2rem",
                 fontWeight: 800,
-                color: salesSummary?.totalRevenue ? "#D4A843" : "#6b7280",
+                color: salesSummary?.totalRevenue ? "var(--gold)" : "var(--gray)",
                 fontFamily: "monospace",
               }}
             >
@@ -329,13 +329,13 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
           >
             <div>
               <div style={metricLabelStyle}>Total Orders</div>
-              <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#E5E2E1" }}>
+              <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--white)" }}>
                 {orderStats?.totalOrders ?? "—"}
               </div>
             </div>
             <div>
               <div style={metricLabelStyle}>Total Profit</div>
-              <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#D4A843" }}>
+              <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--gold)" }}>
                 {salesSummary?.totalProfit != null
                   ? `₱${salesSummary.totalProfit.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
                   : "—"}
@@ -354,14 +354,14 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
               marginBottom: "1rem",
             }}
           >
-            <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "#E5E2E1" }}>
+            <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "var(--white)" }}>
               Top Products Today
             </h3>
             <button
               style={{
                 background: "transparent",
                 border: "none",
-                color: "#D4A843",
+                color: "var(--gold)",
                 fontSize: "0.75rem",
                 fontWeight: 600,
                 cursor: "pointer",
@@ -373,7 +373,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
 
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             {topProducts.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "2rem", color: "#9ca3af", fontSize: "0.85rem" }}>
+              <div style={{ textAlign: "center", padding: "2rem", color: "var(--gray)", fontSize: "0.85rem" }}>
                 — No sales data yet —
               </div>
             ) : (
@@ -389,18 +389,18 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "#E5E2E1" }}>
+                    <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--white)" }}>
                       {p.productName}
                     </div>
-                    <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.125rem" }}>
+                    <div style={{ fontSize: "0.7rem", color: "var(--gray)", marginTop: "0.125rem" }}>
                       {p.category}
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#D4A843" }}>
+                    <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--gold)" }}>
                       {p.totalQty} sold
                     </div>
-                    <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.125rem" }}>
+                    <div style={{ fontSize: "0.7rem", color: "var(--gray)", marginTop: "0.125rem" }}>
                       ₱{p.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
                     </div>
                   </div>
@@ -425,7 +425,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
         >
           <div style={cardStyle}>
             <div style={metricLabelStyle}>Total Revenue</div>
-            <div style={{ ...metricValueStyle, color: salesSummary?.totalRevenue ? "#D4A843" : "#6b7280" }}>
+            <div style={{ ...metricValueStyle, color: salesSummary?.totalRevenue ? "var(--gold)" : "var(--gray)" }}>
               {salesSummary?.totalRevenue != null
                 ? `₱${salesSummary.totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
                 : "—"}
@@ -433,13 +433,13 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
           </div>
           <div style={cardStyle}>
             <div style={metricLabelStyle}>Total Orders</div>
-            <div style={{ ...metricValueStyle, color: orderStats?.totalOrders ? "#E5E2E1" : "#6b7280" }}>
+            <div style={{ ...metricValueStyle, color: orderStats?.totalOrders ? "var(--white)" : "var(--gray)" }}>
               {orderStats?.totalOrders ?? "—"}
             </div>
           </div>
           <div style={cardStyle}>
             <div style={metricLabelStyle}>Cancelled Orders</div>
-            <div style={{ ...metricValueStyle, color: orderStats?.cancelledOrders ? "#ef4444" : "#6b7280" }}>
+            <div style={{ ...metricValueStyle, color: orderStats?.cancelledOrders ? "var(--red)" : "var(--gray)" }}>
               {orderStats?.cancelledOrders ?? "—"}
             </div>
           </div>
@@ -455,19 +455,19 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
         >
           <div style={cardStyle}>
             <div style={metricLabelStyle}>Pending Orders</div>
-            <div style={{ ...metricValueStyle, color: orderStats?.pendingOrders ? "#f59e0b" : "#6b7280" }}>
+            <div style={{ ...metricValueStyle, color: orderStats?.pendingOrders ? "var(--color-text-warning)" : "var(--gray)" }}>
               {orderStats?.pendingOrders ?? "—"}
             </div>
           </div>
           <div style={cardStyle}>
             <div style={metricLabelStyle}>Completed Orders</div>
-            <div style={{ ...metricValueStyle, color: orderStats?.completedOrders ? "#22c55e" : "#6b7280" }}>
+            <div style={{ ...metricValueStyle, color: orderStats?.completedOrders ? "var(--green)" : "var(--gray)" }}>
               {orderStats?.completedOrders ?? "—"}
             </div>
           </div>
           <div style={cardStyle}>
             <div style={metricLabelStyle}>Total Profit</div>
-            <div style={{ ...metricValueStyle, color: salesSummary?.totalProfit ? "#D4A843" : "#6b7280" }}>
+            <div style={{ ...metricValueStyle, color: salesSummary?.totalProfit ? "var(--gold)" : "var(--gray)" }}>
               {salesSummary?.totalProfit != null
                 ? `₱${salesSummary.totalProfit.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
                 : "—"}
@@ -489,86 +489,86 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
           }}
         >
           <div
-            style={{ ...cardStyle, borderLeft: "3px solid #ef4444", cursor: "pointer" }}
+            style={{ ...cardStyle, borderLeft: "3px solid var(--red)", cursor: "pointer" }}
             onClick={() => (window.location.href = "/dashboard/business/inventory")}
           >
-            <div style={{ fontSize: "2rem", fontWeight: 800, color: "#ef4444" }}>
+            <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--red)" }}>
               {inventoryMetrics.outOfStock}
             </div>
             <div
               style={{
                 fontSize: "0.8rem",
                 fontWeight: 600,
-                color: "#E5E2E1",
+                color: "var(--white)",
                 marginTop: "0.25rem",
               }}
             >
               Out of Stock Items
             </div>
-            <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.25rem" }}>
+            <div style={{ fontSize: "0.7rem", color: "var(--gray)", marginTop: "0.25rem" }}>
               Needs restocking
             </div>
           </div>
           <div
-            style={{ ...cardStyle, borderLeft: "3px solid #f59e0b", cursor: "pointer" }}
+            style={{ ...cardStyle, borderLeft: "3px solid var(--color-text-warning)", cursor: "pointer" }}
             onClick={() => (window.location.href = "/dashboard/business/inventory")}
           >
-            <div style={{ fontSize: "2rem", fontWeight: 800, color: "#f59e0b" }}>
+            <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--color-text-warning)" }}>
               {inventoryMetrics.lowStock}
             </div>
             <div
               style={{
                 fontSize: "0.8rem",
                 fontWeight: 600,
-                color: "#E5E2E1",
+                color: "var(--white)",
                 marginTop: "0.25rem",
               }}
             >
               Low Stock Items
             </div>
-            <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.25rem" }}>
+            <div style={{ fontSize: "0.7rem", color: "var(--gray)", marginTop: "0.25rem" }}>
               Below minimum level
             </div>
           </div>
           <div
-            style={{ ...cardStyle, borderLeft: "3px solid #f59e0b", cursor: "pointer" }}
+            style={{ ...cardStyle, borderLeft: "3px solid var(--color-text-warning)", cursor: "pointer" }}
             onClick={() => (window.location.href = "/dashboard/business/inventory/returns")}
           >
-            <div style={{ fontSize: "2rem", fontWeight: 800, color: "#f59e0b" }}>
+            <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--color-text-warning)" }}>
               {pendingReturns}
             </div>
             <div
               style={{
                 fontSize: "0.8rem",
                 fontWeight: 600,
-                color: "#E5E2E1",
+                color: "var(--white)",
                 marginTop: "0.25rem",
               }}
             >
               Pending Returns (RTV)
             </div>
-            <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.25rem" }}>
+            <div style={{ fontSize: "0.7rem", color: "var(--gray)", marginTop: "0.25rem" }}>
               Awaiting resolution
             </div>
           </div>
           <div
-            style={{ ...cardStyle, borderLeft: "3px solid #f59e0b", cursor: "pointer" }}
+            style={{ ...cardStyle, borderLeft: "3px solid var(--color-text-warning)", cursor: "pointer" }}
             onClick={() => (window.location.href = "/dashboard/business/banners")}
           >
-            <div style={{ fontSize: "2rem", fontWeight: 800, color: "#f59e0b" }}>
+            <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--color-text-warning)" }}>
               {activeBanners}
             </div>
             <div
               style={{
                 fontSize: "0.8rem",
                 fontWeight: 600,
-                color: "#E5E2E1",
+                color: "var(--white)",
                 marginTop: "0.25rem",
               }}
             >
               Active Banners
             </div>
-            <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.25rem" }}>
+            <div style={{ fontSize: "0.7rem", color: "var(--gray)", marginTop: "0.25rem" }}>
               Live or visible banners
             </div>
           </div>
@@ -594,7 +594,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                 margin: "0 0 1rem 0",
                 fontSize: "0.9rem",
                 fontWeight: 700,
-                color: "#E5E2E1",
+                color: "var(--white)",
               }}
             >
               Stock Summary
@@ -616,7 +616,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                 {
                   label: "Stock Health Rate",
                   value: `${inventoryMetrics.healthRate.toFixed(1)}%`,
-                  color: inventoryMetrics.healthRate > 80 ? "#22c55e" : "#f59e0b",
+                  color: inventoryMetrics.healthRate > 80 ? "var(--green)" : "var(--color-text-warning)",
                 },
               ].map((item) => (
                 <div
@@ -630,14 +630,14 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                     borderRadius: "8px",
                   }}
                 >
-                  <span style={{ fontSize: "0.8rem", color: "#9ca3af" }}>
+                  <span style={{ fontSize: "0.8rem", color: "var(--gray)" }}>
                     {item.label}
                   </span>
                   <span
                     style={{
                       fontSize: "0.9rem",
                       fontWeight: 700,
-                      color: item.color || "#E5E2E1",
+                      color: item.color || "var(--white)",
                       fontFamily: "monospace",
                     }}
                   >
@@ -662,10 +662,10 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#22c55e" }}>
+                  <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--green)" }}>
                     {inventoryMetrics.healthy}
                   </div>
-                  <div style={{ fontSize: "0.7rem", color: "#22c55e", marginTop: "0.25rem" }}>
+                  <div style={{ fontSize: "0.7rem", color: "var(--green)", marginTop: "0.25rem" }}>
                     Healthy
                   </div>
                 </div>
@@ -677,10 +677,10 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#f59e0b" }}>
+                  <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--color-text-warning)" }}>
                     {inventoryMetrics.lowStock}
                   </div>
-                  <div style={{ fontSize: "0.7rem", color: "#f59e0b", marginTop: "0.25rem" }}>
+                  <div style={{ fontSize: "0.7rem", color: "var(--color-text-warning)", marginTop: "0.25rem" }}>
                     Low Stock
                   </div>
                 </div>
@@ -692,10 +692,10 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#ef4444" }}>
+                  <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--red)" }}>
                     {inventoryMetrics.outOfStock}
                   </div>
-                  <div style={{ fontSize: "0.7rem", color: "#ef4444", marginTop: "0.25rem" }}>
+                  <div style={{ fontSize: "0.7rem", color: "var(--red)", marginTop: "0.25rem" }}>
                     Out of Stock
                   </div>
                 </div>
@@ -710,7 +710,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                 margin: "0 0 1rem 0",
                 fontSize: "0.9rem",
                 fontWeight: 700,
-                color: "#E5E2E1",
+                color: "var(--white)",
               }}
             >
               Category Breakdown
@@ -738,10 +738,10 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                           marginBottom: "0.5rem",
                         }}
                       >
-                        <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#E5E2E1" }}>
+                        <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)" }}>
                           {cat.name}
                         </span>
-                        <span style={{ fontSize: "0.75rem", color: "#9ca3af" }}>
+                        <span style={{ fontSize: "0.75rem", color: "var(--gray)" }}>
                           {totalPercentage}%
                         </span>
                       </div>
@@ -752,7 +752,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                           justifyContent: "space-between",
                           marginTop: "0.35rem",
                           fontSize: "0.7rem",
-                          color: "#9ca3af",
+                          color: "var(--gray)",
                         }}
                       >
                         <span>
@@ -773,7 +773,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                   style={{
                     textAlign: "center",
                     padding: "2rem",
-                    color: "#9ca3af",
+                    color: "var(--gray)",
                     fontSize: "0.85rem",
                   }}
                 >
@@ -807,14 +807,14 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                 marginBottom: "1rem",
               }}
             >
-              <h4 style={{ margin: 0, fontSize: "0.9rem", fontWeight: 700, color: "#E5E2E1" }}>
+              <h4 style={{ margin: 0, fontSize: "0.9rem", fontWeight: 700, color: "var(--white)" }}>
                 Recent Orders
               </h4>
               <button
                 style={{
                   background: "transparent",
                   border: "none",
-                  color: "#D4A843",
+                  color: "var(--gold)",
                   fontSize: "0.75rem",
                   fontWeight: 600,
                   cursor: "pointer",
@@ -844,7 +844,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                           fontFamily: "monospace",
                           fontSize: "0.8rem",
                           fontWeight: 600,
-                          color: "#E5E2E1",
+                          color: "var(--white)",
                         }}
                       >
                         #{String(order._id || order.id || "").slice(-8).toUpperCase()}
@@ -867,13 +867,13 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                         style={{
                           fontSize: "0.85rem",
                           fontWeight: 700,
-                          color: "#E5E2E1",
+                          color: "var(--white)",
                           fontFamily: "monospace",
                         }}
                       >
                         ₱{(order.totalAmount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
                       </div>
-                      <div style={{ fontSize: "0.65rem", color: "#9ca3af" }}>
+                      <div style={{ fontSize: "0.65rem", color: "var(--gray)" }}>
                         {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}
                       </div>
                     </div>
@@ -884,7 +884,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                   style={{
                     textAlign: "center",
                     padding: "2rem",
-                    color: "#9ca3af",
+                    color: "var(--gray)",
                     fontSize: "0.85rem",
                   }}
                 >
@@ -904,14 +904,14 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                 marginBottom: "1rem",
               }}
             >
-              <h4 style={{ margin: 0, fontSize: "0.9rem", fontWeight: 700, color: "#E5E2E1" }}>
+              <h4 style={{ margin: 0, fontSize: "0.9rem", fontWeight: 700, color: "var(--white)" }}>
                 Recent Stock Movements
               </h4>
               <button
                 style={{
                   background: "transparent",
                   border: "none",
-                  color: "#D4A843",
+                  color: "var(--gold)",
                   fontSize: "0.75rem",
                   fontWeight: 600,
                   cursor: "pointer",
@@ -923,7 +923,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
 
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
               {recentMovements.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "2rem", color: "#9ca3af", fontSize: "0.85rem" }}>
+                <div style={{ textAlign: "center", padding: "2rem", color: "var(--gray)", fontSize: "0.85rem" }}>
                   — No stock movements yet —
                 </div>
               ) : (
@@ -948,17 +948,17 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
                           marginBottom: "0.25rem",
                         }}
                       >
-                        <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#E5E2E1" }}>
+                        <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)" }}>
                           {movement.item}
                         </span>
                         <span style={{ fontSize: "0.85rem", fontWeight: 700, color: typeColor, fontFamily: "monospace" }}>
                           {typeSymbol}{Math.abs(movement.qty)} pcs
                         </span>
                       </div>
-                      <div style={{ fontSize: "0.7rem", color: "#9ca3af" }}>
+                      <div style={{ fontSize: "0.7rem", color: "var(--gray)" }}>
                         {movement.label}
                       </div>
-                      <div style={{ fontSize: "0.65rem", color: "#6b7280", marginTop: "0.15rem" }}>
+                      <div style={{ fontSize: "0.65rem", color: "var(--gray)", marginTop: "0.15rem" }}>
                         {movement.time}
                       </div>
                     </div>

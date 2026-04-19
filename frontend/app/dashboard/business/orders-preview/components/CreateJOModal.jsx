@@ -36,20 +36,20 @@ export default function CreateJOModal({ order, onClose, onSubmit }) {
   if (!order) return null;
 
   const colors = {
-    gold: '#D4A843',
-    goldGradient: 'linear-gradient(135deg, #FFDF9F 0%, #D4A843 100%)',
-    textPrimary: '#E5E2E1',
-    textMuted: '#9ca3af',
-    darkBg: '#1a1a1a',
+    gold: 'var(--gold)',
+    goldGradient: 'linear-gradient(135deg, var(--gold-light) 0%, var(--gold) 100%)',
+    textPrimary: 'var(--white)',
+    textMuted: 'var(--gray)',
+    darkBg: 'var(--dark)',
     cardBg: 'rgba(255,255,255,0.03)',
     border: 'rgba(255,255,255,0.1)',
-    green: '#22c55e',
+    green: 'var(--green)',
     greenBg: 'rgba(34,197,94,0.08)',
     greenBorder: 'rgba(34,197,94,0.2)',
-    red: '#ef4444',
+    red: 'var(--red)',
     redBg: 'rgba(239,68,68,0.08)',
     redBorder: 'rgba(239,68,68,0.2)',
-    indigo: '#6366f1',
+    indigo: 'var(--indigo)',
     indigoBg: 'rgba(99,102,241,0.1)',
   };
 
@@ -357,7 +357,7 @@ export default function CreateJOModal({ order, onClose, onSubmit }) {
                 }}
               >
                 {form.isRush && (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth="3">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--dark)" strokeWidth="3">
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
                 )}

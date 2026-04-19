@@ -18,10 +18,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { fetchInventory } from "@/lib/inventoryApi";
 import { fetchAllOrders } from "@/lib/ordersApi";
 import {
+  createProduct,
   deleteProduct,
   fetchProducts,
   togglePublishProduct,
   updateProduct,
+  uploadImage,
 } from "@/lib/productApi";
 import { useRouter } from "next/navigation";
 import React, {
@@ -75,6 +77,40 @@ const sanitizeNumber = (val) => {
   if (val === "") return "";
   const num = parseFloat(val);
   return isNaN(num) || num < 0 ? "0" : val;
+};
+
+/** Maps frontend product shape to Laravel API (name, priceTiers, strips id). */
+function normalizeProductForApi(p) {
+  const name = p.name || p.productName || p.subCategoryName || "";
+  const priceTiers = p.priceTiers || p.tiers || [];
+  // eslint-disable-next-line no-unused-vars
+  const { id, _id, tiers, productName, ...rest } = p;
+  return {
+    ...rest,
+    name,
+    priceTiers,
+  };
+}
+
+const EMPTY_NEW_PRODUCT = {
+  productName: "",
+  subCategoryName: "",
+  subCategoryCode: "",
+  category: "",
+  description: "",
+  priceType: "fixed",
+  trackInventory: true,
+  stock: "",
+  inventoryId: "",
+  price: "",
+  variantPrices: {},
+  tiers: [{ id: 1, minQty: 1, maxQty: 20, prices: { __base__: "" } }],
+  variantGroups: [],
+  combinations: [],
+  thumbnail: null,
+  images: [],
+  isPublished: false,
+  isArchived: false,
 };
 
 function comboLabel(combo) {
@@ -714,6 +750,8 @@ function EditProductModal({
   onSave,
   onPriceError,
   products,
+  token,
+  isNew,
 }) {
   const [formData, setFormData] = useState({
     category: product.category || "",
@@ -771,6 +809,7 @@ function EditProductModal({
   );
   const [dragOver, setDragOver] = useState(false);
   const [dragOverThumb, setDragOverThumb] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
 
   const [showStockErrorModal, setShowStockErrorModal] = useState(false);
   const [maxStockQty, setMaxStockQty] = useState(0);
@@ -1202,7 +1241,11 @@ function EditProductModal({
   const minP = allPrices.length ? Math.min(...allPrices) : null;
   const maxP = allPrices.length ? Math.max(...allPrices) : null;
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!token) {
+      onPriceError("You must be signed in to save.");
+      return;
+    }
     // Validate prices before saving
     if (formData.priceType === "fixed") {
       if (hasVariants) {
@@ -1233,41 +1276,89 @@ function EditProductModal({
       ? parseInt(formData.stock) || 0
       : null;
 
-    // Merge option images into variantGroups before saving
-    const variantGroupsWithImages = variantGroups.map((group) => ({
-      ...group,
-      options: group.options.map((opt) => {
-        const imageKey = `${group.id}-${opt.id}`;
-        const optionImage = optionImages[imageKey] || opt.image;
-        return {
-          ...opt,
-          image: optionImage ? optionImage.preview || optionImage : null,
-        };
-      }),
-    }));
+    setUploadingMedia(true);
+    try {
+      let thumbFinal = thumbnail?.preview || null;
+      if (thumbnail?.file) {
+        const up = await uploadImage(thumbnail.file, "pmp-products", token);
+        thumbFinal = up.url || up?.data?.url;
+      } else if (
+        typeof thumbFinal === "string" &&
+        thumbFinal.startsWith("blob:")
+      ) {
+        thumbFinal = null;
+      }
 
-    const updatedProduct = {
-      ...product,
-      inventoryId: formData.inventoryId || null,
-      category: formData.category,
-      subCategoryCode: formData.subCategoryCode,
-      subCategoryName: formData.subCategoryName,
-      description: formData.description,
-      priceType: formData.priceType,
-      ...(formData.priceType === "fixed"
-        ? hasVariants
-          ? { variantPrices: fixedPriceVariants, price: undefined }
-          : { price: fixedPrice, variantPrices: undefined }
-        : { tiers }),
-      variantGroups: variantGroupsWithImages,
-      combinations,
-      thumbnail: thumbnail?.preview || null,
-      images: images.map((img) => img.preview),
-      trackInventory: formData.trackInventory,
-      stock: stockVal,
-      updatedAt: new Date().toISOString(),
-    };
-    onSave(updatedProduct);
+      const galleryUrls = [];
+      for (const img of images) {
+        if (img.file) {
+          const up = await uploadImage(img.file, "pmp-products", token);
+          galleryUrls.push(up.url || up?.data?.url);
+        } else if (
+          img.preview &&
+          typeof img.preview === "string" &&
+          !img.preview.startsWith("blob:")
+        ) {
+          galleryUrls.push(img.preview);
+        }
+      }
+
+      const variantGroupsWithImages = await Promise.all(
+        variantGroups.map(async (group) => ({
+          ...group,
+          options: await Promise.all(
+            group.options.map(async (opt) => {
+              const imageKey = `${group.id}-${opt.id}`;
+              const optionImage = optionImages[imageKey] || opt.image;
+              let url = null;
+              if (optionImage?.file) {
+                const up = await uploadImage(
+                  optionImage.file,
+                  "pmp-products",
+                  token,
+                );
+                url = up.url || up?.data?.url;
+              } else if (optionImage) {
+                const raw = optionImage.preview || optionImage;
+                url =
+                  typeof raw === "string" && !raw.startsWith("blob:")
+                    ? raw
+                    : null;
+              }
+              return { ...opt, image: url };
+            }),
+          ),
+        })),
+      );
+
+      const updatedProduct = {
+        ...product,
+        inventoryId: formData.inventoryId || null,
+        category: formData.category,
+        subCategoryCode: formData.subCategoryCode,
+        subCategoryName: formData.subCategoryName,
+        description: formData.description,
+        priceType: formData.priceType,
+        ...(formData.priceType === "fixed"
+          ? hasVariants
+            ? { variantPrices: fixedPriceVariants, price: undefined }
+            : { price: fixedPrice, variantPrices: undefined }
+          : { tiers }),
+        variantGroups: variantGroupsWithImages,
+        combinations,
+        thumbnail: thumbFinal,
+        images: galleryUrls,
+        trackInventory: formData.trackInventory,
+        stock: stockVal,
+        updatedAt: new Date().toISOString(),
+      };
+      onSave(updatedProduct);
+    } catch (err) {
+      console.error(err);
+      onPriceError(err.message || "Image upload failed.");
+    } finally {
+      setUploadingMedia(false);
+    }
   };
 
   const inv = inventoryList.find((i) => i.id === formData.inventoryId);
@@ -1315,7 +1406,7 @@ function EditProductModal({
                 margin: 0,
               }}
             >
-              Edit Product
+              {isNew ? "Add Product" : "Edit Product"}
             </h2>
             <p
               style={{
@@ -1950,11 +2041,11 @@ function EditProductModal({
 
             {/* ── ACTIONS ── */}
             <div className="form-actions">
-              <button type="button" className="btn-cancel" onClick={onClose}>
+              <button type="button" className="btn-cancel" onClick={onClose} disabled={uploadingMedia}>
                 Cancel
               </button>
-              <button type="submit" className="btn-submit">
-                Save Changes
+              <button type="submit" className="btn-submit" disabled={uploadingMedia}>
+                {uploadingMedia ? "Uploading…" : isNew ? "Continue" : "Save Changes"}
               </button>
             </div>
           </form>
@@ -3000,7 +3091,7 @@ export default function ProductListPage() {
         // MongoDB uses _id, frontend uses id
         const transformedProducts = productsData.map((p) => ({
           ...p,
-          id: p.id ?? "",
+          id: p.id ?? p._id ?? "",
         }));
 
         setProducts(transformedProducts);
@@ -3011,7 +3102,12 @@ export default function ProductListPage() {
           const inventoryData = Array.isArray(inventoryResponse)
             ? inventoryResponse
             : [];
-          setInventoryList(inventoryData);
+          setInventoryList(
+            inventoryData.map((inv) => ({
+              ...inv,
+              id: inv.id ?? inv._id ?? "",
+            })),
+          );
         } catch (invError) {
           console.error(
             "Failed to load inventory (products will not show linkage):",
@@ -3246,6 +3342,12 @@ export default function ProductListPage() {
     setShowEditModal(true);
   };
 
+  const handleAddProduct = () => {
+    setEditingProduct({ ...EMPTY_NEW_PRODUCT });
+    setEditModalKey((prev) => prev + 1);
+    setShowEditModal(true);
+  };
+
   const handleSaveEdit = (updatedProduct) => {
     // Show confirmation modal before saving
     setPendingEditData(updatedProduct);
@@ -3256,28 +3358,29 @@ export default function ProductListPage() {
     if (!pendingEditData || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      // Extract MongoDB _id from pendingEditData.id
-      const productId = pendingEditData._id || pendingEditData.id;
+      const isNew = !pendingEditData._id && !pendingEditData.id;
+      const productDataForApi = normalizeProductForApi(pendingEditData);
 
-      // Prepare data for API (remove frontend-only fields)
-      const { id, ...productDataForApi } = pendingEditData;
+      const saved = isNew
+        ? await createProduct(productDataForApi, token)
+        : await updateProduct(
+            pendingEditData._id || pendingEditData.id,
+            productDataForApi,
+            token,
+          );
 
-      // Call API to update product in MongoDB
-      const updatedProduct = await updateProduct(
-        productId,
-        productDataForApi,
-        token,
-      );
-
-      // Transform response to match frontend format
       const transformedProduct = {
-        ...updatedProduct,
-        id: updatedProduct.id,
+        ...saved,
+        id: saved.id ?? saved._id ?? "",
+        tiers: saved.tiers ?? saved.priceTiers ?? [],
       };
 
-      // Update local state
       setProducts((prev) =>
-        prev.map((p) => (p.id === productId ? transformedProduct : p)),
+        isNew
+          ? [transformedProduct, ...prev]
+          : prev.map((p) =>
+              p.id === transformedProduct.id ? transformedProduct : p,
+            ),
       );
 
       setShowEditModal(false);
@@ -3590,10 +3693,7 @@ export default function ProductListPage() {
               >
                 <span className="btn-icon">+</span> Add Promotions
               </button>
-              <button
-                className="btn-primary"
-                onClick={() => router.push("/dashboard/business/products/add")}
-              >
+              <button className="btn-primary" onClick={handleAddProduct}>
                 <span className="btn-icon">+</span> Add New Product
               </button>
             </div>
@@ -3913,12 +4013,7 @@ export default function ProductListPage() {
                   : "Get started by adding your first product."}
               </p>
               {!searchQuery && !statusFilter && (
-                <button
-                  className="btn-primary"
-                  onClick={() =>
-                    router.push("/dashboard/business/products/add")
-                  }
-                >
+                <button className="btn-primary" onClick={handleAddProduct}>
                   Add First Product
                 </button>
               )}
@@ -4248,10 +4343,10 @@ export default function ProductListPage() {
                                           "1px solid rgba(245, 158, 11, 0.3)",
                                         borderRadius: "4px",
                                         padding: "0.1rem 0.4rem",
-                                        color: "#f59e0b",
+                                        color: "var(--orange)",
                                       }}
                                     >
-                                      ⚠ Inventory Archived
+                                      Inventory Archived
                                     </span>
                                   )}
                                 </div>
@@ -4574,6 +4669,8 @@ export default function ProductListPage() {
             product={editingProduct}
             inventoryList={inventoryList}
             products={products}
+            token={token}
+            isNew={!editingProduct._id && !editingProduct.id}
             onClose={() => {
               setShowEditModal(false);
               setEditingProduct(null);

@@ -267,7 +267,7 @@ export default function BOMFormModal({
     setVariantQty(1);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const errs = {};
     if (!form.productGroupName.trim())
@@ -281,7 +281,7 @@ export default function BOMFormModal({
       return;
     }
     setErrors({});
-    onSave({ ...bom, ...form });
+    await onSave({ ...bom, ...form });
   };
 
   const selectedMaterialIds = form.components
@@ -1132,11 +1132,11 @@ export default function BOMFormModal({
             </button>
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 // If variants are selected, create BOMs for each
                 if (checkedVariantIds.size > 0 && onSaveBatch) {
                   const newBOMs = buildBOMs(checkedVariants);
-                  onSaveBatch(newBOMs);
+                  await onSaveBatch(newBOMs);
                   onClose();
                   setShowVariantPicker(false);
                   setSelectedParentId("");
@@ -1156,7 +1156,7 @@ export default function BOMFormModal({
                     return;
                   }
                   setErrors({});
-                  onSave({ ...bom, ...form });
+                  await onSave({ ...bom, ...form });
                 }
               }}
               style={{

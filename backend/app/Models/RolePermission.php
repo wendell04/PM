@@ -28,19 +28,23 @@ class RolePermission extends Model
     public static function defaultPermissions(): array
     {
         return [
-            'dashboard'        => true,  // All staff see dashboard overview
-            'orderRequests'    => false,
-            'orders'           => false,
-            'jobOrders'        => false,
-            'inventory'        => false,
-            'suppliers'        => false,
-            'sales'            => false,
-            'reports'          => false,
-            'banners'          => false,
-            'flashSales'       => false,
-            'auditLogs'        => false,
-            'userManagement'   => false,
-            'rolePermissions'  => false,
+            'dashboard'       => true,  // All staff see dashboard overview
+            'orderRequests'   => false,
+            'orders'            => false,
+            'jobOrders'         => false,
+            'pos'               => false,
+            'inventory'         => false,
+            'vendors'           => false,
+            'badOrders'         => false,
+            'sales'             => false,
+            'reports'           => false,
+            'products'          => false,
+            'banners'           => false,
+            'flashSales'        => false,
+            'vouchers'          => false,
+            'auditLogs'         => false,
+            'userManagement'    => false,
+            'rolePermissions'   => false,
         ];
     }
 

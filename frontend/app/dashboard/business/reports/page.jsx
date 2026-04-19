@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -295,9 +296,9 @@ export default function ReportsPage() {
       if (s) params.set('startDate', s);
       if (e) params.set('endDate', e);
       if (g) params.set('groupBy', g);
-      const res = await fetch(`${API_URL}/api/admin/sales/summary?${params}`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/sales/summary?${params}`, {
         headers: authHeaders(token),
-      });
+      }, 15000);
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || 'Failed to load sales summary.');
       setSalesData(json.data ?? null);
@@ -319,9 +320,9 @@ export default function ReportsPage() {
       if (s) params.set('startDate', s);
       if (e) params.set('endDate', e);
       const q = params.toString();
-      const res = await fetch(`${API_URL}/api/admin/orders/stats${q ? `?${q}` : ''}`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/stats${q ? `?${q}` : ''}`, {
         headers: authHeaders(token),
-      });
+      }, 15000);
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || 'Failed to load order stats.');
       setOrdersData(json.data ?? null);
@@ -338,9 +339,9 @@ export default function ReportsPage() {
     setInventoryLoading(true);
     setInventoryError(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/inventory`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/inventory`, {
         headers: authHeaders(token),
-      });
+      }, 15000);
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || 'Failed to load inventory.');
       const list = json.data ?? json;
@@ -364,9 +365,9 @@ export default function ReportsPage() {
       if (e) params.set('endDate', e);
       const n = Math.max(1, Math.min(20, Number(lim) || 10));
       params.set('limit', String(n));
-      const res = await fetch(`${API_URL}/api/admin/sales/top-products?${params}`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/sales/top-products?${params}`, {
         headers: authHeaders(token),
-      });
+      }, 15000);
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || 'Failed to load top products.');
       setTpData(json.data ?? null);
@@ -388,9 +389,9 @@ export default function ReportsPage() {
       if (s) params.set('startDate', s);
       if (e) params.set('endDate', e);
       const q = params.toString();
-      const res = await fetch(`${API_URL}/api/admin/order-requests/stats${q ? `?${q}` : ''}`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/order-requests/stats${q ? `?${q}` : ''}`, {
         headers: authHeaders(token),
-      });
+      }, 15000);
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || 'Failed to load order request stats.');
       setOrData(json.data ?? null);

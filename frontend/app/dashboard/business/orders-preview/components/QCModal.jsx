@@ -3,18 +3,18 @@
 import { useState } from 'react';
 
 export default function QCModal({ order, onClose, onSubmit }) {
-  const TEXT_PRIMARY = '#E5E2E1';
-  const TEXT_MUTED = '#9ca3af';
-  const DARK_BG = '#1a1a1a';
+  const TEXT_PRIMARY = 'var(--white)';
+  const TEXT_MUTED = 'var(--gray)';
+  const DARK_BG = 'var(--dark)';
   const CARD_BG = 'rgba(255,255,255,0.03)';
   const BORDER = 'rgba(255,255,255,0.1)';
-  const GREEN = '#22c55e';
+  const GREEN = 'var(--green)';
   const GREEN_BG = 'rgba(34,197,94,0.15)';
   const GREEN_BORDER = 'rgba(34,197,94,0.2)';
-  const RED = '#ef4444';
+  const RED = 'var(--red)';
   const RED_BG = 'rgba(239,68,68,0.15)';
   const RED_BORDER = 'rgba(239,68,68,0.2)';
-  const PURPLE = '#8b5cf6';
+  const PURPLE = 'var(--purple)';
 
   const [form, setForm] = useState({ result: '', notes: '', defectDetails: '', checkedBy: '' });
   const [errors, setErrors] = useState({});
@@ -72,7 +72,7 @@ export default function QCModal({ order, onClose, onSubmit }) {
         ? 'linear-gradient(135deg, rgba(239,68,68,0.95) 0%, rgba(239,68,68,0.65) 100%)'
         : 'rgba(255,255,255,0.1)';
 
-  const submitColor = form.result ? '#fff' : TEXT_MUTED;
+  const submitColor = form.result ? 'var(--white)' : TEXT_MUTED;
 
   return (
     <div

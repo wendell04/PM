@@ -1,14 +1,17 @@
 ﻿"use client";
 
 import CustomDropdown from "@/app/components/CustomDropdown";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { genDocNumber, getStore, setStore, thStyle } from "../utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { createBadOrder } from "@/lib/badOrdersApi";
+import {
+  adjustInventoryStock,
+  createSupplier,
+  fetchInventory,
+  fetchSuppliers,
+} from "@/lib/inventoryApi";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { genDocNumber, thStyle } from "../utils";
 import AddStockModal from "./AddStockModal";
-
-// ── Storage Keys ───────────────────────────────────────────────────────────────
-const MATERIALS_KEY = "pmp_materials";
-const VENDORS_KEY = "pmp_vendors";
-const STOCK_IN_KEY = "pmp_stock_in_log";
 
 // ── Shared Input Style ─────────────────────────────────────────────────────────
 const inputStyle = {
@@ -1302,6 +1305,7 @@ function VendorCombobox({
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function StockInPage() {
+  const { token } = useAuth();
   const [materials, setMaterials] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [stockInLog, setStockInLog] = useState([]);
@@ -1338,24 +1342,40 @@ export default function StockInPage() {
   const [showCSVPreview, setShowCSVPreview] = useState(false);
   const reportRef = useRef(null);
 
+  const loadData = useCallback(async () => {
+    if (!token) {
+      setMaterials([]);
+      setVendors([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const [mats, sups] = await Promise.all([
+        fetchInventory(token),
+        fetchSuppliers(token),
+      ]);
+      setMaterials(mats.map((m) => ({ ...m, id: m.id ?? m._id })));
+      setVendors(sups.map((v) => ({ ...v, id: v.id ?? v._id })));
+    } catch (e) {
+      setInfoModal({
+        title: "Could not load data",
+        message: e?.message || "Failed to load inventory or suppliers.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
   useEffect(() => {
-    setMaterials(getStore(MATERIALS_KEY));
-    setVendors(getStore(VENDORS_KEY));
-    setStockInLog(getStore(STOCK_IN_KEY));
-    setLoading(false);
-  }, []);
+    loadData();
+  }, [loadData]);
 
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
   }, [toast]);
-
-  const refreshData = () => {
-    setMaterials(getStore(MATERIALS_KEY));
-    setVendors(getStore(VENDORS_KEY));
-    setStockInLog(getStore(STOCK_IN_KEY));
-  };
 
   const selectableMaterials = useMemo(
     () => materials.filter((m) => !m.parentId),
@@ -1371,151 +1391,119 @@ export default function StockInPage() {
     setWizardVendors([]);
   };
 
-  // Handle save from AddStockModal
-  const handleSaveStock = (stockData) => {
+  // Handle save from AddStockModal — API: adjust-stock (restock) + returns (bad orders)
+  const handleSaveStock = async (stockData) => {
     if (!stockData || stockData.length === 0) return;
-
-    const allMats = getStore(MATERIALS_KEY);
-    const siLog = getStore(STOCK_IN_KEY);
-    const entries = [];
-    let totalGoodAll = 0,
-      totalDamagedAll = 0;
-
-    // Load existing bad orders
-    const badOrdersKey = "pmp_bad_orders";
-    let badOrders = [];
-    try {
-      badOrders = JSON.parse(localStorage.getItem(badOrdersKey) || "[]");
-    } catch {
-      badOrders = [];
+    if (!token) {
+      setInfoModal({
+        title: "Sign in required",
+        message: "Sign in as admin to record stock-in.",
+      });
+      return;
     }
 
-    stockData.forEach((entry) => {
-      const received = entry.receivedQty || 0;
-      const damaged = entry.damagedQty || 0;
-      const good = entry.goodQty || 0;
-      totalGoodAll += good;
-      totalDamagedAll += damaged;
+    const entries = [];
+    let totalGoodAll = 0;
+    let totalDamagedAll = 0;
 
-      // Save bad orders with categories
-      if (entry.badOrders && entry.badOrders.length > 0) {
-        entry.badOrders.forEach((bo) => {
-          badOrders.push({
-            id: `BO-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-            type: bo.type, // damaged, shortage, defective, wrong_item
-            label: bo.label, // Human-readable label
-            materialId: entry.materialId,
-            materialName: entry.materialName,
-            sku: entry.sku || "",
-            qty: bo.qty,
-            unitCost: bo.unitCost,
-            totalValue: bo.totalValue,
-            vendorId: entry.vendorId || null,
-            vendorName: entry.vendorName || "General Merchandise",
-            invoiceNumber: entry.invoiceNumber || "",
-            deliveryDate: entry.dateReceived?.split("T")[0] || "",
-            status: "pending", // pending, replaced, credited, cancelled
-            createdAt: new Date().toISOString(),
-            resolvedAt: null,
-          });
-        });
-      }
+    try {
+      for (const entry of stockData) {
+        const received = entry.receivedQty || 0;
+        const good = entry.goodQty ?? 0;
+        const boSum = (entry.badOrders || []).reduce(
+          (s, b) => s + (parseInt(b.qty, 10) || 0),
+          0,
+        );
+        const damaged = entry.damagedQty ?? boSum;
+        totalGoodAll += good;
+        totalDamagedAll += damaged;
 
-      const unitCost = entry.unitCost || 0;
-      const matIdx = allMats.findIndex((m) => m.id === entry.materialId);
-      if (matIdx !== -1) {
-        const matData = allMats[matIdx];
-        if (!matData.batches) matData.batches = [];
+        const invId = entry.materialId;
+        const unitCost = entry.unitCost || 0;
 
-        const d = new Date(entry.dateReceived);
-        const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-        const timestamp = Date.now().toString(36).slice(-4).toUpperCase();
-        const seq = Math.floor(Math.random() * 1000)
-          .toString()
-          .padStart(3, "0");
-        const batchId = `${dateStr}-${timestamp}-${seq}`;
+        if (good > 0) {
+          await adjustInventoryStock(
+            invId,
+            {
+              quantity: good,
+              adjustmentType: "add",
+              reason: "restock",
+              unitCost,
+              supplierId: entry.vendorId || undefined,
+              supplierName: entry.vendorName || undefined,
+              invoiceNumber: entry.invoiceNumber || undefined,
+              deliveryDate: entry.dateReceived,
+              remarks: entry.notes || undefined,
+            },
+            token,
+          );
+        }
 
-        matData.batches.push({
-          batchId,
+        if (entry.badOrders && entry.badOrders.length > 0) {
+          for (const bo of entry.badOrders) {
+            const q = parseInt(bo.qty, 10) || 0;
+            if (q <= 0) continue;
+            await createBadOrder(token, {
+              materialId: invId,
+              vendorId: entry.vendorId || undefined,
+              damageType: bo.type,
+              quantity: q,
+              notes: `${bo.label || bo.type} — Invoice ${entry.invoiceNumber || "—"}`,
+            });
+          }
+        }
+
+        entries.push({
+          id: genDocNumber("SI"),
           materialId: entry.materialId,
           materialName: entry.materialName,
           sku: entry.sku || "",
+          category: "",
           uom: entry.uom || "pcs",
           vendorId: entry.vendorId || null,
           vendorName: entry.vendorName || "General Merchandise",
-          qtyGood: good,
-          qtyDamaged: damaged,
-          remainingQty: good,
+          receivedQty: received,
+          goodQty: good,
+          damagedQty: damaged,
           unitCost,
-          damageType: entry.damageType || (damaged > 0 ? "arrival" : null),
-          dateReceived: entry.dateReceived,
-          invoiceNumber: entry.invoiceNumber || "",
+          totalCost: received * unitCost,
+          invoiceNo: entry.invoiceNumber || "",
+          deliveryDate: entry.dateReceived?.split("T")[0] || "",
           notes: entry.notes || "",
           receiptImage: entry.receiptImage || null,
-          createdAt: new Date().toISOString(),
+          dateReceived: entry.dateReceived,
+          dateAdded: new Date().toISOString(),
         });
-        const oldBatches = matData.batches.filter((b) => b.batchId !== batchId);
-        const oldGoodQty = oldBatches.reduce(
-          (s, b) => s + (b.remainingQty || b.qtyGood || 0),
-          0,
-        );
-        const oldTotal = oldBatches.reduce(
-          (s, b) => s + (b.remainingQty || b.qtyGood || 0) * (b.unitCost || 0),
-          0,
-        );
-        const newTotalQty = oldGoodQty + good;
-        if (newTotalQty > 0)
-          matData.baseCost = (oldTotal + good * unitCost) / newTotalQty;
-        matData.stockQty = (matData.stockQty || 0) + good;
-        matData.updatedAt = new Date().toISOString();
       }
-      entries.push({
-        id: genDocNumber("SI"),
-        materialId: entry.materialId,
-        materialName: entry.materialName,
-        sku: entry.sku || "",
-        category: "",
-        uom: entry.uom || "pcs",
-        vendorId: entry.vendorId || null,
-        vendorName: entry.vendorName || "General Merchandise",
-        receivedQty: received,
-        goodQty: good,
-        damagedQty: damaged,
-        unitCost,
-        totalCost: received * unitCost,
-        invoiceNo: entry.invoiceNumber || "",
-        deliveryDate: entry.dateReceived?.split("T")[0] || "",
-        notes: entry.notes || "",
-        receiptImage: entry.receiptImage || null,
-        dateReceived: entry.dateReceived,
-        dateAdded: new Date().toISOString(),
+
+      const [mats, sups] = await Promise.all([
+        fetchInventory(token),
+        fetchSuppliers(token),
+      ]);
+      setMaterials(mats.map((m) => ({ ...m, id: m.id ?? m._id })));
+      setVendors(sups.map((v) => ({ ...v, id: v.id ?? v._id })));
+
+      setStockInLog((prev) => [...entries, ...prev]);
+
+      setPendingEntries(entries);
+      setPendingGood(totalGoodAll);
+      setPendingDamaged(totalDamagedAll);
+      setPendingShortage(0);
+      setShowConfirmModal(true);
+      setToast({ type: "success", message: "Stock-in saved successfully." });
+    } catch (e) {
+      setInfoModal({
+        title: "Stock-in failed",
+        message: e?.message || "Could not complete stock-in.",
       });
-    });
-
-    setStore(MATERIALS_KEY, allMats);
-    siLog.push(...entries);
-    setStore(STOCK_IN_KEY, siLog);
-
-    // Save bad orders
-    if (badOrders.length > 0) {
-      localStorage.setItem(badOrdersKey, JSON.stringify(badOrders));
     }
-
-    refreshData();
-    closeWizard();
-    setPendingEntries(entries);
-    setPendingGood(totalGoodAll);
-    setPendingDamaged(totalDamagedAll);
-    setPendingShortage(0);
-    setShowConfirmModal(true);
   };
 
   const handleConfirmSave = () => setShowConfirmModal(false);
 
   // Reports
   const generateReport = () => {
-    const log = getStore(STOCK_IN_KEY);
-    let filtered = [...log];
+    let filtered = [...stockInLog];
     const now = new Date();
     if (reportMode === "today")
       filtered = filtered.filter(
@@ -2764,15 +2752,38 @@ export default function StockInPage() {
         isOpen={showAddVendor}
         onClose={() => setShowAddVendor(false)}
         onAdd={(data) => {
-          const nv = {
-            ...data,
-            id: `vendor-${Date.now()}`,
-            createdAt: new Date().toISOString(),
-          };
-          const updated = [...vendors, nv];
-          setVendors(updated);
-          setStore(VENDORS_KEY, updated);
-          setInvoice((p) => ({ ...p, vendorId: nv.id, vendorName: nv.name }));
+          if (!token) {
+            setInfoModal({
+              title: "Sign in required",
+              message: "Sign in as admin to add suppliers.",
+            });
+            return;
+          }
+          createSupplier(
+            {
+              name: data.name.trim(),
+              contactPerson: data.contact?.trim() || null,
+              phone: data.phone?.trim() || null,
+              email: data.email?.trim() || null,
+              address: data.address?.trim() || null,
+              notes: null,
+              itemsSupplied: (data.categories || []).map((name) => ({
+                name,
+                uom: "pcs",
+              })),
+            },
+            token,
+          )
+            .then((created) => {
+              const nv = { ...created, id: created.id ?? created._id };
+              setVendors((prev) => [...prev, nv]);
+            })
+            .catch((e) =>
+              setInfoModal({
+                title: "Could not add vendor",
+                message: e?.message || "Failed to create supplier.",
+              }),
+            );
         }}
         existingVendors={vendors}
         preFillCategories={vendorPreFillCategories}

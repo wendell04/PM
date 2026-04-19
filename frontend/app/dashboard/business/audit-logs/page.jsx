@@ -16,7 +16,7 @@ export default function AuditLogsPage() {
   const [summary, setSummary] = useState(null);
 
   // Loading/error
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
   // Filters
@@ -27,7 +27,7 @@ export default function AuditLogsPage() {
 
   // Fetch
   const fetchLogs = useCallback(async () => {
-    setLoading(true);
+    setIsLoading(true);
     setError('');
     try {
       const params = new URLSearchParams();
@@ -65,7 +65,7 @@ export default function AuditLogsPage() {
     } catch (err) {
       setError(err.message || 'Failed to load audit logs');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   }, [token, filterReason, filterStartDate, filterEndDate]);
 
@@ -163,16 +163,16 @@ export default function AuditLogsPage() {
             </div>
             <button
               onClick={fetchLogs}
-              disabled={loading}
+              disabled={isLoading}
               style={{
                 padding: '0.625rem 1.25rem',
-                background: loading ? 'var(--dark3)' : 'var(--gold)',
+                background: isLoading ? 'var(--dark3)' : 'var(--gold)',
                 border: 'none',
                 borderRadius: '8px',
-                color: loading ? 'var(--gray)' : '#000',
+                color: isLoading ? 'var(--gray)' : '#000',
                 fontWeight: 600,
                 fontSize: '0.875rem',
-                cursor: loading ? 'not-allowed' : 'pointer',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
@@ -184,7 +184,7 @@ export default function AuditLogsPage() {
                 <polyline points="1 20 1 14 7 14"/>
                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36 L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
               </svg>
-              {loading ? 'Refreshing...' : 'Refresh'}
+              {isLoading ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
 
@@ -408,29 +408,29 @@ export default function AuditLogsPage() {
         )}
 
         {/* Loading state */}
-        {loading && (
-          <div className="skeleton-page">
-            <div className="skeleton-header">
-              <div className="skeleton-title" />
-              <div className="skeleton-subtitle" />
-            </div>
-            <div className="skeleton-table">
-              <div className="skeleton-table-header" />
-              {[...Array(6)].map((_, i) => (
-                <div className="skeleton-row" key={i}>
-                  <div className="skeleton-cell skeleton-cell-short" />
-                  <div className="skeleton-cell skeleton-cell-wide" />
-                  <div className="skeleton-cell skeleton-cell-mid" />
-                  <div className="skeleton-cell skeleton-cell-mid" />
-                  <div className="skeleton-cell-badge" />
-                </div>
+        {isLoading && (
+          <>
+            <style>{`
+              @keyframes alPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+            `}</style>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1rem' }}>
+              {[...Array(5)].map((_, i) => (
+                <div
+                  key={i}
+                  style={{
+                    height: '56px',
+                    borderRadius: '8px',
+                    background: 'rgba(255,255,255,0.04)',
+                    animation: 'alPageSkel 1.5s ease-in-out infinite',
+                  }}
+                />
               ))}
             </div>
-          </div>
+          </>
         )}
 
         {/* Table */}
-        {!loading && (
+        {!isLoading && (
           <div style={{
             border: '1px solid var(--border)',
             borderRadius: '10px',
@@ -643,7 +643,7 @@ export default function AuditLogsPage() {
         )}
 
         {/* Row count */}
-        {!loading && filtered.length > 0 && (
+        {!isLoading && filtered.length > 0 && (
           <div style={{
             marginTop: '0.75rem',
             fontSize: '0.8rem',

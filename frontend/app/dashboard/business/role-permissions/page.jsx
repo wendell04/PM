@@ -19,12 +19,16 @@ const SECTIONS = [
   { key: 'orderRequests', label: 'Order Requests' },
   { key: 'orders', label: 'Orders' },
   { key: 'jobOrders', label: 'Job Orders' },
+  { key: 'pos', label: 'Point of Sale' },
   { key: 'inventory', label: 'Inventory' },
-  { key: 'suppliers', label: 'Suppliers' },
+  { key: 'vendors', label: 'Vendors' },
+  { key: 'badOrders', label: 'Bad Orders' },
   { key: 'sales', label: 'Sales' },
   { key: 'reports', label: 'Reports' },
-  { key: 'banners', label: 'Banners / CMS' },
+  { key: 'products', label: 'Products' },
+  { key: 'banners', label: 'Banners' },
   { key: 'flashSales', label: 'Flash Sales' },
+  { key: 'vouchers', label: 'Vouchers' },
   { key: 'auditLogs', label: 'Audit Logs' },
   { key: 'userManagement', label: 'User Management' },
   { key: 'rolePermissions', label: 'Role Permissions' },
@@ -358,7 +362,7 @@ export default function RolePermissionsPage() {
                           <span style={{ color: 'var(--gold)' }}>Saving...</span>
                         )}
                         {!saving[role] && saveSuccess[role] && (
-                          <span style={{ color: '#10b981' }}>Saved ✓</span>
+                          <span style={{ color: '#10b981' }}>Saved</span>
                         )}
                         {!saving[role] && saveError[role] && (
                           <span style={{ color: 'var(--red)' }}>{saveError[role]}</span>

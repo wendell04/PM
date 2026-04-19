@@ -83,6 +83,20 @@ function getMaterialCostStats(material) {
   };
 }
 
+function normalizeMaterialRef(id) {
+  return id != null && id !== "" ? String(id) : "";
+}
+
+function findMaterialForComponent(materials, component) {
+  const ref = normalizeMaterialRef(
+    component?.materialId ?? component?.inventoryId,
+  );
+  if (!ref) return undefined;
+  return materials.find(
+    (m) => normalizeMaterialRef(m.id ?? m._id) === ref,
+  );
+}
+
 // Helper function to generate abbreviation from material name
 function abbreviateMaterial(name) {
   if (!name) return "";
@@ -120,7 +134,7 @@ function generateBomSku(bom, materials) {
   // Get material names from components
   const materialNames = bom.components
     .map((c) => {
-      const mat = materials.find((m) => m.id === c.materialId);
+      const mat = findMaterialForComponent(materials, c);
       return mat?.name || "";
     })
     .filter((name) => name);
@@ -592,7 +606,7 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
   const totalCost = useMemo(
     () =>
       (bom.components || []).reduce((sum, c) => {
-        const mat = materials.find((m) => m.id === c.materialId);
+        const mat = findMaterialForComponent(materials, c);
         // Use FIFO cost - what you'll actually pay when consuming from oldest stock
         const cost = computeFifoCost(mat, c.qty || 1);
         return sum + cost * (c.qty || 1);
@@ -603,7 +617,7 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
   const componentDetails = useMemo(
     () =>
       (bom.components || []).map((c) => {
-        const mat = materials.find((m) => m.id === c.materialId);
+        const mat = findMaterialForComponent(materials, c);
         const stats = getMaterialCostStats(mat);
 
         // Get detailed batch breakdown with FIFO ordering
@@ -651,7 +665,7 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
           totalAvailableStock,
           isInBackorder,
           backorderQty,
-          materialId: c.materialId,
+          materialId: normalizeMaterialRef(c.materialId ?? c.inventoryId),
         };
       }),
     [bom, materials],
@@ -808,20 +822,8 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
                 Material Breakdown
               </h4>
               {componentDetails.some((cd) => cd.isInBackorder) && (
-                <span
-                  style={{
-                    fontSize: "0.6rem",
-                    fontWeight: 700,
-                    color: "#D4A843",
-                    background: "rgba(212,168,67,0.12)",
-                    border: "1px solid rgba(212,168,67,0.2)",
-                    padding: "0.15rem 0.5rem",
-                    borderRadius: "99px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  ⚠ Need to Order
+                <span style={{ color: "var(--red)", fontWeight: 600 }}>
+                  Need to Order
                 </span>
               )}
             </div>
@@ -887,8 +889,8 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
                       <span
                         style={{
                           fontSize: "0.6rem",
-                          fontWeight: 700,
-                          color: "#D4A843",
+                          fontWeight: 600,
+                          color: "var(--red)",
                           background: "rgba(212,168,67,0.12)",
                           border: "1px solid rgba(212,168,67,0.2)",
                           padding: "0.1rem 0.4rem",
@@ -896,7 +898,7 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
                           textTransform: "uppercase",
                         }}
                       >
-                        ⚠ Need to Order: {cd.backorderQty} {cd.uom}
+                        Need to Order: {cd.backorderQty} {cd.uom}
                       </span>
                     )}
                   </div>

@@ -284,17 +284,6 @@ function VendorCombobox({
                     }}
                   >
                     ({itemNames.join(", ")})
-                    {matchesCategories && (
-                      <span
-                        style={{
-                          fontSize: "0.6rem",
-                          color: "#D4A843",
-                          marginLeft: "0.3rem",
-                        }}
-                      >
-                        ✓
-                      </span>
-                    )}
                   </span>
                 ) : (
                   <span
@@ -1214,46 +1203,6 @@ export default function AddStockModal({
         };
       });
     });
-
-    // Auto-update vendor itemsSupplied
-    if (invoice.vendorId && categoriesWithQty.length > 0) {
-      const vendor = vendors.find((v) => v.id === invoice.vendorId);
-      if (vendor) {
-        const vItems = vendor.itemsSupplied || [];
-        // Check for duplicates properly (items can be strings or objects {name, uom})
-        const existingItemNames = vItems.map((item) =>
-          typeof item === "string"
-            ? item.toLowerCase()
-            : (item.name || "").toLowerCase(),
-        );
-        const missingCats = categoriesWithQty.filter(
-          (cat) => !existingItemNames.includes(cat.toLowerCase()),
-        );
-        if (missingCats.length > 0) {
-          const updatedVendors = vendors.map((v) =>
-            v.id === vendor.id
-              ? {
-                  ...v,
-                  itemsSupplied: [
-                    ...new Set([
-                      ...vItems,
-                      ...missingCats.map((cat) => ({ name: cat, uom: "pcs" })),
-                    ]),
-                  ],
-                }
-              : v,
-          );
-          if (typeof window !== "undefined") {
-            try {
-              localStorage.setItem(
-                "pmp_vendors",
-                JSON.stringify(updatedVendors),
-              );
-            } catch {}
-          }
-        }
-      }
-    }
 
     onSave(stockData);
     onClose();
@@ -3534,7 +3483,7 @@ export default function AddStockModal({
                       }}
                     >
                       {invoice.receiptImage
-                        ? "Receipt uploaded ✓"
+                        ? "Receipt uploaded"
                         : "Upload Receipt Image"}
                     </span>
                     <span

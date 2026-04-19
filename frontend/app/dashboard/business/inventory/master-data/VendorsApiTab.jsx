@@ -19,6 +19,7 @@ const EMPTY_FORM = {
   email: '',
   address: '',
   notes: '',
+  itemsSupplied: [],
 };
 
 // ─── SupplierForm ─────────────────────────────────────────
@@ -35,7 +36,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSubmit, onCancel, isSubmitting, 
 
   const validate = () => {
     const e = {};
-    if (!form.name.trim()) e.name = 'Supplier name is required.';
+    if (!form.name.trim()) e.name = 'Vendor name is required.';
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
       e.email = 'Enter a valid email address.';
     if (form.phone && !/^[\d\s\-\+\(\)]{6,20}$/.test(form.phone))
@@ -75,7 +76,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSubmit, onCancel, isSubmitting, 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {/* Name */}
       <div>
-        <label style={labelStyle}>Supplier Name *</label>
+        <label style={labelStyle}>Vendor name *</label>
         <input
           type="text"
           value={form.name}
@@ -153,13 +154,83 @@ function SupplierForm({ initial = EMPTY_FORM, onSubmit, onCancel, isSubmitting, 
         />
       </div>
 
+      {/* Items supplied (catalog) */}
+      <div>
+        <label style={labelStyle}>Items supplied</label>
+        <p style={{ fontSize: '0.75rem', color: 'var(--gray)', margin: '0 0 8px' }}>
+          Optional list of product lines this vendor supplies (name + unit).
+        </p>
+        {(form.itemsSupplied || []).map((row, idx) => (
+          <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 36px', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+            <input
+              type="text"
+              value={row.name || ''}
+              onChange={e => {
+                const next = [...(form.itemsSupplied || [])];
+                next[idx] = { ...next[idx], name: e.target.value };
+                set('itemsSupplied', next);
+              }}
+              placeholder="Item name"
+              disabled={isSubmitting}
+              style={inputStyle(false)}
+            />
+            <input
+              type="text"
+              value={row.uom || ''}
+              onChange={e => {
+                const next = [...(form.itemsSupplied || [])];
+                next[idx] = { ...next[idx], uom: e.target.value };
+                set('itemsSupplied', next);
+              }}
+              placeholder="UOM"
+              disabled={isSubmitting}
+              style={inputStyle(false)}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const next = (form.itemsSupplied || []).filter((_, i) => i !== idx);
+                set('itemsSupplied', next);
+              }}
+              disabled={isSubmitting}
+              style={{
+                borderRadius: '8px',
+                border: '1px solid rgba(239,68,68,0.3)',
+                background: 'rgba(239,68,68,0.1)',
+                color: '#ef4444',
+                cursor: 'pointer',
+                height: '36px',
+              }}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => set('itemsSupplied', [...(form.itemsSupplied || []), { name: '', uom: '' }])}
+          disabled={isSubmitting}
+          style={{
+            padding: '8px 12px',
+            borderRadius: '8px',
+            border: '1px solid var(--border)',
+            background: 'rgba(255,255,255,0.06)',
+            color: 'var(--gray)',
+            fontSize: '13px',
+            cursor: 'pointer',
+          }}
+        >
+          + Add line
+        </button>
+      </div>
+
       {/* Notes */}
       <div>
         <label style={labelStyle}>Notes</label>
         <textarea
           value={form.notes}
           onChange={e => set('notes', e.target.value)}
-          placeholder="Optional notes about this supplier"
+          placeholder="Optional notes about this vendor"
           rows={3}
           disabled={isSubmitting}
           style={{
@@ -208,15 +279,22 @@ function SupplierForm({ initial = EMPTY_FORM, onSubmit, onCancel, isSubmitting, 
           className="btn-primary"
           style={{ padding: '10px 24px', opacity: isSubmitting ? 0.6 : 1 }}
         >
-          {isSubmitting ? 'Saving...' : 'Save Supplier'}
+          {isSubmitting ? 'Saving…' : 'Save vendor'}
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────
-export default function SuppliersPage() {
+function normalizeVendorList(list) {
+  return (Array.isArray(list) ? list : []).map((v) => ({
+    ...v,
+    id: v.id ?? v._id,
+  }));
+}
+
+// ─── Vendors tab (API) — embedded in Master Data ────────────────────────────
+export default function VendorsApiTab({ onVendorsChange, showHeader = false }) {
   const { token } = useAuth();
 
   const [suppliers, setSuppliers]       = useState([]);
@@ -245,7 +323,7 @@ export default function SuppliersPage() {
         fetchSuppliers(token),
         fetchInventory(token).catch(() => []),
       ]);
-      setSuppliers(Array.isArray(suppliersData) ? suppliersData : []);
+      setSuppliers(normalizeVendorList(suppliersData));
       setInventory(Array.isArray(inventoryData) ? inventoryData : []);
     } catch (err) {
       setError(err.message || 'Failed to load suppliers.');
@@ -255,6 +333,10 @@ export default function SuppliersPage() {
   }, [token]);
 
   useEffect(() => { loadSuppliers(); }, [loadSuppliers]);
+
+  useEffect(() => {
+    onVendorsChange?.(suppliers);
+  }, [suppliers, onVendorsChange]);
 
   // ── Search filter (client-side) ───────────────────────
   const filtered = suppliers.filter(s => {
@@ -298,7 +380,11 @@ export default function SuppliersPage() {
     setIsSubmitting(true);
     setSubmitError('');
     try {
-      await createSupplier(formData, token);
+      const payload = {
+        ...formData,
+        itemsSupplied: (formData.itemsSupplied || []).filter((i) => (i.name || '').trim()),
+      };
+      await createSupplier(payload, token);
       await loadSuppliers();
       closeModal();
     } catch (err) {
@@ -313,7 +399,11 @@ export default function SuppliersPage() {
     setIsSubmitting(true);
     setSubmitError('');
     try {
-      await updateSupplier(selected.id ?? selected._id, formData, token);
+      const payload = {
+        ...formData,
+        itemsSupplied: (formData.itemsSupplied || []).filter((i) => (i.name || '').trim()),
+      };
+      await updateSupplier(selected.id ?? selected._id, payload, token);
       await loadSuppliers();
       closeModal();
     } catch (err) {
@@ -341,9 +431,10 @@ export default function SuppliersPage() {
   // ── Render ────────────────────────────────────────────
   return (
     <ErrorBoundary>
-      <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ padding: showHeader ? '24px' : '0', maxWidth: '1200px', margin: '0 auto' }}>
 
         {/* Header */}
+        {showHeader && (
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -354,7 +445,7 @@ export default function SuppliersPage() {
         }}>
           <div>
             <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>
-              Suppliers
+              Vendors
             </h1>
             <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: 'var(--gray)' }}>
               Manage your supply chain contacts
@@ -365,9 +456,31 @@ export default function SuppliersPage() {
             className="btn-primary"
             style={{ padding: '10px 20px' }}
           >
-            + Add Supplier
+            Add vendor
           </button>
         </div>
+        )}
+        {!showHeader && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '20px',
+          flexWrap: 'wrap',
+          gap: '16px',
+        }}>
+          <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray)' }}>
+            API-backed vendor records (shared with inventory and purchasing).
+          </p>
+          <button
+            onClick={openCreate}
+            className="btn-primary"
+            style={{ padding: '10px 20px' }}
+          >
+            Add vendor
+          </button>
+        </div>
+        )}
 
         {/* Search */}
         <div style={{ marginBottom: '20px' }}>
@@ -394,7 +507,7 @@ export default function SuppliersPage() {
         {/* Loading */}
         {loading && (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray)' }}>
-            Loading suppliers...
+            Loading vendors…
           </div>
         )}
 
@@ -434,7 +547,7 @@ export default function SuppliersPage() {
         {/* Empty */}
         {!loading && !error && filtered.length === 0 && (
           <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--gray)' }}>
-            {search ? `No suppliers match "${search}".` : 'No suppliers yet. Add your first supplier.'}
+            {search ? `No vendors match "${search}".` : 'No vendors yet. Add your first vendor.'}
           </div>
         )}
 
@@ -475,9 +588,9 @@ export default function SuppliersPage() {
                       onClick={() => setPriceHistorySupplier(supplier)}
                       style={{
                         background: 'none',
-                        border: '1px solid rgba(99,102,241,0.5)',
+                        border: '1px solid var(--border)',
                         borderRadius: '6px',
-                        color: '#6366f1',
+                        color: 'var(--gold)',
                         padding: '4px 10px',
                         fontSize: '12px',
                         cursor: 'pointer',
@@ -574,7 +687,7 @@ export default function SuppliersPage() {
             }}
           >
             <h2 style={{ margin: '0 0 24px', fontSize: '1.25rem', fontWeight: 700, color: 'var(--white)' }}>
-              Add Supplier
+              Add vendor
             </h2>
             <SupplierForm
               initial={EMPTY_FORM}
@@ -612,7 +725,7 @@ export default function SuppliersPage() {
             }}
           >
             <h2 style={{ margin: '0 0 24px', fontSize: '1.25rem', fontWeight: 700, color: 'var(--white)' }}>
-              Edit Supplier
+              Edit vendor
             </h2>
             <SupplierForm
               initial={{
@@ -622,6 +735,7 @@ export default function SuppliersPage() {
                 email: selected.email || '',
                 address: selected.address || '',
                 notes: selected.notes || '',
+                itemsSupplied: Array.isArray(selected.itemsSupplied) ? selected.itemsSupplied : [],
               }}
               onSubmit={handleUpdate}
               onCancel={closeModal}
@@ -655,7 +769,7 @@ export default function SuppliersPage() {
             }}
           >
             <h2 style={{ margin: '0 0 8px', fontSize: '1.25rem', fontWeight: 700, color: 'var(--white)' }}>
-              Delete Supplier
+              Delete vendor
             </h2>
             <p style={{ margin: '0 0 20px', fontSize: '0.9rem', color: 'var(--gray)', lineHeight: 1.5 }}>
               Are you sure you want to delete{' '}
@@ -724,7 +838,7 @@ export default function SuppliersPage() {
         const rows = [];
         inventory.forEach(item => {
           (item.batches || []).forEach(batch => {
-            if (batch.supplierId === supplierId) {
+            if (String(batch.supplierId ?? '') === String(supplierId ?? '')) {
               rows.push({
                 itemName:      item.name,
                 itemCategory:  item.category,
@@ -782,7 +896,7 @@ export default function SuppliersPage() {
                   <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--white)' }}>
                     Price History
                   </h2>
-                  <div style={{ fontSize: '0.85rem', color: '#6366f1', fontWeight: 600, marginTop: '2px' }}>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--gold)', fontWeight: 600, marginTop: '2px' }}>
                     {priceHistorySupplier.name}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '2px' }}>
@@ -826,8 +940,8 @@ export default function SuppliersPage() {
                         return (
                           <div key={itemName} style={{
                             padding: '12px 14px',
-                            background: 'rgba(99,102,241,0.06)',
-                            border: '1px solid rgba(99,102,241,0.2)',
+                            background: 'rgba(255,255,255,0.03)',
+                            border: '1px solid var(--border)',
                             borderRadius: '10px',
                           }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--white)', marginBottom: '2px' }}>{itemName}</div>
@@ -838,9 +952,9 @@ export default function SuppliersPage() {
                               </div>
                               {hasVar && (
                                 <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>
-                                  Range: <span style={{ color: '#4ade80' }}>₱{minP.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  Range: <span style={{ color: 'rgba(34,197,94,0.95)' }}>₱{minP.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                   {' — '}
-                                  <span style={{ color: '#f87171' }}>₱{maxP.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  <span style={{ color: 'rgba(239,68,68,0.95)' }}>₱{maxP.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
                               )}
                               <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>

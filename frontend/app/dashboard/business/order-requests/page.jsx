@@ -104,7 +104,7 @@ function StatusBadge({ status, size = 'sm' }) {
 export default function OrderRequestsPage() {
   const { token } = useAuth();
   const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,10 +125,13 @@ export default function OrderRequestsPage() {
 
   // Fetch on mount
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
     let cancelled = false;
     const load = async () => {
-      setLoading(true);
+      setIsLoading(true);
       setError(null);
       try {
         const result = await fetchOrderRequests(token);
@@ -136,7 +139,7 @@ export default function OrderRequestsPage() {
       } catch (err) {
         if (!cancelled) setError(err.message);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
     load();
@@ -263,6 +266,29 @@ export default function OrderRequestsPage() {
   const filteredRequests = filtered();
   const cardCounts = counts();
 
+  if (isLoading) {
+    return (
+      <div style={{ padding: '2rem' }}>
+        <style>{`
+          @keyframes orPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+        `}</style>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '960px' }}>
+          {[...Array(5)].map((_, i) => (
+            <div
+              key={i}
+              style={{
+                height: '56px',
+                borderRadius: '8px',
+                background: 'rgba(255,255,255,0.04)',
+                animation: 'orPageSkel 1.5s ease-in-out infinite',
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '2rem' }}>
       {/* Page Header */}
@@ -333,15 +359,8 @@ export default function OrderRequestsPage() {
         </div>
       </div>
 
-      {/* Loading State */}
-      {loading && (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-          <div className="spinner" style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--gold)' }} />
-        </div>
-      )}
-
       {/* Error State */}
-      {!loading && error && (
+      {error && (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--red)' }}>
           <p style={{ marginBottom: '1rem' }}>{error}</p>
           <button
@@ -349,7 +368,7 @@ export default function OrderRequestsPage() {
             onClick={async () => {
               if (isRetrying) return;
               setIsRetrying(true);
-              setLoading(true);
+              setIsLoading(true);
               setError(null);
               try {
                 const r = await fetchOrderRequests(token);
@@ -357,7 +376,7 @@ export default function OrderRequestsPage() {
               } catch (e) {
                 setError(e.message);
               } finally {
-                setLoading(false);
+                setIsLoading(false);
                 setIsRetrying(false);
               }
             }}
@@ -378,7 +397,7 @@ export default function OrderRequestsPage() {
       )}
 
       {/* Table */}
-      {!loading && !error && (
+      {!error && (
         <>
           {filteredRequests.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray)' }}>

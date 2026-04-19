@@ -447,6 +447,7 @@ export default function BusinessDashboardLayout({ children }) {
     if (!permissions) return false;
     return permissions[key] === true;
   };
+  const isAdminOwner = ["admin", "owner"].includes(currentUser?.role);
 
   const navItems = [
     // ── Standalone ──────────────────────────────────────────────
@@ -469,6 +470,15 @@ export default function BusinessDashboardLayout({ children }) {
       ],
     },
 
+    // ── POS ───────────────────────────────────────────────────────
+    // Admin/Owner only: POS triggers walk-in order creation.
+    {
+      name: "POS",
+      href: "/dashboard/business/pos",
+      permKey: "pos",
+      icon: "M4 7h16M6 7V5a2 2 0 012-2h8a2 2 0 012 2v2M6 7v14h12V7M8 11h8M8 15h2m2 0h2m2 0h2",
+    },
+
     // ── Inventory ──────────────────────────────────────────────
     {
       name: "Inventory",
@@ -480,19 +490,19 @@ export default function BusinessDashboardLayout({ children }) {
           href: "/dashboard/business/inventory/master-data",
         },
         { name: "Stock In", href: "/dashboard/business/inventory/stock-in" },
-        { name: "Stocks", href: "/dashboard/business/inventory/stocks" },
-        { name: "Returns", href: "/dashboard/business/inventory/returns" },
+        { name: "Stock Overview", href: "/dashboard/business/inventory/stocks" },
+        { name: "Bad Orders", href: "/dashboard/business/inventory/returns" },
       ],
     },
 
-    // ── Product CMS ─────────────────────────────────────────────
+    // ── Products ────────────────────────────────────────────────
     {
-      name: "Product CMS",
-      permKey: "banners",
+      name: "Products",
+      permKey: "products",
       icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10",
       children: [
-        { name: "Product List", href: "/dashboard/business/products" },
-        { name: "Add Product", href: "/dashboard/business/products/add" },
+        { name: "Catalog", href: "/dashboard/business/products" },
+        { name: "Banners", href: "/dashboard/business/banners" },
       ],
     },
 
@@ -502,9 +512,15 @@ export default function BusinessDashboardLayout({ children }) {
       permKey: "flashSales",
       icon: "M13 10V3L4 14h7v7l9-11h-7z",
       children: [
-        { name: "Banners", href: "/dashboard/business/banners" },
         { name: "Flash Sales", href: "/dashboard/business/flash-sales" },
       ],
+    },
+
+    {
+      name: "Vouchers",
+      href: "/dashboard/business/vouchers",
+      permKey: "vouchers",
+      icon: "M4 7h16M4 12h16M4 17h10",
     },
 
     // ── Finance ─────────────────────────────────────────────────
@@ -685,7 +701,10 @@ export default function BusinessDashboardLayout({ children }) {
 
           <nav className="sidebar-nav">
             {navItems
-              .filter((item) => can(item.permKey ?? "dashboard"))
+              .filter((item) => {
+                if (item.adminOnly && !isAdminOwner) return false;
+                return can(item.permKey ?? "dashboard");
+              })
               .map((item) => {
                 if (item.children) {
                   const isExpanded = expandedItems.includes(item.name);
@@ -2568,8 +2587,40 @@ export default function BusinessDashboardLayout({ children }) {
                                 transition: "color 0.2s",
                               }}
                             >
-                              <span style={{ fontSize: "0.72rem" }}>
-                                {c.pass ? "✓" : "·"}
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  fontSize: "0.72rem",
+                                  color: "inherit",
+                                }}
+                              >
+                                {c.pass ? (
+                                  <svg
+                                    width="10"
+                                    height="10"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    style={{ marginRight: "0.25rem" }}
+                                    aria-hidden
+                                  >
+                                    <path d="M5 13l4 4L19 7" />
+                                  </svg>
+                                ) : (
+                                  <span
+                                    style={{
+                                      display: "inline-block",
+                                      width: "0.65rem",
+                                      marginRight: "0.25rem",
+                                      textAlign: "center",
+                                      opacity: 0.45,
+                                    }}
+                                  >
+                                    –
+                                  </span>
+                                )}
                               </span>
                               {c.label}
                             </div>
