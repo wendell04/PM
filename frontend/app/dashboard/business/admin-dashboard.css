@@ -26,6 +26,7 @@ input[type="number"] {
   min-height: 100vh;
   background: var(--black);
   font-family: 'DM Sans', system-ui, sans-serif;
+  overflow-x: hidden;
 }
 
 /* ══════════════════════════════════════
@@ -84,6 +85,9 @@ input[type="number"] {
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
+  position: relative;
+  line-height: 0;
+  font-size: 0;
 }
 
 .sidebar-logo-text {
@@ -119,6 +123,9 @@ input[type="number"] {
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
+  position: relative;
+  line-height: 0;
+  font-size: 0;
 }
 
 .admin-sidebar.collapsed .sidebar-logo-text,
@@ -3618,6 +3625,7 @@ input[type="text"][inputMode="numeric"] {
 .admin-sidebar.collapsed .sidebar-nav-child {
   justify-content: center;
   padding: 0.65rem;
+  margin: 1px 0;
 }
 
 .admin-sidebar.collapsed .sidebar-nav-item,

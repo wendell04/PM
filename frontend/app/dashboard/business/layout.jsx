@@ -528,7 +528,7 @@ export default function BusinessDashboardLayout({ children }) {
       icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
     },
     {
-      name: "System",
+      name: "Users & Roles",
       permKey: "userManagement",
       icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 7a4 4 0 100 8 4 4 0 000-8z",
       children: [
@@ -1427,7 +1427,7 @@ export default function BusinessDashboardLayout({ children }) {
                   />
                 </div>
                 <div>
-                  <h2 style={{ margin: 0 }}>Settings</h2>
+                  <h2 style={{ margin: 0 }}>Profile</h2>
                   <p
                     style={{
                       margin: 0,
@@ -1553,27 +1553,6 @@ export default function BusinessDashboardLayout({ children }) {
                 }}
               >
                 Edit profile
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setProfileModalOpen(false);
-                  router.push("/dashboard/business/" + "settings");
-                }}
-                style={{
-                  width: "100%",
-                  padding: "0.5rem 0.75rem",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "var(--white)",
-                  fontSize: "0.8125rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  textAlign: "left",
-                }}
-              >
-                Settings
               </button>
               <button
                 type="button"
