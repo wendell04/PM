@@ -8,6 +8,7 @@ import CustomerTrackingView from './components/CustomerTrackingView';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { StatusBadge, formatDate, formatTimestamp, formatPeso } from '@/lib/shopUtils';
+import { getEcho, disconnectEcho } from '@/lib/echo';
 
 function SkeletonRow() {
   return (
@@ -93,6 +94,7 @@ export default function ShopOrdersPage() {
 
   // Auto-refresh every 30s — paused when modal is open
   const pollRef = useRef(null);
+  const echoChannelsRef = useRef([]);
   useEffect(() => {
     if (!token) return;
     pollRef.current = setInterval(() => {
@@ -102,6 +104,48 @@ export default function ShopOrdersPage() {
     }, 30000);
     return () => clearInterval(pollRef.current);
   }, [token, selectedOrder, loadOrders]);
+
+  // Reverb — subscribe to order.{id} for each loaded order
+  useEffect(() => {
+    if (!token || orders.length === 0) return;
+    // Unsubscribe previous channels first
+    echoChannelsRef.current.forEach(ch => {
+      try { ch.stopListening('.order.status.updated'); } catch {}
+    });
+    echoChannelsRef.current = [];
+    let echo;
+    try {
+      echo = getEcho(token);
+    } catch { return; }
+    if (!echo) return;
+    orders.forEach(order => {
+      const id = order._id ?? order.id;
+      if (!id) return;
+      try {
+        const ch = echo.private(`order.${id}`)
+          .listen('.order.status.updated', () => {
+            loadOrders();
+          });
+        echoChannelsRef.current.push(ch);
+      } catch {}
+    });
+    return () => {
+      echoChannelsRef.current.forEach(ch => {
+        try { ch.stopListening('.order.status.updated'); } catch {}
+      });
+      echoChannelsRef.current = [];
+    };
+  }, [token, orders, loadOrders]);
+
+  // Disconnect echo on unmount
+  useEffect(() => {
+    return () => {
+      echoChannelsRef.current.forEach(ch => {
+        try { ch.stopListening('.order.status.updated'); } catch {}
+      });
+      disconnectEcho();
+    };
+  }, []);
 
   async function openDetail(order) {
     if (!token) return;

@@ -85,6 +85,9 @@ export default function CustomerProfilePage() {
   const [revokingId, setRevokingId] = useState(null);
   const [revokeAllLoading, setRevokeAllLoading] = useState(false);
   const [sessionsSuccess, setSessionsSuccess] = useState('');
+  const [deviceTokens, setDeviceTokens]       = useState([]);
+  const [revokingDevice, setRevokingDevice]   = useState(null);
+  const [deviceError, setDeviceError]         = useState('');
 
   // Ref to track if tab has mounted (to prevent reset on initial mount)
   const hasTabMounted = useRef(false);
@@ -206,6 +209,13 @@ export default function CustomerProfilePage() {
     };
 
     loadSessions();
+    // Populate device tokens from stored user
+    const raw = localStorage.getItem('auth_user')
+      || sessionStorage.getItem('auth_user');
+    try {
+      const u = raw ? JSON.parse(raw) : null;
+      setDeviceTokens(Array.isArray(u?.device_tokens) ? u.device_tokens : []);
+    } catch { setDeviceTokens([]); }
   }, [activeTab]);
 
   const handleProfileChange = (field, value) => {
@@ -427,6 +437,42 @@ export default function CustomerProfilePage() {
         || 'Failed to revoke sessions');
     } finally {
       setRevokeAllLoading(false);
+    }
+  };
+
+  const handleRevokeDevice = async (deviceToken) => {
+    setRevokingDevice(deviceToken);
+    setDeviceError('');
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/2fa/device/${encodeURIComponent(deviceToken)}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+        10000
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to remove device.');
+      setDeviceTokens(prev => prev.filter(entry => {
+        const t = typeof entry === 'string' ? entry : entry?.token;
+        return t !== deviceToken;
+      }));
+      // Update stored user so device list stays consistent
+      try {
+        const key = localStorage.getItem('auth_user') ? 'localStorage' : 'sessionStorage';
+        const storage = key === 'localStorage' ? localStorage : sessionStorage;
+        const raw = storage.getItem('auth_user');
+        if (raw) {
+          const u = JSON.parse(raw);
+          u.device_tokens = (u.device_tokens ?? []).filter(entry => {
+            const t = typeof entry === 'string' ? entry : entry?.token;
+            return t !== deviceToken;
+          });
+          storage.setItem('auth_user', JSON.stringify(u));
+        }
+      } catch {}
+    } catch (err) {
+      setDeviceError(err.message || 'Failed to remove device.');
+    } finally {
+      setRevokingDevice(null);
     }
   };
 
@@ -1747,6 +1793,161 @@ export default function CustomerProfilePage() {
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 2FA status + connected devices — inside Security tab */}
+            {activeTab === 'security' && (
+              <div style={{
+                marginTop: '2rem',
+                paddingTop: '1.5rem',
+                borderTop: '1px solid var(--border)',
+              }}>
+                <h3 style={{
+                  margin: '0 0 0.75rem',
+                  fontSize: '0.9375rem',
+                  fontWeight: 700,
+                  color: 'var(--white)',
+                }}>
+                  Two-factor authentication
+                </h3>
+                <div style={{
+                  padding: '1rem',
+                  background: 'var(--dark)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '20px',
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      background: 'rgba(74,222,128,0.12)',
+                      color: 'var(--green)',
+                    }}>
+                      Active
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray-light)' }}>
+                    Email verification is required at every login. A one-time
+                    code is sent to your registered email address.
+                  </p>
+                </div>
+
+                <div style={{ marginTop: '1.5rem' }}>
+                  <h3 style={{
+                    margin: '0 0 0.75rem',
+                    fontSize: '0.9375rem',
+                    fontWeight: 700,
+                    color: 'var(--white)',
+                  }}>
+                    Connected Devices ({deviceTokens.length})
+                  </h3>
+
+                  {deviceError && (
+                    <div style={{
+                      marginBottom: '0.75rem',
+                      padding: '0.625rem 0.875rem',
+                      background: 'rgba(239,68,68,0.08)',
+                      border: '1px solid rgba(239,68,68,0.25)',
+                      borderRadius: '8px',
+                      color: 'var(--red)',
+                      fontSize: '0.8rem',
+                    }}>
+                      {deviceError}
+                    </div>
+                  )}
+
+                  {deviceTokens.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray)' }}>
+                      No trusted devices recorded for this account.
+                    </p>
+                  ) : (
+                    <ul style={{
+                      listStyle: 'none',
+                      margin: 0,
+                      padding: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.5rem',
+                    }}>
+                      {deviceTokens.map((entry) => {
+                        const tokenStr = typeof entry === 'string'
+                          ? entry : (entry?.token ?? '');
+                        const short = tokenStr.length > 12
+                          ? `${tokenStr.slice(0, 12)}...`
+                          : (tokenStr || '(unknown)');
+                        const addedAt = entry?.created_at
+                          ? new Date(entry.created_at).toLocaleDateString(
+                              'en-US', { month: 'short', day: 'numeric', year: 'numeric' }
+                            )
+                          : null;
+                        return (
+                          <li
+                            key={tokenStr || JSON.stringify(entry)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '0.75rem',
+                              padding: '0.75rem 1rem',
+                              background: 'var(--dark)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '8px',
+                            }}
+                          >
+                            <div>
+                              <code style={{
+                                fontSize: '0.78rem',
+                                color: 'var(--gray-light)',
+                                wordBreak: 'break-all',
+                              }}>
+                                {short}
+                              </code>
+                              {addedAt && (
+                                <div style={{
+                                  fontSize: '0.7rem',
+                                  color: 'var(--gray)',
+                                  marginTop: '0.2rem',
+                                }}>
+                                  Added {addedAt}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => handleRevokeDevice(tokenStr)}
+                              disabled={revokingDevice === tokenStr}
+                              style={{
+                                flexShrink: 0,
+                                padding: '0.375rem 0.75rem',
+                                background: 'rgba(239,68,68,0.08)',
+                                border: '1px solid rgba(239,68,68,0.25)',
+                                borderRadius: '6px',
+                                color: 'var(--red)',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                cursor: revokingDevice === tokenStr
+                                  ? 'not-allowed' : 'pointer',
+                                opacity: revokingDevice === tokenStr ? 0.6 : 1,
+                                transition: 'opacity 0.15s',
+                              }}
+                            >
+                              {revokingDevice === tokenStr ? 'Removing...' : 'Remove'}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
                   )}
                 </div>
               </div>
