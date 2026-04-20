@@ -165,10 +165,16 @@ export default function PaymentSuccessPage() {
               marginBottom: '8px',
             }}>
               <span style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>
-                {isCod ? 'Order Total' : 'Amount Paid'}
+                {isCod
+                  ? 'Order Total'
+                  : isOrderRequest && order?.paymentStatus === 'downpayment_paid'
+                    ? '50% Downpayment Paid'
+                    : isOrderRequest && order?.paymentStatus === 'paid'
+                      ? 'Balance Paid'
+                      : 'Amount Paid'}
               </span>
               <span style={{ color: 'var(--gold)', fontSize: '0.85rem', fontWeight: 600 }}>
-                ₱{Number(order.totalAmount ?? 0).toLocaleString('en-PH', {
+                ₱{Number(order.totalAmount ?? order.finalPrice ?? 0).toLocaleString('en-PH', {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}

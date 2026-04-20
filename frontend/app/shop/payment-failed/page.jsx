@@ -89,7 +89,7 @@ export default function PaymentFailedPage() {
 
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
           <Link
-            href="/shop/orders-history"
+            href="/shop/orders"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
