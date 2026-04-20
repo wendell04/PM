@@ -5169,6 +5169,7 @@ function BOMTab({ materials, boms, token, refreshBoms }) {
         generateBomSku(b).toLowerCase().includes(q) ||
         (b.variantGroup || "").toLowerCase().includes(q),
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boms, search, materials]);
 
   const handleDelete = (id) => {

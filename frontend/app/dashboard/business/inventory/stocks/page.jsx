@@ -478,6 +478,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
       return aCrit - bCrit || mA.name.localeCompare(mB.name);
     });
     return rows;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupedMaterials, search, categoryFilter, statusFilter]);
 
   const totalStock = materials

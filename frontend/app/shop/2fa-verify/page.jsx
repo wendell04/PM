@@ -12,6 +12,6 @@ export default function ShopTwoFactorRedirectPage() {
   const router = useRouter();
   useEffect(() => {
     router.replace('/shop');
-  }, []);
+  }, [router]);
   return null;
 }

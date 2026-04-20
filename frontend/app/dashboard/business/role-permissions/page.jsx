@@ -130,8 +130,9 @@ export default function RolePermissionsPage() {
   }, [token, currentUser, fetchPermissions]);
 
   useEffect(() => {
+    const timers = successTimersRef.current;
     return () => {
-      Object.values(successTimersRef.current).forEach((id) => clearTimeout(id));
+      Object.values(timers).forEach((id) => clearTimeout(id));
     };
   }, []);
 

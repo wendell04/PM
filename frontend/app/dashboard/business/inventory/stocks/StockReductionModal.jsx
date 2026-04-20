@@ -380,6 +380,7 @@ export default function StockReductionModal({
         }
       }
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [variantQtys, isSale, masterlist, selectedIds, variants, unitPrices]);
 
   // Sale ref — new each time modal opens

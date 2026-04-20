@@ -427,6 +427,7 @@ function ActualStockTab({
       arrivalDamageValue,
       internalDamageValue,
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [materials, inTransitMap, badOrders, backorders]);
 
   const categories = [
