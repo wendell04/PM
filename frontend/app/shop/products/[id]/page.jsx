@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
@@ -447,11 +448,10 @@ export default function ProductDetailPage() {
                         cursor: 'pointer', background: 'none',
                         flexShrink: 0,
                       }}>
-                      <img src={img} alt=""
-                        style={{ width: '100%',
-                          height: '100%',
-                          objectFit: 'cover',
-                          display: 'block' }} />
+                      <Image src={img} alt=""
+                        fill
+                        style={{ objectFit: 'cover' }}
+                        unoptimized />
                     </button>
                   ))}
                 </div>

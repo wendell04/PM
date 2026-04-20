@@ -3852,6 +3852,7 @@ function MaterialFormModal({
                     padding: "1rem",
                   }}
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src="/tutorials/Tutorial.png"
                     alt="Add Variant Type"
@@ -3914,6 +3915,7 @@ function MaterialFormModal({
                     padding: "1rem",
                   }}
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src="/tutorials/Tutorial2.png"
                     alt="Add Options"
@@ -3975,6 +3977,7 @@ function MaterialFormModal({
                     padding: "1rem",
                   }}
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src="/tutorials/Tutorial3.png"
                     alt="Multiple Types"
@@ -4038,6 +4041,7 @@ function MaterialFormModal({
                     padding: "1rem",
                   }}
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src="/tutorials/Tutorial4.png"
                     alt="Final Result"

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
@@ -399,7 +400,7 @@ export default function CheckoutPage() {
             {/* Thumbnail */}
             <div className="checkout-item-thumb">
               {item.product.images?.[0]
-                ? <img src={item.product.images[0]} alt="" className="checkout-item-thumb-img" />
+                ? <Image src={item.product.images[0]} alt="" className="checkout-item-thumb-img" fill style={{ objectFit: "cover" }} unoptimized />
                 : <div className="checkout-item-thumb-placeholder">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                       <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
@@ -452,9 +453,10 @@ export default function CheckoutPage() {
             borderRadius: '8px',
             marginBottom: '0.75rem',
           }}>
-            <img
+            <Image
               src={designFilePreviewUrl || designPreviewUrl}
               alt="Attached design"
+              fill
               style={{
                 width: 64,
                 height: 64,

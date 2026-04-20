@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 
 // ── DAMAGE TYPES FOR BAD ORDERS ──────────────────────────────────────────────
 // These are the bad order categories that get created during stock-in
@@ -3522,9 +3523,10 @@ export default function AddStockModal({
                   </label>
                   {invoice.receiptImage && (
                     <div style={{ position: "relative", marginTop: "0.5rem" }}>
-                      <img
+                      <Image
                         src={invoice.receiptImage}
                         alt="Receipt"
+                        fill
                         style={{
                           maxHeight: "100px",
                           maxWidth: "100%",

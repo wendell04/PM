@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useCart } from './layout';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -403,10 +404,12 @@ export default function ShopPage() {
                   style={{ opacity: index === currentSlide ? 1 : 0 }}
                 >
                   {banner.image ? (
-                    <img
+                    <Image
                       src={banner.image}
                       alt={banner.headline}
                       className="shop-carousel-bg-image"
+                      fill
+                      unoptimized
                       style={{ objectFit: 'cover', objectPosition: 'center center' }}
                     />
                   ) : (

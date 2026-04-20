@@ -566,6 +566,7 @@ export default function PosPage() {
                       {thumb
                         ? (typeof thumb === 'string' && thumb.includes('res.cloudinary.com')
                           ? <Image src={thumb} alt="" fill sizes="(max-width: 768px) 50vw, 200px" style={{ objectFit: 'cover' }} />
+                          // eslint-disable-next-line @next/next/no-img-element
                           : <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />)
                         : <IconPrintPlaceholder />}
                     </div>

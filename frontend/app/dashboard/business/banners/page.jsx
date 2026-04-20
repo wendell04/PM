@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getBanners,
@@ -911,7 +912,7 @@ export default function BannerManagementPage() {
                     <button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(index, 1); }} disabled={index === banners.length - 1 || isSubmitting} title="Move down">▼</button>
                   </div>
                   <div className="banner-item-thumbnail">
-                    {banner.image ? <img src={banner.image} alt={banner.name} /> : <span>No Image</span>}
+                    {banner.image ? <Image src={banner.image} alt={banner.name} width={48} height={48} style={{ objectFit: "cover" }} unoptimized /> : <span>No Image</span>}
                   </div>
                   <div className="banner-item-info">
                     <div className="banner-item-header">
@@ -1015,7 +1016,7 @@ export default function BannerManagementPage() {
                 return (
                   <div key={banner.id} className={`banner-preview-slide ${index === currentSlide ? 'active' : 'inactive'}`}>
                     {displayBanner.image
-                      ? <img src={displayBanner.image} alt={displayBanner.name} className="banner-preview-image" />
+                      ? <Image src={displayBanner.image} alt={displayBanner.name} className="banner-preview-image" fill style={{ objectFit: "cover" }} unoptimized />
                       : <div style={{ width: '100%', height: '100%', background: 'var(--dark3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)' }}>No Image</div>
                     }
                     <div className="banner-preview-overlay"></div>

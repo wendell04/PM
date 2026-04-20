@@ -39,8 +39,8 @@ function ImageWithFallback({ src, alt, label, style }) {
     );
   }
   return (
-    /* eslint-disable-next-line @next/next/no-img-element */
     <a href={src} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textDecoration: 'none' }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
         alt={alt}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStatusBadge, getPaymentBadge } from '@/lib/utils/orderHelpers';
 
@@ -756,10 +757,13 @@ export default function OrderQuickViewModal({
                             }}
                           >
                             {item.preview_image_url ? (
-                              <img
+                              <Image
                                 src={item.preview_image_url}
                                 alt={item.product_name}
-                                style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover' }}
+                                width={40}
+                                height={40}
+                                style={{ borderRadius: '4px', objectFit: 'cover' }}
+                                unoptimized
                               />
                             ) : (
                               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5">

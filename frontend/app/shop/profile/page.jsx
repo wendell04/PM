@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useAuth } from '../../../contexts/AuthContext';
 import '../../../components/custom-styles.css';
@@ -565,10 +566,13 @@ export default function CustomerProfilePage() {
             onMouseLeave={() => setAvatarHover(false)}
           >
             {currentUser?.avatar ? (
-              <img
+              <Image
                 src={currentUser.avatar}
                 alt="avatar"
-                style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', display: 'block' }}
+                width={80}
+                height={80}
+                style={{ borderRadius: '50%', objectFit: 'cover', display: 'block' }}
+                unoptimized
               />
             ) : (
               <div style={{

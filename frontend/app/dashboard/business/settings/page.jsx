@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -457,14 +458,18 @@ export default function SettingsPage() {
               {/* Avatar */}
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 {currentUser?.avatar && !showAvatarFallback ? (
-                  <img
+                  <Image
                     src={currentUser.avatar}
                     alt="avatar"
+                    width={72}
+                    height={72}
                     onError={() => setShowAvatarFallback(true)}
                     style={{
-                      width: '72px', height: '72px', borderRadius: '50%',
-                      objectFit: 'cover', border: '2px solid var(--gold)',
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      border: '2px solid var(--gold)',
                     }}
+                    unoptimized
                   />
                 ) : (
                   <div style={{
