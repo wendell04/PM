@@ -184,7 +184,7 @@ export default function SalesListPage() {
     }
 
     loadData();
-  }, []);
+  }, [token]);
 
   const toggleExpand = (orderId) => {
     setExpandedRows(prev => {

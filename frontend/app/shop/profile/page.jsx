@@ -215,7 +215,7 @@ export default function CustomerProfilePage() {
       const u = raw ? JSON.parse(raw) : null;
       setDeviceTokens(Array.isArray(u?.device_tokens) ? u.device_tokens : []);
     } catch { setDeviceTokens([]); }
-  }, [activeTab]);
+  }, [activeTab, token]);
 
   const handleProfileChange = (field, value) => {
     setProfileForm((prev) => ({ ...prev, [field]: value }));

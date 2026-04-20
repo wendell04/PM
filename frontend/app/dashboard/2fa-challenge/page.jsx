@@ -37,7 +37,8 @@ export default function TwoFactorChallengePage() {
     };
 
     requestAnimationFrame(check);
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
 
   if (!ready) return null;
 

@@ -3119,7 +3119,7 @@ export default function ProductListPage() {
     };
 
     loadData();
-  }, []);
+  }, [token]);
 
   const getInventoryItem = (inventoryId) =>
     inventoryList.find((inv) => inv.id === inventoryId);

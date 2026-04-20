@@ -113,7 +113,7 @@ export default function BusinessDashboardLayout({ children }) {
         bio: currentUser.bio || "",
       });
     }
-  }, [currentUser]);
+  }, [currentUser, router]);
 
   // Reset password form when switching away from Security tab
   useEffect(() => {

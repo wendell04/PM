@@ -395,7 +395,7 @@ export default function BannerManagementPage() {
       }
     }
     loadBanners();
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     if (editedBanner && activeBannerId) {
