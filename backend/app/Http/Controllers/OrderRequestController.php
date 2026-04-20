@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\OrderRequest;
 use App\Models\Product;
+use App\Models\Sale;
+use App\Models\Inventory;
+use App\Models\StockHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Http;
@@ -12,6 +15,7 @@ use App\Mail\OrderConfirmedMail;
 use App\Mail\OrderStatusMail;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class OrderRequestController extends Controller
 {
@@ -328,6 +332,103 @@ class OrderRequestController extends Controller
                     'orderId' => (string) $req->_id,
                     'error'   => $e->getMessage(),
                 ]);
+            }
+
+            // Create Sale record for analytics and inventory deduction
+            try {
+                $product   = $req->productId ? Product::find($req->productId) : null;
+                $inventory = ($product && $product->inventoryId)
+                    ? Inventory::find($product->inventoryId)
+                    : null;
+
+                $qty        = (int) ($req->quantity ?? 1);
+                $unitPrice  = (float) ($req->finalPrice ?? 0.0);
+                $totalPrice = $unitPrice; // finalPrice is the total for the request
+                $cost       = $inventory
+                    ? (float) ($inventory->averageCost ?? 0) * $qty
+                    : 0.0;
+                $profit     = $totalPrice - $cost;
+
+                $newSaleId = 'SALE-' . strtoupper(substr(
+                    str_replace('-', '', Str::uuid()->toString()), 0, 8
+                ));
+
+                Sale::create([
+                    'saleId'          => $newSaleId,
+                    'inventoryId'     => $inventory ? (string) $inventory->_id : null,
+                    'productName'     => $req->productName ?? 'Custom Order',
+                    'category'        => $req->category ?? null,
+                    'quantity'        => $qty,
+                    'unitPrice'       => $unitPrice,
+                    'totalPrice'      => $totalPrice,
+                    'cost'            => $cost,
+                    'profit'          => $profit,
+                    'saleDate'        => now(),
+                    'customerName'    => $req->customerName ?? 'Customer',
+                    'customerEmail'   => $req->customerEmail ?? null,
+                    'source'          => 'order_request',
+                    'status'          => 'completed',
+                    'orderRequestId'  => (string) $req->_id,
+                    'notes'           => 'From Order Request: ' . (string) $req->_id,
+                    'createdAt'       => now(),
+                ]);
+
+                // Deduct inventory FIFO if product has a linked inventory item
+                if ($inventory && !$inventory->isOnDemand) {
+                    $batches = $inventory->batches ?? [];
+                    usort($batches, fn($a, $b) =>
+                        strtotime($a['dateReceived'] ?? '0') <=>
+                        strtotime($b['dateReceived'] ?? '0'));
+
+                    $rem = $qty;
+                    $batchDeductions = [];
+                    foreach ($batches as &$batch) {
+                        if ($rem <= 0) break;
+                        $bq = $batch['remainingQty'] ?? $batch['goodQty'] ?? 0;
+                        if ($bq <= 0) continue;
+                        $d = min($bq, $rem);
+                        $batch['remainingQty'] = $bq - $d;
+                        $rem -= $d;
+                        $batchDeductions[] = [
+                            'batchId'  => $batch['batchId'] ?? null,
+                            'qty'      => $d,
+                            'unitCost' => $batch['unitCost'] ?? 0,
+                        ];
+                    }
+                    unset($batch);
+
+                    $newStock = max(0, (int) ($inventory->stockQty ?? 0) - $qty);
+                    $inventory->batches  = $batches;
+                    $inventory->stockQty = $newStock;
+                    $inventory->updatedAt = now();
+                    $inventory->save();
+
+                    $running = $newStock + $qty;
+                    foreach ($batchDeductions as $bd) {
+                        $running -= $bd['qty'];
+                        StockHistory::create([
+                            'inventoryId'  => (string) $inventory->_id,
+                            'quantity'     => $bd['qty'],
+                            'remainingQty' => $running,
+                            'unitCost'     => $bd['unitCost'],
+                            'totalCost'    => $bd['qty'] * $bd['unitCost'],
+                            'reason'       => 'order_request',
+                            'type'         => 'deduction',
+                            'batchId'      => $bd['batchId'],
+                            'sellingPrice' => $unitPrice,
+                            'remarks'      => 'Order Request: ' . (string) $req->_id,
+                            'performedBy'  => 'system',
+                            'createdAt'    => now(),
+                        ]);
+                    }
+                }
+
+            } catch (\Exception $saleErr) {
+                Log::error('OrderRequestController: failed to create Sale on delivery', [
+                    'orderRequestId' => (string) $req->_id,
+                    'error'          => $saleErr->getMessage(),
+                ]);
+                // Non-fatal — do not block the status update
             }
         }
 

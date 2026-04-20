@@ -609,46 +609,42 @@ class OrderController extends Controller
                     }
                 }
 
-                if ($inventory) {
-                    // 1. Create Sale Record
-                    // Generate UUID-based Sale ID — collision-free, no DB read required
-                    $newSaleId = 'SALE-' . strtoupper(substr(str_replace('-', '',
-                        \Illuminate\Support\Str::uuid()->toString()), 0, 8));
+                // 1. Always create Sale Record (even for custom products with no inventory)
+                $newSaleId = 'SALE-' . strtoupper(substr(str_replace('-', '',
+                    \Illuminate\Support\Str::uuid()->toString()), 0, 8));
 
-                    $cost = $inventory->averageCost * $item['qty'];
-                    $profit = $item['lineTotal'] - $cost;
+                $cost        = $inventory ? (float) ($inventory->averageCost ?? 0) * $item['qty'] : 0.0;
+                $profit      = $item['lineTotal'] - $cost;
+                $variantName = $item['variantName'] ?? '';
 
-                    $variantName = $item['variantName'] ?? '';
+                Sale::create([
+                    'saleId'          => $newSaleId,
+                    'inventoryId'     => $inventory ? (string) $inventory->_id : null,
+                    'productName'     => $product->name . ($variantName ? " ({$variantName})" : ""),
+                    'category'        => $product->category,
+                    'quantity'        => $item['qty'],
+                    'unitPrice'       => $item['unitPrice'],
+                    'totalPrice'      => $item['lineTotal'],
+                    'cost'            => $cost,
+                    'profit'          => $profit,
+                    'saleDate'        => now(),
+                    'customerName'    => $order->userSnapshot['name'] ?? 'Online Customer',
+                    'customerEmail'   => $order->userSnapshot['email'] ?? null,
+                    'source'          => 'online',
+                    'status'          => 'completed',
+                    'notes'           => "From Order: " . ($order->orderId ?? $order->_id),
+                    'createdAt'       => now(),
+                ]);
 
-                    Sale::create([
-                        'saleId'          => $newSaleId,
-                        'inventoryId'     => (string) $inventory->_id,
-                        'productName'     => $product->name . ($variantName ? " ({$variantName})" : ""),
-                        'category'        => $product->category,
-                        'quantity'        => $item['qty'],
-                        'unitPrice'       => $item['unitPrice'],
-                        'totalPrice'      => $item['lineTotal'],
-                        'cost'            => $cost,
-                        'profit'          => $profit,
-                        'saleDate'        => now(),
-                        'customerName'    => $order->userSnapshot['name'] ?? 'Online Customer',
-                        'customerEmail'   => $order->userSnapshot['email'] ?? null,
-                        'source'          => 'online',
-                        'status'          => 'completed',
-                        'notes'           => "From Order: " . ($order->orderId ?? $order->_id),
-                        'createdAt'       => now(),
-                    ]);
-
-                    // 2. Deduct Inventory FIFO (only if not Upon Order)
-                    if (!$inventory->isOnDemand) {
-                        $this->deductInventoryFIFO(
-                            inventory:    $inventory,
-                            qty:          (int) $item['qty'],
-                            reason:       'sale',
-                            unitPrice:    (float) ($item['unitPrice'] ?? 0),
-                            orderId:      (string) $order->_id,
-                        );
-                    }
+                // 2. Deduct Inventory FIFO only if inventory exists and is not on-demand
+                if ($inventory && !$inventory->isOnDemand) {
+                    $this->deductInventoryFIFO(
+                        inventory:    $inventory,
+                        qty:          (int) $item['qty'],
+                        reason:       'sale',
+                        unitPrice:    (float) ($item['unitPrice'] ?? 0),
+                        orderId:      (string) $order->_id,
+                    );
                 }
 
                 // 3. Increment Flash Sale stockUsed (if item was part of a flash sale)
