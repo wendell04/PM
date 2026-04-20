@@ -4,10 +4,9 @@ from pydantic import BaseModel
 from typing import List
 import pandas as pd
 import numpy as np
-from ssa import SSA
+from ssa import SSA, dominant_period
 
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,119 +15,142 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 class DataRow(BaseModel):
     date: str
     value: float
 
-
 class ForecastRequest(BaseModel):
     rows: List[DataRow]
     forecast_periods: int
-    forecast_type: str  # 'weekly' | 'monthly' | 'annually'
-
+    forecast_type: str
 
 @app.post("/api/forecast")
 async def forecast(req: ForecastRequest):
     try:
         forecast_type = req.forecast_type
         forecast_periods = req.forecast_periods
-
         if forecast_type not in ("weekly", "monthly", "annually"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid forecast_type '{forecast_type}'. Must be weekly, monthly, or annually.",
-            )
-
-        # Build DataFrame
+            raise HTTPException(status_code=400, detail="Invalid forecast_type.")
         df = pd.DataFrame([{"Date": r.date, "Value": r.value} for r in req.rows])
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
         df["Value"] = pd.to_numeric(df["Value"], errors="coerce")
-        df = df.dropna(subset=["Date", "Value"])
-        df = df.sort_values("Date").reset_index(drop=True)
-
+        df = df.dropna(subset=["Date", "Value"]).sort_values("Date").reset_index(drop=True)
         if len(df) == 0:
             raise HTTPException(status_code=400, detail="No valid data rows after parsing.")
-
-        # Resample based on period type
-        # Weekly  → each point = 1 day   (W-SUN bins)
-        # Monthly → each point = 1 week  (W-SUN bins, labeled as weeks)
-        # Annually→ each point = 1 month (MS bins)
         if forecast_type == "weekly":
-            df = df.set_index("Date").resample("W").sum().reset_index()
+            df = df.set_index("Date").resample("D").sum().reset_index()
         elif forecast_type == "monthly":
             df = df.set_index("Date").resample("W").sum().reset_index()
         elif forecast_type == "annually":
             df = df.set_index("Date").resample("MS").sum().reset_index()
-
-        if len(df) < 10:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Not enough data points after resampling ({len(df)}). Need at least 10.",
-            )
-
+        min_required = {"weekly": 30, "monthly": 16, "annually": 24}
+        if len(df) < min_required[forecast_type]:
+            raise HTTPException(status_code=400, detail="Not enough data after resampling.")
         n = len(df)
-
-        # L selection per period type
+        period = dominant_period(df["Value"].values)
         if forecast_type == "weekly":
-            L = min(26, max(2, n // 2))
+            L = (period * 2) if (period and 3 <= period <= 30) else min(60, max(2, n // 2))
         elif forecast_type == "monthly":
-            L = min(13, max(2, n // 2))
+            L = (period * 2) if (period and 2 <= period <= 13) else min(13, max(2, n // 2))
         elif forecast_type == "annually":
-            L = min(6, max(2, n // 2))
-
-        # Components: trend (0) + first two seasonal pairs (1,2,3,4)
-        components = [0, 1, 2, 3, 4]
-        # Clamp to available singular values (determined after SSA init)
+            L = (period * 2) if (period and 2 <= period <= 6) else min(6, max(2, n // 2))
+        L = max(2, min(L, n // 2))
         ssa = SSA(df["Value"].values, L=L)
-        max_comp = len(ssa.Sigma)
-        components = [c for c in components if c < max_comp]
-
-        # Decompose
+        threshold = 0.01
+        components = [c for c in [0,1,2,3,4] if c < len(ssa.Sigma) and ssa.Sigma[c] / ssa.Sigma[0] >= threshold]
+        if 0 not in components:
+            components = [0] + components
         trend = ssa.reconstruct(0)
         seasonal_c = [c for c in components if c > 0]
         seasonality = ssa.reconstruct(seasonal_c) if seasonal_c else np.zeros(n)
         noise = df["Value"].values - trend - seasonality
-
-        # Forecast
-        forecast_vals = ssa.forecast(components, steps=forecast_periods)
-
-        # Confidence interval: ±1.96 * std(noise)
-        noise_std = float(np.std(noise))
-        margin = 1.96 * noise_std
-        conf_high = (forecast_vals + margin).tolist()
-        conf_low = (forecast_vals - margin).tolist()
-
-        # Future dates
+        hist_df = pd.DataFrame({
+            "Date": df["Date"],
+            "Value": df["Value"].replace([np.inf, -np.inf], np.nan).fillna(0),
+            "Trend": trend,
+            "Seasonality": seasonality,
+            "Noise": noise,
+        }).set_index("Date")
+        nonzero_mask = df["Value"].values > 0
+        noise_std = float(np.std(noise[nonzero_mask])) if nonzero_mask.sum() > 1 else float(np.std(noise))
+        backtest_n = min(forecast_periods, max(2, n // 5), 12)
+        backtest_actuals = df["Value"].values[-backtest_n:]
+        train_vals = df["Value"].values[:n - backtest_n]
+        accuracy = {"mape": None, "mae": None, "backtest_n": backtest_n}
+        try:
+            if len(train_vals) >= 10:
+                L_bt = max(2, min(L, len(train_vals) // 2))
+                ssa_bt = SSA(train_vals, L=L_bt)
+                comps_bt = [c for c in [0,1,2,3,4] if c < len(ssa_bt.Sigma) and ssa_bt.Sigma[c] / ssa_bt.Sigma[0] >= threshold]
+                if 0 not in comps_bt:
+                    comps_bt = [0] + comps_bt
+                bt_forecast = ssa_bt.forecast(comps_bt, steps=backtest_n)
+                bt_forecast = np.clip(bt_forecast, 0.0, float(train_vals.max()) * 3)
+                nonzero_bt = backtest_actuals > 0
+                if nonzero_bt.sum() > 0:
+                    mape = float(np.mean(np.abs((backtest_actuals[nonzero_bt] - bt_forecast[nonzero_bt]) / backtest_actuals[nonzero_bt])) * 100)
+                else:
+                    mape = None
+                mae = float(np.mean(np.abs(backtest_actuals - bt_forecast)))
+                accuracy = {"mape": round(mape, 2) if mape is not None else None, "mae": round(mae, 2), "backtest_n": backtest_n}
+        except Exception:
+            pass
         last_date = df["Date"].iloc[-1]
         if forecast_type == "weekly":
-            forecast_dates = [last_date + pd.DateOffset(weeks=i) for i in range(1, forecast_periods + 1)]
+            steps = forecast_periods * 7
+            agg_rule = "W-MON"
+            ci_scale = np.sqrt(7.0)
+            fc_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=steps, freq="D")
         elif forecast_type == "monthly":
-            forecast_dates = [last_date + pd.DateOffset(weeks=i) for i in range(1, forecast_periods + 1)]
+            steps = forecast_periods * 6
+            agg_rule = "MS"
+            ci_scale = np.sqrt(4.33)
+            fc_dates = pd.date_range(start=last_date + pd.Timedelta(weeks=1), periods=steps, freq="W")
         elif forecast_type == "annually":
-            forecast_dates = [last_date + pd.DateOffset(months=i) for i in range(1, forecast_periods + 1)]
-
-        # Clean historical values
-        hist_values = df["Value"].replace([np.inf, -np.inf], np.nan).fillna(0).tolist()
-
+            steps = forecast_periods * 12
+            agg_rule = "YS"
+            ci_scale = np.sqrt(12.0)
+            fc_dates = pd.date_range(start=last_date + pd.DateOffset(months=1), periods=steps, freq="MS")
+        hist_agg = hist_df.resample(agg_rule).sum().reset_index()
+        if len(hist_agg) < 2:
+            raise HTTPException(status_code=400, detail="Not enough historical data points after aggregation.")
+        try:
+            forecast_vals = ssa.forecast(components, steps=steps)
+        except ValueError as lrf_err:
+            raise HTTPException(status_code=400, detail="SSA forecasting failed: " + str(lrf_err))
+        fc_df = pd.DataFrame({"Date": fc_dates, "Value": forecast_vals})
+        agg_df = fc_df.set_index("Date").resample(agg_rule).sum().reset_index()
+        agg_df = agg_df.head(forecast_periods)
+        out_vals = agg_df["Value"].values
+        hist_agg_vals = hist_agg["Value"].values
+        hist_agg_max = float(hist_agg_vals.max()) if len(hist_agg_vals) > 0 else 1.0
+        hist_agg_mean = float(hist_agg_vals.mean()) if len(hist_agg_vals) > 0 else 1.0
+        cap = max(hist_agg_max * 1.5, hist_agg_mean * 2, 1.0)
+        out_vals = np.clip(out_vals, 0.0, cap)
+        base_margin = 1.96 * noise_std * ci_scale
+        n_out = len(out_vals)
+        conf_high = [float(out_vals[i] + base_margin * np.sqrt(i + 1)) for i in range(n_out)]
+        conf_low = [max(0.0, float(out_vals[i] - base_margin * np.sqrt(i + 1))) for i in range(n_out)]
         return {
             "historical": {
-                "dates": df["Date"].dt.strftime("%Y-%m-%d").tolist(),
-                "values": hist_values,
-                "trend": trend.tolist(),
-                "seasonality": seasonality.tolist(),
-                "noise": noise.tolist(),
+                "dates": hist_agg["Date"].dt.strftime("%Y-%m-%d").tolist(),
+                "values": hist_agg["Value"].tolist(),
+                "trend": hist_agg["Trend"].tolist(),
+                "seasonality": hist_agg["Seasonality"].tolist(),
+                "noise": hist_agg["Noise"].tolist(),
             },
             "forecast": {
-                "dates": [d.strftime("%Y-%m-%d") for d in forecast_dates],
-                "values": forecast_vals.tolist(),
+                "dates": agg_df["Date"].dt.strftime("%Y-%m-%d").tolist(),
+                "values": out_vals.tolist(),
                 "confidence_high": conf_high,
                 "confidence_low": conf_low,
             },
+            "data_quality": {"hist_agg_count": len(hist_agg), "is_low_confidence": len(hist_agg) < 5},
+            "accuracy": accuracy,
+            "auto_L": {"L_used": L, "period_detected": int(period) if period else None},
         }
-
     except HTTPException:
         raise
     except Exception as e:
         import traceback
-        raise HTTPException(status_code=500, detail=f"{str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e) + "\n" + traceback.format_exc())
