@@ -65,6 +65,7 @@ export default function ShopOrdersPage() {
   const [cancelTarget, setCancelTarget]   = useState(null);
   const [cancelling, setCancelling]       = useState(false);
   const [cancelError, setCancelError]     = useState(null);
+  const [visibleCount, setVisibleCount]   = useState(5);
 
   const loadOrders = useCallback(async () => {
     if (!token) {
@@ -76,6 +77,7 @@ export default function ShopOrdersPage() {
     try {
       const data = await fetchMyOrders(token);
       setOrders(Array.isArray(data) ? data : []);
+      setVisibleCount(5);
     } catch (err) {
       if (err.message === 'Unauthorized') {
         router.push('/shop');
@@ -207,7 +209,7 @@ export default function ShopOrdersPage() {
         {/* Orders List */}
         {!loading && !error && orders.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {orders.map(order => (
+            {orders.slice(0, visibleCount).map(order => (
               <div key={order.id ?? order._id} style={{ padding: '1.25rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                   <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--white)' }}>{(order.id ?? order._id)?.slice(-8).toUpperCase()}</span>
@@ -275,6 +277,34 @@ export default function ShopOrdersPage() {
                 </div>
               </div>
             ))}
+            {orders.length > visibleCount && (
+              <button
+                onClick={() => setVisibleCount(v => v + 5)}
+                style={{
+                  marginTop: '4px',
+                  padding: '0.625rem 1.25rem',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--dark2)',
+                  color: 'var(--gray)',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  width: '100%',
+                  transition: 'border-color 0.15s, color 0.15s',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = 'var(--gold)';
+                  e.currentTarget.style.color = 'var(--gold)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = 'var(--border)';
+                  e.currentTarget.style.color = 'var(--gold)';
+                }}
+              >
+                Show more ({orders.length - visibleCount} remaining)
+              </button>
+            )}
           </div>
         )}
       </div>

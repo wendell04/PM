@@ -304,3 +304,7 @@ For every fix:
 3. **Verdict** — `SAFE` / `RISKY` / `BROKEN`
 
 No fluff. No summaries of unchanged code. Be direct.
+
+PERMANENT RULE: NEVER touch ssa-service/ or ssa-forecast/page.jsx. Zero exceptions.
+DO NOT run git checkout, git reset, or git restore on ssa-service/ under any circumstances.
+DO NOT commit changes to ssa-service/ unless explicitly instructed by the user.

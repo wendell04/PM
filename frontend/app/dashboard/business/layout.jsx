@@ -134,7 +134,6 @@ export default function BusinessDashboardLayout({ children }) {
   const handleLogout = async () => {
     await logout();
     sessionStorage.setItem("justLoggedOut", "true");
-    router.replace("/");
   };
 
   const handleProfileChange = (field, value) => {

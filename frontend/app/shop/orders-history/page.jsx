@@ -238,6 +238,7 @@ export default function OrdersHistoryPage() {
   const [cancelTarget, setCancelTarget]   = useState(null);
   const [cancelling, setCancelling]       = useState(false);
   const [cancelError, setCancelError]     = useState(null);
+  const [visibleCount, setVisibleCount]   = useState(5);
 
   // ── Load orders list ───────────────────────────────
   const loadOrders = useCallback(async () => {
@@ -248,6 +249,7 @@ export default function OrdersHistoryPage() {
       const data = await fetchMyOrders(token);
       const raw = data?.data ?? (Array.isArray(data) ? data : []);
       setOrders(raw);
+      setVisibleCount(5);
     } catch (err) {
       if (err.message === 'Unauthorized') {
         router.push('/shop');
@@ -411,7 +413,7 @@ export default function OrdersHistoryPage() {
         {/* Order list */}
         {!loading && !error && orders.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {orders.map(order => {
+            {orders.slice(0, visibleCount).map(order => {
               const oid = order.id ?? order._id;
               const items = order.items || [];
               const firstName = items[0]?.productName || items[0]?.product_name || 'Order';
@@ -479,6 +481,34 @@ export default function OrdersHistoryPage() {
                 </div>
               );
             })}
+            {orders.length > visibleCount && (
+              <button
+                onClick={() => setVisibleCount(v => v + 5)}
+                style={{
+                  marginTop: '4px',
+                  padding: '0.625rem 1.25rem',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--dark2)',
+                  color: 'var(--gray)',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  width: '100%',
+                  transition: 'border-color 0.15s, color 0.15s',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = 'var(--gold)';
+                  e.currentTarget.style.color = 'var(--gold)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = 'var(--border)';
+                  e.currentTarget.style.color = 'var(--gray)';
+                }}
+              >
+                Show more ({orders.length - visibleCount} remaining)
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -673,9 +673,11 @@ export default function ShopLayout({ children }) {
   const [authModalOpen, setAuthModalOpen]       = useState(false);
   const [authModalSubtitle, setAuthModalSubtitle] = useState('');
   const [twoFaOpen, setTwoFaOpen]               = useState(false);
-  const [twoFaToken, setTwoFaToken]       = useState(null);
-  const [twoFaEmail, setTwoFaEmail]       = useState('');
-  const [twoFaRole, setTwoFaRole]         = useState('');
+  const [twoFaToken, setTwoFaToken]                         = useState(null);
+  const [twoFaEmail, setTwoFaEmail]                         = useState('');
+  const [twoFaRole, setTwoFaRole]                           = useState('');
+  const [twoFaPendingUser, setTwoFaPendingUser]             = useState(null);
+  const [twoFaPendingRememberMe, setTwoFaPendingRememberMe] = useState(false);
 
   // Call this instead of setAuthModalOpen(true) when login is
   // triggered by a protected action so we can redirect after login.
@@ -718,6 +720,7 @@ export default function ShopLayout({ children }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifLoading, setNotifLoading] = useState(false);
   const notifRef = useRef(null);
+  const [logoutBanner, setLogoutBanner] = useState(false);
 
   // Load user info (public access - no login required to browse)
   useEffect(() => {
@@ -736,10 +739,8 @@ export default function ShopLayout({ children }) {
       setAuthModalInstanceKey(k => k + 1);
     } else if (justLoggedOut) {
       sessionStorage.removeItem('justLoggedOut');
-      setAuthModalType('login');
-      setAuthModalSubtitle('You have been signed out.');
-      setAuthModalOpen(true);
-      setAuthModalInstanceKey(k => k + 1);
+      setLogoutBanner(true);
+      setTimeout(() => setLogoutBanner(false), 4000);
     }
 
     // Listen for avatar/profile updates from other components
@@ -798,26 +799,21 @@ export default function ShopLayout({ children }) {
   // Handle successful login
   const handleLoginSuccess = async (userData, token, rememberMe = false, requires2fa = false) => {
     if (requires2fa) {
-      const storage = rememberMe ? localStorage : sessionStorage;
-      storage.setItem('auth_token', token);
-      storage.setItem('auth_user', JSON.stringify(userData));
-      try {
-        const bc = new BroadcastChannel('pmp_auth');
-        bc.postMessage({ type: 'AUTH_UPDATE', token, user: userData });
-        bc.close();
-      } catch {}
+      // Do NOT write to storage yet — hold in state only.
+      // Storage write happens in onSuccess after OTP verified.
       sessionStorage.setItem('pending_2fa', 'true');
-      // Save redirect destination for after 2FA
-      const currentPath = window.location.pathname;
       const dashboardRoles = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
       const isAdminUser = dashboardRoles.includes(userData.role);
+      const currentPath = window.location.pathname;
       const returnTo = isAdminUser
         ? '/dashboard/business/dashboardoverview'
         : (currentPath === '/shop/2fa-verify' || currentPath === '/')
           ? '/shop'
           : currentPath;
       sessionStorage.setItem('post_2fa_redirect', returnTo);
-      // Show inline modal — no page navigation
+      // Hold pending credentials in state only
+      setTwoFaPendingUser(userData);
+      setTwoFaPendingRememberMe(rememberMe);
       setTwoFaToken(token);
       setTwoFaEmail(userData.email || '');
       setTwoFaRole(userData.role || '');
@@ -1244,7 +1240,7 @@ export default function ShopLayout({ children }) {
     sessionStorage.removeItem('auth_user');
     sessionStorage.removeItem('shop_cart');
     sessionStorage.setItem('justLoggedOut', 'true');
-    router.replace('/');
+    router.replace('/shop');
   }
 
   if (!mounted) return null;
@@ -1254,6 +1250,20 @@ export default function ShopLayout({ children }) {
       <div className="shop-wrapper">
         {/* ── Navbar ── */}
         <nav className={`shop-navbar ${scrolled ? 'scrolled' : ''}`}>
+          {logoutBanner && (
+            <div style={{
+              background: 'color-mix(in srgb, var(--green) 12%, transparent)',
+              border: '1px solid var(--green)',
+              color: 'var(--green)',
+              fontSize: '0.8125rem',
+              fontWeight: 600,
+              textAlign: 'center',
+              padding: '0.5rem 1rem',
+              letterSpacing: '0.01em',
+            }}>
+              ✓ You have been signed out successfully.
+            </div>
+          )}
           <div className="shop-navbar-container">
             {/* Left side - Logo and Back button (only show back button when NOT logged in) */}
             <div className="shop-navbar-left">
@@ -1598,8 +1608,21 @@ export default function ShopLayout({ children }) {
             userEmail={twoFaEmail}
             userRole={twoFaRole}
             onSuccess={(redirectTo) => {
+              // OTP verified — now write credentials to storage
+              if (twoFaPendingUser && twoFaToken) {
+                const storage = twoFaPendingRememberMe ? localStorage : sessionStorage;
+                storage.setItem('auth_token', twoFaToken);
+                storage.setItem('auth_user', JSON.stringify(twoFaPendingUser));
+                try {
+                  const bc = new BroadcastChannel('pmp_auth');
+                  bc.postMessage({ type: 'AUTH_UPDATE', token: twoFaToken, user: twoFaPendingUser });
+                  bc.close();
+                } catch {}
+              }
               setTwoFaOpen(false);
               setTwoFaToken(null);
+              setTwoFaPendingUser(null);
+              setTwoFaPendingRememberMe(false);
               sessionStorage.removeItem('pending_2fa');
               sessionStorage.removeItem('post_2fa_redirect');
               window.location.href = redirectTo;
@@ -1607,6 +1630,8 @@ export default function ShopLayout({ children }) {
             onBack={() => {
               setTwoFaOpen(false);
               setTwoFaToken(null);
+              setTwoFaPendingUser(null);
+              setTwoFaPendingRememberMe(false);
               sessionStorage.removeItem('pending_2fa');
               sessionStorage.removeItem('post_2fa_redirect');
             }}
