@@ -13,26 +13,30 @@ export default function TwoFactorChallengePage() {
   const [ready, setReady]         = useState(false);
 
   useEffect(() => {
-    const pending = sessionStorage.getItem('pending_2fa');
-    if (!pending) { router.replace('/'); return; }
+    const check = () => {
+      const pending = sessionStorage.getItem('pending_2fa');
+      if (!pending) { router.replace('/'); return; }
 
-    const pendingToken = sessionStorage.getItem('pmp_pending_token');
-    if (!pendingToken) { router.replace('/'); return; }
+      const pendingToken = sessionStorage.getItem('pmp_pending_token');
+      if (!pendingToken) { router.replace('/'); return; }
 
-    let pendingUser = null;
-    try {
-      pendingUser = JSON.parse(
-        sessionStorage.getItem('pmp_pending_user') || 'null'
-      );
-    } catch {}
+      let pendingUser = null;
+      try {
+        pendingUser = JSON.parse(
+          sessionStorage.getItem('pmp_pending_user') || 'null'
+        );
+      } catch {}
 
-    const remember = sessionStorage.getItem('pmp_pending_remember') === '1';
+      const remember = sessionStorage.getItem('pmp_pending_remember') === '1';
 
-    setToken(pendingToken);
-    setUserEmail(pendingUser?.email || '');
-    setUserRole(pendingUser?.role || '');
-    setRememberMe(remember);
-    setReady(true);
+      setToken(pendingToken);
+      setUserEmail(pendingUser?.email || '');
+      setUserRole(pendingUser?.role || '');
+      setRememberMe(remember);
+      setReady(true);
+    };
+
+    requestAnimationFrame(check);
   }, []);
 
   if (!ready) return null;
