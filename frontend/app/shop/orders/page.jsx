@@ -88,7 +88,7 @@ export default function ShopOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, router]);
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
 

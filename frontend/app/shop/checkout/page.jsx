@@ -66,6 +66,7 @@ export default function CheckoutPage() {
     } catch {
       setPayloadError(true);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── EFFECT: Redirect if not authenticated ──

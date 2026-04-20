@@ -38,6 +38,7 @@ export default function TwoFactorModal({ token, userEmail, userRole, onSuccess, 
     if (!token || hasSentInitial.current) return;
     hasSentInitial.current = true;
     handleSendOtp();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   // Countdown timer — runs once when countdown is set to a

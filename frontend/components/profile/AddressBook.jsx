@@ -42,6 +42,7 @@ export default function AddressBook() {
   // Fetch addresses on mount
   useEffect(() => {
     fetchAddresses();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   // Clear success message after 3 seconds

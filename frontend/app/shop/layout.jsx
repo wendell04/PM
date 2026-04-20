@@ -772,6 +772,7 @@ export default function ShopLayout({ children }) {
       window.removeEventListener('pmp_user_updated', handleUserUpdate);
       window.removeEventListener('pmp_open_auth', handleOpenAuth);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Process pending cart items added before initialization
@@ -1040,6 +1041,7 @@ export default function ShopLayout({ children }) {
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart, cartInitialized]);
 
   // ── Forgot Password Handlers ────────────────────────────────────────────────
