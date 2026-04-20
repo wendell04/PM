@@ -16,32 +16,13 @@ import {
   deleteBanner as apiDeleteBanner,
   publishBanner as apiPublishBanner,
   unpublishBanner as apiUnpublishBanner,
+  uploadBannerImage,
 } from '@/lib/bannerUtils';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 // UX limit — keeps carousel manageable regardless of storage backend
 // Safe to keep even after MongoDB migration (enforced at API level too)
 const MAX_BANNERS = 5;
-
-// TODO: Cloudinary — Replace fileToBase64 with Cloudinary upload
-// CURRENT: Converts image to base64 string, stored in localStorage (max ~5MB total)
-// FUTURE:
-//   const uploadToCloudinary = async (file) => {
-//     const formData = new FormData();
-//     formData.append('file', file);
-//     formData.append('folder', 'banners');
-//     const res = await fetch('/api/upload', { method: 'POST', body: formData });
-//     const { url } = await res.json();
-//     return url; // Store this Cloudinary URL in banner.imageUrl
-//   };
-const fileToBase64 = (file) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = (error) => reject(error);
-  });
-};
 
 // ── Default Banner ──────────────────────────────────────────────────────────────
 const createDefaultBanner = () => ({
@@ -607,13 +588,6 @@ export default function BannerManagementPage() {
   };
 
   // ── Image Upload ─────────────────────────────────────────────────────────────
-  // TODO: Cloudinary — Replace base64 with Cloudinary upload
-  // CURRENT: Converts image to base64 string, stored directly in localStorage
-  //          NOTE: localStorage has a ~5MB limit — large images will cause errors
-  // FUTURE:
-  //   const url = await uploadToCloudinary(file); // returns Cloudinary URL
-  //   updateField('imageUrl', url);               // store URL, not base64
-  //   On banner delete also call: DELETE /api/upload/:publicId
   const handleImageUpload = async (file) => {
     if (!file) return;
     const validTypes = ['image/png', 'image/jpeg', 'image/webp'];
@@ -626,11 +600,13 @@ export default function BannerManagementPage() {
       return;
     }
     try {
-      const base64 = await fileToBase64(file);
-      updateField('image', base64);
+      setIsSubmitting(true);
+      const url = await uploadBannerImage(file, token);
+      updateField('image', url);
     } catch (error) {
-      console.error('Error uploading image:', error);
-      setModal({ type: 'error', title: 'Upload Failed', message: 'Failed to upload image. Please try again.' });
+      setModal({ type: 'error', title: 'Upload Failed', message: error.message || 'Failed to upload image. Please try again.' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

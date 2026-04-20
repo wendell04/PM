@@ -187,3 +187,29 @@ export async function getStorefrontBanners() {
     throw err;
   }
 }
+
+/**
+ * Upload a banner image to Cloudinary via Laravel
+ * POST /api/admin/upload-image
+ * @param {File} file - Image file object
+ * @param {string} token - Authentication token
+ * @returns {Promise<string>} Cloudinary secure_url
+ */
+export async function uploadBannerImage(file, token) {
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('folder', 'pmp-banners');
+
+  const res = await fetch(`${API_URL}/api/admin/upload-image`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      ...(API_URL.includes('ngrok') && { 'ngrok-skip-browser-warning': '1' }),
+    },
+    body: formData,
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Failed to upload banner image');
+  return data.data.url;
+}
