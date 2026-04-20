@@ -196,6 +196,7 @@ export function AuthProvider({children}) {
                 bc.postMessage({ type: 'AUTH_LOGOUT' });
                 bc.close();
             } catch {}
+            sessionStorage.setItem('justLoggedOut', 'true');
             // Always redirect to landing page — no dedicated admin login route exists
             window.location.href = '/';
         }

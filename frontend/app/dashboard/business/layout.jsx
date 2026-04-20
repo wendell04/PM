@@ -133,7 +133,6 @@ export default function BusinessDashboardLayout({ children }) {
 
   const handleLogout = async () => {
     await logout();
-    sessionStorage.setItem("justLoggedOut", "true");
   };
 
   const handleProfileChange = (field, value) => {

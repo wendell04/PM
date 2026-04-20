@@ -133,6 +133,7 @@ const LandingPage = ({onEnterShop}) => {
     const loggedOut = sessionStorage.getItem('justLoggedOut');
     if (loggedOut === 'true') {
       sessionStorage.removeItem('justLoggedOut');
+      setSessionMessage('You have been successfully logged out.');
       setTimeout(() => openModal('login'), 300);
     }
     // Check if session expired (token invalid)
