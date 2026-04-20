@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { submitOrderRequest, uploadDesignFile } from '@/lib/orderRequestApi';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
   || 'http://127.0.0.1:8000';
@@ -28,6 +29,15 @@ export default function ProductDetailPage() {
   const { addToCart } = useCart();
   const [hoveredBtn, setHoveredBtn] = useState(null);
   const [addedToCart, setAddedToCart] = useState(false);
+
+  // ── Custom order request modal state ──
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [reqDesignFile, setReqDesignFile] = useState(null);
+  const [reqDesignNotes, setReqDesignNotes] = useState('');
+  const [reqSubmitting, setReqSubmitting] = useState(false);
+  const [reqError, setReqError] = useState('');
+  const [reqSuccess, setReqSuccess] = useState(false);
+
   const id = params?.id;
 
   // Fetch product
@@ -234,6 +244,48 @@ export default function ProductDetailPage() {
     } catch (err) {
       console.error('[handleAddToCart]', err);
     }
+  }
+
+  // ── Custom order request submit ──────────────────────────────────
+  async function handleRequestSubmit() {
+    if (!token) {
+      window.dispatchEvent(new CustomEvent('pmp_open_auth', {
+        detail: { type: 'login', returnPath: window.location.pathname },
+      }));
+      return;
+    }
+    if (!product) return;
+    setReqSubmitting(true);
+    setReqError('');
+    try {
+      let designUrl = null;
+      if (reqDesignFile) {
+        const uploaded = await uploadDesignFile(token, reqDesignFile);
+        designUrl = uploaded.url;
+      }
+      await submitOrderRequest(token, {
+        productId:        product._id ?? product.id,
+        quantity,
+        selectedVariants,
+        designUrl,
+        designNotes:      reqDesignNotes.trim() || null,
+        isCustom:         true,
+      });
+      setReqSuccess(true);
+    } catch (err) {
+      setReqError(err.message || 'Failed to submit request. Please try again.');
+    } finally {
+      setReqSubmitting(false);
+    }
+  }
+
+  function closeRequestModal() {
+    setShowRequestModal(false);
+    setReqDesignFile(null);
+    setReqDesignNotes('');
+    setReqError('');
+    setReqSuccess(false);
+    setReqSubmitting(false);
   }
 
   // Add to cart then redirect to checkout
@@ -1018,6 +1070,41 @@ export default function ProductDetailPage() {
                 </p>
               </div>
             )}
+
+            <button
+              onClick={() => {
+                if (!token) {
+                  window.dispatchEvent(new CustomEvent('pmp_open_auth', {
+                    detail: { type: 'login', returnPath: window.location.pathname },
+                  }));
+                  return;
+                }
+                setShowRequestModal(true);
+              }}
+              style={{
+                width: '100%',
+                marginTop: '0.75rem',
+                padding: '0.75rem 1.5rem',
+                background: 'transparent',
+                border: '1px solid var(--gold)',
+                borderRadius: '8px',
+                color: 'var(--gold)',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              Request Custom Order
+            </button>
           </div>
         </div>
       )}
@@ -1028,6 +1115,192 @@ export default function ProductDetailPage() {
           50% { opacity: 0.5; }
         }
       `}</style>
+
+      {showRequestModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.75)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1rem',
+          }}
+          onClick={closeRequestModal}
+        >
+          <div
+            style={{
+              background: 'var(--dark)',
+              border: '1px solid var(--border)',
+              borderRadius: '16px',
+              maxWidth: '480px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '1.25rem 1.5rem',
+              borderBottom: '1px solid var(--border)',
+            }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--white)' }}>
+                Request Custom Order
+              </h2>
+              <button onClick={closeRequestModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', padding: '0.25rem' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            {reqSuccess ? (
+              <div style={{ padding: '2rem 1.5rem', textAlign: 'center' }}>
+                <div style={{
+                  width: '64px', height: '64px', borderRadius: '50%',
+                  background: 'rgba(34,197,94,0.1)',
+                  border: '2px solid var(--green)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  margin: '0 auto 1rem',
+                }}>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2.5">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </div>
+                <h3 style={{ margin: '0 0 0.5rem', color: 'var(--white)', fontSize: '1.1rem' }}>
+                  Request Submitted!
+                </h3>
+                <p style={{ margin: '0 0 1.5rem', color: 'var(--gray)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                  Your custom order request has been sent. We&apos;ll review it and get back to you with a final price.
+                </p>
+                <button
+                  onClick={() => { closeRequestModal(); router.push('/shop/orders'); }}
+                  style={{
+                    background: 'var(--gold)', color: 'var(--black)',
+                    border: 'none', borderRadius: '8px',
+                    padding: '0.75rem 1.5rem',
+                    fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                  }}
+                >
+                  Track My Requests
+                </button>
+              </div>
+            ) : (
+              <div style={{ padding: '1.5rem' }}>
+                <div style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  padding: '0.875rem 1rem',
+                  marginBottom: '1.25rem',
+                }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.5rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Order Summary</div>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 600, marginBottom: '0.25rem' }}>
+                    {product?.subCategoryName || product?.name}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>
+                    Qty: {quantity}
+                    {selectedVariants && Object.keys(selectedVariants).length > 0 && (
+                      <span> &bull; {Object.entries(selectedVariants).map(([k,v]) => `${k}: ${v}`).join(', ')}</span>
+                    )}
+                  </div>
+                  {totalPrice != null && (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--gold)', marginTop: '0.25rem', fontWeight: 600 }}>
+                      Suggested: ₱{Number(totalPrice).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.375rem', fontWeight: 600 }}>
+                    Design File <span style={{ fontWeight: 400 }}>(optional — jpg, png, pdf, ai, psd, svg · max 10MB)</span>
+                  </label>
+                  <input
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.pdf,.ai,.psd,.svg"
+                    onChange={e => setReqDesignFile(e.target.files?.[0] ?? null)}
+                    style={{
+                      width: '100%', padding: '0.625rem 0.875rem',
+                      background: 'var(--dark2)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px', color: 'var(--white)',
+                      fontSize: '0.85rem', boxSizing: 'border-box',
+                    }}
+                  />
+                  {reqDesignFile && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--gold)', marginTop: '0.25rem' }}>
+                      {reqDesignFile.name} ({(reqDesignFile.size / 1024 / 1024).toFixed(2)} MB)
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.375rem', fontWeight: 600 }}>
+                    Design Notes <span style={{ fontWeight: 400 }}>(optional)</span>
+                  </label>
+                  <textarea
+                    value={reqDesignNotes}
+                    onChange={e => setReqDesignNotes(e.target.value)}
+                    placeholder="Describe your design, colors, text, or any special requirements..."
+                    maxLength={1000}
+                    rows={4}
+                    style={{
+                      width: '100%', padding: '0.625rem 0.875rem',
+                      background: 'var(--dark2)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px', color: 'var(--white)',
+                      fontSize: '0.875rem', resize: 'vertical',
+                      fontFamily: 'inherit', boxSizing: 'border-box',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+
+                {reqError && (
+                  <div style={{
+                    marginBottom: '1rem', padding: '0.625rem 0.875rem',
+                    background: 'rgba(239,68,68,0.1)',
+                    border: '1px solid rgba(239,68,68,0.3)',
+                    borderRadius: '8px', color: 'var(--red)', fontSize: '0.85rem',
+                  }}>
+                    {reqError}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button
+                    onClick={closeRequestModal}
+                    disabled={reqSubmitting}
+                    style={{
+                      flex: 1, padding: '0.75rem',
+                      background: 'var(--dark2)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px', color: 'var(--gray)',
+                      fontSize: '0.875rem', cursor: reqSubmitting ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRequestSubmit}
+                    disabled={reqSubmitting}
+                    style={{
+                      flex: 2, padding: '0.75rem',
+                      background: reqSubmitting ? 'rgba(212,168,67,0.4)' : 'var(--gold)',
+                      border: 'none', borderRadius: '8px',
+                      color: 'var(--black)',
+                      fontSize: '0.875rem', fontWeight: 700,
+                      cursor: reqSubmitting ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {reqSubmitting ? 'Submitting...' : 'Submit Request'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
