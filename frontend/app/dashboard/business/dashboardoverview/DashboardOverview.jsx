@@ -244,6 +244,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
             <option value="yearly">Yearly</option>
           </select>
           <button
+            onClick={() => router.push("/dashboard/business/reports")}
             style={{
               padding: "0.5rem 1rem",
               background: "rgba(212,168,67,0.15)",
@@ -314,7 +315,40 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
             </div>
           </div>
 
-          <ChartPlaceholder label="SSA Sales Forecast Chart" />
+          <div
+            style={{
+              height: "200px",
+              background: "rgba(255,255,255,0.02)",
+              borderRadius: "8px",
+              border: "1px dashed rgba(255,255,255,0.1)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginTop: "1rem",
+              cursor: "pointer",
+            }}
+            onClick={() => router.push("/dashboard/business/ssa-forecast")}
+          >
+            <div style={{ textAlign: "center", color: "var(--gray)" }}>
+              <svg
+                width="32"
+                height="32"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                style={{ marginBottom: "0.5rem" }}
+              >
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
+              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--white)" }}>
+                SSA Sales Forecast
+              </div>
+              <div style={{ fontSize: "0.65rem", marginTop: "0.25rem", color: "var(--gold)" }}>
+                View full forecast →
+              </div>
+            </div>
+          </div>
 
           <div
             style={{
