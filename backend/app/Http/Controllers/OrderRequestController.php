@@ -200,7 +200,7 @@ class OrderRequestController extends Controller
             'status'     => 'required|in:pending_review,confirmed,processing,ready,delivered,cancelled',
             'finalPrice' => 'nullable|numeric|min:0',
             'downPayment' => 'nullable|numeric|min:0',
-            'paymentStatus' => 'nullable|in:unpaid,partial,paid',
+            'paymentStatus' => 'nullable|in:unpaid,downpayment_paid,partial,paid',
             'eta' => 'nullable|date',
             'note'          => 'nullable|string|max:500',
             'adminComment'  => 'nullable|string|max:2000',

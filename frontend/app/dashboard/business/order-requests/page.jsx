@@ -33,6 +33,12 @@ const PAYMENT_STATUS_STYLES = {
     border:     '1px solid rgba(196,30,58,0.3)',
     label:      'Unpaid',
   },
+  downpayment_paid: {
+    background: 'rgba(212,168,67,0.12)',
+    color:      'var(--gold)',
+    border:     '1px solid rgba(212,168,67,0.35)',
+    label:      '50% Downpayment Paid',
+  },
   partial: {
     background: 'var(--gold-subtle)',
     color:      'var(--gold)',
@@ -760,6 +766,7 @@ export default function OrderRequestsPage() {
                         style={{ width: '100%', padding: '0.625rem 0.875rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box' }}
                       >
                         <option value="unpaid">Unpaid</option>
+                        <option value="downpayment_paid">50% Downpayment Paid</option>
                         <option value="partial">Partially Paid</option>
                         <option value="paid">Paid</option>
                       </select>
