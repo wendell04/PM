@@ -485,6 +485,25 @@ const LandingPage = ({onEnterShop}) => {
         setLoginErrors({password: data.message || 'Invalid email or password.'});
         return;
       }
+      // Check 2FA requirement BEFORE writing to storage
+      if (data.data.requires_2fa) {
+        // Store pending credentials under temporary keys — NOT auth_token/auth_user
+        // Final storage write happens in 2fa-challenge onSuccess after OTP verified
+        sessionStorage.setItem('pmp_pending_token', data.data.token);
+        sessionStorage.setItem('pmp_pending_user', JSON.stringify(data.data.user));
+        sessionStorage.setItem('pmp_pending_remember', rememberMe ? '1' : '0');
+        sessionStorage.setItem('pending_2fa', 'true');
+        const dashboardRoles2fa = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
+        const isAdminUser = dashboardRoles2fa.includes(data.data.user.role);
+        sessionStorage.setItem('post_2fa_redirect', isAdminUser
+          ? '/dashboard/business/dashboardoverview'
+          : '/shop');
+        closeModal();
+        router.push('/dashboard/2fa-challenge');
+        return;
+      }
+
+      // No 2FA required — write to storage now
       const storage = rememberMe ? localStorage : sessionStorage;
       storage.setItem('auth_token', data.data.token);
       storage.setItem('auth_user', JSON.stringify(data.data.user));
@@ -493,17 +512,6 @@ const LandingPage = ({onEnterShop}) => {
         bc.postMessage({ type: 'AUTH_UPDATE', token: data.data.token, user: data.data.user });
         bc.close();
       } catch {}
-
-      // Check 2FA requirement first
-      if (data.data.requires_2fa) {
-        sessionStorage.setItem('pending_2fa', 'true');
-        const dashboardRoles2fa = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
-        const isAdminUser = dashboardRoles2fa.includes(data.data.user.role);
-        sessionStorage.setItem('post_2fa_redirect', isAdminUser ? '/dashboard/business/dashboardoverview' : '/shop');
-        closeModal();
-        router.push('/dashboard/2fa-challenge');
-        return;
-      }
 
       // Check for redirect destination
       const redirectPath = sessionStorage.getItem('redirectAfterLogin');
