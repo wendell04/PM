@@ -1245,8 +1245,8 @@ export default function ShopLayout({ children }) {
     sessionStorage.removeItem('auth_token');
     sessionStorage.removeItem('auth_user');
     sessionStorage.removeItem('shop_cart');
-    setLogoutBanner(true);
-    setTimeout(() => setLogoutBanner(false), 4000);
+    setUser(null);
+    sessionStorage.setItem('justLoggedOut', 'true');
     router.replace('/shop');
   }
 
@@ -1326,23 +1326,32 @@ export default function ShopLayout({ children }) {
         </div>
       )}
 
+      {logoutBanner && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9999,
+          background: 'color-mix(in srgb, var(--green) 12%, transparent)',
+          border: '1px solid var(--green)',
+          color: 'var(--green)',
+          fontSize: '0.8125rem',
+          fontWeight: 600,
+          textAlign: 'center',
+          padding: '0.625rem 1.5rem',
+          borderRadius: '8px',
+          letterSpacing: '0.01em',
+          backdropFilter: 'blur(8px)',
+          pointerEvents: 'none',
+          whiteSpace: 'nowrap',
+        }}>
+          ✓ You have been signed out successfully.
+        </div>
+      )}
       <div className="shop-wrapper">
         {/* ── Navbar ── */}
         <nav className={`shop-navbar ${scrolled ? 'scrolled' : ''}`}>
-          {logoutBanner && (
-            <div style={{
-              background: 'color-mix(in srgb, var(--green) 12%, transparent)',
-              border: '1px solid var(--green)',
-              color: 'var(--green)',
-              fontSize: '0.8125rem',
-              fontWeight: 600,
-              textAlign: 'center',
-              padding: '0.5rem 1rem',
-              letterSpacing: '0.01em',
-            }}>
-              ✓ You have been signed out successfully.
-            </div>
-          )}
           <div className="shop-navbar-container">
             {/* Left side - Logo and Back button (only show back button when NOT logged in) */}
             <div className="shop-navbar-left">
