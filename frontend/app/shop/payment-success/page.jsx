@@ -14,6 +14,7 @@ export default function PaymentSuccessPage() {
   const orderId       = searchParams.get('id');
   const method        = searchParams.get('method'); // 'cod' or null (online)
   const isCod         = method === 'cod';
+  const isOrderRequest = searchParams.get('type') === 'order_request';
 
   // Clear checkout payload on confirmed success (online payment lands here after PayMongo)
   useEffect(() => {
@@ -34,8 +35,11 @@ export default function PaymentSuccessPage() {
 
     const fetchOrder = async () => {
       try {
+        const endpoint = isOrderRequest
+          ? `${API_URL}/api/shop/order-requests/${orderId}`
+          : `${API_URL}/api/orders/my/${orderId}`;
         const res = await fetchWithTimeout(
-          `${API_URL}/api/orders/my/${orderId}`,
+          endpoint,
           {
             headers: {
               'Content-Type': 'application/json',
@@ -55,7 +59,7 @@ export default function PaymentSuccessPage() {
     };
 
     fetchOrder();
-  }, [orderId, token]);
+  }, [orderId, token, isOrderRequest]);
 
   return (
     <div style={{

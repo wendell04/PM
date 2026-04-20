@@ -290,5 +290,6 @@ Route::middleware('auth:sanctum')->group(function () {
 // ─── Payments (PayMongo) ─────────────────────────────────────────────────────
 Route::post('/payment/webhook',     [PaymentController::class, 'webhook']);
 Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/payment/create-link', [PaymentController::class, 'createLink']);
+    Route::post('/payment/create-link',              [PaymentController::class, 'createLink']);
+    Route::post('/payment/order-request-link',       [PaymentController::class, 'createOrderRequestLink']);
 });

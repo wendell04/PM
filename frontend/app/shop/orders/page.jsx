@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fetchMyOrders, fetchMyOrder } from '@/lib/orderTrackingApi';
+import { cancelMyOrderRequest, createOrderRequestPaymentLink } from '@/lib/orderRequestApi';
 import CustomerTrackingView from './components/CustomerTrackingView';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
@@ -67,6 +68,10 @@ export default function ShopOrdersPage() {
   const [cancelling, setCancelling]       = useState(false);
   const [cancelError, setCancelError]     = useState(null);
   const [visibleCount, setVisibleCount]   = useState(5);
+
+  // Payment
+  const [payingId,    setPayingId]    = useState(null); // orderRequestId currently processing
+  const [payError,    setPayError]    = useState(null);
 
   const loadOrders = useCallback(async () => {
     if (!token) {
@@ -205,6 +210,22 @@ export default function ShopOrdersPage() {
     }
   };
 
+  async function handlePay(order, type) {
+    if (!token) return;
+    const id = order._id ?? order.id;
+    setPayingId(`${id}-${type}`);
+    setPayError(null);
+    try {
+      const result = await createOrderRequestPaymentLink(token, id, type);
+      if (result.checkoutUrl) {
+        window.location.href = result.checkoutUrl;
+      }
+    } catch (err) {
+      setPayError(err.message || 'Failed to initiate payment. Please try again.');
+      setPayingId(null);
+    }
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--black)', padding: '2rem 1rem' }}>
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
@@ -270,6 +291,104 @@ export default function ShopOrdersPage() {
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <button onClick={() => openDetail(order)} style={{ background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>View Details</button>
+
+                  {['confirmed', 'processing', 'ready'].includes(order.status) &&
+                    order.paymentStatus === 'unpaid' && (
+                    <button
+                      onClick={() => handlePay(order, 'downpayment')}
+                      disabled={payingId === `${order._id ?? order.id}-downpayment`}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: payingId === `${order._id ?? order.id}-downpayment`
+                          ? 'rgba(212,168,67,0.4)'
+                          : 'var(--gold)',
+                        color: 'var(--black)',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: payingId === `${order._id ?? order.id}-downpayment`
+                          ? 'not-allowed'
+                          : 'pointer',
+                      }}
+                    >
+                      {payingId === `${order._id ?? order.id}-downpayment`
+                        ? 'Redirecting...'
+                        : `Pay 50% Downpayment${order.finalPrice ? ` (₱${(order.finalPrice * 0.5).toLocaleString('en-PH', { minimumFractionDigits: 2 })})` : ''}`
+                      }
+                    </button>
+                  )}
+
+                  {['confirmed', 'processing', 'ready'].includes(order.status) &&
+                    order.paymentStatus === 'downpayment_paid' && (
+                    <button
+                      onClick={() => handlePay(order, 'balance')}
+                      disabled={payingId === `${order._id ?? order.id}-balance`}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: payingId === `${order._id ?? order.id}-balance`
+                          ? 'rgba(212,168,67,0.4)'
+                          : 'var(--gold)',
+                        color: 'var(--black)',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: payingId === `${order._id ?? order.id}-balance`
+                          ? 'not-allowed'
+                          : 'pointer',
+                      }}
+                    >
+                      {payingId === `${order._id ?? order.id}-balance`
+                        ? 'Redirecting...'
+                        : `Pay Remaining Balance${order.finalPrice ? ` (₱${(order.finalPrice * 0.5).toLocaleString('en-PH', { minimumFractionDigits: 2 })})` : ''}`
+                      }
+                    </button>
+                  )}
+
+                  {order.paymentStatus === 'paid' && (
+                    <span style={{
+                      padding: '0.375rem 0.75rem',
+                      borderRadius: '999px',
+                      background: 'rgba(34,197,94,0.1)',
+                      border: '1px solid var(--green)',
+                      color: 'var(--green)',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                    }}>
+                      Fully Paid
+                    </span>
+                  )}
+
+                  {order.paymentStatus === 'downpayment_paid' &&
+                    !['confirmed', 'processing', 'ready'].includes(order.status) && (
+                    <span style={{
+                      padding: '0.375rem 0.75rem',
+                      borderRadius: '999px',
+                      background: 'rgba(212,168,67,0.1)',
+                      border: '1px solid var(--gold)',
+                      color: 'var(--gold)',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                    }}>
+                      Downpayment Paid
+                    </span>
+                  )}
+
+                  {payError && payingId === null && (
+                    <div style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      borderRadius: '8px',
+                      background: 'rgba(239,68,68,0.1)',
+                      border: '1px solid rgba(239,68,68,0.3)',
+                      color: 'var(--red)',
+                      fontSize: '0.75rem',
+                    }}>
+                      {payError}
+                    </div>
+                  )}
+
                   {order.status === 'pending_review' && (
                     <button
                       onClick={() => setCancelTarget(order)}

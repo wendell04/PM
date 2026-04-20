@@ -175,3 +175,25 @@ export async function uploadDesignFile(token, file) {
 }
 
 // ── APPEND END ────────────────────────────────────────────────────────
+
+/**
+ * POST /api/payment/order-request-link
+ * Creates a PayMongo checkout session for downpayment or balance.
+ * type: 'downpayment' | 'balance'
+ * Returns { checkoutUrl, amount, type }
+ */
+export async function createOrderRequestPaymentLink(token, orderRequestId, type) {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+  const res = await fetch(`${API_URL}/api/payment/order-request-link`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...(API_URL.includes('ngrok') && { 'ngrok-skip-browser-warning': '1' }),
+    },
+    body: JSON.stringify({ orderRequestId, type }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Failed to create payment link');
+  return data.data ?? data;
+}

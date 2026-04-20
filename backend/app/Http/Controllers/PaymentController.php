@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
+use App\Models\OrderRequest;
 use App\Models\Voucher;
 use App\Models\Product;
 use Illuminate\Http\Request;
@@ -282,6 +283,143 @@ class PaymentController extends Controller
     }
 
     /**
+     * POST /api/payment/order-request-link
+     *
+     * Creates a PayMongo checkout session for an order request payment.
+     * type = 'downpayment' → charges downPayment amount (50% of finalPrice)
+     * type = 'balance'     → charges remaining balance (finalPrice - downPayment)
+     *
+     * Reference number format: OR-{orderRequestId}-down or OR-{orderRequestId}-bal
+     * This prefix allows the webhook to route correctly.
+     */
+    public function createOrderRequestLink(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return $this->unauthorizedResponse();
+            }
+
+            $validated = $request->validate([
+                'orderRequestId' => 'required|string|size:24',
+                'type'           => 'required|in:downpayment,balance',
+            ]);
+
+            $orderRequest = OrderRequest::find($validated['orderRequestId']);
+
+            if (!$orderRequest) {
+                return $this->errorResponse('Order request not found.', 404);
+            }
+
+            // Ownership check
+            if ((string) $orderRequest->customerId !== (string) $user->_id) {
+                return $this->errorResponse('Forbidden.', 403);
+            }
+
+            // Must be confirmed before payment
+            if (!in_array($orderRequest->status, ['confirmed', 'processing', 'ready'])) {
+                return $this->errorResponse(
+                    'Payment is only available after admin confirmation.',
+                    422
+                );
+            }
+
+            if ($orderRequest->finalPrice === null || $orderRequest->finalPrice <= 0) {
+                return $this->errorResponse('Final price has not been set yet.', 422);
+            }
+
+            $finalPrice  = (float) $orderRequest->finalPrice;
+            $downPayment = round($finalPrice * 0.5, 2);
+            $balance     = round($finalPrice - $downPayment, 2);
+            $type        = $validated['type'];
+
+            // Determine amount and validate current paymentStatus
+            if ($type === 'downpayment') {
+                if ($orderRequest->paymentStatus !== 'unpaid') {
+                    return $this->errorResponse(
+                        'Downpayment has already been paid.',
+                        422
+                    );
+                }
+                $amount          = $downPayment;
+                $referenceNumber = 'OR-' . $validated['orderRequestId'] . '-down';
+                $label           = 'Downpayment (50%)';
+            } else {
+                if ($orderRequest->paymentStatus !== 'downpayment_paid') {
+                    return $this->errorResponse(
+                        'Downpayment must be completed before paying the balance.',
+                        422
+                    );
+                }
+                $amount          = $balance;
+                $referenceNumber = 'OR-' . $validated['orderRequestId'] . '-bal';
+                $label           = 'Remaining Balance (50%)';
+            }
+
+            $amountInCentavos = (int) round($amount * 100);
+            $frontendUrl      = config('app.frontend_url', 'http://localhost:3000');
+            $orderId          = $validated['orderRequestId'];
+            $description      = "PersonalizeMe Prints — Custom Order {$label} #{$orderId}";
+
+            $response = Http::withBasicAuth($this->secretKey, '')
+                ->post("{$this->baseUrl}/checkout_sessions", [
+                    'data' => [
+                        'attributes' => [
+                            'billing'              => ['email' => $user->email],
+                            'reference_number'     => $referenceNumber,
+                            'payment_method_types' => ['gcash', 'paymaya', 'card'],
+                            'line_items'           => [[
+                                'currency' => 'PHP',
+                                'amount'   => $amountInCentavos,
+                                'name'     => $description,
+                                'quantity' => 1,
+                            ]],
+                            'redirect' => [
+                                'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}&type=order_request",
+                                'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}&type=order_request",
+                            ],
+                        ],
+                    ],
+                ]);
+
+            if (!$response->successful()) {
+                Log::error('PayMongo createOrderRequestLink failed', [
+                    'orderRequestId' => $orderId,
+                    'type'           => $type,
+                    'status'         => $response->status(),
+                    'body'           => $response->body(),
+                ]);
+                return $this->errorResponse('Payment gateway error. Please try again.', 502);
+            }
+
+            $linkData    = $response->json();
+            $checkoutUrl = $linkData['data']['attributes']['checkout_url']
+                        ?? $linkData['data']['attributes']['url']
+                        ?? null;
+
+            if (!$checkoutUrl) {
+                Log::error('PayMongo createOrderRequestLink: no checkout_url', [
+                    'orderRequestId' => $orderId,
+                    'body'           => $linkData,
+                ]);
+                return $this->errorResponse('Payment gateway returned an invalid response.', 502);
+            }
+
+            return $this->successResponse('Payment link created.', [
+                'orderRequestId' => $orderId,
+                'checkoutUrl'    => $checkoutUrl,
+                'amount'         => $amount,
+                'type'           => $type,
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to create order request payment link.');
+        }
+    }
+
+    /**
      * POST /api/payment/webhook
      *
      * PayMongo sends payment.paid event.
@@ -336,6 +474,61 @@ class PaymentController extends Controller
             $data    = $payload['data']['attributes']['data'] ?? [];
             $remarks = $data['attributes']['reference_number'] ?? '';
 
+            // Route: OR-{24hexId}-down or OR-{24hexId}-bal → OrderRequest
+            // Route: raw 24-hex → Order
+            $isOrderRequest = preg_match(
+                '/^OR-([a-f0-9]{24})-(down|bal)$/i',
+                $remarks,
+                $orMatches
+            );
+
+            if ($isOrderRequest) {
+                $orderRequestId = $orMatches[1];
+                $paymentType    = strtolower($orMatches[2]); // 'down' or 'bal'
+
+                $orderRequest = OrderRequest::find($orderRequestId);
+                if (!$orderRequest) {
+                    Log::warning('PayMongo webhook: order request not found', [
+                        'reference_number' => $remarks,
+                    ]);
+                    return response()->json(['received' => true]);
+                }
+
+                $paymentAttrs  = $data['attributes'] ?? [];
+                $paymentMethod = $paymentAttrs['source']['type']
+                    ?? $paymentAttrs['payment_method_type']
+                    ?? null;
+
+                if ($paymentType === 'down' && $orderRequest->paymentStatus === 'unpaid') {
+                    $orderRequest->paymentStatus = 'downpayment_paid';
+                    $orderRequest->downPayment   = round((float) $orderRequest->finalPrice * 0.5, 2);
+                    $orderRequest->updatedAt     = now();
+                    $orderRequest->save();
+
+                    Log::info('OrderRequest downpayment received', [
+                        'orderRequestId' => $orderRequestId,
+                        'paymentMethod'  => $paymentMethod,
+                    ]);
+                } elseif ($paymentType === 'bal' && $orderRequest->paymentStatus === 'downpayment_paid') {
+                    $orderRequest->paymentStatus = 'paid';
+                    $orderRequest->updatedAt     = now();
+                    $orderRequest->save();
+
+                    Log::info('OrderRequest balance paid in full', [
+                        'orderRequestId' => $orderRequestId,
+                        'paymentMethod'  => $paymentMethod,
+                    ]);
+                } else {
+                    Log::warning('PayMongo webhook: order request payment already processed or wrong sequence', [
+                        'reference_number' => $remarks,
+                        'paymentStatus'    => $orderRequest->paymentStatus,
+                    ]);
+                }
+
+                return response()->json(['received' => true]);
+            }
+
+            // ── Standard cart order path ─────────────────────────────────────
             preg_match('/^([a-f0-9]{24})$/i', $remarks, $matches);
             $orderId = $matches[1] ?? null;
 
@@ -346,7 +539,7 @@ class PaymentController extends Controller
                 return response()->json(['received' => true]);
             }
 
-            // ── Update order paymentStatus ────────────────────────────
+            // ── Update order paymentStatus ────────────────────────────────────
             $order = Order::find($orderId);
             if (!$order) {
                 Log::warning('PayMongo webhook: order not found', [
