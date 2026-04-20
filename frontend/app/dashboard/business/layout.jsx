@@ -26,6 +26,7 @@ export default function BusinessDashboardLayout({ children }) {
   const [permissions, setPermissions] = useState(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
@@ -131,7 +132,12 @@ export default function BusinessDashboardLayout({ children }) {
     }
   }, [activeTab]);
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    setLogoutConfirmOpen(true);
+  };
+
+  const confirmLogout = async () => {
+    setLogoutConfirmOpen(false);
     await logout();
   };
 
@@ -662,6 +668,78 @@ export default function BusinessDashboardLayout({ children }) {
           className="sidebar-overlay"
           onClick={() => setSidebarOpen(false)}
         />
+      )}
+
+      {/* Logout Confirmation Modal */}
+      {logoutConfirmOpen && (
+        <div
+          onClick={() => setLogoutConfirmOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'hsl(var(--card))',
+              border: '1px solid hsl(var(--border))',
+              borderRadius: '12px',
+              padding: '2rem',
+              width: '100%',
+              maxWidth: '400px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.5rem',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <h2 style={{ fontSize: '1.125rem', fontWeight: 600, color: 'hsl(var(--foreground))' }}>
+                Log Out
+              </h2>
+              <p style={{ fontSize: '0.875rem', color: 'hsl(var(--muted-foreground))' }}>
+                Are you sure you want to log out of your account?
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setLogoutConfirmOpen(false)}
+                style={{
+                  padding: '0.5rem 1.25rem',
+                  borderRadius: '8px',
+                  border: '1px solid hsl(var(--border))',
+                  background: 'transparent',
+                  color: 'hsl(var(--foreground))',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLogout}
+                style={{
+                  padding: '0.5rem 1.25rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: 'hsl(var(--destructive))',
+                  color: 'hsl(var(--destructive-foreground))',
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Sidebar */}

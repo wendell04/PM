@@ -721,6 +721,7 @@ export default function ShopLayout({ children }) {
   const [notifLoading, setNotifLoading] = useState(false);
   const notifRef = useRef(null);
   const [logoutBanner, setLogoutBanner] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   // Load user info (public access - no login required to browse)
   useEffect(() => {
@@ -1226,7 +1227,12 @@ export default function ShopLayout({ children }) {
   }, []);
 
   // ── Logout ─────────────────────────────────────────────────────────────────
-  async function handleLogout() {
+  function handleLogout() {
+    setLogoutConfirmOpen(true);
+  }
+
+  async function confirmLogout() {
+    setLogoutConfirmOpen(false);
     const token = getToken();
     try {
       await fetchWithTimeout(`${API_URL}/api/logout`, {
@@ -1239,7 +1245,8 @@ export default function ShopLayout({ children }) {
     sessionStorage.removeItem('auth_token');
     sessionStorage.removeItem('auth_user');
     sessionStorage.removeItem('shop_cart');
-    sessionStorage.setItem('justLoggedOut', 'true');
+    setLogoutBanner(true);
+    setTimeout(() => setLogoutBanner(false), 4000);
     router.replace('/shop');
   }
 
@@ -1247,6 +1254,78 @@ export default function ShopLayout({ children }) {
 
   return (
     <>
+      {/* Logout Confirmation Modal */}
+      {logoutConfirmOpen && (
+        <div
+          onClick={() => setLogoutConfirmOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#1a1a1a',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '12px',
+              padding: '2rem',
+              width: '100%',
+              maxWidth: '400px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.5rem',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <h2 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#ffffff' }}>
+                Log Out
+              </h2>
+              <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)' }}>
+                Are you sure you want to log out of your account?
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setLogoutConfirmOpen(false)}
+                style={{
+                  padding: '0.5rem 1.25rem',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  background: 'transparent',
+                  color: '#ffffff',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLogout}
+                style={{
+                  padding: '0.5rem 1.25rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: 'var(--red)',
+                  color: '#ffffff',
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="shop-wrapper">
         {/* ── Navbar ── */}
         <nav className={`shop-navbar ${scrolled ? 'scrolled' : ''}`}>
