@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchMyOrders, fetchMyOrder } from '@/lib/ordersApi';
+import { fetchMyOrders, fetchMyOrder } from '@/lib/orderTrackingApi';
 import { StatusBadge, formatDate, formatPeso } from '@/lib/shopUtils';
 import { getEcho, disconnectEcho } from '@/lib/echo';
 

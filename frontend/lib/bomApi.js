@@ -78,9 +78,3 @@ export async function deleteBOM(id, token) {
   if (!res.ok) throw new Error(data.message || "Failed to delete BOM.");
   return true;
 }
-
-/** Lowercase aliases (spec / external imports) */
-export const fetchBoms = fetchBOMs;
-export const createBom = createBOM;
-export const updateBom = updateBOM;
-export const deleteBom = deleteBOM;

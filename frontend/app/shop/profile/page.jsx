@@ -7,8 +7,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import '../../../components/custom-styles.css';
 import '../shop.css';
 import AddressBook from '../../../components/profile/AddressBook'; // NEW: Address Book component
-import { fetchMyOrders } from '../../../lib/ordersApi';
-import { fetchMyOrders as fetchMyOrderRequests } from '../../../lib/orderTrackingApi';
+import { fetchMyOrders } from '../../../lib/orderTrackingApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { StatusBadge } from '@/lib/shopUtils';
 import OrderQuickViewModal from '../../../components/orders/OrderQuickViewModal';
@@ -171,7 +170,7 @@ export default function CustomerProfilePage() {
       setWidgetLoading(true);
       setWidgetError('');
       try {
-        const data = await fetchMyOrderRequests(token);
+        const data = await fetchMyOrders(token);
         const list = Array.isArray(data) ? data : [];
         setRecentOrders(list.slice(0, 3));
       } catch (err) {
@@ -241,7 +240,7 @@ export default function CustomerProfilePage() {
     setSaveError('');
 
     try {
-      const res = await fetch(`${API_URL}/api/profile`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -253,7 +252,7 @@ export default function CustomerProfilePage() {
           phoneNumber: profileForm.phoneNumber.trim(),
           address: profileForm.address.trim(),
         }),
-      });
+      }, 15000);
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to update profile');
       updateUser(data.data || data);
@@ -286,7 +285,7 @@ export default function CustomerProfilePage() {
 
     setIsSavingPassword(true);
     try {
-      const res = await fetch(`${API_URL}/api/profile/password`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/profile/password`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -297,7 +296,7 @@ export default function CustomerProfilePage() {
           password: passwordForm.newPassword,
           password_confirmation: passwordForm.confirmPassword,
         }),
-      });
+      }, 15000);
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to update password');
       setPasswordSuccess('Password changed! Redirecting to login...');
@@ -392,12 +391,13 @@ export default function CustomerProfilePage() {
     setSessionsError('');
     setSessionsSuccess('');
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `${API_URL}/api/sessions/${sessionId}`,
         {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
-        }
+        },
+        15000
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.message
@@ -419,12 +419,13 @@ export default function CustomerProfilePage() {
     setSessionsError('');
     setSessionsSuccess('');
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `${API_URL}/api/sessions/others/all`,
         {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
-        }
+        },
+        15000
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.message
@@ -1981,7 +1982,7 @@ export default function CustomerProfilePage() {
                 {widgetError && !widgetLoading && (
                   <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--red)' }}>
                     <p style={{ marginBottom: '0.75rem', fontSize: '0.85rem' }}>Failed to load orders.</p>
-                    <button onClick={() => { setWidgetError(''); setWidgetLoading(true); if (!token) return; fetchMyOrderRequests(token).then(data => { const list = Array.isArray(data) ? data : []; setRecentOrders(list.slice(0, 3)); setWidgetError(''); }).catch(err => { setWidgetError(err.message); }).finally(() => { setWidgetLoading(false); }); }} style={{ background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '6px', padding: '0.375rem 0.75rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>Retry</button>
+                    <button onClick={() => { setWidgetError(''); setWidgetLoading(true); if (!token) return; fetchMyOrders(token).then(data => { const list = Array.isArray(data) ? data : []; setRecentOrders(list.slice(0, 3)); setWidgetError(''); }).catch(err => { setWidgetError(err.message); }).finally(() => { setWidgetLoading(false); }); }} style={{ background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '6px', padding: '0.375rem 0.75rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>Retry</button>
                   </div>
                 )}
 
