@@ -15,7 +15,6 @@ export function getEcho(token) {
   }
 
   if (echoInstance) return echoInstance;
-
   if (!token) return null;
 
   window.Pusher = Pusher;
