@@ -178,23 +178,7 @@ export default function ShopOrdersPage() {
     setCancelling(true);
     setCancelError(null);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-      const res = await fetch(
-        `${API_URL}/api/order-requests/my/${cancelTarget._id ?? cancelTarget.id}/cancel`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/json',
-            'ngrok-skip-browser-warning': '1',
-          },
-        }
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        setCancelError(data.message || 'Failed to cancel order request.');
-        return;
-      }
+      await cancelMyOrderRequest(token, cancelTarget._id ?? cancelTarget.id);
       // Remove cancelled order items from cart if they still exist
       const cancelledItems = cancelTarget.items ?? [];
       cancelledItems.forEach(item => {

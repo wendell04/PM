@@ -102,22 +102,53 @@ function normalizeOrder(apiOrder) {
   // Get first item category
   const category = items[0]?.category || '';
 
+  const paymentHistory = apiOrder.paymentHistory || [];
+  const paid = paymentHistory.length > 0
+    ? paymentHistory
+        .filter(p => p.status === 'completed' || p.status === 'paid')
+        .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0)
+    : parseFloat(apiOrder.downPayment || apiOrder.down_payment || 0);
+
+  const designFilePath = apiOrder.designFilePath || apiOrder.design_file_path || null;
+  const designs = designFilePath
+    ? [{
+        name: designFilePath.split('/').pop() || 'design-file',
+        url: designFilePath.startsWith('http')
+          ? designFilePath
+          : `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/storage/${designFilePath}`,
+        uploadedAt: apiOrder.createdAt || apiOrder.created_at || null,
+      }]
+    : [];
+
+  const normalizedStatus = apiOrder.orderStatus || apiOrder.status || 'Pending';
+  const totalAmount = parseFloat(
+    apiOrder.total || apiOrder.totalAmount || apiOrder.totalPrice || 0
+  );
+
   return {
     id: apiOrder._id || apiOrder.id,
     orderNumber: apiOrder.order_number || apiOrder.orderId,
-    customerName: apiOrder.customer?.name || apiOrder.userSnapshot?.name || apiOrder.customerName || 'Unknown',
-    customerEmail: apiOrder.customer?.email || apiOrder.userSnapshot?.email || apiOrder.customerEmail || '',
-    customerContact: apiOrder.customer?.phone || apiOrder.userSnapshot?.phone || apiOrder.customerContact || '',
+    customer: {
+      name:  apiOrder.userSnapshot?.name  || apiOrder.customer?.name  || apiOrder.customerName  || 'Unknown',
+      email: apiOrder.userSnapshot?.email || apiOrder.customer?.email || apiOrder.customerEmail || '',
+      phone: apiOrder.userSnapshot?.phone || apiOrder.customer?.phone || apiOrder.customerContact || '',
+    },
+    customerName:    apiOrder.userSnapshot?.name  || apiOrder.customer?.name  || apiOrder.customerName  || 'Unknown',
+    customerEmail:   apiOrder.userSnapshot?.email || apiOrder.customer?.email || apiOrder.customerEmail || '',
+    customerContact: apiOrder.userSnapshot?.phone || apiOrder.customer?.phone || apiOrder.customerContact || '',
     items: items,
     productName: productName,
     category: category,
     quantity: quantity,
     subtotal: apiOrder.subtotal || 0,
     shippingFee: apiOrder.shipping_fee || apiOrder.shippingFee || 0,
-    totalPrice: apiOrder.total || apiOrder.totalAmount || apiOrder.totalPrice || 0,
-    downPayment: apiOrder.down_payment || apiOrder.downPayment || 0,
+    total: totalAmount,
+    totalPrice: totalAmount,
+    paid: paid,
+    downPayment: parseFloat(apiOrder.down_payment || apiOrder.downPayment || 0),
     balance: apiOrder.balance || 0,
-    orderStatus: apiOrder.orderStatus || apiOrder.status || 'Pending',
+    status: normalizedStatus,
+    orderStatus: normalizedStatus,
     paymentStatus: apiOrder.payment_status || apiOrder.paymentStatus || 'unpaid',
     paymentMethod: apiOrder.payment_method || apiOrder.paymentMethod || '',
     shippingAddress: apiOrder.shipping_address || apiOrder.shippingAddress || {},
@@ -130,19 +161,19 @@ function normalizeOrder(apiOrder) {
     targetCompletion: apiOrder.target_completion || apiOrder.targetCompletion || null,
     createdAt: apiOrder.created_at || apiOrder.createdAt || null,
     updatedAt: apiOrder.updated_at || apiOrder.updatedAt || null,
-    // Phase 3 fields
-    paymentHistory: apiOrder.paymentHistory || [],
+    paymentHistory: paymentHistory,
     orderSource: apiOrder.orderSource || 'online',
-    paymentStatus: apiOrder.payment_status || apiOrder.paymentStatus || 'unpaid',
-    // Eager-loaded job order — required for QC submit
+    designs: designs,
+    bom: { verified: false, items: [] },
+    timeline: [],
     jo: apiOrder.jobOrder
       ? {
-          _id: apiOrder.jobOrder._id || apiOrder.jobOrder.id || null,
-          id: apiOrder.jobOrder._id || apiOrder.jobOrder.id || null,
+          _id:        apiOrder.jobOrder._id || apiOrder.jobOrder.id || null,
+          id:         apiOrder.jobOrder._id || apiOrder.jobOrder.id || null,
           targetDate: apiOrder.jobOrder.targetCompletion || null,
           assignedTo: apiOrder.jobOrder.assignedTo || null,
-          rush: apiOrder.jobOrder.isRush || false,
-          status: apiOrder.jobOrder.joStatus || null,
+          rush:       apiOrder.jobOrder.isRush || false,
+          status:     apiOrder.jobOrder.joStatus || null,
         }
       : null,
   };
