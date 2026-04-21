@@ -2362,8 +2362,10 @@ function MaterialFormModal({
 
   // When vendorItems changes (vendor changed), clear category only if
   // the current category is no longer valid for this vendor.
-  // Do NOT reset uom here — the category onChange handler owns uom.
+  // Skip in edit mode — we must preserve the stored category even if the
+  // vendor's item list no longer contains it.
   useEffect(() => {
+    if (editMaterial) return;
     const vendorItemNames = vendorItems.map((i) => i.name);
     if (
       vendorItemNames.length > 0 &&
@@ -2513,11 +2515,8 @@ function MaterialFormModal({
       if (missingCost)
         newErrors.variantCost = "All combinations must have a cost.";
     }
-    // Validate base cost when no variants
-    if (
-      !form.hasVariants &&
-      (!form.baseCost || parseFloat(form.baseCost) === 0)
-    ) {
+    // Validate base cost when no variants — only for new materials (edit allows 0, cost tracked via batches)
+    if (!form.hasVariants && !editMaterial && form.baseCost === "") {
       newErrors.baseCost = "Base cost is required.";
     }
     if (Object.keys(newErrors).length > 0) {

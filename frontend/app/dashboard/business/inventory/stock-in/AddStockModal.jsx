@@ -3194,12 +3194,13 @@ export default function AddStockModal({
                                   </span>
                                   <CommaNumberInput
                                     value={totalAmt}
-                                    onChange={(val) =>
+                                    onChange={(e) => {
+                                      const val = typeof e === 'string' ? e : e?.target?.value ?? e;
                                       setMaterialTotalAmounts((p) => ({
                                         ...p,
                                         [mat.id]: val,
-                                      }))
-                                    }
+                                      }));
+                                    }}
                                     placeholder="0.00"
                                     style={{
                                       fontSize: "1.1rem",
