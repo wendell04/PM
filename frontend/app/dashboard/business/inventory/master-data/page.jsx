@@ -1321,18 +1321,25 @@ function MaterialMasterTab({
         for (const oid of oldChildIds) {
           if (isLikelyMongoId(oid)) await deleteInventory(oid, token);
         }
+        const canonicalParentId = isLikelyMongoId(editMaterial.id)
+          ? editMaterial.id
+          : null;
         for (const ch of children || []) {
           const base = {
             ...ch,
             preferredVendorId: material.preferredVendorId,
-            parentId: editMaterial.id,
+            parentId: canonicalParentId,
           };
           const payload = materialToApiPayload(base, supplierName);
           if (isLikelyMongoId(ch.id)) {
             await updateInventory(ch.id, payload, token);
           } else {
+            if (!canonicalParentId) {
+              console.warn('Skipping child create: parent has no valid MongoDB id');
+              continue;
+            }
             await createInventory(
-              { ...payload, parentId: String(editMaterial.id) },
+              { ...payload, parentId: String(canonicalParentId) },
               token,
             );
           }
@@ -2353,7 +2360,9 @@ function MaterialFormModal({
     }
   }, [form.procurementType]);
 
-  // When vendor changes, clear category if it's not in the vendor's items
+  // When vendorItems changes (vendor changed), clear category only if
+  // the current category is no longer valid for this vendor.
+  // Do NOT reset uom here — the category onChange handler owns uom.
   useEffect(() => {
     const vendorItemNames = vendorItems.map((i) => i.name);
     if (
@@ -2361,9 +2370,10 @@ function MaterialFormModal({
       form.category &&
       !vendorItemNames.includes(form.category)
     ) {
-      setForm((p) => ({ ...p, category: "", uom: "pcs" }));
+      setForm((p) => ({ ...p, category: "" }));
     }
-  }, [vendorItems, form.category]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendorItems]);
 
   useEffect(() => {
     if (

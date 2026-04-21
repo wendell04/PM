@@ -140,7 +140,9 @@ export default function BOMFormModal({
   const sharedCost = useMemo(
     () =>
       form.components.reduce((sum, c) => {
-        const mat = materials.find((m) => m._id === c.inventoryId);
+        const mat = materials.find(
+          (m) => String(m.id ?? m._id) === String(c.inventoryId),
+        );
         // Use FIFO cost - what you'll actually pay when consuming from oldest stock
         if (!mat || !mat.batches || mat.batches.length === 0) {
           return sum + (mat?.baseCost || mat?.averageCost || 0) * (c.qty || 0);
@@ -190,7 +192,9 @@ export default function BOMFormModal({
         .map((m) => ({
           id: m._id,
           name: m.name,
-          children: materials.filter((c) => c.parentId === m._id),
+          children: materials.filter(
+            (c) => String(c.parentId) === String(m.id ?? m._id),
+          ),
         })),
     [materials],
   );
@@ -320,7 +324,7 @@ export default function BOMFormModal({
           const p = m.parentId
             ? materials.find((x) => x._id === m.parentId)
             : null;
-          return { value: m._id, label: `${m.name}${p ? ` (${p.name})` : ""}` };
+          return { value: m.id ?? m._id, label: `${m.name}${p ? ` (${p.name})` : ""}` };
         }),
     [materials, selectedMaterialIds, variantIdsToExclude],
   );

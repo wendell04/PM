@@ -530,7 +530,7 @@ export default function AddStockModal({
   const [search, setSearch] = useState("");
   const [selectedMaterials, setSelectedMaterials] = useState([]);
   const [stockRowsByMaterial, setStockRowsByMaterial] = useState({});
-  const [applyAllCost, setApplyAllCost] = useState("");
+  const [applyAllCostByMaterial, setApplyAllCostByMaterial] = useState({});
   const [applyAllMinStock, setApplyAllMinStock] = useState("10");
   const [invoice, setInvoice] = useState({
     vendorId: "",
@@ -557,7 +557,7 @@ export default function AddStockModal({
     setSearch("");
     setSelectedMaterials([]);
     setStockRowsByMaterial({});
-    setApplyAllCost("");
+    setApplyAllCostByMaterial({});
     setExpandedCategories({});
     setInvoice({
       vendorId: "",
@@ -592,7 +592,7 @@ export default function AddStockModal({
   const handleBackToStep1 = () => {
     setStep(1);
     setStockRowsByMaterial({});
-    setApplyAllCost("");
+    setApplyAllCostByMaterial({});
     setInvoice({
       vendorId: "",
       vendorName: "General Merchandise",
@@ -3260,10 +3260,8 @@ export default function AddStockModal({
                                         ₱
                                       </span>
                                       <DecimalInput
-                                        value={applyAllCost}
-                                        onChange={(e) =>
-                                          setApplyAllCost(e.target.value)
-                                        }
+                                        value={applyAllCostByMaterial[mat.id] || ""}
+                                        onChange={(e) => setApplyAllCostByMaterial((p) => ({ ...p, [mat.id]: e.target.value }))}
                                         placeholder="0.00"
                                         style={{
                                           flex: 1,
@@ -3280,9 +3278,10 @@ export default function AddStockModal({
                                       onClick={() => {
                                         const allMatRows =
                                           stockRowsByMaterial[mat.id] || [];
+                                        const costVal = applyAllCostByMaterial[mat.id] || "";
                                         const updated = allMatRows.map((r) => ({
                                           ...r,
-                                          unitCost: applyAllCost,
+                                          unitCost: costVal,
                                         }));
                                         setStockRowsByMaterial((p) => ({
                                           ...p,
@@ -3358,7 +3357,8 @@ export default function AddStockModal({
                                         </span>
                                         <DecimalInput
                                           value={row.unitCost}
-                                          onChange={(val) => {
+                                          onChange={(e) => {
+                                            const val = typeof e === 'string' ? e : e?.target?.value ?? e;
                                             if (origIdx >= 0) {
                                               const n = [...allMatRows];
                                               n[origIdx] = {

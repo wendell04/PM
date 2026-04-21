@@ -161,7 +161,7 @@ function SupplierForm({ initial = EMPTY_FORM, onSubmit, onCancel, isSubmitting, 
           Optional list of product lines this vendor supplies (name + unit).
         </p>
         {(form.itemsSupplied || []).map((row, idx) => (
-          <div key={`${idx}-${row.name}`} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 36px', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+          <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 36px', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
             <input
               type="text"
               value={row.name || ''}
@@ -733,7 +733,9 @@ export default function VendorsApiTab({ onVendorsChange, showHeader = false }) {
                 email: selected.email || '',
                 address: selected.address || '',
                 notes: selected.notes || '',
-                itemsSupplied: Array.isArray(selected.itemsSupplied) ? selected.itemsSupplied : [],
+                itemsSupplied: (Array.isArray(selected.itemsSupplied) ? selected.itemsSupplied : []).map(
+                  item => typeof item === 'string' ? { name: item, uom: 'pcs' } : { name: item.name || '', uom: item.uom || 'pcs' }
+                ),
               }}
               onSubmit={handleUpdate}
               onCancel={closeModal}
