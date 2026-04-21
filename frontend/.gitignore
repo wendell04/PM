@@ -30,3 +30,5 @@ yarn-error.log*
 # OS related files
 .DS_Store
 thumbs.db
+# Build log artifacts
+*.log
