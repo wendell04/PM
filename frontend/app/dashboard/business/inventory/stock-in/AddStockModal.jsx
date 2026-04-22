@@ -523,8 +523,16 @@ export default function AddStockModal({
   onSave,
   materials,
   vendors,
+  units,
   onAddVendor,
 }) {
+  const uomLabel = (code) => {
+    if (!code) return '';
+    if (!units || units.length === 0) return code;
+    const u = units.find((u) => u.code === code);
+    return u ? u.name : code;
+  };
+
   // ── State ────────────────────────────────────────────────────────────────────
   const [step, setStep] = useState(1);
   const [search, setSearch] = useState("");
@@ -3327,15 +3335,22 @@ export default function AddStockModal({
                                         alignItems: "center",
                                       }}
                                     >
-                                      <span
-                                        style={{
-                                          fontSize: "0.8rem",
-                                          color: "var(--white)",
-                                          fontWeight: 500,
-                                        }}
-                                      >
-                                        {row.variantLabel}
-                                      </span>
+                                      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                                        <span
+                                          style={{
+                                            fontSize: "0.8rem",
+                                            color: "var(--white)",
+                                            fontWeight: 500,
+                                          }}
+                                        >
+                                          {row.variantLabel}
+                                        </span>
+                                        {row.uom && (
+                                          <span style={{ fontSize: "0.6rem", color: "var(--gray)", background: "rgba(255,255,255,0.06)", padding: "0.1rem 0.35rem", borderRadius: "4px", fontWeight: 600, textTransform: "uppercase", flexShrink: 0 }}>
+                                            {uomLabel(row.uom)}
+                                          </span>
+                                        )}
+                                      </div>
                                       <div
                                         style={{
                                           display: "flex",

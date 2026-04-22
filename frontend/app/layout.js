@@ -2,6 +2,8 @@ import './globals.css'
 import '../components/custom-styles.css'
 import { AuthProvider } from '../contexts/AuthContext';
 import { CartProvider } from '../context/CartContext';
+import { ToastProvider } from '../components/Toast';
+import OfflineBanner from '../components/OfflineBanner';
 
 export const metadata = {
   title: 'Personalize Me Prints',
@@ -17,7 +19,10 @@ export default function RootLayout({ children }) {
       <body suppressHydrationWarning={true}>
         <AuthProvider>
           <CartProvider>
-            {children}
+            <ToastProvider>
+              <OfflineBanner />
+              {children}
+            </ToastProvider>
           </CartProvider>
         </AuthProvider>
       </body>

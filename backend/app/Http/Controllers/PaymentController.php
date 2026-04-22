@@ -8,9 +8,12 @@ use App\Models\Voucher;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use App\Models\ActivityLog;
+use App\Models\FlashSale;
+use App\Services\PriceResolver;
 
 class PaymentController extends Controller
 {
@@ -58,12 +61,13 @@ class PaymentController extends Controller
                 'deliveryAddress.phone'       => 'nullable|string|max:30',
                 'design_file'                 => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:10240',
                 'design_notes'                => 'nullable|string|max:2000',
-                'shippingFee'                 => 'nullable|numeric|min:0',
+                'shippingFee'                 => 'nullable|numeric|min:0|max:10000',
             ]);
 
             // ── Resolve prices + build order items ────────────────────
-            $orderItems  = [];
-            $totalAmount = 0;
+            $orderItems               = [];
+            $totalAmount              = 0;
+            $pendingFlashSaleIncrements = [];
 
             foreach ($validated['items'] as $item) {
                 $product = Product::where('_id', $item['productId'])
@@ -77,9 +81,26 @@ class PaymentController extends Controller
                     );
                 }
 
-                $qty       = (int) $item['qty'];
-                $variantId = $item['variantId'] ?? null;
-                $unitPrice = $this->resolvePrice($product, $qty, $variantId);
+                $qty              = (int) $item['qty'];
+                $variantId        = $item['variantId'] ?? null;
+                $flashSaleId      = isset($item['flashSaleId']) && $item['flashSaleId'] !== '' ? $item['flashSaleId'] : null;
+                $appliedFlashSale = null;
+
+                if ($flashSaleId) {
+                    $fs = FlashSale::live()
+                        ->where('_id', $flashSaleId)
+                        ->where('productId', (string) $product->_id)
+                        ->first();
+
+                    if ($fs && (
+                        $fs->stockLimit === null ||
+                        ($fs->stockUsed ?? 0) < $fs->stockLimit
+                    )) {
+                        $appliedFlashSale = $fs;
+                    }
+                }
+
+                $unitPrice = PriceResolver::resolve($product, $qty, $variantId, $appliedFlashSale);
 
                 if ($unitPrice === null) {
                     return $this->errorResponse(
@@ -91,6 +112,10 @@ class PaymentController extends Controller
                 $lineTotal    = $unitPrice * $qty;
                 $totalAmount += $lineTotal;
 
+                if ($appliedFlashSale) {
+                    $pendingFlashSaleIncrements[] = [$appliedFlashSale, $qty];
+                }
+
                 $orderItems[] = [
                     'productId'   => (string) $product->_id,
                     'productName' => $product->name,
@@ -99,9 +124,7 @@ class PaymentController extends Controller
                     'qty'         => $qty,
                     'unitPrice'   => $unitPrice,
                     'lineTotal'   => $lineTotal,
-                    'flashSaleId' => isset($item['flashSaleId']) && $item['flashSaleId'] !== ''
-                        ? $item['flashSaleId']
-                        : null,
+                    'flashSaleId' => $flashSaleId,
                 ];
             }
 
@@ -124,32 +147,55 @@ class PaymentController extends Controller
             $shippingFee  = (float) ($validated['shippingFee'] ?? 0);
             $totalAmount += $shippingFee;
 
-            // ── Voucher discount (server-side validation) ──────────────────────
+            // ── Voucher discount — atomic claim ───────────────────────────
             $discountAmount = 0.0;
             $appliedVoucher = null;
 
             if (!empty($validated['voucherCode'])) {
                 $voucherCode = strtoupper(trim($validated['voucherCode']));
-                $voucher     = Voucher::where('code', $voucherCode)->first();
                 $userId      = (string) $user->_id;
+                $now         = now();
 
-                $usedBy      = $voucher?->usedBy ?? [];
-                $alreadyUsed = in_array($userId, $usedBy, true);
+                $voucher = Voucher::where('code', $voucherCode)->first();
 
-                $voucherValid = $voucher
+                $preValid = $voucher
                     && $voucher->isActive
-                    && (!$voucher->expiresAt || $voucher->expiresAt >= now())
+                    && (!$voucher->expiresAt || $voucher->expiresAt >= $now)
                     && ($voucher->maxUses === null || $voucher->usedCount < $voucher->maxUses)
-                    && !$alreadyUsed
+                    && !in_array($userId, $voucher->usedBy ?? [], true)
                     && ($voucher->minOrderAmount === null || $totalAmount >= $voucher->minOrderAmount);
 
-                if ($voucherValid) {
+                if ($preValid) {
                     $discountAmount = $voucher->discountType === 'percentage'
                         ? round($totalAmount * $voucher->discountValue / 100, 2)
                         : min((float) $voucher->discountValue, $totalAmount);
 
-                    $totalAmount    = max(0, $totalAmount - $discountAmount);
-                    $appliedVoucher = $voucher;
+                    $filter = [
+                        'code'     => $voucherCode,
+                        'isActive' => true,
+                        'usedBy'   => ['$nin' => [$userId]],
+                    ];
+                    if ($voucher->maxUses !== null) {
+                        $filter['$expr'] = ['$lt' => ['$usedCount', '$maxUses']];
+                    }
+
+                    $claimed = DB::connection('mongodb')
+                        ->getCollection('vouchers')
+                        ->findOneAndUpdate(
+                            $filter,
+                            [
+                                '$inc'      => ['usedCount' => 1],
+                                '$addToSet' => ['usedBy' => $userId],
+                            ],
+                            ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                        );
+
+                    if ($claimed) {
+                        $totalAmount    = max(0, $totalAmount - $discountAmount);
+                        $appliedVoucher = $voucher;
+                    } else {
+                        $discountAmount = 0.0;
+                    }
                 }
             }
 
@@ -186,26 +232,20 @@ class PaymentController extends Controller
                 'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => 'Pending',
                 'paymentStatus'   => 'unpaid',
-                'notes'           => strip_tags($validated['notes'] ?? ''),
+                'notes'           => htmlspecialchars(strip_tags(trim($validated['notes'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 'deliveryAddress' => $validated['deliveryAddress'] ?? null,
-                'designNotes'     => $validated['design_notes'] ?? null,
+                'designNotes'     => isset($validated['design_notes'])
+                    ? htmlspecialchars(strip_tags(trim($validated['design_notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                    : null,
                 'designFilePath'  => $designFilePath,
                 'designStatus'    => $designFilePath ? 'pending_review' : null,
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
 
-            // Increment voucher usage + record userId (non-fatal)
-            if ($appliedVoucher) {
-                try {
-                    $appliedVoucher->increment('usedCount');
-                    $appliedVoucher->push('usedBy', (string) $user->_id, true);
-                } catch (\Exception $voucherErr) {
-                    Log::warning('PaymentController@createLink: voucher increment failed', [
-                        'voucherCode' => $appliedVoucher->code,
-                        'error'       => $voucherErr->getMessage(),
-                    ]);
-                }
+            // Deduct flash sale stock only after order is persisted
+            foreach ($pendingFlashSaleIncrements as [$flashSale, $qty]) {
+                $flashSale->increment('stockUsed', $qty);
             }
 
             $orderId     = (string) $order->_id;
@@ -231,6 +271,7 @@ class PaymentController extends Controller
                                 'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}",
                                 'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}",
                             ],
+                            'cancel_url'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}&cancelled=1",
                         ],
                     ],
                 ]);
@@ -378,6 +419,7 @@ class PaymentController extends Controller
                                 'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}&type=order_request",
                                 'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}&type=order_request",
                             ],
+                            'cancel_url' => "{$frontendUrl}/shop/payment-failed?id={$orderId}&cancelled=1",
                         ],
                     ],
                 ]);
@@ -610,37 +652,4 @@ class PaymentController extends Controller
         }
     }
 
-    /**
-     * Resolves unit price — mirrors OrderController::resolvePrice exactly.
-     */
-    private function resolvePrice(Product $product, int $qty, ?string $variantId): ?float
-    {
-        // flatPrice takes priority
-        if (!empty($product->flatPrice)) {
-            return (float) $product->flatPrice;
-        }
-
-        // Fall back to plain price field (priceType: fixed)
-        if (!empty($product->price)) {
-            return (float) $product->price;
-        }
-
-        if ($variantId && !empty($product->variantPrices)) {
-            $vp = $product->variantPrices[$variantId] ?? null;
-            if ($vp !== null) return (float) $vp;
-        }
-
-        if (!empty($product->priceTiers) && is_array($product->priceTiers)) {
-            $applicable = null;
-            foreach ($product->priceTiers as $tier) {
-                $min = (int) ($tier['minQty'] ?? 0);
-                if ($qty >= $min) {
-                    $applicable = $tier;
-                }
-            }
-            if ($applicable) return (float) $applicable['price'];
-        }
-
-        return null;
-    }
 }

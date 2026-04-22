@@ -122,31 +122,41 @@ class TwoFactorController extends Controller
                 return response()->json(['message' => 'No active code found.'], 422);
             }
 
-            // Increment attempts before checking
-            $otp->attempts += 1;
-
-            if ($otp->attempts >= 3) {
-                $otp->used = true;
-                $otp->save();
-
-                $user = $request->user();
-                $user->otp_locked_until = now()->addMinutes(10)->toISOString();
-                $user->save();
-
-                return response()->json([
-                    'message'      => 'Too many attempts. Try again in 10 minutes.',
-                    'locked_until' => now()->addMinutes(10)->toISOString(),
-                ], 423);
-            }
-
             if (!Hash::check($request->code, $otp->code_hash)) {
+                $otp->attempts += 1;
+
+                if ($otp->attempts >= 3) {
+                    $otp->used = true;
+                    $otp->save();
+
+                    $user->otp_locked_until = now()->addMinutes(10)->toISOString();
+                    $user->save();
+
+                    Log::warning('2FA locked: max attempts exceeded', [
+                        'user' => $user->email,
+                        'ip'   => $request->ip(),
+                    ]);
+
+                    return response()->json([
+                        'message'      => 'Too many attempts. Try again in 10 minutes.',
+                        'locked_until' => now()->addMinutes(10)->toISOString(),
+                    ], 423);
+                }
+
                 $otp->save();
+                Log::warning('2FA failed: invalid code', [
+                    'user'     => $user->email,
+                    'attempts' => $otp->attempts,
+                    'ip'       => $request->ip(),
+                ]);
                 return response()->json(['message' => 'Invalid code.'], 422);
             }
 
             // Correct code
             $otp->used = true;
             $otp->save();
+
+            Log::info('2FA verified', ['user' => $user->email, 'ip' => $request->ip()]);
 
             return response()->json(['message' => 'OTP verified.', 'verified' => true], 200);
 
@@ -210,6 +220,30 @@ class TwoFactorController extends Controller
         } catch (\Exception $e) {
             Log::error('TwoFactorController@checkDevice: ' . $e->getMessage());
             return response()->json(['message' => 'Device check failed.'], 500);
+        }
+    }
+
+    public function toggle(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json(['message' => 'Unauthenticated.'], 401);
+            }
+
+            $current = (bool) ($user->two_factor_enabled ?? false);
+            $user->two_factor_enabled = !$current;
+            $user->save();
+
+            return response()->json([
+                'two_factor_enabled' => $user->two_factor_enabled,
+                'message' => $user->two_factor_enabled
+                    ? 'Two-factor authentication enabled.'
+                    : 'Two-factor authentication disabled.',
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('TwoFactorController@toggle: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to update 2FA setting.'], 500);
         }
     }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ContactFormMail;
+use App\Mail\LoginAnomalyMail;
 use App\Mail\VerificationCodeMail;
 use App\Mail\WelcomeMail;
 use App\Models\User;
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
@@ -27,7 +29,7 @@ class AuthController extends Controller
                 'address'     => 'required|string|min:10',
                 'phoneNumber' => ['required', 'string', 'regex:/^(09|\+639)\d{9}$/'],
                 'email'       => ['required', 'email'],
-                'password'    => 'required|string|min:8|confirmed',
+                'password'    => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
             ], [
                 'firstName.required'  => 'First name is required.',
                 'firstName.min'       => 'First name must be at least 2 characters.',
@@ -40,7 +42,6 @@ class AuthController extends Controller
                 'email.required'      => 'Email address is required.',
                 'email.email'         => 'Please enter a valid email address.',
                 'password.required'   => 'Password is required.',
-                'password.min'        => 'Password must be at least 8 characters.',
                 'password.confirmed'  => 'Passwords do not match.',
             ]);
 
@@ -135,18 +136,56 @@ class AuthController extends Controller
         }
     }
 
+    private const LOGIN_MAX_ATTEMPTS = 5;
+    private const LOGIN_LOCKOUT_MINUTES = 15;
+    private const DEVICE_TOKEN_MAX_AGE_DAYS = 90;
+
     public function login(Request $request)
     {
         try {
             $request->validate([
-                'email'    => 'required|email',
-                'password' => 'required|string',
+                'email'        => 'required|email',
+                'password'     => 'required|string',
                 'device_token' => 'nullable|string|size:64',
             ]);
 
+            $ip = $request->ip();
             $user = User::where('email', $request->email)->first();
 
-            if (!$user || !Hash::check($request->password, $user->password)) {
+            if (!$user) {
+                Log::warning('Login failed: user not found', ['email' => $request->email, 'ip' => $ip]);
+                return $this->errorResponse('The email or password you entered is incorrect. Please try again.', 401);
+            }
+
+            if (
+                $user->login_locked_until &&
+                now()->lt($user->login_locked_until)
+            ) {
+                $minutesLeft = (int) ceil(now()->diffInSeconds($user->login_locked_until) / 60);
+                Log::warning('Login blocked: account locked', ['email' => $user->email, 'ip' => $ip]);
+                return $this->errorResponse(
+                    "Account temporarily locked. Try again in {$minutesLeft} minute(s).",
+                    429
+                );
+            }
+
+            if (!Hash::check($request->password, $user->password)) {
+                $attempts = ($user->failed_login_attempts ?? 0) + 1;
+                $user->failed_login_attempts = $attempts;
+
+                if ($attempts >= self::LOGIN_MAX_ATTEMPTS) {
+                    $user->login_locked_until = now()->addMinutes(self::LOGIN_LOCKOUT_MINUTES);
+                    $user->failed_login_attempts = 0;
+                    Log::warning('Login failed: account locked after max attempts', ['email' => $user->email, 'ip' => $ip]);
+                } else {
+                    Log::warning('Login failed: wrong password', [
+                        'email'    => $user->email,
+                        'ip'       => $ip,
+                        'attempts' => $attempts,
+                    ]);
+                }
+
+                $user->save();
                 return $this->errorResponse('The email or password you entered is incorrect. Please try again.', 401);
             }
 
@@ -154,26 +193,61 @@ class AuthController extends Controller
                 return $this->errorResponse('Please verify your email before logging in.', 403);
             }
 
-            $deviceName = $this->parseDeviceName($request->userAgent() ?? 'Unknown Device');
+            $user->failed_login_attempts = 0;
+            $user->login_locked_until    = null;
+
+            $deviceName   = $this->parseDeviceName($request->userAgent() ?? 'Unknown Device');
             $sanctumToken = $user->createToken($deviceName)->plainTextToken;
             $user->lastLogin     = now()->toDateTimeString();
             $user->last_login_at = now();
             $user->save();
 
-            // 2FA applies to ALL roles — device token check is the
-            // only bypass (recognized device skips OTP)
+            Log::info('Login successful', ['email' => $user->email, 'ip' => $ip]);
+
+            // Send login alert asynchronously (after response)
+            $alertRecipient = $user->email;
+            $alertName      = $user->firstName ?? 'User';
+            $alertIp        = $ip;
+            $alertAgent     = $this->parseDeviceName($request->userAgent() ?? 'Unknown');
+            $alertTime      = now()->setTimezone('Asia/Manila')->format('F j, Y \a\t g:i A T');
+
+            app()->terminating(function () use (
+                $alertRecipient, $alertName, $alertIp, $alertAgent, $alertTime
+            ) {
+                try {
+                    Mail::to($alertRecipient)->send(
+                        new LoginAnomalyMail($alertName, $alertIp, $alertAgent, $alertTime)
+                    );
+                } catch (\Exception $e) {
+                    Log::error('LoginAnomalyMail failed: ' . $e->getMessage());
+                }
+            });
+
             $requires2fa  = false;
-            $deviceToken  = $request->input('device_token');
-            $deviceTokens = $user->device_tokens ?? [];
-            if (!$deviceToken) {
-                // No device token — always require 2FA
-                $requires2fa = true;
-            } else {
-                $isRecognized = collect($deviceTokens)->contains(
-                    fn($entry) => isset($entry['token']) &&
-                                $entry['token'] === $deviceToken
-                );
-                $requires2fa = !$isRecognized;
+            $twoFaEnabled = (bool) ($user->two_factor_enabled ?? false);
+
+            if ($twoFaEnabled) {
+                $deviceToken  = $request->input('device_token');
+                $cutoff       = now()->subDays(self::DEVICE_TOKEN_MAX_AGE_DAYS);
+                $deviceTokens = collect($user->device_tokens ?? [])
+                    ->filter(fn($entry) => isset($entry['created_at']) &&
+                        \Carbon\Carbon::parse($entry['created_at'])->gt($cutoff))
+                    ->values()
+                    ->all();
+
+                if (!$deviceToken) {
+                    $requires2fa = true;
+                } else {
+                    $isRecognized = collect($deviceTokens)->contains(
+                        fn($entry) => isset($entry['token']) && $entry['token'] === $deviceToken
+                    );
+                    $requires2fa = !$isRecognized;
+                }
+
+                if ($deviceTokens !== ($user->device_tokens ?? [])) {
+                    $user->device_tokens = $deviceTokens;
+                    $user->save();
+                }
             }
 
             return $this->successResponse(
@@ -182,14 +256,15 @@ class AuthController extends Controller
                     'token'        => $sanctumToken,
                     'requires_2fa' => $requires2fa,
                     'user' => [
-                        'firstName'   => $user->firstName,
-                        'lastName'    => $user->lastName,
-                        'email'       => $user->email,
-                        'phoneNumber' => $user->phoneNumber,
-                        'address'     => $user->address,
-                        'role'        => $user->role,
-                        'lastLogin'   => $user->lastLogin,
-                        'avatar'      => $user->avatar,
+                        'firstName'          => $user->firstName,
+                        'lastName'           => $user->lastName,
+                        'email'              => $user->email,
+                        'phoneNumber'        => $user->phoneNumber,
+                        'address'            => $user->address,
+                        'role'               => $user->role,
+                        'lastLogin'          => $user->lastLogin,
+                        'avatar'             => $user->avatar,
+                        'two_factor_enabled' => (bool) ($user->two_factor_enabled ?? false),
                     ],
                 ]
             );
@@ -499,7 +574,7 @@ class AuthController extends Controller
             $request->validate([
                 'email' => 'required|email',
                 'code' => 'required|string|size:6',
-                'password' => 'required|string|min:8|confirmed',
+                'password' => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
             ]);
 
             $user = User::where('email', $request->email)->first();
@@ -542,16 +617,19 @@ class AuthController extends Controller
     {
         try {
             $request->validate([
-                'name' => 'required|string|min:2',
-                'email' => 'required|email',
-                'subject' => 'required|string',
-                'message' => 'required|string',
+                'name'    => 'required|string|min:2|max:120',
+                'email'   => 'required|email|max:255',
+                'subject' => 'required|string|max:200',
+                'message' => 'required|string|max:5000',
             ]);
 
             $adminEmail = env('ADMIN_EMAIL', 'personalizemeprints@gmail.com');
 
-            // Send email to admin
-            Mail::to($adminEmail)->send(new ContactFormMail($request->name, $request->email, $request->subject, $request->message));
+            $name    = htmlspecialchars(strip_tags(trim($request->name)),    ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $subject = str_replace(["\r", "\n", "\0"], '', strip_tags(trim($request->subject)));
+            $message = htmlspecialchars(strip_tags(trim($request->message)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+            Mail::to($adminEmail)->send(new ContactFormMail($name, $request->email, $subject, $message));
 
             return $this->successResponse('Message sent successfully! We will get back to you soon.');
         } catch (\Illuminate\Validation\ValidationException $e) {

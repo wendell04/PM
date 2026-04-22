@@ -27,7 +27,11 @@ const ALLOWED_CATEGORIES = ["Raw Material", "Packaging"];
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function normalizeInventoryRow(row) {
   if (!row) return row;
-  return { ...row, id: row.id ?? row._id };
+  return {
+    ...row,
+    id: row.id ?? row._id,
+    parentId: row.parentId ? String(row.parentId) : null,
+  };
 }
 
 function isLikelyMongoId(id) {
@@ -1014,6 +1018,7 @@ function MaterialMasterTab({
   vendors,
   token,
   boms,
+  units,
   refreshMaterials,
   onVendorsChange,
 }) {
@@ -1164,9 +1169,9 @@ function MaterialMasterTab({
     materials
       .filter((m) => m.parentId)
       .forEach((child) => {
-        if (!childrenMap.has(child.parentId))
-          childrenMap.set(child.parentId, []);
-        childrenMap.get(child.parentId).push(child);
+        const key = String(child.parentId);
+        if (!childrenMap.has(key)) childrenMap.set(key, []);
+        childrenMap.get(key).push(child);
       });
     return { parents, childrenMap, standalone };
   }, [materials]);
@@ -1190,7 +1195,7 @@ function MaterialMasterTab({
       const matchCat = !categoryFilter || parent.category === categoryFilter;
       if (matchSearch && matchCat) {
         const children = (
-          groupedMaterials.childrenMap.get(parent.id) || []
+          groupedMaterials.childrenMap.get(String(parent.id)) || []
         ).filter((c) => {
           if (!q) return true;
           return (
@@ -2047,6 +2052,22 @@ function MaterialMasterTab({
                               }}
                             >
                               <button
+                                onClick={() => {
+                                  setEditMaterial(child);
+                                  setShowAddModal(true);
+                                }}
+                                style={{
+                                  background: "rgba(255,255,255,0.05)",
+                                  border: "1px solid var(--border)",
+                                  borderRadius: "6px",
+                                  padding: "0.4rem",
+                                  cursor: "pointer",
+                                  color: "var(--gray)",
+                                }}
+                              >
+                                <EditIcon />
+                              </button>
+                              <button
                                 onClick={() => setViewMaterial(child)}
                                 style={{
                                   background: "rgba(255,255,255,0.05)",
@@ -2089,7 +2110,9 @@ function MaterialMasterTab({
           itemCategories={itemCategories}
           vendors={vendors}
           materials={materials}
+          units={units}
           editMaterial={editMaterial}
+          editMaterialStock={editMaterial ? getStockQty(editMaterial) : 0}
           onClose={() => {
             setShowAddModal(false);
             setEditMaterial(null);
@@ -2232,7 +2255,9 @@ function MaterialFormModal({
   itemCategories,
   vendors,
   materials,
+  units,
   editMaterial,
+  editMaterialStock = 0,
   onClose,
   onSave,
   onAddCategory,
@@ -2258,12 +2283,20 @@ function MaterialFormModal({
   const [variantTutorialOpen, setVariantTutorialOpen] = useState(false);
   const [errors, setErrors] = useState({});
 
+  const uomOptions = useMemo(() => {
+    const base = (units || []).map((u) => ({ value: u.code, label: u.name }));
+    if (form.uom && !base.find((o) => o.value === form.uom)) {
+      base.unshift({ value: form.uom, label: form.uom });
+    }
+    return base;
+  }, [units, form.uom]);
+
   // Find which variant options are locked (used by existing child materials with stock)
   const lockedOptions = useMemo(() => {
     if (!editMaterial || !editMaterial.hasVariants) return {};
     const locked = {};
     // Find all child materials of this parent
-    const children = materials.filter((m) => m.parentId === editMaterial.id);
+    const children = materials.filter((m) => String(m.parentId) === String(editMaterial.id));
     children.forEach((child) => {
       if (child.variantCombo) {
         Object.entries(child.variantCombo).forEach(([typeName, optionVal]) => {
@@ -2308,7 +2341,7 @@ function MaterialFormModal({
       if (editMaterial.hasVariants) {
         const costs = {};
         const children = materials.filter(
-          (m) => m.parentId === editMaterial.id,
+          (m) => String(m.parentId) === String(editMaterial.id),
         );
         children.forEach((child) => {
           if (child.variantCombo) {
@@ -2492,7 +2525,7 @@ function MaterialFormModal({
     e.preventDefault();
     const newErrors = {};
     if (!form.preferredVendorId) newErrors.vendor = "Please select a vendor";
-    if (!form.category) newErrors.category = "Please select a category";
+    if (form.preferredVendorId && !form.category) newErrors.category = "Please select a category";
     if (!form.name.trim()) newErrors.name = "Please enter an item name";
     // Validate variant types when variants are enabled
     if (form.hasVariants) {
@@ -2565,7 +2598,7 @@ function MaterialFormModal({
       // When editing, find existing children by variantCombo to preserve ID and SKU
       const existingChildren =
         editMaterial && editMaterial.hasVariants
-          ? materials.filter((m) => m.parentId === editMaterial.id)
+          ? materials.filter((m) => String(m.parentId) === String(editMaterial.id))
           : [];
       const children = previewSKUs.map((skuInfo, idx) => {
         const comboCost = variantCosts[skuInfo.comboKey];
@@ -2637,7 +2670,7 @@ function MaterialFormModal({
           preferredVendorId: form.preferredVendorId,
           hasVariants: false,
           variantTypes: [],
-          parentId: null,
+          parentId: editMaterial ? (editMaterial.parentId ?? null) : null,
           batches: existingBatches, // NEW: Batch tracking array
           createdAt: editMaterial
             ? editMaterial.createdAt
@@ -2813,10 +2846,13 @@ function MaterialFormModal({
                       if (errors.category)
                         setErrors((e) => ({ ...e, category: "" }));
                     }}
-                    options={vendorItems.map((item) => ({
-                      value: item.name,
-                      label: item.name,
-                    }))}
+                    options={(() => {
+                      const opts = vendorItems.map((item) => ({ value: item.name, label: item.name }));
+                      if (editMaterial && form.category && !opts.find((o) => o.value === form.category)) {
+                        opts.unshift({ value: form.category, label: form.category });
+                      }
+                      return opts;
+                    })()}
                     placeholder={
                       !form.preferredVendorId
                         ? "Select vendor first..."
@@ -2934,7 +2970,7 @@ function MaterialFormModal({
                 <label className="form-label">
                   Unit
                   {editMaterial &&
-                    (editMaterial.stockQty > 0 || editMaterial.hasVariants) && (
+                    (editMaterialStock > 0 || editMaterial.hasVariants) && (
                       <span
                         style={{
                           fontSize: "0.7rem",
@@ -2950,19 +2986,11 @@ function MaterialFormModal({
                 <CustomDropdown
                   value={form.uom}
                   onChange={(val) => setForm((p) => ({ ...p, uom: val }))}
-                  options={[
-                    { value: "pcs", label: "Pieces" },
-                    { value: "bottle", label: "Bottle" },
-                    { value: "liter", label: "Liter" },
-                    { value: "kg", label: "Kilogram" },
-                    { value: "meter", label: "Meter" },
-                    { value: "roll", label: "Roll" },
-                    { value: "box", label: "Box" },
-                  ]}
+                  options={uomOptions}
                   placeholder="Select unit..."
                   disabled={
                     editMaterial &&
-                    (editMaterial.stockQty > 0 || editMaterial.hasVariants)
+                    (editMaterialStock > 0 || editMaterial.hasVariants)
                   }
                 />
               </div>
@@ -5108,7 +5136,7 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // BOM TAB
 // ══════════════════════════════════════════════════════════════════════════════
-function BOMTab({ materials, boms, token, refreshBoms }) {
+function BOMTab({ materials, boms, token, units, refreshBoms }) {
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [editBOM, setEditBOM] = useState(null);
@@ -5383,6 +5411,7 @@ function BOMTab({ materials, boms, token, refreshBoms }) {
         <BOMFormModal
           bom={editBOM}
           materials={materials}
+          units={units}
           onClose={() => {
             setShowAddModal(false);
             setEditBOM(null);
@@ -6311,18 +6340,24 @@ export default function MasterDataPage() {
           vendors={vendors}
           token={token}
           boms={boms}
+          units={units}
           refreshMaterials={refreshMaterials}
           onVendorsChange={setVendors}
         />
       )}
       {activeTab === "vendors" && (
-        <VendorsApiTab onVendorsChange={setVendors} />
+        <VendorsApiTab
+          onVendorsChange={setVendors}
+          materials={materials}
+          units={units}
+        />
       )}
       {activeTab === "bom" && (
         <BOMTab
           materials={materials}
           boms={boms}
           token={token}
+          units={units}
           refreshBoms={refreshBoms}
         />
       )}

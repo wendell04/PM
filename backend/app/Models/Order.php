@@ -32,6 +32,7 @@ class Order extends Model
         'createdAt'            => 'datetime',
         'updatedAt'            => 'datetime',
         'paymentHistory'       => 'array',
+        'statusHistory'        => 'array',
         'orderSource'          => 'string',
         'voucherCode'          => 'string',
         'discountAmount'       => 'float',
@@ -51,6 +52,7 @@ class Order extends Model
         'checkoutRestricted' => true,
         'downPayment'        => 0,
         'paymentHistory'     => [],
+        'statusHistory'      => [],
         'orderSource'        => 'online',
     ];
 

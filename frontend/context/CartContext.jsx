@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { fetchCart, syncCart, mergeCart, clearCart as clearCartApi } from '@/lib/cartApi';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -13,6 +13,7 @@ export function CartProvider({ children }) {
   const [isCartLoading, setIsCartLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const { token, currentUser } = useAuth();
+  const qtyDebounceRef = useRef(null);
 
   const isLoggedIn = useCallback(() => {
     return !!token;
@@ -173,29 +174,37 @@ export function CartProvider({ children }) {
   /**
    * Update item quantity
    */
-  const updateQty = useCallback(async (productId, variantId, newQty) => {
-    setIsCartLoading(true);
-    try {
-      const updatedItems = cartItems.map(item => {
-        if (item.productId === productId && (item.variantId || null) === (variantId || null)) {
-          const qty = Math.max(0, parseInt(newQty) || 0);
-          return {
-            ...item,
-            qty,
-            lineTotal: qty * item.unitPrice,
-          };
-        }
-        return item;
-      }).filter(item => item.qty > 0); // Remove items with 0 qty
+  const updateQty = useCallback((productId, variantId, newQty) => {
+    const updatedItems = cartItems.map(item => {
+      if (item.productId === productId && (item.variantId || null) === (variantId || null)) {
+        const qty = Math.max(1, parseInt(newQty) || 1);
+        return { ...item, qty, lineTotal: qty * item.unitPrice };
+      }
+      return item;
+    });
 
-      await saveCart(updatedItems);
-    } catch (error) {
-      console.error('Failed to update quantity:', error);
-      throw error;
-    } finally {
-      setIsCartLoading(false);
+    // Optimistic update — reflects immediately in UI
+    setCartItems(updatedItems);
+
+    // Persist guest cart immediately (no API)
+    if (!token) {
+      try { localStorage.setItem('pmp_guest_cart', JSON.stringify(updatedItems)); } catch {}
+      return;
     }
-  }, [cartItems, saveCart]);
+
+    // Debounce API sync — 400ms
+    if (qtyDebounceRef.current) clearTimeout(qtyDebounceRef.current);
+    qtyDebounceRef.current = setTimeout(async () => {
+      try {
+        setIsCartLoading(true);
+        await saveCart(updatedItems);
+      } catch (error) {
+        console.error('Failed to sync cart qty:', error);
+      } finally {
+        setIsCartLoading(false);
+      }
+    }, 400);
+  }, [cartItems, saveCart, token]);
 
   /**
    * Clear cart

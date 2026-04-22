@@ -39,12 +39,19 @@ class User extends Authenticatable
         'storeEmail',
         'storePhone',
         'otp_locked_until',
+        'failed_login_attempts',
+        'login_locked_until',
+        'verification_attempts',
+        'two_factor_enabled',
     ];
 
     protected $casts = [
-        'addresses'     => 'array',
-        'device_tokens' => 'array',
-        'last_login_at' => 'datetime',
+        'addresses'              => 'array',
+        'device_tokens'          => 'array',
+        'last_login_at'          => 'datetime',
+        'failed_login_attempts'  => 'integer',
+        'login_locked_until'     => 'datetime',
+        'two_factor_enabled'     => 'boolean',
     ];
 
     protected $hidden = [

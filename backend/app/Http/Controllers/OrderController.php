@@ -20,7 +20,9 @@ use App\Models\Notification;
 use App\Models\Voucher;
 use App\Models\FlashSale;
 use App\Models\BillOfMaterial;
+use Illuminate\Support\Facades\DB;
 use App\Models\StockHistory;
+use App\Services\PriceResolver;
 
 class OrderController extends Controller
 {
@@ -59,6 +61,7 @@ class OrderController extends Controller
                 'items.*.variantId'           => 'nullable|string',
                 'items.*.variantName'         => 'nullable|string',
                 'items.*.qty'                 => 'required|integer|min:1',
+                'items.*.flashSaleId'         => 'nullable|string|max:24',
                 'notes'                       => 'nullable|string|max:1000',
                 'paymentMethod'               => 'nullable|string|in:cod,online',
                 'deliveryAddress'             => 'nullable|array',
@@ -74,12 +77,13 @@ class OrderController extends Controller
                 'design_file'                 => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:10240',
                 'design_notes'                => 'nullable|string|max:2000',
                 'voucherCode'                 => 'nullable|string|max:50',
-                'shippingFee'                 => 'nullable|numeric|min:0',
+                'shippingFee'                 => 'nullable|numeric|min:0|max:10000',
             ]);
 
             // Build order items with pricing (no transaction wrapper for MongoDB compatibility)
-            $orderItems   = [];
-            $totalAmount  = 0;
+            $orderItems               = [];
+            $totalAmount              = 0;
+            $pendingFlashSaleIncrements = [];
 
             foreach ($validated['items'] as $item) {
                 $product = Product::where('_id', $item['productId'])
@@ -90,17 +94,37 @@ class OrderController extends Controller
                     throw new \Exception("Product '{$item['productId']}' not found or unavailable.");
                 }
 
-                // Resolve unit price from priceTiers or flatPrice
-                $qty       = (int) $item['qty'];
-                $variantId = $item['variantId'] ?? null;
-                $unitPrice = $this->resolvePrice($product, $qty, $variantId);
+                $qty              = (int) $item['qty'];
+                $variantId        = $item['variantId'] ?? null;
+                $flashSaleId      = isset($item['flashSaleId']) && $item['flashSaleId'] !== '' ? $item['flashSaleId'] : null;
+                $appliedFlashSale = null;
+
+                if ($flashSaleId) {
+                    $fs = FlashSale::live()
+                        ->where('_id', $flashSaleId)
+                        ->where('productId', (string) $product->_id)
+                        ->first();
+
+                    if ($fs && (
+                        $fs->stockLimit === null ||
+                        ($fs->stockUsed ?? 0) < $fs->stockLimit
+                    )) {
+                        $appliedFlashSale = $fs;
+                    }
+                }
+
+                $unitPrice = PriceResolver::resolve($product, $qty, $variantId, $appliedFlashSale);
 
                 if ($unitPrice === null) {
                     throw new \Exception("No price configured for product '{$product->name}'.");
                 }
 
-                $lineTotal     = $unitPrice * $qty;
-                $totalAmount  += $lineTotal;
+                $lineTotal    = $unitPrice * $qty;
+                $totalAmount += $lineTotal;
+
+                if ($appliedFlashSale) {
+                    $pendingFlashSaleIncrements[] = [$appliedFlashSale, $qty];
+                }
 
                 $orderItems[] = [
                     'productId'   => (string) $product->_id,
@@ -110,6 +134,7 @@ class OrderController extends Controller
                     'qty'         => $qty,
                     'unitPrice'   => $unitPrice,
                     'lineTotal'   => $lineTotal,
+                    'flashSaleId' => $flashSaleId,
                 ];
             }
 
@@ -133,32 +158,55 @@ class OrderController extends Controller
 
             $paymentMethod = $validated['paymentMethod'] ?? 'cod';
 
-            // ── Voucher discount (server-side validation) ──────────────────
-            $discountAmount  = 0.0;
-            $appliedVoucher  = null;
+            // ── Voucher discount — atomic claim ───────────────────────────
+            $discountAmount = 0.0;
+            $appliedVoucher = null;
 
             if (!empty($validated['voucherCode'])) {
                 $voucherCode = strtoupper(trim($validated['voucherCode']));
-                $voucher     = Voucher::where('code', $voucherCode)->first();
                 $userId      = (string) $user->_id;
+                $now         = now();
 
-                $usedBy      = $voucher?->usedBy ?? [];
-                $alreadyUsed = in_array($userId, $usedBy, true);
+                $voucher = Voucher::where('code', $voucherCode)->first();
 
-                $voucherValid = $voucher
+                $preValid = $voucher
                     && $voucher->isActive
-                    && (!$voucher->expiresAt || $voucher->expiresAt >= now())
+                    && (!$voucher->expiresAt || $voucher->expiresAt >= $now)
                     && ($voucher->maxUses === null || $voucher->usedCount < $voucher->maxUses)
-                    && !$alreadyUsed
+                    && !in_array($userId, $voucher->usedBy ?? [], true)
                     && ($voucher->minOrderAmount === null || $totalAmount >= $voucher->minOrderAmount);
 
-                if ($voucherValid) {
+                if ($preValid) {
                     $discountAmount = $voucher->discountType === 'percentage'
                         ? round($totalAmount * $voucher->discountValue / 100, 2)
                         : min((float) $voucher->discountValue, $totalAmount);
 
-                    $totalAmount    = max(0, $totalAmount - $discountAmount);
-                    $appliedVoucher = $voucher;
+                    $filter = [
+                        'code'     => $voucherCode,
+                        'isActive' => true,
+                        'usedBy'   => ['$nin' => [$userId]],
+                    ];
+                    if ($voucher->maxUses !== null) {
+                        $filter['$expr'] = ['$lt' => ['$usedCount', '$maxUses']];
+                    }
+
+                    $claimed = DB::connection('mongodb')
+                        ->getCollection('vouchers')
+                        ->findOneAndUpdate(
+                            $filter,
+                            [
+                                '$inc'      => ['usedCount' => 1],
+                                '$addToSet' => ['usedBy' => $userId],
+                            ],
+                            ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                        );
+
+                    if ($claimed) {
+                        $totalAmount    = max(0, $totalAmount - $discountAmount);
+                        $appliedVoucher = $voucher;
+                    } else {
+                        $discountAmount = 0.0;
+                    }
                 }
             }
 
@@ -177,26 +225,21 @@ class OrderController extends Controller
                 'orderStatus'     => 'Pending',
                 'paymentStatus'   => 'unpaid',
                 'paymentMethod'   => $paymentMethod,
-                'notes'           => strip_tags($validated['notes'] ?? ''),
+                'notes'           => htmlspecialchars(strip_tags(trim($validated['notes'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 'deliveryAddress' => $validated['deliveryAddress'] ?? null,
-                'designNotes'     => $validated['design_notes'] ?? null,
+                'designNotes'     => isset($validated['design_notes'])
+                    ? htmlspecialchars(strip_tags(trim($validated['design_notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                    : null,
                 'designFilePath'  => $designFilePath,
                 'designStatus'    => $designFilePath ? 'pending_review' : null,
+                'statusHistory'   => [['status' => 'Pending', 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
 
-            // Increment voucher usage count + record userId (non-fatal)
-            if ($appliedVoucher) {
-                try {
-                    $appliedVoucher->increment('usedCount');
-                    $appliedVoucher->push('usedBy', (string) $user->_id, true);
-                } catch (\Exception $e) {
-                    Log::warning('OrderController@store: voucher increment failed', [
-                        'voucherCode' => $appliedVoucher->code,
-                        'error'       => $e->getMessage(),
-                    ]);
-                }
+            // Deduct flash sale stock only after order is persisted
+            foreach ($pendingFlashSaleIncrements as [$flashSale, $qty]) {
+                $flashSale->increment('stockUsed', $qty);
             }
 
             // Broadcast new order to admin channel
@@ -275,11 +318,24 @@ class OrderController extends Controller
                 return $this->unauthorizedResponse();
             }
 
+            $limit  = min(100, max(1, (int) $request->query('limit', 50)));
+            $page   = max(1, (int) $request->query('page', 1));
+            $offset = ($page - 1) * $limit;
+
+            $total  = Order::where('userId', (string) $user->_id)->count();
             $orders = Order::where('userId', (string) $user->_id)
                            ->orderBy('createdAt', 'desc')
+                           ->skip($offset)
+                           ->limit($limit)
                            ->get();
 
-            return $this->successResponse('Orders fetched successfully.', $orders);
+            return $this->successResponse('Orders fetched successfully.', [
+                'data'       => $orders,
+                'total'      => $total,
+                'page'       => $page,
+                'limit'      => $limit,
+                'totalPages' => (int) ceil($total / $limit),
+            ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching your orders.');
         }
@@ -948,8 +1004,11 @@ class OrderController extends Controller
                 $order->trackingNumber = $validated2['trackingNumber'] ?? null;
             }
 
-            $order->orderStatus = $newStatus;
-            $order->updatedAt = now();
+            $order->orderStatus    = $newStatus;
+            $order->updatedAt      = now();
+            $history               = $order->statusHistory ?? [];
+            $history[]             = ['status' => $newStatus, 'at' => now()->toISOString()];
+            $order->statusHistory  = $history;
             $order->save();
 
             // Broadcast status update to order subscribers and admin channel
@@ -1101,59 +1160,6 @@ class OrderController extends Controller
         }
     }
 
-    // ─── Private Helpers ────────────────────────────────────────────────
-
-    /**
-     * Resolves unit price from product's price settings.
-     * Checks variantPrices, priceTiers, price, and flatPrice in order.
-     */
-    private function resolvePrice(Product $product, int $qty, ?string $variantId = null): ?float
-    {
-        // 1. Check Variant Prices if variantId is provided
-        if ($variantId && !empty($product->variantPrices)) {
-            if (isset($product->variantPrices[$variantId])) {
-                return (float) $product->variantPrices[$variantId];
-            }
-        }
-
-        // 2. Check Price Tiers
-        $tiers = $product->priceTiers ?? [];
-        if (!empty($tiers)) {
-            // Sort ascending by minQty
-            usort($tiers, fn($a, $b) => ($a['minQty'] ?? 0) <=> ($b['minQty'] ?? 0));
-
-            $matchedPrice = null;
-            foreach ($tiers as $tier) {
-                $min = (int) ($tier['minQty'] ?? 1);
-                $max = isset($tier['maxQty']) ? (int) $tier['maxQty'] : PHP_INT_MAX;
-
-                if ($qty >= $min && $qty <= $max) {
-                    $matchedPrice = (float) $tier['price'];
-                    break;
-                }
-            }
-
-            // If qty exceeds all tiers, use the last tier's price
-            if ($matchedPrice === null && !empty($tiers)) {
-                $lastTier = end($tiers);
-                $matchedPrice = (float) $lastTier['price'];
-            }
-
-            if ($matchedPrice !== null) return $matchedPrice;
-        }
-
-        // 3. Fallback to single price or flat price
-        if ($product->price !== null) {
-            return (float) $product->price;
-        }
-
-        if ($product->flatPrice !== null) {
-            return (float) $product->flatPrice;
-        }
-
-        return null;
-    }
-
     /**
      * Sends a branded email to the store owner when a new order is placed.
      */
@@ -1225,11 +1231,13 @@ class OrderController extends Controller
             $recordedBy = trim("{$user->firstName} {$user->lastName}");
 
             $newEntry = [
-                'amount'      => (float) $validated['amount'],
-                'method'      => $validated['method'],
-                'note'        => $validated['note'] ?? null,
-                'recordedBy'  => $recordedBy,
-                'recordedAt'  => now()->toISOString(),
+                'amount'     => (float) $validated['amount'],
+                'method'     => $validated['method'],
+                'note'       => isset($validated['note'])
+                    ? htmlspecialchars(strip_tags(trim($validated['note'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                    : null,
+                'recordedBy' => $recordedBy,
+                'recordedAt' => now()->toISOString(),
             ];
 
             // Append to paymentHistory

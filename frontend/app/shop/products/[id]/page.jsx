@@ -29,6 +29,8 @@ export default function ProductDetailPage() {
   const { addToCart } = useCart();
   const [hoveredBtn, setHoveredBtn] = useState(null);
   const [addedToCart, setAddedToCart] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   // ── Custom order request modal state ──
   const [showRequestModal, setShowRequestModal] = useState(false);
@@ -312,12 +314,15 @@ export default function ProductDetailPage() {
       const payload = {
         items: [{
           product: {
-            _id:    product._id ?? product.id,
-            name:   product.subCategoryName || product.name,
+            _id:            product._id ?? product.id,
+            name:           product.subCategoryName || product.name,
             images: [
               ...(product.thumbnail ? [product.thumbnail] : []),
               ...(product.images || []),
             ].filter(Boolean),
+            stock:          product.stock ?? null,
+            trackInventory: product.trackInventory ?? false,
+            stockStatus:    product.stockStatus ?? null,
           },
           variantId:   null,
           variantName: resolveVariantName(selectedVariants),
@@ -334,6 +339,10 @@ export default function ProductDetailPage() {
       console.error('[handleAddToCartAndCheckout]', err);
     }
   }
+
+  const effectiveMaxQty = product?.trackInventory && product?.stockStatus !== 'upon-order'
+    ? Math.max(product.stock ?? 99, 1)
+    : 99;
 
   // Computed values
   const totalPrice = product
@@ -426,13 +435,23 @@ export default function ProductDetailPage() {
             maxWidth: '520px' }}>
 
             {/* Main image */}
-            <div style={{ position: 'relative',
-              aspectRatio: '1/1',
-              background: 'var(--dark2)',
-              borderRadius: '12px',
-              border: '1px solid var(--border)',
-              overflow: 'hidden',
-              marginBottom: '0.75rem' }}>
+            <div
+              onClick={() => {
+                const imgs = [
+                  ...(product.thumbnail ? [product.thumbnail] : []),
+                  ...(product.images || []),
+                ].filter(Boolean);
+                if (imgs.length > 0) { setLightboxIndex(activeImage); setLightboxOpen(true); }
+              }}
+              style={{ position: 'relative',
+                aspectRatio: '1/1',
+                background: 'var(--dark2)',
+                borderRadius: '12px',
+                border: '1px solid var(--border)',
+                overflow: 'hidden',
+                marginBottom: '0.75rem',
+                cursor: 'zoom-in',
+              }}>
               {flashSale && (
                 <div style={{
                   position: 'absolute',
@@ -562,17 +581,17 @@ export default function ProductDetailPage() {
                     Flash Sale
                   </span>
                 </div>
-              ) : totalPrice != null ? (
+              ) : unitPrice != null ? (
                 <div>
                   <div style={{ fontSize: '1.75rem',
                     fontWeight: 800, color: 'var(--gold)' }}>
-                    {formatPeso(totalPrice)}
+                    {formatPeso(unitPrice)}
                   </div>
-                  {unitPrice != null && quantity > 1 && (
+                  {quantity > 1 && (
                     <div style={{ fontSize: '0.82rem',
                       color: 'var(--gray)',
                       marginTop: '0.25rem' }}>
-                      {formatPeso(unitPrice)} / pc
+                      Total: {formatPeso(unitPrice * quantity)}
                     </div>
                   )}
                 </div>
@@ -799,9 +818,13 @@ export default function ProductDetailPage() {
                   type="number"
                   value={quantity}
                   min={1}
+                  max={effectiveMaxQty}
                   onChange={e => setQuantity(
-                    Math.max(1,
-                      parseInt(e.target.value) || 1))}
+                    Math.min(
+                      Math.max(1, parseInt(e.target.value) || 1),
+                      effectiveMaxQty
+                    )
+                  )}
                   onKeyDown={e => ['e','E','+','-']
                     .includes(e.key) && e.preventDefault()}
                   style={{
@@ -818,7 +841,8 @@ export default function ProductDetailPage() {
                   }}
                 />
                 <button
-                  onClick={() => setQuantity(q => q + 1)}
+                  onClick={() => setQuantity(q => Math.min(q + 1, effectiveMaxQty))}
+                  disabled={quantity >= effectiveMaxQty}
                   style={{
                     width: '36px', height: '36px',
                     borderRadius: '8px', border:
@@ -899,6 +923,17 @@ export default function ProductDetailPage() {
                     onChange={e => {
                       const f = e.target.files?.[0];
                       if (f) {
+                        if (f.size > 10 * 1024 * 1024) {
+                          setError('File must be under 10MB.');
+                          e.target.value = '';
+                          return;
+                        }
+                        const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+                        if (!ALLOWED_TYPES.includes(f.type)) {
+                          setError('Only JPG, PNG, WebP, or PDF files are allowed.');
+                          e.target.value = '';
+                          return;
+                        }
                         // Store URL via URL.createObjectURL for preview only.
                         // Actual upload happens at checkout via FormData.
                         setDesignUrl(URL.createObjectURL(f));
@@ -1218,7 +1253,26 @@ export default function ProductDetailPage() {
                   <input
                     type="file"
                     accept=".jpg,.jpeg,.png,.pdf,.ai,.psd,.svg"
-                    onChange={e => setReqDesignFile(e.target.files?.[0] ?? null)}
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (!f) { setReqDesignFile(null); return; }
+                      const ALLOWED_TYPES = [
+                        'image/jpeg', 'image/png', 'application/pdf',
+                        'image/svg+xml', 'image/webp',
+                      ];
+                      if (f.size > 10 * 1024 * 1024) {
+                        setReqError('Design file must be under 10MB.');
+                        e.target.value = '';
+                        return;
+                      }
+                      if (!ALLOWED_TYPES.includes(f.type) && !f.name.match(/\.(ai|psd)$/i)) {
+                        setReqError('Only JPG, PNG, PDF, AI, PSD, or SVG files are allowed.');
+                        e.target.value = '';
+                        return;
+                      }
+                      setReqError('');
+                      setReqDesignFile(f);
+                    }}
                     style={{
                       width: '100%', padding: '0.625rem 0.875rem',
                       background: 'var(--dark2)',
@@ -1302,5 +1356,109 @@ export default function ProductDetailPage() {
         </div>
       )}
     </div>
+
+    {/* ── Image Lightbox ───────────────────────────────────────────── */}
+    {lightboxOpen && (() => {
+      const imgs = [
+        ...(product?.thumbnail ? [product.thumbnail] : []),
+        ...(product?.images || []),
+      ].filter(Boolean);
+      if (!imgs.length) return null;
+      const prev = () => setLightboxIndex(i => (i - 1 + imgs.length) % imgs.length);
+      const next = () => setLightboxIndex(i => (i + 1) % imgs.length);
+      const handleKey = (e) => {
+        if (e.key === 'ArrowLeft') prev();
+        if (e.key === 'ArrowRight') next();
+        if (e.key === 'Escape') setLightboxOpen(false);
+      };
+      return (
+        <div
+          onClick={() => setLightboxOpen(false)}
+          onKeyDown={handleKey}
+          tabIndex={-1}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 99999,
+            background: 'rgba(0,0,0,0.92)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          {/* Close */}
+          <button
+            onClick={() => setLightboxOpen(false)}
+            style={{
+              position: 'absolute', top: '1rem', right: '1rem',
+              background: 'rgba(255,255,255,0.08)', border: 'none',
+              borderRadius: '50%', width: '40px', height: '40px',
+              color: '#fff', fontSize: '1.2rem', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >✕</button>
+
+          {/* Prev */}
+          {imgs.length > 1 && (
+            <button
+              onClick={e => { e.stopPropagation(); prev(); }}
+              style={{
+                position: 'absolute', left: '1rem',
+                background: 'rgba(255,255,255,0.08)', border: 'none',
+                borderRadius: '50%', width: '44px', height: '44px',
+                color: '#fff', fontSize: '1.3rem', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >‹</button>
+          )}
+
+          {/* Image */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imgs[lightboxIndex]}
+            alt=""
+            onClick={e => e.stopPropagation()}
+            style={{
+              maxWidth: '90vw', maxHeight: '90vh',
+              objectFit: 'contain', borderRadius: '8px',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
+              userSelect: 'none',
+            }}
+          />
+
+          {/* Next */}
+          {imgs.length > 1 && (
+            <button
+              onClick={e => { e.stopPropagation(); next(); }}
+              style={{
+                position: 'absolute', right: '1rem',
+                background: 'rgba(255,255,255,0.08)', border: 'none',
+                borderRadius: '50%', width: '44px', height: '44px',
+                color: '#fff', fontSize: '1.3rem', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >›</button>
+          )}
+
+          {/* Dot indicators */}
+          {imgs.length > 1 && (
+            <div style={{
+              position: 'absolute', bottom: '1.25rem', left: 0, right: 0,
+              display: 'flex', justifyContent: 'center', gap: '6px',
+            }}>
+              {imgs.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={e => { e.stopPropagation(); setLightboxIndex(i); }}
+                  style={{
+                    width: i === lightboxIndex ? '20px' : '8px',
+                    height: '8px', borderRadius: '4px',
+                    background: i === lightboxIndex ? 'var(--gold)' : 'rgba(255,255,255,0.3)',
+                    border: 'none', cursor: 'pointer',
+                    transition: 'width 0.2s, background 0.2s', padding: 0,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    })()}
   );
 }

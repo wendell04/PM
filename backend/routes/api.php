@@ -43,7 +43,6 @@ Route::post('/auth/logout',     [AuthController::class, 'logout'])->middleware('
 Route::get('/auth/me', function (Request $request) {
     return response()->json($request->user());
 })->middleware('auth:sanctum');
-Route::post('/auth/verify-2fa', [TwoFactorController::class, 'verifyOtp'])->middleware('auth:sanctum');
 Route::post('/verify-email',    [AuthController::class, 'verify'])->middleware('throttle:5,1');
 Route::post('/resend-code',     [AuthController::class, 'resend'])->middleware('throttle:5,1');
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
@@ -59,10 +58,11 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 // ─── Products (Public — no auth required) ────────────────────────────────────
-Route::get('/products/search', [ProductController::class, 'search'])
-    ->middleware('throttle:60,1');
-Route::get('/products',             [ProductController::class, 'index']);
-Route::get('/products/{id}',        [ProductController::class, 'show']);
+Route::middleware('throttle:60,1')->group(function () {
+    Route::get('/products/search', [ProductController::class, 'search']);
+    Route::get('/products',        [ProductController::class, 'index']);
+    Route::get('/products/{id}',   [ProductController::class, 'show']);
+});
 
 // ─── Protected — any authenticated user ──────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
@@ -111,11 +111,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/my/permissions',         [RolePermissionController::class, 'myPermissions']);
 });
 
-// ─── Admin (authenticated + admin role required) ──────────────────────────────
+// ─── Owner/Admin only — store config, staff management, role permissions ─────
+Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
+    Route::get('/admin/settings',                   [SettingsController::class, 'show']);
+    Route::put('/admin/settings',                   [SettingsController::class, 'update']);
+
+    Route::get('/admin/role-permissions',            [RolePermissionController::class, 'index']);
+    Route::put('/admin/role-permissions/{role}',     [RolePermissionController::class, 'update']);
+
+    Route::get('/admin/staff',                       [StaffController::class, 'index']);
+    Route::post('/admin/staff',                      [StaffController::class, 'store']);
+    Route::put('/admin/staff/{id}',                  [StaffController::class, 'update']);
+    Route::delete('/admin/staff/{id}',               [StaffController::class, 'destroy']);
+});
+
+// ─── Admin (authenticated + any staff role) ───────────────────────────────────
 Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
-    // ─── Store settings (admin) ───────────────────────────────────────────────
-    Route::get('/admin/settings',  [SettingsController::class, 'show']);
-    Route::put('/admin/settings',  [SettingsController::class, 'update']);
 
     // ─── Suppliers ────────────────────────────────────────────────────────────
     Route::get('/admin/suppliers',               [SupplierController::class, 'index']);
@@ -218,16 +229,6 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/order-requests/{id}',          [OrderRequestController::class, 'show']);
     Route::patch('/admin/order-requests/{id}/status', [OrderRequestController::class, 'updateStatus']);
 
-    // ─── Role Permissions ────────────────────────────────────────────────────
-    Route::get('/admin/role-permissions',             [RolePermissionController::class, 'index']);
-    Route::put('/admin/role-permissions/{role}',      [RolePermissionController::class, 'update']);
-
-    // ─── Staff Management ────────────────────────────────────────────────────
-    Route::get('/admin/staff',                        [StaffController::class, 'index']);
-    Route::post('/admin/staff',                       [StaffController::class, 'store']);
-    Route::put('/admin/staff/{id}',                   [StaffController::class, 'update']);
-    Route::delete('/admin/staff/{id}',                [StaffController::class, 'destroy']);
-
     // ─── Bill of Materials ─────────────────────────────────────────────────────────────────────
     Route::get('/admin/bom',                          [BillOfMaterialController::class, 'index']);
     Route::post('/admin/bom',                         [BillOfMaterialController::class, 'store']);
@@ -282,6 +283,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/2fa/verify',        [TwoFactorController::class, 'verifyOtp']);
     Route::post('/2fa/remember-device', [TwoFactorController::class, 'rememberDevice']);
     Route::post('/2fa/check-device',  [TwoFactorController::class, 'checkDevice']);
+    Route::post('/2fa/toggle',        [TwoFactorController::class, 'toggle']);
 
     // Device token revoke
     Route::delete('/2fa/device/{token}', [TwoFactorController::class, 'revokeDevice']);

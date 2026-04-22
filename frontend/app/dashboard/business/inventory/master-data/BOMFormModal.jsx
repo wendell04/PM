@@ -89,12 +89,20 @@ const ghostBtnStyle = {
 export default function BOMFormModal({
   bom,
   materials,
+  units,
   onClose,
   onSave,
   onSaveBatch,
 }) {
   const { token } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const uomLabel = (code) => {
+    if (!code) return '';
+    if (!units || units.length === 0) return code;
+    const u = units.find((u) => u.code === code);
+    return u ? u.name : code;
+  };
   const [submitError, setSubmitError] = useState("");
   const [form, setForm] = useState({
     productName: "",
@@ -1010,7 +1018,7 @@ export default function BOMFormModal({
                         key={idx}
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "1fr 72px 100px 36px",
+                          gridTemplateColumns: "1fr 72px 52px 100px 36px",
                           gap: "0.75rem",
                           alignItems: "center",
                           padding: "0.875rem 1rem",
@@ -1077,6 +1085,22 @@ export default function BOMFormModal({
                               0
                             </span>
                           )}
+                        </div>
+                        <div
+                          style={{
+                            textAlign: "center",
+                            fontSize: "0.62rem",
+                            fontWeight: 700,
+                            color: "var(--gray)",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.04em",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={selectedMat ? uomLabel(selectedMat.uom) : ''}
+                        >
+                          {selectedMat ? uomLabel(selectedMat.uom) : '—'}
                         </div>
                         <div
                           style={{

@@ -4,9 +4,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchMyOrders, fetchMyOrder } from '@/lib/orderTrackingApi';
+import { fetchMyShopOrders, fetchMyOrder } from '@/lib/orderTrackingApi';
 import { StatusBadge, formatDate, formatPeso } from '@/lib/shopUtils';
 import { getEcho, disconnectEcho } from '@/lib/echo';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { useCart } from '@/app/shop/layout';
 
 const TRACK_STEPS = [
   {
@@ -56,7 +58,12 @@ const TRACK_STEPS = [
   },
 ];
 
-function OrderTracker({ status }) {
+function OrderTracker({ status, statusHistory = [] }) {
+  const historyMap = {};
+  (statusHistory || []).forEach(entry => {
+    if (entry?.status && entry?.at) historyMap[entry.status] = entry.at;
+  });
+
   const isTerminal = status === 'Cancelled' || status === 'Returned';
   const currentIdx = TRACK_STEPS.findIndex(s => s.key === status);
 
@@ -180,7 +187,7 @@ function OrderTracker({ status }) {
                   </svg>
                 ) : step.icon}
               </div>
-              {/* Label */}
+              {/* Label + timestamp */}
               <div style={{
                 marginTop: '0.4rem',
                 fontSize: '0.68rem',
@@ -188,10 +195,27 @@ function OrderTracker({ status }) {
                 color: isCurrent ? 'var(--gold)' : isDone ? 'var(--white)' : 'var(--gray)',
                 textAlign: 'center',
                 lineHeight: 1.3,
-                maxWidth: '60px',
+                maxWidth: '68px',
                 transition: 'color 0.3s',
               }}>
                 {step.label}
+                {(isDone || isCurrent) && historyMap[step.key] && (
+                  <div style={{
+                    marginTop: '3px',
+                    fontSize: '0.6rem',
+                    color: 'var(--gray)',
+                    fontWeight: 400,
+                    lineHeight: 1.3,
+                  }}>
+                    {new Date(historyMap[step.key]).toLocaleDateString('en-PH', {
+                      month: 'short', day: 'numeric',
+                    })}
+                    {' '}
+                    {new Date(historyMap[step.key]).toLocaleTimeString('en-PH', {
+                      hour: 'numeric', minute: '2-digit', hour12: true,
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -223,6 +247,7 @@ function SkeletonCard() {
 // ─── Main Page ──────────────────────────────────────────
 export default function OrdersHistoryPage() {
   const { token } = useAuth();
+  const { addToCart } = useCart();
   const router = useRouter();
 
   const [orders, setOrders]             = useState([]);
@@ -234,6 +259,10 @@ export default function OrdersHistoryPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError]     = useState(null);
   const [modalOpen, setModalOpen]         = useState(false);
+
+  // Reorder
+  const [reorderLoading, setReorderLoading] = useState(false);
+  const [reorderMsg, setReorderMsg]         = useState('');
 
   // Cancel dialog
   const [cancelTarget, setCancelTarget]   = useState(null);
@@ -247,8 +276,8 @@ export default function OrdersHistoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchMyOrders(token);
-      const raw = data?.data ?? (Array.isArray(data) ? data : []);
+      const data = await fetchMyShopOrders(token);
+      const raw = Array.isArray(data) ? data : [];
       setOrders(raw);
       setVisibleCount(5);
     } catch (err) {
@@ -325,7 +354,7 @@ export default function OrdersHistoryPage() {
     setDetailLoading(true);
     setModalOpen(true);
     try {
-      const data = await fetchMyOrder(order.id ?? order._id, token);
+      const data = await fetchMyOrder(token, order.id ?? order._id);
       const detail = data?.data ?? data;
       setSelectedOrder(detail);
     } catch (err) {
@@ -347,14 +376,18 @@ export default function OrdersHistoryPage() {
     setCancelError(null);
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-      const res = await fetch(`${API_URL}/api/orders/my/${cancelTarget._id ?? cancelTarget.id}/cancel`, {
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      };
+      if (process.env.NODE_ENV === 'development') {
+        headers['ngrok-skip-browser-warning'] = '1';
+      }
+      const res = await fetchWithTimeout(`${API_URL}/api/orders/my/${cancelTarget._id ?? cancelTarget.id}/cancel`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-          'ngrok-skip-browser-warning': '1',
-        },
-      });
+        headers,
+      }, 15000);
       const data = await res.json();
       if (!res.ok) {
         setCancelError(data.message || 'Failed to cancel order.');
@@ -366,6 +399,33 @@ export default function OrdersHistoryPage() {
       setCancelError(err.message || 'Failed to cancel order.');
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const handleReorder = async () => {
+    if (!selectedOrder?.items?.length) return;
+    setReorderLoading(true);
+    setReorderMsg('');
+    try {
+      for (const item of selectedOrder.items) {
+        await addToCart(
+          {
+            _id:       item.productId,
+            name:      item.productName,
+            price:     item.unitPrice,
+            flatPrice: item.unitPrice,
+          },
+          item.qty ?? 1,
+          item.variantId   ?? null,
+          item.variantName ?? null,
+        );
+      }
+      setReorderMsg('Items added to cart!');
+      setTimeout(() => setReorderMsg(''), 3000);
+    } catch {
+      setReorderMsg('Failed to add items to cart.');
+    } finally {
+      setReorderLoading(false);
     }
   };
 
@@ -428,19 +488,35 @@ export default function OrdersHistoryPage() {
         {/* Empty */}
         {!loading && !error && orders.length === 0 && (
           <div style={{
-            textAlign: 'center', padding: '4rem 1rem',
-            color: 'var(--gray)',
+            textAlign: 'center', padding: '4rem 1.5rem',
+            background: 'rgba(212,168,67,0.03)',
+            border: '1px dashed rgba(212,168,67,0.15)',
+            borderRadius: '16px',
           }}>
-            <div style={{ fontSize: '2rem', marginBottom: '12px' }}>🛍️</div>
-            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--white)', marginBottom: '8px' }}>
+            <div style={{
+              width: '80px', height: '80px',
+              borderRadius: '50%',
+              background: 'rgba(212,168,67,0.08)',
+              border: '1px solid rgba(212,168,67,0.15)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 1.25rem',
+            }}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
+                stroke="rgba(212,168,67,0.6)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <path d="M16 10a4 4 0 0 1-8 0"/>
+              </svg>
+            </div>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)', marginBottom: '6px' }}>
               No orders yet
             </div>
-            <div style={{ fontSize: '0.875rem', marginBottom: '20px' }}>
-              Your purchase history will appear here.
+            <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+              Your purchase history will appear here once you place an order.
             </div>
             <Link href="/shop" style={{
               display: 'inline-block',
-              padding: '10px 24px',
+              padding: '10px 28px',
               borderRadius: '8px',
               background: 'var(--gold)',
               color: 'var(--dark)',
@@ -644,7 +720,10 @@ export default function OrdersHistoryPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
                   {/* Order Tracker */}
-                  <OrderTracker status={selectedOrder.orderStatus} />
+                  <OrderTracker
+                    status={selectedOrder.orderStatus}
+                    statusHistory={selectedOrder.statusHistory}
+                  />
 
                   {/* Section 1: Order Summary */}
                   <div>
@@ -905,20 +984,60 @@ export default function OrdersHistoryPage() {
             <div style={{
               padding: '16px 24px',
               borderTop: '1px solid var(--border)',
-              display: 'flex', justifyContent: 'flex-end',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              flexWrap: 'wrap',
             }}>
-              <button
-                onClick={closeModal}
-                style={{
-                  padding: '10px 24px', borderRadius: '8px',
-                  border: '1px solid var(--border)',
-                  background: 'var(--dark)',
-                  color: 'var(--gray)', fontSize: '0.875rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Close
-              </button>
+              <div>
+                {reorderMsg && (
+                  <span style={{
+                    fontSize: '0.8rem',
+                    color: reorderMsg.includes('Failed') ? 'var(--red)' : 'var(--green)',
+                    fontWeight: 600,
+                  }}>
+                    {reorderMsg}
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {!detailLoading && !detailError && selectedOrder?.items?.length > 0 &&
+                  !['Cancelled'].includes(selectedOrder.orderStatus) && (
+                  <button
+                    onClick={handleReorder}
+                    disabled={reorderLoading}
+                    style={{
+                      padding: '10px 20px', borderRadius: '8px',
+                      border: 'none',
+                      background: 'var(--gold)',
+                      color: 'var(--dark)', fontSize: '0.875rem',
+                      fontWeight: 700, cursor: reorderLoading ? 'not-allowed' : 'pointer',
+                      opacity: reorderLoading ? 0.7 : 1,
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="1 4 1 10 7 10"/>
+                      <path d="M3.51 15a9 9 0 1 0 .49-3.39"/>
+                    </svg>
+                    {reorderLoading ? 'Adding...' : 'Reorder'}
+                  </button>
+                )}
+                <button
+                  onClick={closeModal}
+                  style={{
+                    padding: '10px 24px', borderRadius: '8px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--dark)',
+                    color: 'var(--gray)', fontSize: '0.875rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

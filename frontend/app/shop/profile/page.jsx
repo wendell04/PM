@@ -11,7 +11,6 @@ import AddressBook from '../../../components/profile/AddressBook'; // NEW: Addre
 import { fetchMyOrders } from '../../../lib/orderTrackingApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { StatusBadge } from '@/lib/shopUtils';
-import OrderQuickViewModal from '../../../components/orders/OrderQuickViewModal';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -70,7 +69,6 @@ export default function CustomerProfilePage() {
   // Orders state
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [ordersError, setOrdersError] = useState('');
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   // Order Requests widget state (for Orders tab)
@@ -85,9 +83,17 @@ export default function CustomerProfilePage() {
   const [revokingId, setRevokingId] = useState(null);
   const [revokeAllLoading, setRevokeAllLoading] = useState(false);
   const [sessionsSuccess, setSessionsSuccess] = useState('');
+  const [sessionsOpen, setSessionsOpen]       = useState(false);
+  const [devicesOpen, setDevicesOpen]         = useState(false);
   const [deviceTokens, setDeviceTokens]       = useState([]);
   const [revokingDevice, setRevokingDevice]   = useState(null);
   const [deviceError, setDeviceError]         = useState('');
+
+  // 2FA toggle state
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [twoFaToggling, setTwoFaToggling]       = useState(false);
+  const [twoFaError, setTwoFaError]             = useState('');
+  const [twoFaSuccess, setTwoFaSuccess]         = useState('');
 
   // Ref to track if tab has mounted (to prevent reset on initial mount)
   const hasTabMounted = useRef(false);
@@ -113,6 +119,9 @@ export default function CustomerProfilePage() {
       router.push('/dashboard/business');
       return;
     }
+
+    // Sync 2FA toggle from stored user
+    setTwoFactorEnabled(!!user.two_factor_enabled);
 
     // Populate form
     setProfileForm({
@@ -148,12 +157,12 @@ export default function CustomerProfilePage() {
 
     const load = async () => {
       setOrdersLoading(true);
-      setOrdersError(null);
+      setWidgetError('');
       try {
         const data = await fetchMyOrders(token);
         setOrders(data.data || data || []);
       } catch (err) {
-        setOrdersError(err.message || 'Failed to load orders.');
+        setWidgetError(err.message || 'Failed to load orders.');
       } finally {
         setOrdersLoading(false);
       }
@@ -228,8 +237,8 @@ export default function CustomerProfilePage() {
       setSaveError('First name and last name are required');
       return;
     }
-    if (!profileForm.phoneNumber.trim()) {
-      setSaveError('Phone number is required');
+    if (!profileForm.phoneNumber.trim() || !/^\+63\d{10}$/.test(profileForm.phoneNumber.trim())) {
+      setSaveError('Phone number must be in the format +63XXXXXXXXXX (e.g. +639171234567).');
       return;
     }
     if (!profileForm.address.trim() || profileForm.address.trim().length < 3) {
@@ -275,8 +284,25 @@ export default function CustomerProfilePage() {
       setPasswordError('Current password is required.');
       return;
     }
-    if (passwordForm.newPassword.length < 8) {
+    const pw = passwordForm.newPassword;
+    if (pw.length < 8) {
       setPasswordError('New password must be at least 8 characters.');
+      return;
+    }
+    if (!/[A-Z]/.test(pw)) {
+      setPasswordError('New password must contain at least one uppercase letter.');
+      return;
+    }
+    if (!/[a-z]/.test(pw)) {
+      setPasswordError('New password must contain at least one lowercase letter.');
+      return;
+    }
+    if (!/\d/.test(pw)) {
+      setPasswordError('New password must contain at least one number.');
+      return;
+    }
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(pw)) {
+      setPasswordError('New password must contain at least one special character.');
       return;
     }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
@@ -475,6 +501,43 @@ export default function CustomerProfilePage() {
       setDeviceError(err.message || 'Failed to remove device.');
     } finally {
       setRevokingDevice(null);
+    }
+  };
+
+  const handleToggle2FA = async () => {
+    setTwoFaToggling(true);
+    setTwoFaError('');
+    setTwoFaSuccess('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/2fa/toggle`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      }, 10000);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to update 2FA setting.');
+      const next = !!data.two_factor_enabled;
+      setTwoFactorEnabled(next);
+      setTwoFaSuccess(data.message || (next ? 'Two-factor authentication enabled.' : 'Two-factor authentication disabled.'));
+      setTimeout(() => setTwoFaSuccess(''), 3000);
+      // Persist into stored user so it survives a page refresh
+      try {
+        const ss = sessionStorage.getItem('auth_user');
+        const ls = localStorage.getItem('auth_user');
+        const storage = ss ? sessionStorage : localStorage;
+        const raw = ss || ls;
+        if (raw) {
+          const u = JSON.parse(raw);
+          u.two_factor_enabled = next;
+          storage.setItem('auth_user', JSON.stringify(u));
+        }
+      } catch {}
+    } catch (err) {
+      setTwoFaError(err.message || 'Failed to update 2FA setting.');
+    } finally {
+      setTwoFaToggling(false);
     }
   };
 
@@ -1591,7 +1654,19 @@ export default function CustomerProfilePage() {
                           : 'Revoke All Others'}
                       </button>
                     )}
+                    <button
+                      onClick={() => setSessionsOpen(v => !v)}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--gold)', fontSize: '0.8rem', fontWeight: 600,
+                        padding: '0.25rem 0.5rem',
+                      }}
+                    >
+                      {sessionsOpen ? 'Hide' : 'Show'}
+                    </button>
                   </div>
+
+                  {sessionsOpen && (<>
 
                   {sessionsSuccess && (
                     <div style={{
@@ -1799,6 +1874,8 @@ export default function CustomerProfilePage() {
                       ))}
                     </div>
                   )}
+
+                  </>)}
                 </div>
               </div>
             )}
@@ -1819,45 +1896,116 @@ export default function CustomerProfilePage() {
                   Two-factor authentication
                 </h3>
                 <div style={{
-                  padding: '1rem',
+                  padding: '1rem 1.25rem',
                   background: 'var(--dark)',
                   border: '1px solid var(--border)',
                   borderRadius: '10px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '0.5rem',
+                  gap: '0.75rem',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      padding: '0.2rem 0.6rem',
-                      borderRadius: '20px',
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                      background: 'rgba(74,222,128,0.12)',
-                      color: 'var(--green)',
-                    }}>
-                      Active
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: '20px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        background: twoFactorEnabled ? 'rgba(74,222,128,0.12)' : 'rgba(156,163,175,0.12)',
+                        color: twoFactorEnabled ? 'var(--green)' : 'var(--gray)',
+                      }}>
+                        {twoFactorEnabled ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </div>
+                    {/* Toggle switch */}
+                    <button
+                      onClick={handleToggle2FA}
+                      disabled={twoFaToggling}
+                      aria-pressed={twoFactorEnabled}
+                      aria-label="Toggle two-factor authentication"
+                      style={{
+                        position: 'relative',
+                        width: '44px',
+                        height: '24px',
+                        borderRadius: '12px',
+                        border: 'none',
+                        cursor: twoFaToggling ? 'not-allowed' : 'pointer',
+                        background: twoFactorEnabled ? 'var(--gold)' : 'var(--border)',
+                        transition: 'background 0.2s',
+                        padding: 0,
+                        opacity: twoFaToggling ? 0.6 : 1,
+                      }}
+                    >
+                      <span style={{
+                        position: 'absolute',
+                        top: '3px',
+                        left: twoFactorEnabled ? '23px' : '3px',
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
+                        background: '#fff',
+                        transition: 'left 0.2s',
+                      }} />
+                    </button>
                   </div>
-                  <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray-light)' }}>
-                    Email verification is required at every login. A one-time
-                    code is sent to your registered email address.
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>
+                    {twoFactorEnabled
+                      ? 'A one-time code is sent to your email at every login. Trusted devices can skip this step.'
+                      : 'Enable to require email verification on each login for extra account security.'}
                   </p>
+                  {twoFaError && (
+                    <div style={{
+                      padding: '0.5rem 0.75rem',
+                      background: 'rgba(239,68,68,0.08)',
+                      border: '1px solid rgba(239,68,68,0.25)',
+                      borderRadius: '6px',
+                      color: 'var(--red)',
+                      fontSize: '0.8rem',
+                    }}>
+                      {twoFaError}
+                    </div>
+                  )}
+                  {twoFaSuccess && (
+                    <div style={{
+                      padding: '0.5rem 0.75rem',
+                      background: 'rgba(74,222,128,0.08)',
+                      border: '1px solid rgba(74,222,128,0.2)',
+                      borderRadius: '6px',
+                      color: 'var(--green)',
+                      fontSize: '0.8rem',
+                    }}>
+                      {twoFaSuccess}
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ marginTop: '1.5rem' }}>
-                  <h3 style={{
-                    margin: '0 0 0.75rem',
-                    fontSize: '0.9375rem',
-                    fontWeight: 700,
-                    color: 'var(--white)',
-                  }}>
-                    Connected Devices ({deviceTokens.length})
-                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                    <h3 style={{
+                      margin: 0,
+                      fontSize: '0.9375rem',
+                      fontWeight: 700,
+                      color: 'var(--white)',
+                    }}>
+                      Connected Devices ({deviceTokens.length})
+                    </h3>
+                    <button
+                      onClick={() => setDevicesOpen(v => !v)}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--gold)', fontSize: '0.8rem', fontWeight: 600,
+                        padding: '0.25rem 0.5rem',
+                      }}
+                    >
+                      {devicesOpen ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+
+                  {devicesOpen && (<>
 
                   {deviceError && (
                     <div style={{
@@ -1954,6 +2102,8 @@ export default function CustomerProfilePage() {
                       })}
                     </ul>
                   )}
+
+                  </>)}
                 </div>
               </div>
             )}

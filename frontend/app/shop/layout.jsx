@@ -47,6 +47,9 @@ function toLayoutItem(item) {
       thumbnail: item.image,
       price: unitPrice,
       flatPrice: unitPrice,
+      stock: item.stock ?? null,
+      trackInventory: item.trackInventory ?? false,
+      stockStatus: item.stockStatus ?? null,
     },
     variantId: item.variantId || null,
     variantName: item.variantName || null,
@@ -87,6 +90,13 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const emailTrimmed = email.trim();
+    const newErrors = { email: '', password: '' };
+    if (!emailTrimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed))
+      newErrors.email = 'Please enter a valid email address.';
+    if (!password)
+      newErrors.password = 'Password is required.';
+    if (newErrors.email || newErrors.password) { setErrors(newErrors); return; }
     setErrors({ email: '', password: '' });
     setLoading(true);
 
@@ -94,7 +104,7 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
       const res = await fetchWithTimeout(`${API_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, device_token: localStorage.getItem('device_token') || null }),
       }, 15000);
 
       const data = await res.json();
@@ -837,6 +847,7 @@ export default function ShopLayout({ children }) {
     const dashboardRolesLogin = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
     if (dashboardRolesLogin.includes(userData.role)) {
       sessionStorage.removeItem('pre_login_redirect');
+      setAuthModalOpen(false);
       window.location.href = '/dashboard/business/dashboardoverview';
       return;
     }
@@ -888,6 +899,7 @@ export default function ShopLayout({ children }) {
     // Redirect admin/owner to dashboard
     const dashboardRolesReg = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
     if (dashboardRolesReg.includes(userData.role)) {
+      setAuthModalOpen(false);
       window.location.href = '/dashboard/business/dashboardoverview';
       return;
     }
@@ -942,11 +954,14 @@ export default function ShopLayout({ children }) {
         `${(i.product.id ?? i.product._id)}_${i.variantId ?? 'none'}` === key
       );
       if (exists) {
-        return prev.map(i =>
-          `${(i.product.id ?? i.product._id)}_${i.variantId ?? 'none'}` === key
-            ? { ...i, qty: i.qty + qty, lineTotal: (i.qty + qty) * i.unitPrice }
-            : i
-        );
+        return prev.map(i => {
+          if (`${(i.product.id ?? i.product._id)}_${i.variantId ?? 'none'}` !== key) return i;
+          const stockCap = i.trackInventory && i.stockStatus !== 'upon-order'
+            ? Math.max(i.stock ?? 99, 1)
+            : 99;
+          const newQty = Math.min(i.qty + qty, stockCap);
+          return { ...i, qty: newQty, lineTotal: newQty * i.unitPrice };
+        });
       }
       const unitPrice = product.flatPrice || product.price || 0;
       return [...prev, {
@@ -956,6 +971,9 @@ export default function ShopLayout({ children }) {
         qty,
         unitPrice,
         lineTotal: qty * unitPrice,
+        stock: product.stock ?? null,
+        trackInventory: product.trackInventory ?? false,
+        stockStatus: product.stockStatus ?? null,
       }];
     });
   }
@@ -1697,6 +1715,7 @@ export default function ShopLayout({ children }) {
             token={twoFaToken}
             userEmail={twoFaEmail}
             userRole={twoFaRole}
+            persistLogin={twoFaPendingRememberMe}
             onSuccess={(redirectTo) => {
               // OTP verified — now write credentials to storage
               if (twoFaPendingUser && twoFaToken) {
@@ -1897,6 +1916,61 @@ export default function ShopLayout({ children }) {
           </div>
         )}
       </div>
+
+      {/* Floating cart FAB — mobile only, hidden on cart page */}
+      {pathname !== '/shop/cart' && globalCartCount > 0 && (
+        <Link
+          href="/shop/cart"
+          aria-label={`View cart (${globalCartCount} items)`}
+          style={{
+            position: 'fixed',
+            bottom: '1.5rem',
+            left: '1.5rem',
+            zIndex: 9990,
+            width: '52px',
+            height: '52px',
+            borderRadius: '50%',
+            background: 'var(--gold)',
+            display: 'none',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+            textDecoration: 'none',
+          }}
+          className="shop-fab-cart"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+            stroke="#0f0f0f" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="9" cy="21" r="1"/>
+            <circle cx="20" cy="21" r="1"/>
+            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+          </svg>
+          <span style={{
+            position: 'absolute',
+            top: '-4px',
+            right: '-4px',
+            background: '#0f0f0f',
+            color: 'var(--gold)',
+            borderRadius: '50%',
+            width: '20px',
+            height: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '0.65rem',
+            fontWeight: 800,
+            border: '2px solid var(--gold)',
+          }}>
+            {globalCartCount > 99 ? '99+' : globalCartCount}
+          </span>
+        </Link>
+      )}
+
+      <style>{`
+        @media (max-width: 768px) {
+          .shop-fab-cart { display: flex !important; }
+        }
+      `}</style>
 
     </>
   );
