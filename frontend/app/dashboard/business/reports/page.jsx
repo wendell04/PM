@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import ErrorBoundary from '../../../../components/ErrorBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import CustomDropdown from '@/app/components/CustomDropdown';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -645,15 +646,16 @@ export default function ReportsPage() {
                     onClear={clearSalesDates}
                     loading={salesLoading}
                   />
-                  <select
+                  <CustomDropdown
                     value={salesGroupBy}
-                    onChange={(e) => setSalesGroupBy(e.target.value)}
-                    style={{ ...selectStyle, minWidth: '140px' }}
-                  >
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
+                    onChange={v => setSalesGroupBy(v)}
+                    options={[
+                      { value: 'daily', label: 'Daily' },
+                      { value: 'weekly', label: 'Weekly' },
+                      { value: 'monthly', label: 'Monthly' },
+                    ]}
+                    style={{ minWidth: '140px' }}
+                  />
                 </div>
                 {salesError && <ErrorMessage message={salesError} onRetry={fetchSales} />}
                 {salesLoading && <LoadingRows />}
@@ -840,17 +842,17 @@ export default function ReportsPage() {
                   <label htmlFor="inv-filter" style={{ fontSize: '0.82rem', color: 'var(--gray)' }}>
                     Filter
                   </label>
-                  <select
-                    id="inv-filter"
+                  <CustomDropdown
                     value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    style={{ ...selectStyle, minWidth: '200px' }}
-                  >
-                    <option value="all">All Stock</option>
-                    <option value="low-stock">Low Stock</option>
-                    <option value="out-of-stock">Out of Stock</option>
-                    <option value="upon-order">Upon Order</option>
-                  </select>
+                    onChange={v => setStatusFilter(v)}
+                    options={[
+                      { value: 'all', label: 'All Stock' },
+                      { value: 'low-stock', label: 'Low Stock' },
+                      { value: 'out-of-stock', label: 'Out of Stock' },
+                      { value: 'upon-order', label: 'Upon Order' },
+                    ]}
+                    style={{ minWidth: '200px' }}
+                  />
                 </div>
                 {inventoryError && <ErrorMessage message={inventoryError} onRetry={fetchInventory} />}
                 {inventoryLoading && <LoadingRows />}

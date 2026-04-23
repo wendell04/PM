@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchAllOrdersNew, updateOrder as updateOrderApi, updateJobOrderStatus } from '@/lib/ordersApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStatusBadge } from '@/lib/utils/orderHelpers';
+import CustomDropdown from '@/app/components/CustomDropdown';
 
 const OrderQuickViewModal = dynamic(
   () => import('@/components/orders/OrderQuickViewModal'),
@@ -271,74 +272,46 @@ export default function OrdersPage() {
         </div>
         
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{
-            padding: '0.5rem 0.75rem',
-            background: 'var(--dark2)',
-            border: '1px solid var(--border)',
-            borderRadius: '6px',
-            color: 'var(--white)',
-            fontSize: '0.875rem',
-            cursor: 'pointer',
-            minWidth: '140px'
-          }}>
-            {['All','Pending','In Production','For Delivery','Delivered','Returned','Cancelled'].map(s => <option key={s} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{s}</option>)}
-          </select>
+          <CustomDropdown
+            value={filterStatus}
+            onChange={v => setFilterStatus(v)}
+            options={['All','Pending','In Production','For Delivery','Delivered','Returned','Cancelled'].map(s => ({ value: s, label: s }))}
+            style={{ minWidth: '150px' }}
+          />
 
-          <select value={dateFilter} onChange={e => setDateFilter(e.target.value)} style={{
-            padding: '0.5rem 0.75rem',
-            background: 'var(--dark2)',
-            border: '1px solid var(--border)',
-            borderRadius: '6px',
-            color: 'var(--white)',
-            fontSize: '0.875rem',
-            cursor: 'pointer',
-            minWidth: '120px'
-          }}>
-            <option value="today" style={{ background: 'var(--dark)', color: 'var(--white)' }}>Today</option>
-            <option value="this-week" style={{ background: 'var(--dark)', color: 'var(--white)' }}>This Week</option>
-            <option value="this-month" style={{ background: 'var(--dark)', color: 'var(--white)' }}>This Month</option>
-            <option value="custom" style={{ background: 'var(--dark)', color: 'var(--white)' }}>Custom Range</option>
-          </select>
-          
+          <CustomDropdown
+            value={dateFilter}
+            onChange={v => setDateFilter(v)}
+            options={[
+              { value: 'today', label: 'Today' },
+              { value: 'this-week', label: 'This Week' },
+              { value: 'this-month', label: 'This Month' },
+              { value: 'custom', label: 'Custom Range' },
+            ]}
+            style={{ minWidth: '130px' }}
+          />
+
           {dateFilter === 'custom' && (
             <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-              <select value={customDateRange.fromMonth} onChange={e => setCustomDateRange(prev => ({ ...prev, fromMonth: parseInt(e.target.value) }))} style={{
-                padding: '0.5rem 0.5rem',
-                background: 'var(--dark2)',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                color: 'var(--white)',
-                fontSize: '0.75rem',
-                cursor: 'pointer',
-                minWidth: '100px'
-              }}>
-                {MONTHS.map((m, i) => <option key={i} value={i} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{m}</option>)}
-              </select>
+              <CustomDropdown
+                value={String(customDateRange.fromMonth)}
+                onChange={v => setCustomDateRange(prev => ({ ...prev, fromMonth: parseInt(v) }))}
+                options={MONTHS.map((m, i) => ({ value: String(i), label: m }))}
+                style={{ minWidth: '110px' }}
+              />
               <span style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>to</span>
-              <select value={customDateRange.toMonth} onChange={e => setCustomDateRange(prev => ({ ...prev, toMonth: parseInt(e.target.value) }))} style={{
-                padding: '0.5rem 0.5rem',
-                background: 'var(--dark2)',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                color: 'var(--white)',
-                fontSize: '0.75rem',
-                cursor: 'pointer',
-                minWidth: '100px'
-              }}>
-                {MONTHS.map((m, i) => <option key={i} value={i} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{m}</option>)}
-              </select>
-              <select value={customDateRange.year} onChange={e => setCustomDateRange(prev => ({ ...prev, year: parseInt(e.target.value) }))} style={{
-                padding: '0.5rem 0.5rem',
-                background: 'var(--dark2)',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                color: 'var(--white)',
-                fontSize: '0.75rem',
-                cursor: 'pointer',
-                minWidth: '80px'
-              }}>
-                {YEARS.map(y => <option key={y} value={y} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{y}</option>)}
-              </select>
+              <CustomDropdown
+                value={String(customDateRange.toMonth)}
+                onChange={v => setCustomDateRange(prev => ({ ...prev, toMonth: parseInt(v) }))}
+                options={MONTHS.map((m, i) => ({ value: String(i), label: m }))}
+                style={{ minWidth: '110px' }}
+              />
+              <CustomDropdown
+                value={String(customDateRange.year)}
+                onChange={v => setCustomDateRange(prev => ({ ...prev, year: parseInt(v) }))}
+                options={YEARS.map(y => ({ value: String(y), label: String(y) }))}
+                style={{ minWidth: '90px' }}
+              />
             </div>
           )}
         </div>
@@ -926,7 +899,8 @@ export default function OrdersPage() {
                                   try {
                                     await updateJobOrderStatus(o.joId, 'In Progress', token);
                                   } catch (err) {
-                                    console.error('Failed to start job order:', err);
+                                    setLoadError(err.message || 'Failed to start job order. Please try again.');
+                                    return;
                                   }
                                   setOrders(prev => prev.map(ord =>
                                     ord.id === o.id ? { ...ord, joStatus: 'In Progress' } : ord

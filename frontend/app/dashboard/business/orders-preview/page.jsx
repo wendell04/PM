@@ -229,6 +229,7 @@ export default function OrdersPreviewPage() {
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', note: '' });
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [alertModal, setAlertModal] = useState(null);
 
   const loadOrders = useCallback(async () => {
     if (!token) return;
@@ -289,7 +290,7 @@ export default function OrdersPreviewPage() {
       setTargetOrder(null);
       await loadOrders();
     } catch (err) {
-      alert(err.message || 'Failed to create job order');
+      setAlertModal({ type: 'error', message: err.message || 'Failed to create job order' });
     } finally {
       setActionLoading(false);
     }
@@ -307,7 +308,7 @@ export default function OrdersPreviewPage() {
       setTargetOrder(null);
       await loadOrders();
     } catch (err) {
-      alert(err.message || 'Failed to submit QC result');
+      setAlertModal({ type: 'error', message: err.message || 'Failed to submit QC result' });
     } finally {
       setActionLoading(false);
     }
@@ -323,7 +324,7 @@ export default function OrdersPreviewPage() {
     if (!token || !paymentTarget) return;
     const amount = parseFloat(paymentForm.amount);
     if (!amount || amount <= 0) {
-      alert('Please enter a valid amount');
+      setAlertModal({ type: 'error', message: 'Please enter a valid amount' });
       return;
     }
     setPaymentLoading(true);
@@ -341,7 +342,7 @@ export default function OrdersPreviewPage() {
       setPaymentTarget(null);
       await loadOrders();
     } catch (err) {
-      alert(err.message || 'Failed to record payment');
+      setAlertModal({ type: 'error', message: err.message || 'Failed to record payment' });
     } finally {
       setPaymentLoading(false);
     }
@@ -759,6 +760,24 @@ export default function OrdersPreviewPage() {
         </div>
       )}
     </div>
+
+      {alertModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--bg-card)', border: `1px solid ${alertModal.type === 'error' ? 'rgba(239,68,68,0.4)' : 'rgba(34,197,94,0.4)'}`, borderRadius: '12px', padding: '2rem', maxWidth: '380px', width: '90%', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center', textAlign: 'center' }}>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: alertModal.type === 'error' ? '#ef4444' : 'var(--green)' }}>
+              {alertModal.type === 'error' ? 'Error' : 'Success'}
+            </div>
+            <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)' }}>{alertModal.message}</p>
+            <button
+              onClick={() => setAlertModal(null)}
+              style={{ padding: '0.5rem 1.5rem', background: alertModal.type === 'error' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)', border: `1px solid ${alertModal.type === 'error' ? 'rgba(239,68,68,0.4)' : 'rgba(34,197,94,0.4)'}`, borderRadius: '8px', color: alertModal.type === 'error' ? '#ef4444' : 'var(--green)', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem' }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
     </ErrorBoundary>
   );
 }

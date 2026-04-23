@@ -8,6 +8,7 @@ import {
   updateBadOrderStatus,
 } from '@/lib/badOrdersApi';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import CustomDropdown from '@/app/components/CustomDropdown';
 
 const card = {
   background: 'rgba(255,255,255,0.03)',
@@ -235,24 +236,34 @@ export default function BadOrdersPage() {
       >
         <div>
           <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--gray)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>API status</label>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={input}>
-            <option value="">All</option>
-            <option value="pending">Pending</option>
-            <option value="replaced">Replaced</option>
-            <option value="written_off">Written off</option>
-          </select>
+          <CustomDropdown
+            value={filterStatus}
+            onChange={v => setFilterStatus(v)}
+            placeholder="All"
+            options={[
+              { value: '', label: 'All' },
+              { value: 'pending', label: 'Pending' },
+              { value: 'replaced', label: 'Replaced' },
+              { value: 'written_off', label: 'Written off' },
+            ]}
+          />
         </div>
         <div>
           <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--gray)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>Damage type</label>
-          <select value={filterDamage} onChange={(e) => setFilterDamage(e.target.value)} style={input}>
-            <option value="">All</option>
-            <option value="damaged">Damaged</option>
-            <option value="defective">Defective</option>
-            <option value="shortage">Shortage</option>
-            <option value="wrong_item">Wrong item</option>
-            <option value="expired">Expired</option>
-            <option value="other">Other</option>
-          </select>
+          <CustomDropdown
+            value={filterDamage}
+            onChange={v => setFilterDamage(v)}
+            placeholder="All"
+            options={[
+              { value: '', label: 'All' },
+              { value: 'damaged', label: 'Damaged' },
+              { value: 'defective', label: 'Defective' },
+              { value: 'shortage', label: 'Shortage' },
+              { value: 'wrong_item', label: 'Wrong item' },
+              { value: 'expired', label: 'Expired' },
+              { value: 'other', label: 'Other' },
+            ]}
+          />
         </div>
         <div>
           <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--gray)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>From</label>

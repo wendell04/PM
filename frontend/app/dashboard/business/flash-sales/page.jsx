@@ -23,6 +23,7 @@ export default function FlashSalesPage() {
   const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [confirmModal, setConfirmModal] = useState(null);
 
   // Form
   const [form, setForm] = useState({
@@ -226,9 +227,16 @@ export default function FlashSalesPage() {
 
   // Delete
   async function handleDelete(sale) {
-    if (!window.confirm(
-      `Delete flash sale for "${sale.productName}"?`
-    )) return;
+    setConfirmModal({
+      message: `Delete flash sale for "${sale.productName}"?`,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        await _doDelete(sale);
+      },
+    });
+  }
+
+  async function _doDelete(sale) {
     setDeleting(sale.id);
     try {
       const res = await fetchWithTimeout(
@@ -239,10 +247,10 @@ export default function FlashSalesPage() {
         },
         30000
       );
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error('Failed to delete flash sale');
       setSales(prev => prev.filter(s => s.id !== sale.id));
-    } catch {
-      // silent fail
+    } catch (err) {
+      setFormError(err.message || 'Failed to delete flash sale');
     } finally {
       setDeleting(null);
     }
@@ -975,6 +983,30 @@ export default function FlashSalesPage() {
         )}
 
       </div>
+
+      {confirmModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'var(--dark2, #1a1a1a)', border: '1px solid var(--border)', borderRadius: '12px', padding: '2rem', maxWidth: '400px', width: '90%', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Confirm Delete</div>
+            <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--gray)' }}>{confirmModal.message}</p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setConfirmModal(null)}
+                style={{ padding: '0.5rem 1.25rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--gray)', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmModal.onConfirm}
+                style={{ padding: '0.5rem 1.25rem', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem' }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </ErrorBoundary>
   );
 }

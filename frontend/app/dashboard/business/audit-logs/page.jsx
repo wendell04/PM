@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import CustomDropdown from '@/app/components/CustomDropdown';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
   || 'http://127.0.0.1:8000';
@@ -307,27 +308,21 @@ export default function AuditLogsPage() {
           </div>
 
           {/* Reason filter */}
-          <select
+          <CustomDropdown
             value={filterReason}
-            onChange={e => setFilterReason(e.target.value)}
-            style={{
-              padding: '0.625rem 0.875rem',
-              background: 'var(--dark2)',
-              border: '1px solid var(--border)',
-              borderRadius: '8px',
-              color: filterReason ? 'var(--white)' : 'var(--gray)',
-              fontSize: '0.875rem',
-              cursor: 'pointer',
-            }}
-          >
-            <option value="">All Reasons</option>
-            <option value="restock">Restock</option>
-            <option value="correction-add">Correction (Add)</option>
-            <option value="correction-deduct">Correction (Deduct)</option>
-            <option value="sale">Sale</option>
-            <option value="return">Return</option>
-            <option value="sales-outside">Manual Sale</option>
-          </select>
+            onChange={v => setFilterReason(v)}
+            placeholder="All Reasons"
+            options={[
+              { value: '', label: 'All Reasons' },
+              { value: 'restock', label: 'Restock' },
+              { value: 'correction-add', label: 'Correction (Add)' },
+              { value: 'correction-deduct', label: 'Correction (Deduct)' },
+              { value: 'sale', label: 'Sale' },
+              { value: 'return', label: 'Return' },
+              { value: 'sales-outside', label: 'Manual Sale' },
+            ]}
+            style={{ minWidth: '160px' }}
+          />
 
           {/* Start date */}
           <input

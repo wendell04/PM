@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -97,9 +98,9 @@ export default function RolePermissionsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/role-permissions`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/role-permissions`, {
         headers: HEADERS(token),
-      });
+      }, 30000);
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || 'Failed to load role permissions.');
@@ -160,13 +161,14 @@ export default function RolePermissionsPage() {
 
     (async () => {
       try {
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `${API_URL}/api/admin/role-permissions/${encodeURIComponent(role)}`,
           {
             method: 'PUT',
             headers: HEADERS(token),
             body: JSON.stringify({ permissions: updated }),
-          }
+          },
+          30000
         );
         const data = await res.json();
         if (!res.ok) {

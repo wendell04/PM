@@ -172,13 +172,13 @@ export default function BusinessDashboardLayout({ children }) {
       const formData = new FormData();
       formData.append("avatar", file);
 
-      const res = await fetch(`${API_URL}/api/profile/upload-avatar`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/profile/upload-avatar`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
         },
         body: formData,
-      });
+      }, 30000);
 
       const data = await res.json();
 
@@ -443,13 +443,13 @@ export default function BusinessDashboardLayout({ children }) {
       setPermissions(permsCacheRef.current.permissions);
       return;
     }
-    fetch(`${API_URL}/api/my/permissions`, {
+    fetchWithTimeout(`${API_URL}/api/my/permissions`, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
         "ngrok-skip-browser-warning": "1",
       },
-    })
+    }, 15000)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.data?.permissions) {

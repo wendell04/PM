@@ -11,6 +11,7 @@ import {
   updateJobOrder,
 } from '@/lib/jobOrderApi';
 import { fetchAllOrders } from '@/lib/ordersApi';
+import CustomDropdown from '@/app/components/CustomDropdown';
 
 // ─── Constants ────────────────────────────────────────────
 const JO_STATUSES = ['Queued', 'In Progress', 'Completed'];
@@ -576,31 +577,27 @@ export default function JobOrdersPage() {
           <>
             {/* Filters */}
             <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
-              <select
+              <CustomDropdown
                 value={filters.status}
-                onChange={e => setFilters(p => ({ ...p, status: e.target.value }))}
-                style={{
-                  padding: '8px 12px', background: 'var(--dark2)',
-                  border: '1px solid var(--border)', borderRadius: '8px',
-                  color: 'var(--white)', fontSize: '14px', outline: 'none',
-                }}
-              >
-                <option value="">All Statuses</option>
-                {JO_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <select
+                onChange={v => setFilters(p => ({ ...p, status: v }))}
+                placeholder="All Statuses"
+                options={[
+                  { value: '', label: 'All Statuses' },
+                  ...JO_STATUSES.map(s => ({ value: s, label: s })),
+                ]}
+                style={{ minWidth: '150px' }}
+              />
+              <CustomDropdown
                 value={filters.isRush}
-                onChange={e => setFilters(p => ({ ...p, isRush: e.target.value }))}
-                style={{
-                  padding: '8px 12px', background: 'var(--dark2)',
-                  border: '1px solid var(--border)', borderRadius: '8px',
-                  color: 'var(--white)', fontSize: '14px', outline: 'none',
-                }}
-              >
-                <option value="">All Types</option>
-                <option value="true">Rush Only</option>
-                <option value="false">Standard Only</option>
-              </select>
+                onChange={v => setFilters(p => ({ ...p, isRush: v }))}
+                placeholder="All Types"
+                options={[
+                  { value: '', label: 'All Types' },
+                  { value: 'true', label: 'Rush Only' },
+                  { value: 'false', label: 'Standard Only' },
+                ]}
+                style={{ minWidth: '140px' }}
+              />
               <button
                 onClick={loadJobOrders}
                 style={{

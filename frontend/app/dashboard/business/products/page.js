@@ -15,7 +15,7 @@ import ErrorBoundary from "../../../../components/ErrorBoundary";
  */
 
 import { useAuth } from "@/contexts/AuthContext";
-import { fetchInventory } from "@/lib/inventoryApi";
+import { fetchInventory, fetchBoms } from "@/lib/inventoryApi";
 import { fetchAllOrders } from "@/lib/ordersApi";
 import {
   createProduct,
@@ -3010,17 +3010,624 @@ function ProductExpandRow({ product, inv, colSpan }) {
   );
 }
 
+// ── Add Product Modal (BOM-based) ─────────────────────────────────────────────
+function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPriceError, token }) {
+  const productGroups = useMemo(() => {
+    const groups = {};
+    (boms || []).forEach((b) => {
+      const key = b.productGroupName || b.productName || '';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(b);
+    });
+    return groups;
+  }, [boms]);
+
+  const groupNames = useMemo(() => Object.keys(productGroups).sort(), [productGroups]);
+
+  const [selectedGroup, setSelectedGroup] = useState('');
+  const [groupOpen, setGroupOpen]         = useState(false);
+  const [groupSearch, setGroupSearch]     = useState('');
+  const [category, setCategory]           = useState('');
+  const [description, setDescription]     = useState('');
+  const [priceType, setPriceType]         = useState('fixed');
+  const [variantPrices, setVariantPrices] = useState({});
+  const [tiers, setTiers]                 = useState([{ id: 1, minQty: 1, maxQty: 20, prices: {} }]);
+  const [stockMap, setStockMap]           = useState({});
+  const [thumbnail, setThumbnail]         = useState(null);
+  const [images, setImages]               = useState([]);
+  const [dragOver, setDragOver]           = useState(false);
+  const [dragOverThumb, setDragOverThumb] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const groupRef = useRef(null);
+
+  const variants    = useMemo(() => (selectedGroup ? productGroups[selectedGroup] || [] : []), [selectedGroup, productGroups]);
+  const isStandalone = variants.length === 1;
+  const hasVariants  = variants.length > 1;
+
+  const existingCategories = useMemo(
+    () => [...new Set(products.map((p) => p.category).filter(Boolean))].sort(),
+    [products],
+  );
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (groupRef.current && !groupRef.current.contains(e.target)) setGroupOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const maxProducible = useMemo(() => {
+    const result = {};
+    variants.forEach((bom) => {
+      let min = Infinity;
+      (bom.components || []).forEach((comp) => {
+        const inv = inventoryList.find((i) => String(i.id) === String(comp.inventoryId));
+        const canMake = Math.floor((inv?.stockQty || 0) / (comp.qty || 1));
+        if (canMake < min) min = canMake;
+      });
+      result[bom.id] = min === Infinity ? 0 : min;
+    });
+    return result;
+  }, [variants, inventoryList]);
+
+  const bottleneckMap = useMemo(() => {
+    const result = {};
+    variants.forEach((bom) => {
+      let minRatio = Infinity, minName = null;
+      (bom.components || []).forEach((comp) => {
+        const inv = inventoryList.find((i) => String(i.id) === String(comp.inventoryId));
+        const ratio = Math.floor((inv?.stockQty || 0) / (comp.qty || 1));
+        if (ratio < minRatio) { minRatio = ratio; minName = comp.materialName; }
+      });
+      result[bom.id] = minName;
+    });
+    return result;
+  }, [variants, inventoryList]);
+
+  const bomCostMap = useMemo(() => {
+    const result = {};
+    variants.forEach((b) => { result[b.id] = b.totalCost || 0; });
+    return result;
+  }, [variants]);
+
+  useEffect(() => {
+    if (!selectedGroup) return;
+    const vList = productGroups[selectedGroup] || [];
+    const initPrices = {}, initStock = {}, initTierPrices = {};
+    vList.forEach((b) => {
+      initPrices[b.id] = '';
+      initStock[b.id] = '';
+      initTierPrices[b.id] = '';
+    });
+    setVariantPrices(initPrices);
+    setStockMap(initStock);
+    setTiers([{ id: 1, minQty: 1, maxQty: 20, prices: vList.length === 1 ? { __base__: '' } : { ...initTierPrices } }]);
+    setCategory('');
+  }, [selectedGroup]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const priceWarnings = useMemo(() => {
+    if (priceType !== 'fixed') return {};
+    const w = {};
+    Object.entries(variantPrices).forEach(([id, price]) => {
+      const cost = bomCostMap[id] || 0;
+      const p = parseFloat(price);
+      if (price !== '' && !isNaN(p) && cost > 0)
+        w[id] = p < cost ? `Below cost — lose ₱${(cost - p).toFixed(2)}/unit` : null;
+    });
+    return w;
+  }, [variantPrices, bomCostMap, priceType]);
+
+  const tierWarnings = useMemo(() => {
+    if (priceType !== 'tiered') return {};
+    const w = {};
+    tiers.forEach((tier) => {
+      Object.entries(tier.prices || {}).forEach(([key, price]) => {
+        const cost = bomCostMap[key] || 0;
+        const p = parseFloat(price);
+        if (price !== '' && !isNaN(p) && cost > 0 && p < cost)
+          w[`${tier.id}_${key}`] = true;
+      });
+    });
+    return w;
+  }, [tiers, bomCostMap, priceType]);
+
+  const hasAnyTierWarning = Object.keys(tierWarnings).length > 0;
+
+  const addTier = () => {
+    const last = tiers[tiers.length - 1];
+    const emptyPrices = isStandalone
+      ? { __base__: '' }
+      : variants.reduce((acc, b) => ({ ...acc, [b.id]: '' }), {});
+    setTiers((prev) => [...prev, { id: Date.now(), minQty: last ? (parseInt(last.maxQty) || 0) + 1 : 1, maxQty: '', prices: emptyPrices }]);
+  };
+  const removeTier = (id) => setTiers(tiers.filter((t) => t.id !== id));
+  const updateTierRange = (id, field, val) => setTiers(tiers.map((t) => t.id === id ? { ...t, [field]: val } : t));
+  const updateTierPrice = (tierId, key, val) => setTiers(tiers.map((t) => t.id === tierId ? { ...t, prices: { ...t.prices, [key]: val } } : t));
+
+  const createImageObj = (file) => ({ file, preview: URL.createObjectURL(file), id: Date.now() + Math.random() });
+  const handleThumbnailUpload = (files) => { const f = files[0]; if (f) setThumbnail(createImageObj(f)); };
+  const handleImageUpload = (files) => setImages((prev) => [...prev, ...Array.from(files).map(createImageObj)]);
+  const removeImage = (id) => setImages(images.filter((img) => img.id !== id));
+
+  const handleSave = async () => {
+    if (!selectedGroup) { onPriceError('Please select a product.'); return; }
+    if (priceType === 'fixed') {
+      if (isStandalone) {
+        const p = variantPrices[variants[0]?.id] || '';
+        if (!p || parseFloat(p) <= 0) { onPriceError('Please enter a price.'); return; }
+      } else {
+        if (!variants.every((b) => variantPrices[b.id] && parseFloat(variantPrices[b.id]) > 0)) {
+          onPriceError('Please enter prices for all variants.'); return;
+        }
+      }
+    } else if (priceType === 'tiered') {
+      if (!tiers.every((t) => Object.values(t.prices).every((p) => p !== '' && parseFloat(p) > 0))) {
+        onPriceError('Please fill in all tier prices.'); return;
+      }
+    }
+
+    setUploadingMedia(true);
+    try {
+      let thumbFinal = null;
+      if (thumbnail?.file) {
+        const up = await uploadImage(thumbnail.file, 'pmp-products', token);
+        thumbFinal = up.url || up?.data?.url;
+      }
+      const galleryUrls = [];
+      for (const img of images) {
+        if (img.file) {
+          const up = await uploadImage(img.file, 'pmp-products', token);
+          galleryUrls.push(up.url || up?.data?.url);
+        }
+      }
+
+      const syntheticVarGroups = hasVariants
+        ? [{ id: 'bom-type', name: 'Type', options: variants.map((b) => ({ id: b.id, value: b.variantName })) }]
+        : [];
+      const syntheticCombos = hasVariants
+        ? variants.map((b) => ({ id: b.id, combo: { 'bom-type': b.variantName }, label: b.variantName }))
+        : [];
+
+      const stockVal    = isStandalone ? (parseInt(stockMap[variants[0]?.id]) || 0) : null;
+      const variantStock = hasVariants ? variants.reduce((acc, b) => ({ ...acc, [b.id]: parseInt(stockMap[b.id]) || 0 }), {}) : undefined;
+
+      onSave({
+        productName:      selectedGroup,
+        subCategoryName:  selectedGroup,
+        subCategoryCode:  selectedGroup.split(' ').filter((w) => w).map((w) => w[0]).join('').toUpperCase().slice(0, 8),
+        category,
+        description,
+        priceType,
+        ...(priceType === 'fixed'
+          ? isStandalone
+            ? { price: variantPrices[variants[0]?.id] }
+            : { variantPrices }
+          : priceType === 'tiered'
+          ? { tiers }
+          : {}),
+        variantGroups:  syntheticVarGroups,
+        combinations:   syntheticCombos,
+        stock:          stockVal,
+        variantStock,
+        trackInventory: true,
+        bomGroupName:   selectedGroup,
+        thumbnail:      thumbFinal,
+        images:         galleryUrls,
+        isPublished:    false,
+        isArchived:     false,
+      });
+    } catch (err) {
+      onPriceError(err.message || 'Image upload failed.');
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  const filteredGroupNames = groupNames.filter((n) => !groupSearch || n.toLowerCase().includes(groupSearch.toLowerCase()));
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '860px', maxHeight: '92vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', scrollbarWidth: 'thin', scrollbarColor: 'var(--gold) var(--dark2)' }}
+      >
+        {/* Header */}
+        <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem 1.5rem', background: 'var(--dark)', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <h2 className="modal-title">Add New Product</h2>
+            <p style={{ color: 'var(--gray)', fontSize: '0.8rem', margin: '0.25rem 0 0' }}>Select a product from your catalog</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)', cursor: 'pointer' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+          {/* ── SELECT PRODUCT ── */}
+          <div className="form-section">
+            <h2 className="form-section-title">Select Product</h2>
+
+            <div style={{ position: 'relative' }} ref={groupRef}>
+              <label className="form-label">Product <span className="required">*</span></label>
+              <div className="combobox-field">
+                <input
+                  type="text"
+                  className="form-input"
+                  value={groupSearch || selectedGroup}
+                  onChange={(e) => { setGroupSearch(e.target.value); setGroupOpen(true); }}
+                  onFocus={() => setGroupOpen(true)}
+                  placeholder="Search product…"
+                />
+                <button type="button" className="combobox-toggle" onClick={() => setGroupOpen((o) => !o)}>{groupOpen ? '▲' : '▼'}</button>
+              </div>
+              {groupOpen && filteredGroupNames.length > 0 && (
+                <div className="combobox-menu">
+                  {filteredGroupNames.map((name) => (
+                    <button key={name} type="button"
+                      className={`combobox-item${name === selectedGroup ? ' active' : ''}`}
+                      onClick={() => { setSelectedGroup(name); setGroupSearch(''); setGroupOpen(false); }}
+                    >
+                      <span style={{ fontWeight: 600 }}>{name}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--gray)', marginLeft: '0.5rem' }}>
+                        {productGroups[name].length === 1 ? 'No variants' : `${productGroups[name].length} variants`}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Components card */}
+            {variants.length > 0 && (
+              <div style={{ marginTop: '1rem', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+                <div style={{ padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.06)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.95rem' }}>{selectedGroup}</span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>
+                    {isStandalone ? 'No variants' : `${variants.length} variants`}
+                  </span>
+                </div>
+
+                {/* Table header */}
+                <div style={{ display: 'grid', gridTemplateColumns: hasVariants ? '1.2fr 2fr 90px 90px 1fr' : '2fr 90px 90px 1fr', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.15)' }}>
+                  {hasVariants && <div style={{ padding: '0.45rem 0.75rem', fontSize: '0.62rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>Variant</div>}
+                  <div style={{ padding: '0.45rem 0.75rem', fontSize: '0.62rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>Components</div>
+                  <div style={{ padding: '0.45rem 0.75rem', fontSize: '0.62rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>BOM Cost</div>
+                  <div style={{ padding: '0.45rem 0.75rem', fontSize: '0.62rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>Max Stock</div>
+                  <div style={{ padding: '0.45rem 0.75rem', fontSize: '0.62rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>Bottleneck</div>
+                </div>
+
+                {variants.map((bom, i) => (
+                  <div key={bom.id} style={{ display: 'grid', gridTemplateColumns: hasVariants ? '1.2fr 2fr 90px 90px 1fr' : '2fr 90px 90px 1fr', borderBottom: i < variants.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', alignItems: 'start' }}>
+                    {hasVariants && (
+                      <div style={{ padding: '0.7rem 0.75rem', fontWeight: 600, color: 'var(--white)', fontSize: '0.85rem' }}>{bom.variantName}</div>
+                    )}
+                    <div style={{ padding: '0.7rem 0.75rem' }}>
+                      {(bom.components || []).map((comp, ci) => (
+                        <div key={ci} style={{ fontSize: '0.73rem', color: 'var(--gray)', marginBottom: '0.1rem' }}>
+                          {comp.materialName} × {comp.qty} {comp.unit}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ padding: '0.7rem 0.75rem' }}>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#D4A843' }}>₱{(bom.totalCost || 0).toFixed(2)}</span>
+                    </div>
+                    <div style={{ padding: '0.7rem 0.75rem' }}>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: maxProducible[bom.id] === 0 ? '#ef4444' : 'var(--white)' }}>
+                        {maxProducible[bom.id]} units
+                      </span>
+                    </div>
+                    <div style={{ padding: '0.7rem 0.75rem' }}>
+                      {bottleneckMap[bom.id] && maxProducible[bom.id] < (maxProducible[bom.id] + 1) && (
+                        <span style={{ fontSize: '0.68rem', color: '#f59e0b' }}>⚡ {bottleneckMap[bom.id]}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Category + Description */}
+            {variants.length > 0 && (
+              <>
+                <div style={{ marginTop: '1rem' }}>
+                  <Combobox
+                    label="Category"
+                    value={category}
+                    onChange={setCategory}
+                    options={existingCategories}
+                    placeholder="e.g. Mugs, T-Shirts…"
+                  />
+                </div>
+                <div style={{ marginTop: '1rem' }}>
+                  <label className="form-label">Description</label>
+                  <textarea className="form-textarea" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Materials, printing details, sizes, notes…" />
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ── PRICING ── */}
+          {variants.length > 0 && (
+            <div className="form-section">
+              <h2 className="form-section-title">Pricing</h2>
+              <div className="price-type-row">
+                {[{ val: 'fixed', label: 'Fixed Price' }, { val: 'tiered', label: 'Tier Price' }, { val: 'inquiry', label: 'For Inquiry' }].map(({ val, label }) => (
+                  <button key={val} type="button" className={`price-type-btn${priceType === val ? ' selected' : ''}`} onClick={() => setPriceType(val)}>{label}</button>
+                ))}
+              </div>
+
+              {priceType === 'fixed' && (
+                isStandalone ? (
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
+                      BOM Cost: <strong style={{ color: '#D4A843' }}>₱{(bomCostMap[variants[0]?.id] || 0).toFixed(2)}/unit</strong> — sell above this to be profitable
+                    </div>
+                    <div className="tier-price-cell">
+                      <span className="peso">₱</span>
+                      <NumberInput className="tier-input" value={variantPrices[variants[0]?.id] || ''} onChange={(e) => setVariantPrices((p) => ({ ...p, [variants[0].id]: sanitizeNumber(e.target.value) }))} placeholder="0" min={0} step="0.01" />
+                    </div>
+                    {priceWarnings[variants[0]?.id] && (
+                      <div style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: '#f87171' }}>⚠ {priceWarnings[variants[0].id]}</div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="tier-table-wrap">
+                    <table className="tier-table">
+                      <thead>
+                        <tr>
+                          <th>Variant</th>
+                          <th>BOM Cost</th>
+                          <th>Your Price (₱)</th>
+                          <th>Margin</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {variants.map((bom) => {
+                          const cost  = bomCostMap[bom.id] || 0;
+                          const price = parseFloat(variantPrices[bom.id]);
+                          const hasP  = variantPrices[bom.id] !== '' && !isNaN(price);
+                          const below = hasP && price < cost;
+                          const margin = hasP ? price - cost : null;
+                          return (
+                            <tr key={bom.id}>
+                              <td style={{ fontWeight: 600, color: 'var(--white)', fontSize: '0.85rem' }}>{bom.variantName}</td>
+                              <td style={{ color: '#D4A843', fontWeight: 700 }}>₱{cost.toFixed(2)}</td>
+                              <td>
+                                <div className="tier-price-cell">
+                                  <span className="peso">₱</span>
+                                  <NumberInput className="tier-input" value={variantPrices[bom.id] || ''} onChange={(e) => setVariantPrices((p) => ({ ...p, [bom.id]: sanitizeNumber(e.target.value) }))} placeholder="0" min={0} step="0.01" />
+                                </div>
+                              </td>
+                              <td>
+                                {margin !== null && (
+                                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: below ? '#f87171' : '#22c55e' }}>
+                                    {below ? `⚠ -₱${Math.abs(margin).toFixed(2)}` : `✓ +₱${margin.toFixed(2)}`}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              )}
+
+              {priceType === 'tiered' && (
+                <>
+                  {hasAnyTierWarning && (
+                    <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', fontSize: '0.78rem', color: '#f87171' }}>
+                      ⚠ Cells highlighted in red are below BOM cost — selling at a loss.
+                    </div>
+                  )}
+                  <div className="tier-table-wrap">
+                    <table className="tier-table smart-tier-table">
+                      <thead>
+                        <tr>
+                          <th>Tier</th>
+                          <th>Min Qty</th>
+                          <th>Max Qty</th>
+                          {isStandalone ? (
+                            <th>
+                              Price (₱)
+                              <div style={{ fontSize: '0.6rem', color: '#D4A843', fontWeight: 600, marginTop: '0.1rem' }}>cost ₱{(bomCostMap[variants[0]?.id] || 0).toFixed(2)}</div>
+                            </th>
+                          ) : (
+                            variants.map((bom) => (
+                              <th key={bom.id} className="tier-variant-header">
+                                {bom.variantName}
+                                <div style={{ fontSize: '0.6rem', color: '#D4A843', fontWeight: 600, marginTop: '0.1rem' }}>cost ₱{(bomCostMap[bom.id] || 0).toFixed(2)}</div>
+                              </th>
+                            ))
+                          )}
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tiers.map((tier, idx) => (
+                          <tr key={tier.id}>
+                            <td><span className="tier-badge">Tier {idx + 1}</span></td>
+                            <td><NumberInput className="tier-input" value={tier.minQty ?? ''} placeholder="1" min={0} onChange={(e) => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'minQty', v); }} /></td>
+                            <td><NumberInput className="tier-input" value={tier.maxQty ?? ''} placeholder="∞" min={0} onChange={(e) => { const v = e.target.value; if (v === '' || parseInt(v) >= 0) updateTierRange(tier.id, 'maxQty', v); }} /></td>
+                            {isStandalone ? (
+                              <td style={{ background: tierWarnings[`${tier.id}___base__`] ? 'rgba(239,68,68,0.07)' : undefined }}>
+                                <div className="tier-price-cell">
+                                  <span className="peso" style={{ color: tierWarnings[`${tier.id}___base__`] ? '#f87171' : undefined }}>₱</span>
+                                  <NumberInput className="tier-input" value={tier.prices['__base__'] || ''} onChange={(e) => updateTierPrice(tier.id, '__base__', sanitizeNumber(e.target.value))} placeholder="0" min={0} step="0.01" />
+                                </div>
+                                {tierWarnings[`${tier.id}___base__`] && <div style={{ fontSize: '0.6rem', color: '#f87171', marginTop: '0.1rem' }}>⚠ below cost</div>}
+                              </td>
+                            ) : (
+                              variants.map((bom) => {
+                                const wkey = `${tier.id}_${bom.id}`;
+                                const below = tierWarnings[wkey];
+                                return (
+                                  <td key={bom.id} style={{ background: below ? 'rgba(239,68,68,0.07)' : undefined }}>
+                                    <div className="tier-price-cell">
+                                      <span className="peso" style={{ color: below ? '#f87171' : undefined }}>₱</span>
+                                      <NumberInput className="tier-input" value={tier.prices[bom.id] || ''} onChange={(e) => updateTierPrice(tier.id, bom.id, sanitizeNumber(e.target.value))} placeholder="0" min={0} step="0.01" />
+                                    </div>
+                                    {below && <div style={{ fontSize: '0.6rem', color: '#f87171', marginTop: '0.1rem' }}>⚠ below cost</div>}
+                                  </td>
+                                );
+                              })
+                            )}
+                            <td>{tiers.length > 1 && <button type="button" className="btn-remove-tier" onClick={() => removeTier(tier.id)}>Remove</button>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button type="button" className="add-tier-btn" onClick={addTier}>Add Price Tier</button>
+                </>
+              )}
+
+              {priceType === 'inquiry' && (
+                <div style={{ padding: '1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '8px', color: 'var(--gold)', fontSize: '0.9rem' }}>
+                  This product will be listed as "For Inquiry" — customers will contact you for pricing.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── AVAILABILITY ── */}
+          {variants.length > 0 && priceType !== 'inquiry' && (
+            <div className="form-section">
+              <h2 className="form-section-title">Storefront Availability</h2>
+              {isStandalone ? (
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.75rem' }}>
+                    Max producible from current stock: <strong style={{ color: 'var(--white)' }}>{maxProducible[variants[0]?.id]} units</strong>
+                  </div>
+                  <label className="form-label">Storefront Stock <span className="required">*</span></label>
+                  <NumberInput
+                    className="form-input"
+                    value={stockMap[variants[0]?.id] !== undefined && stockMap[variants[0]?.id] !== '' ? stockMap[variants[0].id] : String(maxProducible[variants[0]?.id] ?? 0)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const max = maxProducible[variants[0]?.id];
+                      if (parseInt(val) > max) return;
+                      setStockMap((p) => ({ ...p, [variants[0].id]: val }));
+                    }}
+                    placeholder="0" min={0} max={maxProducible[variants[0]?.id]}
+                  />
+                </div>
+              ) : (
+                <div className="tier-table-wrap">
+                  <table className="tier-table">
+                    <thead>
+                      <tr><th>Variant</th><th>Max Producible</th><th>Storefront Stock</th></tr>
+                    </thead>
+                    <tbody>
+                      {variants.map((bom) => (
+                        <tr key={bom.id}>
+                          <td style={{ fontWeight: 600, color: 'var(--white)' }}>{bom.variantName}</td>
+                          <td style={{ color: maxProducible[bom.id] === 0 ? '#ef4444' : 'var(--gray)' }}>{maxProducible[bom.id]} units</td>
+                          <td>
+                            <NumberInput
+                              className="tier-input"
+                              value={stockMap[bom.id] !== undefined && stockMap[bom.id] !== '' ? stockMap[bom.id] : String(maxProducible[bom.id] ?? 0)}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (parseInt(val) > maxProducible[bom.id]) return;
+                                setStockMap((p) => ({ ...p, [bom.id]: val }));
+                              }}
+                              placeholder="0" min={0} max={maxProducible[bom.id]}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── IMAGES ── */}
+          {variants.length > 0 && (
+            <div className="form-section">
+              <div className="images-row">
+                <div className="images-col">
+                  <h2 className="form-section-title">Thumbnail</h2>
+                  {thumbnail ? (
+                    <div className="thumbnail-preview-wrap">
+                      <div className="thumbnail-preview">
+                        <img src={thumbnail.preview} alt="Thumbnail" />
+                        <button type="button" className="image-remove-btn" onClick={() => setThumbnail(null)}>×</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={`image-upload-area${dragOverThumb ? ' drag-over' : ''}`}
+                      onDrop={(e) => { e.preventDefault(); setDragOverThumb(false); if (e.dataTransfer.files?.length) handleThumbnailUpload(e.dataTransfer.files); }}
+                      onDragOver={(e) => { e.preventDefault(); setDragOverThumb(true); }}
+                      onDragLeave={() => setDragOverThumb(false)}
+                      onClick={() => document.getElementById('addThumbInput').click()}
+                    >
+                      <div className="image-upload-text"><strong>Click to upload thumbnail</strong> or drag and drop</div>
+                      <div className="image-upload-hint">PNG, JPG — 200×200 to 800×800px</div>
+                      <input id="addThumbInput" type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.length) handleThumbnailUpload(e.target.files); }} />
+                    </div>
+                  )}
+                </div>
+                <div className="images-col">
+                  <h2 className="form-section-title">Product Gallery</h2>
+                  <div className={`image-upload-area${dragOver ? ' drag-over' : ''}`}
+                    onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files?.length) handleImageUpload(e.dataTransfer.files); }}
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onClick={() => document.getElementById('addGalleryInput').click()}
+                  >
+                    <div className="image-upload-text"><strong>Click to upload</strong> or drag and drop</div>
+                    <div className="image-upload-hint">PNG, JPG, GIF</div>
+                    <input id="addGalleryInput" type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.length) handleImageUpload(e.target.files); }} />
+                  </div>
+                  {images.length > 0 && (
+                    <div className="image-preview-grid">
+                      {images.map((img) => (
+                        <div key={img.id} className="image-preview-item">
+                          <img src={img.preview} alt="Preview" />
+                          <button type="button" className="image-remove-btn" onClick={() => removeImage(img.id)}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          {variants.length > 0 && (
+            <div className="form-actions">
+              <button type="button" className="btn-cancel" onClick={onClose} disabled={uploadingMedia}>Cancel</button>
+              <button type="button" className="btn-submit" onClick={handleSave} disabled={uploadingMedia}>
+                {uploadingMedia ? 'Uploading…' : 'Continue'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main ProductListPage ───────────────────────────────────────────────────────
 export default function ProductListPage() {
   const { token } = useAuth();
   const router = useRouter();
   const [products, setProducts] = useState([]);
   const [inventoryList, setInventoryList] = useState([]);
+  const [boms, setBoms] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState(""); // Default to ''
   const [editingProduct, setEditingProduct] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
   const [pendingEditData, setPendingEditData] = useState(null);
@@ -3088,33 +3695,33 @@ export default function ProductListPage() {
 
         setProducts(transformedProducts);
 
-        // Fetch inventory from API for linkage display
-        try {
-          const inventoryResponse = await fetchInventory(token);
-          const inventoryData = Array.isArray(inventoryResponse)
-            ? inventoryResponse
-            : [];
+        // Fetch inventory + BOMs independently
+        const [invResult, bomResult] = await Promise.allSettled([
+          fetchInventory(token),
+          fetchBoms(token),
+        ]);
+        if (invResult.status === 'fulfilled') {
           setInventoryList(
-            inventoryData.map((inv) => ({
+            (Array.isArray(invResult.value) ? invResult.value : []).map((inv) => ({
               ...inv,
               id: inv.id ?? inv._id ?? "",
             })),
           );
-        } catch (invError) {
-          console.error(
-            "Failed to load inventory (products will not show linkage):",
-            invError,
-          );
+        } else {
           setInventoryList([]);
+        }
+        if (bomResult.status === 'fulfilled') {
+          setBoms(Array.isArray(bomResult.value) ? bomResult.value : []);
         }
 
         setIsLoaded(true);
       } catch (error) {
-        console.error("Failed to load products:", error);
-        // Show error state instead of silent fallback
         setProducts([]);
         setInventoryList([]);
         setIsLoaded(true);
+        setPriceErrorTitle("Load Failed");
+        setPriceErrorMessage(error.message || "Failed to load products. Please refresh.");
+        setShowPriceErrorModal(true);
       }
     };
 
@@ -3336,8 +3943,7 @@ export default function ProductListPage() {
 
   const handleAddProduct = () => {
     setEditingProduct({ ...EMPTY_NEW_PRODUCT });
-    setEditModalKey((prev) => prev + 1);
-    setShowEditModal(true);
+    setShowAddModal(true);
   };
 
   const handleSaveEdit = (updatedProduct) => {
@@ -3376,6 +3982,7 @@ export default function ProductListPage() {
       );
 
       setShowEditModal(false);
+      setShowAddModal(false);
       setEditingProduct(null);
       setShowEditConfirmModal(false);
       setPendingEditData(null);
@@ -4668,6 +5275,22 @@ export default function ProductListPage() {
               setShowEditModal(false);
               setEditingProduct(null);
             }}
+            onSave={handleSaveEdit}
+            onPriceError={(msg) => {
+              setPriceErrorMessage(msg);
+              setShowPriceErrorModal(true);
+            }}
+          />
+        )}
+
+        {/* Add Product Modal */}
+        {showAddModal && (
+          <AddProductModal
+            boms={boms}
+            inventoryList={inventoryList}
+            products={products}
+            token={token}
+            onClose={() => setShowAddModal(false)}
             onSave={handleSaveEdit}
             onPriceError={(msg) => {
               setPriceErrorMessage(msg);

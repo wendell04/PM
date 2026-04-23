@@ -369,9 +369,9 @@ export default function BannerManagementPage() {
           setEditedBanner(null);
         }
       } catch (err) {
-        console.error('Failed to load banners:', err);
         setBanners([]);
         setEditedBanner(null);
+        setModal({ type: 'error', title: 'Load Failed', message: err.message || 'Failed to load banners. Please refresh.' });
       } finally {
         setIsLoading(false);
       }

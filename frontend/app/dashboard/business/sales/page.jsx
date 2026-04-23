@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { formatPrice } from '@/src/utils/format';
 import { fetchSales } from '@/lib/salesApi';
 import { fetchInventory } from '@/lib/inventoryApi';
+import CustomDropdown from '@/app/components/CustomDropdown';
 
 // ── Order Detail Expand Row ─────────────────────────────────────────────────
 function OrderExpandRow({ order, colSpan }) {
@@ -522,62 +523,40 @@ export default function SalesListPage() {
         </div>
 
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <select value={dateFilter} onChange={e => setDateFilter(e.target.value)} style={{
-            padding: '0.5rem 0.75rem',
-            background: 'var(--dark2)',
-            border: '1px solid var(--border)',
-            borderRadius: '6px',
-            color: 'var(--white)',
-            fontSize: '0.875rem',
-            cursor: 'pointer',
-            minWidth: '120px'
-          }}>
-            <option value="all" style={{ background: 'var(--dark)', color: 'var(--white)' }}>All Time</option>
-            <option value="today" style={{ background: 'var(--dark)', color: 'var(--white)' }}>Today</option>
-            <option value="this-week" style={{ background: 'var(--dark)', color: 'var(--white)' }}>This Week</option>
-            <option value="this-month" style={{ background: 'var(--dark)', color: 'var(--white)' }}>This Month</option>
-            <option value="custom" style={{ background: 'var(--dark)', color: 'var(--white)' }}>Custom Range</option>
-          </select>
+          <CustomDropdown
+            value={dateFilter}
+            onChange={v => setDateFilter(v)}
+            options={[
+              { value: 'all', label: 'All Time' },
+              { value: 'today', label: 'Today' },
+              { value: 'this-week', label: 'This Week' },
+              { value: 'this-month', label: 'This Month' },
+              { value: 'custom', label: 'Custom Range' },
+            ]}
+            style={{ minWidth: '130px' }}
+          />
 
           {dateFilter === 'custom' && (
             <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-              <select value={customDateRange.fromMonth} onChange={e => setCustomDateRange(prev => ({ ...prev, fromMonth: parseInt(e.target.value) }))} style={{
-                padding: '0.5rem 0.5rem',
-                background: 'var(--dark2)',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                color: 'var(--white)',
-                fontSize: '0.75rem',
-                cursor: 'pointer',
-                minWidth: '100px'
-              }}>
-                {MONTHS.map((m, i) => <option key={i} value={i} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{m}</option>)}
-              </select>
+              <CustomDropdown
+                value={String(customDateRange.fromMonth)}
+                onChange={v => setCustomDateRange(prev => ({ ...prev, fromMonth: parseInt(v) }))}
+                options={MONTHS.map((m, i) => ({ value: String(i), label: m }))}
+                style={{ minWidth: '110px' }}
+              />
               <span style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>to</span>
-              <select value={customDateRange.toMonth} onChange={e => setCustomDateRange(prev => ({ ...prev, toMonth: parseInt(e.target.value) }))} style={{
-                padding: '0.5rem 0.5rem',
-                background: 'var(--dark2)',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                color: 'var(--white)',
-                fontSize: '0.75rem',
-                cursor: 'pointer',
-                minWidth: '100px'
-              }}>
-                {MONTHS.map((m, i) => <option key={i} value={i} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{m}</option>)}
-              </select>
-              <select value={customDateRange.year} onChange={e => setCustomDateRange(prev => ({ ...prev, year: parseInt(e.target.value) }))} style={{
-                padding: '0.5rem 0.5rem',
-                background: 'var(--dark2)',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                color: 'var(--white)',
-                fontSize: '0.75rem',
-                cursor: 'pointer',
-                minWidth: '80px'
-              }}>
-                {YEARS.map(y => <option key={y} value={y} style={{ background: 'var(--dark)', color: 'var(--white)' }}>{y}</option>)}
-              </select>
+              <CustomDropdown
+                value={String(customDateRange.toMonth)}
+                onChange={v => setCustomDateRange(prev => ({ ...prev, toMonth: parseInt(v) }))}
+                options={MONTHS.map((m, i) => ({ value: String(i), label: m }))}
+                style={{ minWidth: '110px' }}
+              />
+              <CustomDropdown
+                value={String(customDateRange.year)}
+                onChange={v => setCustomDateRange(prev => ({ ...prev, year: parseInt(v) }))}
+                options={YEARS.map(y => ({ value: String(y), label: String(y) }))}
+                style={{ minWidth: '90px' }}
+              />
             </div>
           )}
         </div>
