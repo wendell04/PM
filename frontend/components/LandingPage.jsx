@@ -4,6 +4,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { getStorefrontBanners } from '@/lib/bannerUtils';
 import '@/components/custom-styles.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -86,6 +88,7 @@ const LandingPage = ({onEnterShop}) => {
   const [isLoggingIn, setIsLoggingIn]             = useState(false);
   const [isVerifying, setIsVerifying]             = useState(false);
   const [rememberMe, setRememberMe]               = useState(false);
+  const [pendingAuth, setPendingAuth]             = useState(null);
   const [hoveredService, setHoveredService]       = useState(null);
   const [tooltipX, setTooltipX] = useState(0);
   const [tooltipY, setTooltipY] = useState(0);
@@ -93,6 +96,7 @@ const LandingPage = ({onEnterShop}) => {
   // Hero carousel
   const [heroSlide, setHeroSlide] = useState(0);
   const [heroPaused, setHeroPaused] = useState(false);
+  const [heroBanners, setHeroBanners] = useState([]);
 
   // Forgot password
   const [forgotModal, setForgotModal]     = useState(false);
@@ -225,14 +229,27 @@ const LandingPage = ({onEnterShop}) => {
     }
   }, []);
 
+  // Fetch live banners for hero carousel
+  useEffect(() => {
+    getStorefrontBanners()
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setHeroBanners(data);
+          setHeroSlide(0);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Hero carousel auto-advance
   useEffect(() => {
     if (heroPaused) return;
+    const count = heroBanners.length > 0 ? heroBanners.length : 3;
     const t = setInterval(() => {
-      setHeroSlide(s => (s + 1) % 3);
+      setHeroSlide(s => (s + 1) % count);
     }, 4000);
     return () => clearInterval(t);
-  }, [heroPaused]);
+  }, [heroPaused, heroBanners.length]);
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
@@ -269,6 +286,7 @@ const LandingPage = ({onEnterShop}) => {
     setRegisterConfirmTouched(false);
     setIsVerifying(false);
     setVerifyError('');
+    setPendingAuth(null);
     setHasReadTerms(false);
     setRegisterForm({
       firstName: '', middleInitial: '', lastName: '',
@@ -296,35 +314,36 @@ const LandingPage = ({onEnterShop}) => {
     if (contactErrors[field]) setContactErrors(e => ({...e, [field]: ''}));
   };
 
-  const handleContactSubmit = (e) => {
+  const handleContactSubmit = async (e) => {
     e.preventDefault();
     const newErrors = {};
     if (!contactForm.name.trim()) newErrors.name = 'Name is required';
+    else if (contactForm.name.trim().length > 120) newErrors.name = 'Name must be 120 characters or fewer';
     if (!contactForm.email.trim()) newErrors.email = 'Email is required';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactForm.email)) newErrors.email = 'Please enter a valid email address';
     if (!contactForm.subject.trim()) newErrors.subject = 'Subject is required';
+    else if (contactForm.subject.trim().length > 200) newErrors.subject = 'Subject must be 200 characters or fewer';
     if (!contactForm.message.trim()) newErrors.message = 'Message is required';
+    else if (contactForm.message.trim().length > 5000) newErrors.message = 'Message must be 5000 characters or fewer';
     setContactErrors(newErrors);
-    
+
     if (Object.keys(newErrors).length === 0) {
-      // Send email via backend
-      fetch(`${API_URL}/api/contact`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(contactForm),
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.message) {
+      try {
+        const res = await fetchWithTimeout(`${API_URL}/api/contact`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(contactForm),
+        }, 15000);
+        const data = await res.json();
+        if (res.ok && data.message) {
           setContactSent(true);
           setContactForm({name: '', email: '', subject: '', message: ''});
         } else {
-          setContactErrors({ submit: data.error || 'Failed to send message. Please try again.' });
+          setContactErrors({ submit: data.error || data.message || 'Failed to send message. Please try again.' });
         }
-      })
-      .catch(() => {
+      } catch {
         setContactErrors({ submit: 'Network error. Please try again later.' });
-      });
+      }
     }
   };
 
@@ -441,14 +460,7 @@ const LandingPage = ({onEnterShop}) => {
         }
         return;
       }
-      const storage = rememberMe ? localStorage : sessionStorage;
-      storage.setItem('auth_token', data.data.token);
-      storage.setItem('auth_user', JSON.stringify(data.data.user));
-      try {
-        const bc = new BroadcastChannel('pmp_auth');
-        bc.postMessage({ type: 'AUTH_UPDATE', token: data.data.token, user: data.data.user });
-        bc.close();
-      } catch {}
+      setPendingAuth({ token: data.data.token, user: data.data.user, rememberMe });
       setRegisteredEmail(registerForm.email);
       setModal(null);
       setRegisterForm({firstName:'',middleInitial:'',lastName:'',address:'',phoneNumber:'',email:'',password:'',confirmPassword:'',agreeToTerms:false});
@@ -546,6 +558,17 @@ const LandingPage = ({onEnterShop}) => {
       });
       const data = await response.json();
       if (!response.ok) { setVerifyError(data.message || 'Verification failed.'); return; }
+      if (pendingAuth) {
+        const storage = pendingAuth.rememberMe ? localStorage : sessionStorage;
+        storage.setItem('auth_token', pendingAuth.token);
+        storage.setItem('auth_user', JSON.stringify(pendingAuth.user));
+        try {
+          const bc = new BroadcastChannel('pmp_auth');
+          bc.postMessage({ type: 'AUTH_UPDATE', token: pendingAuth.token, user: pendingAuth.user });
+          bc.close();
+        } catch {}
+        setPendingAuth(null);
+      }
       setVerificationModal(false);
       setVerificationCode('');
       openModal('login');
@@ -554,7 +577,7 @@ const LandingPage = ({onEnterShop}) => {
     } finally {
       setIsVerifying(false);
     }
-  }, [verificationCode, registeredEmail]);
+  }, [verificationCode, registeredEmail, pendingAuth]);
 
 // STEP 1 — Send reset link to email
 const handleForgotSubmit = async () => {
@@ -878,6 +901,19 @@ const handleForgotResetPassword = async () => {
     },
   ];
 
+  const effectiveSlides = heroBanners.length > 0
+    ? heroBanners.map(b => ({
+        tag:        null,
+        image:      b.image || null,
+        titleParts: [{ text: b.headline || '', plain: true }],
+        subtitle:   b.subtext || '',
+        cta:        b.ctaLabel ? { label: b.ctaLabel, href: b.ctaLink || '#' } : null,
+        cta2:       null,
+      }))
+    : heroSlides;
+
+  const currentBannerImage = effectiveSlides[heroSlide]?.image ?? null;
+
   // ─── JSX ──────────────────────────────────────────────────────────────────────
   return (
     <>
@@ -924,12 +960,12 @@ const handleForgotResetPassword = async () => {
           onMouseLeave={() => setHeroPaused(false)}
         >
           <div className="hero-carousel">
-            {heroSlides.map((slide, i) => (
+            {effectiveSlides.map((slide, i) => (
               <div
                 key={i}
                 className={`hero-slide${heroSlide === i ? ' active' : ''}`}
               >
-                <div className="hero-badge">{slide.tag}</div>
+                {slide.tag && <div className="hero-badge">{slide.tag}</div>}
                 <h1 className="hero-title">
                   {slide.titleParts.map((part, j) =>
                     part.plain
@@ -937,50 +973,52 @@ const handleForgotResetPassword = async () => {
                       : <span key={j} className={part.className}>{part.text}</span>
                   )}
                 </h1>
-                <p className="hero-subtitle">{slide.subtitle}</p>
-                <div className="hero-actions">
-                  {slide.cta.href ? (
-                    <a href={slide.cta.href} className="btn-primary">
-                      {slide.cta.label}
-                    </a>
-                  ) : (
-                    <button
-                      className="btn-primary"
-                      suppressHydrationWarning
-                      onClick={() => {
-                        if (slide.cta.action === 'shop') handleEnterShop();
-                        else openModal(slide.cta.action);
-                      }}
-                    >
-                      {slide.cta.label}
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                        <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor"
-                          strokeWidth="1.8" strokeLinecap="round"
-                          strokeLinejoin="round"/>
-                      </svg>
-                    </button>
-                  )}
-                  {slide.cta2.href ? (
-                    <a href={slide.cta2.href} className="btn-secondary">
-                      {slide.cta2.label}
-                    </a>
-                  ) : (
-                    <button
-                      className="btn-secondary"
-                      suppressHydrationWarning
-                      onClick={() => openModal(slide.cta2.action)}
-                    >
-                      {slide.cta2.label}
-                    </button>
-                  )}
-                </div>
+                {slide.subtitle && <p className="hero-subtitle">{slide.subtitle}</p>}
+                {(slide.cta || slide.cta2) && (
+                  <div className="hero-actions">
+                    {slide.cta && (slide.cta.href ? (
+                      <a href={slide.cta.href} className="btn-primary">
+                        {slide.cta.label}
+                      </a>
+                    ) : (
+                      <button
+                        className="btn-primary"
+                        suppressHydrationWarning
+                        onClick={() => {
+                          if (slide.cta.action === 'shop') handleEnterShop();
+                          else openModal(slide.cta.action);
+                        }}
+                      >
+                        {slide.cta.label}
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                          <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor"
+                            strokeWidth="1.8" strokeLinecap="round"
+                            strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    ))}
+                    {slide.cta2 && (slide.cta2.href ? (
+                      <a href={slide.cta2.href} className="btn-secondary">
+                        {slide.cta2.label}
+                      </a>
+                    ) : (
+                      <button
+                        className="btn-secondary"
+                        suppressHydrationWarning
+                        onClick={() => openModal(slide.cta2.action)}
+                      >
+                        {slide.cta2.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
 
           {/* Dot indicators */}
           <div className="hero-dots">
-            {heroSlides.map((_, i) => (
+            {effectiveSlides.map((_, i) => (
               <button
                 key={i}
                 className={`hero-dot${heroSlide === i ? ' active' : ''}`}
@@ -1006,21 +1044,36 @@ const handleForgotResetPassword = async () => {
           </div>
         </div>
         <div className="hero-visual">
-          <div className="logo-3d-scene">
-            <div className="particles" id="particles"/>
-            <div className="ring-outer"/><div className="ring-mid"/>
-            <div className="orbit" style={{animationDuration:'7s'}}>
-              <div className="orbit-dot" style={{width:'10px',height:'10px',borderRadius:'50%',background:'var(--gold)',boxShadow:'0 0 8px var(--gold)'}}/>
+          {currentBannerImage ? (
+            <img
+              src={currentBannerImage}
+              alt=""
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                borderRadius: '16px',
+                border: '1px solid rgba(212,168,67,0.2)',
+                boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
+              }}
+            />
+          ) : (
+            <div className="logo-3d-scene">
+              <div className="particles" id="particles"/>
+              <div className="ring-outer"/><div className="ring-mid"/>
+              <div className="orbit" style={{animationDuration:'7s'}}>
+                <div className="orbit-dot" style={{width:'10px',height:'10px',borderRadius:'50%',background:'var(--gold)',boxShadow:'0 0 8px var(--gold)'}}/>
+              </div>
+              <div className="orbit" style={{animationDuration:'10s',animationDirection:'reverse',transform:'rotate(120deg)'}}>
+                <div className="orbit-dot" style={{width:'7px',height:'7px',borderRadius:'50%',background:'var(--red)',boxShadow:'0 0 8px var(--red)'}}/>
+              </div>
+              <div className="orbit" style={{animationDuration:'13s',transform:'rotate(240deg)'}}>
+                <div className="orbit-dot" style={{width:'5px',height:'5px',borderRadius:'50%',background:'var(--gold-light)',boxShadow:'0 0 6px var(--gold-light)'}}/>
+              </div>
+              <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="hero-logo-img"/>
+              <div className="logo-glow"/>
             </div>
-            <div className="orbit" style={{animationDuration:'10s',animationDirection:'reverse',transform:'rotate(120deg)'}}>
-              <div className="orbit-dot" style={{width:'7px',height:'7px',borderRadius:'50%',background:'var(--red)',boxShadow:'0 0 8px var(--red)'}}/>
-            </div>
-            <div className="orbit" style={{animationDuration:'13s',transform:'rotate(240deg)'}}>
-              <div className="orbit-dot" style={{width:'5px',height:'5px',borderRadius:'50%',background:'var(--gold-light)',boxShadow:'0 0 6px var(--gold-light)'}}/>
-            </div>
-            <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="hero-logo-img"/>
-            <div className="logo-glow"/>
-          </div>
+          )}
         </div>
       </section>
 
@@ -1430,7 +1483,7 @@ const handleForgotResetPassword = async () => {
                   <div className="contact-fields-row">
                     <div className="auth-field">
                       <label>Your Name</label>
-                      <input type="text" placeholder="Juan Dela Cruz" value={contactForm.name} onChange={(e) => handleContactChange('name', e.target.value)} className={contactErrors.name ? 'error' : ''}/>
+                      <input type="text" placeholder="Juan Dela Cruz" value={contactForm.name} onChange={(e) => handleContactChange('name', e.target.value)} className={contactErrors.name ? 'error' : ''} maxLength={120}/>
                       {contactErrors.name && <span className="error-message">{contactErrors.name}</span>}
                     </div>
                     <div className="auth-field">
@@ -1441,12 +1494,12 @@ const handleForgotResetPassword = async () => {
                   </div>
                   <div className="auth-field">
                     <label>Subject</label>
-                    <input type="text" placeholder="Bulk order inquiry, custom design, etc." value={contactForm.subject} onChange={(e) => handleContactChange('subject', e.target.value)} className={contactErrors.subject ? 'error' : ''}/>
+                    <input type="text" placeholder="Bulk order inquiry, custom design, etc." value={contactForm.subject} onChange={(e) => handleContactChange('subject', e.target.value)} className={contactErrors.subject ? 'error' : ''} maxLength={200}/>
                     {contactErrors.subject && <span className="error-message">{contactErrors.subject}</span>}
                   </div>
                   <div className="auth-field">
                     <label>Message</label>
-                    <textarea placeholder="Tell us about your order, design, ideas, or any questions you have..." value={contactForm.message} onChange={(e) => handleContactChange('message', e.target.value)} className={`contact-textarea ${contactErrors.message ? 'error' : ''}`} rows={5}/>
+                    <textarea placeholder="Tell us about your order, design, ideas, or any questions you have..." value={contactForm.message} onChange={(e) => handleContactChange('message', e.target.value)} className={`contact-textarea ${contactErrors.message ? 'error' : ''}`} rows={5} maxLength={5000}/>
                     {contactErrors.message && <span className="error-message">{contactErrors.message}</span>}
                   </div>
                   <button type="submit" className="btn-primary contact-submit-btn">
@@ -1537,7 +1590,7 @@ const handleForgotResetPassword = async () => {
                       <label>Password</label>
                       <div className="auth-input-wrap">
                         <input type={showPassword ? 'text' : 'password'} placeholder="Enter your password"
-                          value={loginForm.password}
+                          value={loginForm.password} maxLength={128}
                           onChange={e => { setLoginForm(f => ({...f, password: e.target.value})); setLoginErrors({}); setSessionMessage(''); }}
                           className={loginErrors.password ? 'error' : ''}/>
                         <button type="button" className="auth-eye" onClick={() => setShowPassword(v => !v)}>
