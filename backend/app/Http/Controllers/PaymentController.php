@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use App\Models\ActivityLog;
 use App\Models\FlashSale;
+use App\Models\Notification;
+use App\Models\User;
 use App\Services\PriceResolver;
 
 class PaymentController extends Controller
@@ -258,7 +260,11 @@ class PaymentController extends Controller
                 ->post("{$this->baseUrl}/checkout_sessions", [
                     'data' => [
                         'attributes' => [
-                            'billing'              => ['email' => $order->userSnapshot['email'] ?? ''],
+                            'billing'              => [
+                                'name'  => $order->userSnapshot['name'] ?? '',
+                                'email' => $order->userSnapshot['email'] ?? '',
+                                'phone' => $order->userSnapshot['phone'] ?? ($validated['deliveryAddress']['phone'] ?? ''),
+                            ],
                             'reference_number'     => (string) $orderId,
                             'payment_method_types' => ['gcash', 'paymaya', 'card'],
                             'line_items'           => [[
@@ -271,7 +277,7 @@ class PaymentController extends Controller
                                 'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}",
                                 'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}",
                             ],
-                            'cancel_url'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}&cancelled=1",
+                            'cancel_url'  => "{$frontendUrl}/shop/checkout",
                         ],
                     ],
                 ]);
@@ -406,7 +412,11 @@ class PaymentController extends Controller
                 ->post("{$this->baseUrl}/checkout_sessions", [
                     'data' => [
                         'attributes' => [
-                            'billing'              => ['email' => $user->email],
+                            'billing'              => [
+                                'name'  => trim("{$user->firstName} {$user->lastName}"),
+                                'email' => $user->email,
+                                'phone' => $user->phoneNumber ?? '',
+                            ],
                             'reference_number'     => $referenceNumber,
                             'payment_method_types' => ['gcash', 'paymaya', 'card'],
                             'line_items'           => [[
@@ -419,7 +429,7 @@ class PaymentController extends Controller
                                 'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}&type=order_request",
                                 'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}&type=order_request",
                             ],
-                            'cancel_url' => "{$frontendUrl}/shop/payment-failed?id={$orderId}&cancelled=1",
+                            'cancel_url' => "{$frontendUrl}/shop/orders",
                         ],
                     ],
                 ]);
@@ -608,6 +618,26 @@ class PaymentController extends Controller
                 $order->paymongoReferenceNumber = $referenceNum;
                 $order->updatedAt               = now();
                 $order->save();
+
+                // Admin in-app notification
+                try {
+                    $admin = User::where('role', 'admin')->first();
+                    if ($admin) {
+                        Notification::create([
+                            'user_id'    => (string) $admin->_id,
+                            'type'       => 'new_order',
+                            'title'      => 'Payment Received',
+                            'message'    => 'Order #' . strtoupper(substr($orderId, -8)) .
+                                            ' paid by ' . ($order->userSnapshot['name'] ?? 'Unknown') .
+                                            ($paymentMethod ? " via {$paymentMethod}" : '') . '.',
+                            'is_read'    => false,
+                            'data'       => ['orderId' => $orderId],
+                            'created_at' => now(),
+                        ]);
+                    }
+                } catch (\Exception $notifErr) {
+                    Log::warning('webhook: admin notification failed', ['error' => $notifErr->getMessage()]);
+                }
 
                 // Log activity
                 try {

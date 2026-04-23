@@ -5283,7 +5283,7 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
       setShowAddModal(false);
       setEditBOM(null);
     } catch (e) {
-      throw e;
+      throw e instanceof Error ? e : new Error(String(e));
     }
   };
 
@@ -5305,7 +5305,7 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
       setShowAddModal(false);
       setEditBOM(null);
     } catch (e) {
-      throw e;
+      throw e instanceof Error ? e : new Error(String(e));
     }
   };
 

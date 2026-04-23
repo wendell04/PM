@@ -758,9 +758,10 @@ export default function ShopLayout({ children }) {
     const handleUserUpdate = () => {
       setUser(getUser());
     };
-    window.addEventListener('storage', (e) => {
+    const handleStorageUpdate = (e) => {
       if (e.key === 'auth_user') handleUserUpdate();
-    });
+    };
+    window.addEventListener('storage', handleStorageUpdate);
     window.addEventListener('pmp_user_updated', handleUserUpdate);
 
     // Cart is managed entirely by CartContext — no fetch needed here
@@ -778,7 +779,7 @@ export default function ShopLayout({ children }) {
     window.addEventListener('pmp_open_auth', handleOpenAuth);
 
     return () => {
-      window.removeEventListener('storage', handleUserUpdate);
+      window.removeEventListener('storage', handleStorageUpdate);
       window.removeEventListener('pmp_user_updated', handleUserUpdate);
       window.removeEventListener('pmp_open_auth', handleOpenAuth);
     };

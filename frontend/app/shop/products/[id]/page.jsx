@@ -204,17 +204,17 @@ export default function ProductDetailPage() {
   }
 
   function formatPeso(n) {
-    if (n == null) return 'ΓÇö';
-    return `Γé▒${Number(n).toLocaleString('en-PH', {
+    if (n == null) return '—';
+    return `₱${Number(n).toLocaleString('en-PH', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
   }
 
-  // Design upload removed ΓÇö users attach design files at checkout via FormData.
-  // Legacy order-request submit removed ΓÇö flow is cart + checkout.
+  // Design upload removed — users attach design files at checkout via FormData.
+  // Legacy order-request submit removed — flow is cart + checkout.
 
-  // Serialize { [group.id]: value } ΓåÆ "group: value, group: value" or null
+  // Serialize { [group.id]: value } → "group: value, group: value" or null
   function resolveVariantName(variants) {
     if (!variants || Object.keys(variants).length === 0) return null;
     return Object.entries(variants)
@@ -222,7 +222,7 @@ export default function ProductDetailPage() {
       .join(', ');
   }
 
-  // Add to cart ΓÇö stays on page
+  // Add to cart — stays on page
   async function handleAddToCart() {
     if (!token) {
       window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }));
@@ -423,14 +423,14 @@ export default function ProductDetailPage() {
         </div>
       )}
 
-      {/* order-request success overlay removed ΓÇö flow now uses cart + checkout */}
+      {/* order-request success overlay removed — flow now uses cart + checkout */}
 
       {/* PRODUCT DETAIL */}
       {!loading && !error && product && (
         <div style={{ display: 'flex', gap: '2.5rem',
           flexWrap: 'wrap', alignItems: 'flex-start' }}>
 
-          {/* LEFT ΓÇö Images */}
+          {/* LEFT — Images */}
           <div style={{ flex: '1 1 400px',
             maxWidth: '520px' }}>
 
@@ -467,7 +467,7 @@ export default function ProductDetailPage() {
                 }}>
                   {flashSale.discountType === 'percentage'
                     ? `${flashSale.discountValue}% OFF`
-                    : `Γé▒${flashSale.discountValue} OFF`}
+                    : `₱${flashSale.discountValue} OFF`}
                 </div>
               )}
               {(() => {
@@ -530,7 +530,7 @@ export default function ProductDetailPage() {
             })()}
           </div>
 
-          {/* RIGHT ΓÇö Info + Order Form */}
+          {/* RIGHT — Info + Order Form */}
           <div style={{ flex: '1 1 360px',
             display: 'flex', flexDirection: 'column',
             gap: '1.25rem' }}>
@@ -600,7 +600,7 @@ export default function ProductDetailPage() {
                   fontWeight: 800, color: 'var(--gold)' }}>
                   {formatPeso(priceRange.min)}
                   {priceRange.max !== priceRange.min
-                    && ` ΓÇô ${formatPeso(priceRange.max)}`}
+                    && ` – ${formatPeso(priceRange.max)}`}
                   <span style={{ fontSize: '0.8rem',
                     color: 'var(--gray)',
                     fontWeight: 400 }}> / pc</span>
@@ -649,7 +649,7 @@ export default function ProductDetailPage() {
                   border: '1px solid rgba(245,158,11,0.3)',
                   borderRadius: '999px',
                   padding: '0.25rem 0.75rem' }}>
-                  Low Stock ΓÇö {product.stock} pcs left
+                  Low Stock — {product.stock} pcs left
                 </span>
               ) : (
                 <span style={{ fontSize: '0.8rem',
@@ -771,8 +771,8 @@ export default function ProductDetailPage() {
                             ? 'var(--gold)' : 'var(--gray)',
                           fontWeight: isActive ? 700 : 400,
                         }}>
-                          {tier.minQty}ΓÇô{tier.maxQty || 'Γê₧'} pcs
-                          {isActive && ' ΓåÉ your qty'}
+                          {tier.minQty}–{tier.maxQty || '∞'} pcs
+                          {isActive && ' ← your qty'}
                         </span>
                         <span style={{
                           fontSize: '0.875rem', fontWeight: 700,
@@ -781,7 +781,7 @@ export default function ProductDetailPage() {
                         }}>
                           {unitP
                             ? `${formatPeso(unitP)} / pc`
-                            : 'ΓÇö'}
+                            : '—'}
                         </span>
                       </div>
                     );
@@ -813,7 +813,7 @@ export default function ProductDetailPage() {
                     fontSize: '1.25rem', fontWeight: 700,
                     display: 'flex', alignItems: 'center',
                     justifyContent: 'center',
-                  }}>ΓêÆ</button>
+                  }}>−</button>
                 <input
                   type="number"
                   value={quantity}
@@ -981,7 +981,7 @@ export default function ProductDetailPage() {
               />
             </div>
 
-            {/* Inline submit errors removed ΓÇö handled at checkout */}
+            {/* Inline submit errors removed — handled at checkout */}
 
             {/* Action buttons */}
             {token ? (
