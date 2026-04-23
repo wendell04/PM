@@ -63,11 +63,47 @@ function mergeRolePermissions(apiRow) {
   return base;
 }
 
-function CheckIcon() {
+const SECTION_GROUPS = [
+  { label: 'Operations', keys: ['orderRequests', 'orders', 'jobOrders', 'pos'] },
+  { label: 'Inventory', keys: ['inventory', 'vendors', 'badOrders'] },
+  { label: 'Analytics', keys: ['sales', 'reports'] },
+  { label: 'Catalog', keys: ['products', 'banners', 'flashSales', 'vouchers'] },
+  { label: 'Admin', keys: ['auditLogs', 'userManagement', 'rolePermissions'] },
+];
+
+function ToggleSwitch({ checked, disabled, onChange }) {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M20 6L9 17l-5-5" />
-    </svg>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={onChange}
+      style={{
+        position: 'relative',
+        width: '36px',
+        height: '20px',
+        borderRadius: '10px',
+        background: disabled ? 'rgba(255,255,255,0.1)' : checked ? '#D4A843' : 'rgba(255,255,255,0.12)',
+        border: 'none',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        padding: 0,
+        transition: 'background 0.2s',
+        flexShrink: 0,
+      }}
+    >
+      <span style={{
+        position: 'absolute',
+        top: '2px',
+        left: checked ? '18px' : '2px',
+        width: '16px',
+        height: '16px',
+        borderRadius: '50%',
+        background: disabled ? 'rgba(255,255,255,0.3)' : '#fff',
+        transition: 'left 0.2s',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+      }} />
+    </button>
   );
 }
 
@@ -204,55 +240,57 @@ export default function RolePermissionsPage() {
     return null;
   }
 
-  const gridTemplate = `minmax(176px, 1fr) repeat(${SECTIONS.length}, minmax(44px, 56px))`;
-
-  const cellBorder = '1px solid var(--border)';
-
   return (
     <ErrorBoundary>
-    <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '2rem 1rem' }}>
-      <header style={{ marginBottom: '24px' }}>
-        <h1 className="page-title">Permissions</h1>
-        <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--gray)' }}>
-          Configure section access per staff role
+    <div style={{ maxWidth: '960px', margin: '0 auto', padding: '2rem 1rem' }}>
+      <header style={{ marginBottom: '2rem' }}>
+        <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>
+          Home › Admin › Role Permissions
+        </div>
+        <h1 className="page-title">Role Permissions</h1>
+        <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--gray)' }}>
+          Control which sections each staff role can access. Dashboard access is always granted.
         </p>
       </header>
 
+      {/* Admin/Owner notice */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '0.75rem',
+        padding: '0.875rem 1rem', marginBottom: '1.5rem',
+        background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)',
+        borderRadius: '10px',
+      }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2">
+          <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+        </svg>
+        <span style={{ fontSize: '0.82rem', color: 'var(--gray)' }}>
+          <strong style={{ color: 'var(--gold)' }}>Administrator</strong> and <strong style={{ color: 'var(--gold)' }}>Owner</strong> roles have unrestricted access to all sections and cannot be configured here.
+        </span>
+      </div>
+
       {loading && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem',
-          padding: '1rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="skeleton skeleton-row" />
+            <div key={i} style={{ height: '120px', borderRadius: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', animation: 'pulse 1.4s ease-in-out infinite' }} />
           ))}
         </div>
       )}
 
       {!loading && error && (
-        <div
-          style={{
-            padding: '16px',
-            borderRadius: '12px',
-            border: '1px solid var(--red)',
-            background: 'rgba(239, 68, 68, 0.08)',
-            color: 'var(--red)',
-            marginBottom: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-            alignItems: 'flex-start',
-          }}
-        >
-          <span>{error}</span>
+        <div style={{
+          padding: '1rem 1.25rem', borderRadius: '12px',
+          border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)',
+          color: '#ef4444', marginBottom: '1rem',
+          display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-start',
+        }}>
+          <span style={{ fontSize: '0.9rem' }}>{error}</span>
           <button
             type="button"
             onClick={() => fetchPermissions()}
             style={{
-              padding: '8px 16px',
-              borderRadius: '8px',
-              border: '1px solid var(--border)',
-              background: 'var(--dark2)',
-              color: 'var(--white)',
-              cursor: 'pointer',
+              padding: '0.5rem 1rem', borderRadius: '8px',
+              border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.12)',
+              color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600,
             }}
           >
             Retry
@@ -261,155 +299,143 @@ export default function RolePermissionsPage() {
       )}
 
       {!loading && !error && (
-        <>
-          <div style={{ overflowX: 'auto', marginBottom: '16px', WebkitOverflowScrolling: 'touch' }}>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: gridTemplate,
-                minWidth: `${280 + SECTIONS.length * 48}px`,
-                border: cellBorder,
-                borderRadius: '12px',
-                overflow: 'hidden',
-                background: 'var(--dark2)',
-              }}
-            >
-              {/* Header row */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {STAFF_ROLES.map(({ value: role, label }) => {
+            const row = permissionsData[role] || defaultRow();
+            const enabledCount = SECTIONS.filter(s => s.key !== 'dashboard' && row[s.key]).length;
+            const totalCount = SECTIONS.filter(s => s.key !== 'dashboard').length;
+            return (
               <div
+                key={role}
                 style={{
-                  padding: '12px 16px',
-                  borderBottom: cellBorder,
-                  borderRight: cellBorder,
-                  background: 'var(--dark)',
-                  minHeight: '72px',
+                  border: '1px solid var(--border)',
+                  borderRadius: '12px',
+                  background: 'rgba(255,255,255,0.03)',
+                  overflow: 'hidden',
                 }}
-              />
-              {SECTIONS.map((section) => (
-                <div
-                  key={section.key}
-                  style={{
-                    padding: '8px 4px',
-                    borderBottom: cellBorder,
-                    borderRight: cellBorder,
-                    background: 'var(--dark)',
-                    display: 'flex',
-                    alignItems: 'flex-end',
-                    justifyContent: 'center',
-                    maxWidth: '60px',
-                    margin: '0 auto',
-                    width: '100%',
-                  }}
-                >
-                  <span
-                    style={{
-                      display: 'block',
-                      fontSize: '0.7rem',
-                      color: 'var(--gray)',
-                      textAlign: 'center',
-                      lineHeight: 1.2,
-                      transform: 'rotate(-55deg)',
-                      transformOrigin: 'center center',
-                      whiteSpace: 'nowrap',
-                      maxWidth: '60px',
-                    }}
-                  >
-                    {section.label}
-                  </span>
-                </div>
-              ))}
-
-              {/* Role rows */}
-              {STAFF_ROLES.map(({ value: role, label }, rowIdx) => {
-                const row = permissionsData[role] || defaultRow();
-                const isLastRow = rowIdx === STAFF_ROLES.length - 1;
-                return (
-                  <div
-                    key={role}
-                    style={{
-                      display: 'contents',
-                    }}
-                  >
-                    <div
-                      style={{
-                        padding: '12px 16px',
-                        borderBottom: isLastRow ? 'none' : cellBorder,
-                        borderRight: cellBorder,
-                        background: 'var(--dark2)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        minHeight: '56px',
-                      }}
-                    >
-                      <span style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.875rem' }}>
-                        {label}
-                      </span>
-                      <div style={{ fontSize: '0.7rem', minHeight: '1rem' }}>
-                        {saving[role] && (
-                          <span style={{ color: 'var(--gold)' }}>Saving...</span>
-                        )}
-                        {!saving[role] && saveSuccess[role] && (
-                          <span style={{ color: 'var(--green)' }}>Saved</span>
-                        )}
-                        {!saving[role] && saveError[role] && (
-                          <span style={{ color: 'var(--red)' }}>{saveError[role]}</span>
-                        )}
+              >
+                {/* Role header */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '1rem 1.25rem',
+                  borderBottom: '1px solid var(--border)',
+                  background: 'rgba(255,255,255,0.02)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{
+                      width: '36px', height: '36px', borderRadius: '8px',
+                      background: 'rgba(212,168,67,0.12)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--white)' }}>{label}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '1px' }}>
+                        {enabledCount} of {totalCount} sections enabled
                       </div>
                     </div>
-                    {SECTIONS.map((section) => {
-                      const checked = !!row[section.key];
-                      const disabled = section.key === 'dashboard';
-                      return (
-                        <div
-                          key={`${role}-${section.key}`}
-                          style={{
-                            padding: '8px',
-                            borderBottom: isLastRow ? 'none' : cellBorder,
-                            borderRight: cellBorder,
-                            background: rowIdx % 2 === 0 ? 'var(--dark2)' : 'rgba(255,255,255,0.02)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <button
-                            type="button"
-                            role="checkbox"
-                            aria-checked={checked}
-                            aria-disabled={disabled}
-                            disabled={disabled}
-                            onClick={() => handleToggle(role, section.key)}
-                            style={{
-                              width: '18px',
-                              height: '18px',
-                              borderRadius: '4px',
-                              border: checked ? 'none' : '1px solid var(--border)',
-                              background: checked ? '#D4A843' : 'var(--dark)',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              cursor: disabled ? 'not-allowed' : 'pointer',
-                              padding: 0,
-                              opacity: disabled ? 0.85 : 1,
-                              flexShrink: 0,
-                            }}
-                          >
-                            {checked && <CheckIcon />}
-                          </button>
-                        </div>
-                      );
-                    })}
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    {saving[role] && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--gold)', fontWeight: 600 }}>Saving...</span>
+                    )}
+                    {!saving[role] && saveSuccess[role] && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--green)', fontWeight: 600 }}>Saved</span>
+                    )}
+                    {!saving[role] && saveError[role] && (
+                      <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 600 }}>{saveError[role]}</span>
+                    )}
+                    <div style={{
+                      padding: '0.25rem 0.75rem', borderRadius: '999px',
+                      background: enabledCount > 0 ? 'rgba(212,168,67,0.12)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${enabledCount > 0 ? 'rgba(212,168,67,0.3)' : 'var(--border)'}`,
+                      fontSize: '0.72rem', fontWeight: 700,
+                      color: enabledCount > 0 ? 'var(--gold)' : 'var(--gray)',
+                    }}>
+                      {enabledCount}/{totalCount}
+                    </div>
+                  </div>
+                </div>
 
-          <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-            Administrator and Owner have full access to all sections.
-          </p>
-        </>
+                {/* Permission groups */}
+                <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {SECTION_GROUPS.map((group) => (
+                    <div key={group.label}>
+                      <div style={{
+                        fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)',
+                        textTransform: 'uppercase', letterSpacing: '0.08em',
+                        marginBottom: '0.5rem',
+                      }}>
+                        {group.label}
+                      </div>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                        gap: '0.5rem',
+                      }}>
+                        {group.keys.map((key) => {
+                          const section = SECTIONS.find(s => s.key === key);
+                          if (!section) return null;
+                          const checked = !!row[key];
+                          const disabled = key === 'dashboard';
+                          return (
+                            <div
+                              key={key}
+                              style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                padding: '0.5rem 0.75rem',
+                                borderRadius: '8px',
+                                background: checked ? 'rgba(212,168,67,0.06)' : 'rgba(255,255,255,0.03)',
+                                border: `1px solid ${checked ? 'rgba(212,168,67,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                                transition: 'all 0.15s',
+                              }}
+                            >
+                              <span style={{
+                                fontSize: '0.82rem',
+                                color: disabled ? 'var(--gray)' : checked ? 'var(--white)' : 'var(--gray)',
+                                fontWeight: checked ? 600 : 400,
+                              }}>
+                                {section.label}
+                              </span>
+                              <ToggleSwitch
+                                checked={checked}
+                                disabled={disabled}
+                                onChange={() => handleToggle(role, key)}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Always-on dashboard row */}
+                  <div>
+                    <div style={{
+                      fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray)',
+                      textTransform: 'uppercase', letterSpacing: '0.08em',
+                      marginBottom: '0.5rem',
+                    }}>
+                      Always On
+                    </div>
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '0.5rem 0.75rem', borderRadius: '8px',
+                      background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)',
+                      minWidth: '200px', gap: '2rem',
+                    }}>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--gray)', fontWeight: 600 }}>Dashboard</span>
+                      <ToggleSwitch checked={true} disabled={true} onChange={() => {}} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
     </ErrorBoundary>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import CustomDropdown from '@/app/components/CustomDropdown';
 import {
   fetchSuppliers,
   createSupplier,
@@ -48,11 +49,6 @@ const EditIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-  </svg>
-);
-const TrashIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
   </svg>
 );
 const ExternalLinkIcon = () => (
@@ -378,9 +374,13 @@ function VendorFormModal({ vendor, allVendors, materials, units, onClose, onSave
   const uomSelectOrInput = (value, onChange) => {
     if (units && units.length > 0) {
       return (
-        <select value={value} onChange={(e) => onChange(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: '110px', cursor: 'pointer' }}>
-          {units.map((u) => <option key={u.code} value={u.code}>{u.name}</option>)}
-        </select>
+        <CustomDropdown
+          value={value}
+          onChange={onChange}
+          options={units.map((u) => ({ value: u.code, label: u.name }))}
+          placeholder="UOM"
+          style={{ flex: 1, minWidth: '110px' }}
+        />
       );
     }
     return (
@@ -665,7 +665,6 @@ export default function VendorsApiTab({ onVendorsChange, materials = [], units =
 
   const openCreate = () => { setSelected(null); setSubmitError(''); setModal('form'); };
   const openEdit = (s) => { setSelected(s); setSubmitError(''); setModal('form'); };
-  const openDelete = (s) => { setSelected(s); setDeleteError(''); setModal('delete'); };
   const openCatalog = (s) => { setSelected(s); setModal('catalog'); };
   const closeModal = () => { setModal(null); setSelected(null); setSubmitError(''); setDeleteError(''); };
 
@@ -764,9 +763,6 @@ export default function VendorsApiTab({ onVendorsChange, materials = [], units =
                     <div style={{ display: 'flex', gap: '0.25rem' }}>
                       <button onClick={() => openEdit(v)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem', cursor: 'pointer', color: 'var(--gray)' }} title="Edit">
                         <EditIcon />
-                      </button>
-                      <button onClick={() => openDelete(v)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', padding: '0.35rem', cursor: 'pointer', color: '#f87171' }} title="Delete">
-                        <TrashIcon />
                       </button>
                     </div>
                   </div>

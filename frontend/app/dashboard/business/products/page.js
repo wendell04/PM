@@ -4004,7 +4004,7 @@ export default function ProductListPage() {
   const confirmDelete = async (product) => {
     try {
       // Fetch all orders to check for sales history
-      const allOrders = await fetchAllOrders({}, token);
+      const allOrders = await fetchAllOrders(token, {});
       const hasSales = allOrders.some(
         (o) =>
           o.productId === product.id ||

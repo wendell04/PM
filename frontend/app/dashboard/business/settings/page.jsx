@@ -324,7 +324,7 @@ export default function SettingsPage() {
     if (passwordForm.newPassword !== passwordForm.confirmPassword) { setPasswordError('Passwords do not match.'); return; }
     setIsSavingPassword(true);
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/password`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/profile/password`, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -336,7 +336,7 @@ export default function SettingsPage() {
           password: passwordForm.newPassword,
           password_confirmation: passwordForm.confirmPassword,
         }),
-      });
+      }, 15000);
       const d = await res.json();
       if (!res.ok) throw new Error(d.message || 'Failed to update password.');
       setPasswordSuccess('Password updated successfully.');
