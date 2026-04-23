@@ -4,6 +4,8 @@
  * Connects banner management to MongoDB backend via Laravel API
  */
 
+import { fetchWithTimeout } from './fetchWithTimeout';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 /**
@@ -14,7 +16,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
  */
 export async function getBanners(token) {
   try {
-    const res = await fetch(`${API_URL}/api/admin/banners`, {
+    const res = await fetchWithTimeout(`${API_URL}/api/admin/banners`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -40,7 +42,7 @@ export async function getBanners(token) {
  */
 export async function createBanner(bannerData, token) {
   try {
-    const res = await fetch(`${API_URL}/api/admin/banners`, {
+    const res = await fetchWithTimeout(`${API_URL}/api/admin/banners`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -68,7 +70,7 @@ export async function createBanner(bannerData, token) {
  */
 export async function updateBanner(id, updates, token) {
   try {
-    const res = await fetch(`${API_URL}/api/admin/banners/${id}`, {
+    const res = await fetchWithTimeout(`${API_URL}/api/admin/banners/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -95,7 +97,7 @@ export async function updateBanner(id, updates, token) {
  */
 export async function deleteBanner(id, token) {
   try {
-    const res = await fetch(`${API_URL}/api/admin/banners/${id}`, {
+    const res = await fetchWithTimeout(`${API_URL}/api/admin/banners/${id}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
@@ -121,7 +123,7 @@ export async function deleteBanner(id, token) {
  */
 export async function publishBanner(id, token) {
   try {
-    const res = await fetch(`${API_URL}/api/admin/banners/${id}/publish`, {
+    const res = await fetchWithTimeout(`${API_URL}/api/admin/banners/${id}/publish`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -147,7 +149,7 @@ export async function publishBanner(id, token) {
  */
 export async function unpublishBanner(id, token) {
   try {
-    const res = await fetch(`${API_URL}/api/admin/banners/${id}/unpublish`, {
+    const res = await fetchWithTimeout(`${API_URL}/api/admin/banners/${id}/unpublish`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -172,7 +174,7 @@ export async function unpublishBanner(id, token) {
  */
 export async function getStorefrontBanners() {
   try {
-    const res = await fetch(`${API_URL}/api/storefront/banners`, {
+    const res = await fetchWithTimeout(`${API_URL}/api/storefront/banners`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -183,8 +185,7 @@ export async function getStorefrontBanners() {
     if (!res.ok) throw new Error(data.message || 'Failed to fetch storefront banners');
     return data.data || [];
   } catch (err) {
-    console.error('[getStorefrontBanners] error:', err);
-    throw err;
+    throw err instanceof Error ? err : new Error(String(err));
   }
 }
 
@@ -200,7 +201,7 @@ export async function uploadBannerImage(file, token) {
   formData.append('image', file);
   formData.append('folder', 'pmp-banners');
 
-  const res = await fetch(`${API_URL}/api/admin/upload-image`, {
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/upload-image`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,

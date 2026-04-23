@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from './fetchWithTimeout';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 export async function fetchOrderRequests(token, status = null) {
@@ -5,9 +7,9 @@ export async function fetchOrderRequests(token, status = null) {
     ? `${API_URL}/api/admin/order-requests?status=${encodeURIComponent(status)}`
     : `${API_URL}/api/admin/order-requests`;
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { Authorization: `Bearer ${token}` },
-  });
+  }, 30000);
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -22,9 +24,9 @@ export async function fetchOrderRequests(token, status = null) {
 }
 
 export async function fetchOrderRequest(token, id) {
-  const res = await fetch(`${API_URL}/api/admin/order-requests/${id}`, {
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/order-requests/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
-  });
+  }, 30000);
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -45,14 +47,14 @@ export async function updateOrderRequestStatus(token, id, { status, finalPrice, 
   if (adminComment !== undefined) body.adminComment = adminComment;
   if (mockupUrl !== undefined) body.mockupUrl = mockupUrl;
 
-  const res = await fetch(`${API_URL}/api/admin/order-requests/${id}/status`, {
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/order-requests/${id}/status`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(body),
-  });
+  }, 30000);
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -67,12 +69,6 @@ const ngrokHeader = API_URL.includes('ngrok')
   ? { 'ngrok-skip-browser-warning': '1' }
   : {};
 
-// ── APPEND START ──────────────────────────────────────────────────────
-
-/**
- * POST /api/order-requests
- * Customer submits a new order request.
- */
 export async function submitOrderRequest(token, {
   productId,
   quantity,
@@ -81,12 +77,12 @@ export async function submitOrderRequest(token, {
   designNotes,
   isCustom,
 }) {
-  const res = await fetch(`${API_URL}/api/order-requests`, {
+  const res = await fetchWithTimeout(`${API_URL}/api/order-requests`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
-      ...(API_URL.includes('ngrok') && { 'ngrok-skip-browser-warning': '1' }),
+      ...ngrokHeader,
     },
     body: JSON.stringify({
       productId,
@@ -96,103 +92,76 @@ export async function submitOrderRequest(token, {
       designNotes: designNotes ?? null,
       isCustom: isCustom ?? true,
     }),
-  });
+  }, 30000);
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || 'Failed to submit order request');
   return data.data ?? data;
 }
 
-/**
- * GET /api/my/order-requests
- * Customer fetches their own order requests.
- */
 export async function fetchMyOrderRequests(token) {
-  const res = await fetch(`${API_URL}/api/my/order-requests`, {
+  const res = await fetchWithTimeout(`${API_URL}/api/my/order-requests`, {
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(API_URL.includes('ngrok') && { 'ngrok-skip-browser-warning': '1' }),
+      ...ngrokHeader,
     },
-  });
+  }, 30000);
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || 'Failed to fetch order requests');
   return data.data ?? data ?? [];
 }
 
-/**
- * GET /api/shop/order-requests/{id}
- * Customer fetches a single order request.
- */
 export async function fetchMyOrderRequest(token, id) {
-  const res = await fetch(`${API_URL}/api/shop/order-requests/${id}`, {
+  const res = await fetchWithTimeout(`${API_URL}/api/shop/order-requests/${id}`, {
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(API_URL.includes('ngrok') && { 'ngrok-skip-browser-warning': '1' }),
+      ...ngrokHeader,
     },
-  });
+  }, 30000);
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || 'Failed to fetch order request');
   return data.data ?? data;
 }
 
-/**
- * POST /api/order-requests/my/{id}/cancel
- * Customer cancels their own order request (pending_review only).
- */
 export async function cancelMyOrderRequest(token, id) {
-  const res = await fetch(`${API_URL}/api/order-requests/my/${id}/cancel`, {
+  const res = await fetchWithTimeout(`${API_URL}/api/order-requests/my/${id}/cancel`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      ...(API_URL.includes('ngrok') && { 'ngrok-skip-browser-warning': '1' }),
+      ...ngrokHeader,
     },
-  });
+  }, 30000);
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || 'Failed to cancel order request');
   return data.data ?? data;
 }
 
-/**
- * POST /api/order-requests/upload-design
- * Uploads a design file to Cloudinary via Laravel.
- * Accepts jpg, jpeg, png, pdf, ai, psd, svg — max 10MB.
- * Returns { url, public_id }
- */
 export async function uploadDesignFile(token, file) {
   const formData = new FormData();
   formData.append('design', file);
-  const res = await fetch(`${API_URL}/api/order-requests/upload-design`, {
+  const res = await fetchWithTimeout(`${API_URL}/api/order-requests/upload-design`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(API_URL.includes('ngrok') && { 'ngrok-skip-browser-warning': '1' }),
+      ...ngrokHeader,
     },
     body: formData,
-  });
+  }, 60000);
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || 'Failed to upload design file');
   return { url: data.url, publicId: data.public_id };
 }
 
-// ── APPEND END ────────────────────────────────────────────────────────
-
-/**
- * POST /api/payment/order-request-link
- * Creates a PayMongo checkout session for downpayment or balance.
- * type: 'downpayment' | 'balance'
- * Returns { checkoutUrl, amount, type }
- */
 export async function createOrderRequestPaymentLink(token, orderRequestId, type) {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-  const res = await fetch(`${API_URL}/api/payment/order-request-link`, {
+  const res = await fetchWithTimeout(`${API_URL}/api/payment/order-request-link`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
-      ...(API_URL.includes('ngrok') && { 'ngrok-skip-browser-warning': '1' }),
+      ...ngrokHeader,
     },
     body: JSON.stringify({ orderRequestId, type }),
-  });
+  }, 30000);
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || 'Failed to create payment link');
   return data.data ?? data;

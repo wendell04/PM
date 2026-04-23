@@ -1104,7 +1104,7 @@ export default function BusinessDashboardLayout({ children }) {
                           fontSize: "0.875rem",
                         }}
                       >
-                        Marking as read...
+                        Loading...
                       </div>
                     ) : notifications.length === 0 ? (
                       <div
