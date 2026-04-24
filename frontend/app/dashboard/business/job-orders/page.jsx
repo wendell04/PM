@@ -846,8 +846,14 @@ export default function JobOrdersPage() {
 
             {/* Schedule loading */}
             {scheduleLoading && (
-              <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray)' }}>
-                Loading schedule...
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <style>{`@keyframes joSkel{0%,100%{background-position:-400px 0}100%{background-position:400px 0}}.jo-skel{background:linear-gradient(90deg,var(--dark2) 25%,var(--dark3,#2a2a2a) 50%,var(--dark2) 75%);background-size:400px 100%;animation:joSkel 1.4s ease-in-out infinite;border-radius:8px;}`}</style>
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div className="jo-skel" style={{ height: '14px', width: '120px' }} />
+                    <div className="jo-skel" style={{ height: '60px', borderRadius: '10px' }} />
+                  </div>
+                ))}
               </div>
             )}
 

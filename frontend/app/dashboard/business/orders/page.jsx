@@ -1174,7 +1174,7 @@ export default function OrdersPage() {
                 type="button"
                 className="btn-primary"
                 onClick={() => {
-                  // Print functionality - Create clean Word-like document
+                  const escHtml = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
                   const printWindow = window.open('', '', 'width=800,height=600');
                   
                   // Get design images HTML if any - FLEXIBLE (maintains original aspect ratio)
@@ -1193,7 +1193,7 @@ export default function OrdersPage() {
                   const descriptionHtml = printDescription.trim()
                     ? `<div style="margin: 20px 0; padding: 15px; border: 2px solid #333; border-radius: 8px;">
                         <h3 style="margin: 0 0 10px 0; color: #000; font-size: 14px; text-transform: uppercase;">Print Instructions</h3>
-                        <p style="margin: 0; color: #000; font-size: 13px; white-space: pre-wrap; line-height: 1.5;">${printDescription}</p>
+                        <p style="margin: 0; color: #000; font-size: 13px; white-space: pre-wrap; line-height: 1.5;">${escHtml(printDescription)}</p>
                       </div>`
                     : '';
                   
