@@ -663,6 +663,7 @@ export default function BusinessDashboardLayout({ children }) {
 
   return (
     <div className="admin-dashboard-wrapper">
+      <style>{`@keyframes shimmer{0%,100%{background-position:-400px 0}100%{background-position:400px 0}}`}</style>
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
@@ -1096,15 +1097,16 @@ export default function BusinessDashboardLayout({ children }) {
                     }}
                   >
                     {notifLoading ? (
-                      <div
-                        style={{
-                          padding: "2rem",
-                          textAlign: "center",
-                          color: "var(--gray)",
-                          fontSize: "0.875rem",
-                        }}
-                      >
-                        Loading...
+                      <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+                        {[...Array(4)].map((_, i) => (
+                          <div key={i} style={{ padding: "1rem 1.25rem", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
+                            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "linear-gradient(90deg,var(--dark2) 25%,var(--dark3,#2a2a2a) 50%,var(--dark2) 75%)", backgroundSize: "400px 100%", animation: "shimmer 1.4s ease-in-out infinite", flexShrink: 0 }} />
+                            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                              <div style={{ height: "13px", borderRadius: "4px", background: "linear-gradient(90deg,var(--dark2) 25%,var(--dark3,#2a2a2a) 50%,var(--dark2) 75%)", backgroundSize: "400px 100%", animation: "shimmer 1.4s ease-in-out infinite", width: "75%" }} />
+                              <div style={{ height: "11px", borderRadius: "4px", background: "linear-gradient(90deg,var(--dark2) 25%,var(--dark3,#2a2a2a) 50%,var(--dark2) 75%)", backgroundSize: "400px 100%", animation: "shimmer 1.4s ease-in-out infinite", width: "50%" }} />
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     ) : notifications.length === 0 ? (
                       <div

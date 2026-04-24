@@ -144,6 +144,8 @@ export default function SettingsPage() {
   const [sessions, setSessions]         = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError]     = useState('');
+  const [sessionsSuccess, setSessionsSuccess] = useState('');
+  const [sessionsOpen, setSessionsOpen]       = useState(false);
   const [revokingId, setRevokingId]     = useState(null);
   const [revokeAllBusy, setRevokeAllBusy] = useState(false);
 
@@ -203,6 +205,8 @@ export default function SettingsPage() {
 
   const revokeSession = useCallback(async (id) => {
     setRevokingId(id);
+    setSessionsError('');
+    setSessionsSuccess('');
     try {
       const res = await fetchWithTimeout(
         `${API_URL}/api/sessions/${id}`,
@@ -212,6 +216,7 @@ export default function SettingsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to revoke session.');
       setSessions(prev => prev.filter(s => s.id !== id));
+      setSessionsSuccess('Session revoked successfully.');
     } catch (err) {
       setSessionsError(err.message);
     } finally {
@@ -221,6 +226,8 @@ export default function SettingsPage() {
 
   const revokeAllSessions = useCallback(async () => {
     setRevokeAllBusy(true);
+    setSessionsError('');
+    setSessionsSuccess('');
     try {
       const res = await fetchWithTimeout(
         `${API_URL}/api/sessions/others/all`,
@@ -230,6 +237,7 @@ export default function SettingsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to revoke sessions.');
       await fetchSessions();
+      setSessionsSuccess('All other sessions revoked.');
     } catch (err) {
       setSessionsError(err.message);
     } finally {
@@ -263,6 +271,15 @@ export default function SettingsPage() {
   const handleAvatarUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setAvatarError('Only JPEG, PNG, GIF, or WebP images are allowed.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError('Image must be smaller than 5 MB.');
+      return;
+    }
     setIsUploadingAvatar(true);
     setAvatarError('');
     setAvatarSuccess(false);
@@ -291,7 +308,16 @@ export default function SettingsPage() {
   const handleSaveProfile = async () => {
     setSaveError('');
     setSaveSuccess('');
+    if (!profileForm.firstName.trim()) { setSaveError('First name is required.'); return; }
+    if (!profileForm.lastName.trim())  { setSaveError('Last name is required.'); return; }
     setIsSaving(true);
+    const sanitized = {
+      ...profileForm,
+      firstName:   profileForm.firstName.trim().slice(0, 64),
+      lastName:    profileForm.lastName.trim().slice(0, 64),
+      phoneNumber: profileForm.phoneNumber.trim().slice(0, 20),
+      address:     profileForm.address.trim().slice(0, 200),
+    };
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/profile`, {
         method: 'PUT',
@@ -300,7 +326,7 @@ export default function SettingsPage() {
           Accept: 'application/json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(profileForm),
+        body: JSON.stringify(sanitized),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message || 'Failed to save profile.');
@@ -320,8 +346,13 @@ export default function SettingsPage() {
     setPasswordError('');
     setPasswordSuccess('');
     if (!passwordForm.currentPassword) { setPasswordError('Current password is required.'); return; }
-    if (passwordForm.newPassword.length < 8) { setPasswordError('New password must be at least 8 characters.'); return; }
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) { setPasswordError('Passwords do not match.'); return; }
+    const pw = passwordForm.newPassword;
+    if (pw.length < 8)                      { setPasswordError('New password must be at least 8 characters.'); return; }
+    if (!/[A-Z]/.test(pw))                  { setPasswordError('New password must contain at least one uppercase letter.'); return; }
+    if (!/[a-z]/.test(pw))                  { setPasswordError('New password must contain at least one lowercase letter.'); return; }
+    if (!/\d/.test(pw))                     { setPasswordError('New password must contain at least one number.'); return; }
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(pw)) { setPasswordError('New password must contain at least one special character.'); return; }
+    if (pw !== passwordForm.confirmPassword) { setPasswordError('Passwords do not match.'); return; }
     setIsSavingPassword(true);
     try {
       const res = await fetchWithTimeout(`${API_URL}/api/profile/password`, {
@@ -664,6 +695,8 @@ export default function SettingsPage() {
                         value={profileForm.firstName}
                         onChange={e => setProfileForm(p => ({ ...p, firstName: e.target.value }))}
                         placeholder="e.g., Juan"
+                        maxLength={64}
+                        autoComplete="given-name"
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }}
                       />
                     </div>
@@ -674,6 +707,8 @@ export default function SettingsPage() {
                         value={profileForm.lastName}
                         onChange={e => setProfileForm(p => ({ ...p, lastName: e.target.value }))}
                         placeholder="e.g., Dela Cruz"
+                        maxLength={64}
+                        autoComplete="family-name"
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }}
                       />
                     </div>
@@ -690,6 +725,7 @@ export default function SettingsPage() {
                         disabled
                         readOnly
                         tabIndex={-1}
+                        autoComplete="off"
                         style={{
                           opacity: 0.5, cursor: 'not-allowed',
                           background: 'var(--dark3)', userSelect: 'none',
@@ -703,6 +739,8 @@ export default function SettingsPage() {
                         value={profileForm.phoneNumber}
                         onChange={e => setProfileForm(p => ({ ...p, phoneNumber: e.target.value }))}
                         placeholder="e.g., 09123456789"
+                        maxLength={20}
+                        autoComplete="tel"
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }}
                       />
                     </div>
@@ -713,6 +751,8 @@ export default function SettingsPage() {
                         value={profileForm.address}
                         onChange={e => setProfileForm(p => ({ ...p, address: e.target.value }))}
                         placeholder="e.g., 123 Main Street"
+                        maxLength={200}
+                        autoComplete="street-address"
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }}
                       />
                     </div>
@@ -947,9 +987,7 @@ export default function SettingsPage() {
                     width: 'fit-content',
                   }}
                 >
-                  {isSavingPassword ? (
-                    <><span className="spinner" />Updating...</>
-                  ) : (
+                  {isSavingPassword ? 'Updating...' : (
                     <>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
                         stroke="currentColor" strokeWidth="2">
@@ -1075,114 +1113,165 @@ export default function SettingsPage() {
                     flexWrap: 'wrap',
                     gap: '0.5rem',
                   }}>
-                    <h3 style={{
-                      margin: 0,
-                      fontSize: '0.9375rem',
-                      fontWeight: 700,
-                      color: 'var(--white)',
-                    }}>
-                      Active Sessions
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={revokeAllSessions}
-                      disabled={revokeAllBusy || sessions.filter(s => !s.is_current).length === 0}
-                      style={{
-                        padding: '0.375rem 0.75rem',
-                        fontSize: '0.8125rem',
-                        fontWeight: 600,
-                        borderRadius: '8px',
-                        border: '1px solid rgba(239,68,68,0.25)',
-                        background: 'rgba(239,68,68,0.08)',
-                        color: 'var(--red)',
-                        cursor: revokeAllBusy ? 'not-allowed' : 'pointer',
-                        opacity: revokeAllBusy ? 0.6 : 1,
-                      }}
-                    >
-                      {revokeAllBusy ? 'Revoking...' : 'Revoke all other sessions'}
-                    </button>
-                  </div>
-
-                  {sessionsError && (
-                    <p style={{ margin: '0 0 0.75rem', fontSize: '0.875rem', color: 'var(--red)' }}>
-                      {sessionsError}
-                    </p>
-                  )}
-
-                  {sessionsLoading ? (
-                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray)' }}>
-                      Loading sessions...
-                    </p>
-                  ) : sessions.length === 0 ? (
-                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray)' }}>
-                      No active sessions found.
-                    </p>
-                  ) : (
-                    <ul style={{
-                      listStyle: 'none', margin: 0, padding: 0,
-                      display: 'flex', flexDirection: 'column', gap: '0.5rem',
-                    }}>
-                      {sessions.map((s) => (
-                        <li
-                          key={s.id}
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 700, color: 'var(--white)' }}>
+                        Active Sessions
+                      </h3>
+                      <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--gray)' }}>
+                        Devices currently logged into your account.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      {sessions.filter(s => !s.is_current).length > 0 && (
+                        <button
+                          type="button"
+                          onClick={revokeAllSessions}
+                          disabled={revokeAllBusy}
                           style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: '0.75rem',
-                            padding: '0.75rem 1rem',
-                            background: 'var(--dark)',
-                            border: `1px solid ${s.is_current ? 'var(--gold)' : 'var(--border)'}`,
+                            padding: '0.375rem 0.75rem',
+                            fontSize: '0.8125rem',
+                            fontWeight: 600,
                             borderRadius: '8px',
+                            border: '1px solid rgba(239,68,68,0.25)',
+                            background: 'rgba(239,68,68,0.08)',
+                            color: 'var(--red)',
+                            cursor: revokeAllBusy ? 'not-allowed' : 'pointer',
+                            opacity: revokeAllBusy ? 0.6 : 1,
                           }}
                         >
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                            <span style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>
-                              {s.name}
-                              {s.is_current && (
-                                <span style={{
-                                  marginLeft: '0.5rem',
-                                  fontSize: '0.7rem',
-                                  fontWeight: 600,
-                                  padding: '0.1rem 0.4rem',
-                                  borderRadius: '20px',
-                                  background: 'rgba(234,179,8,0.12)',
-                                  color: 'var(--gold)',
-                                  textTransform: 'uppercase',
-                                  letterSpacing: '0.06em',
-                                }}>
-                                  Current
-                                </span>
-                              )}
-                            </span>
-                            <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>
-                              Last used: {s.last_used_at} · Created: {s.created_at}
-                            </span>
-                          </div>
-                          {!s.is_current && (
-                            <button
-                              type="button"
-                              onClick={() => revokeSession(s.id)}
-                              disabled={revokingId === s.id}
+                          {revokeAllBusy ? 'Revoking...' : 'Revoke All Others'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setSessionsOpen(v => !v)}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: 'var(--gold)', fontSize: '0.8rem', fontWeight: 600,
+                          padding: '0.25rem 0.5rem',
+                        }}
+                      >
+                        {sessionsOpen ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {sessionsOpen && (
+                    <>
+                      {sessionsSuccess && (
+                        <div style={{
+                          marginBottom: '0.75rem', padding: '0.75rem 1rem',
+                          background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.25)',
+                          borderRadius: '8px', color: 'var(--green)',
+                          display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem',
+                        }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                          {sessionsSuccess}
+                        </div>
+                      )}
+                      {sessionsError && (
+                        <div style={{
+                          marginBottom: '0.75rem', padding: '0.75rem 1rem',
+                          background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+                          borderRadius: '8px', color: 'var(--red)',
+                          display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem',
+                        }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                          </svg>
+                          {sessionsError}
+                        </div>
+                      )}
+                      {sessionsLoading ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                          {[1, 2].map(i => (
+                            <div key={i} style={{
+                              padding: '1rem', background: 'var(--dark)',
+                              border: '1px solid var(--border)', borderRadius: '10px',
+                              height: '72px',
+                              background: 'linear-gradient(90deg, var(--dark2) 25%, var(--dark3) 50%, var(--dark2) 75%)',
+                              backgroundSize: '400px 100%',
+                              animation: 'shimmer 1.4s ease-in-out infinite',
+                            }}/>
+                          ))}
+                        </div>
+                      ) : sessions.length === 0 ? (
+                        <div style={{
+                          padding: '2rem', textAlign: 'center', color: 'var(--gray)',
+                          fontSize: '0.875rem', background: 'rgba(255,255,255,0.02)',
+                          border: '1px solid var(--border)', borderRadius: '10px',
+                        }}>
+                          No active sessions found.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {sessions.map((s) => (
+                            <div
+                              key={s.id}
                               style={{
-                                padding: '0.375rem 0.75rem',
-                                fontSize: '0.8125rem',
-                                fontWeight: 600,
-                                borderRadius: '8px',
-                                border: '1px solid rgba(239,68,68,0.25)',
-                                background: 'rgba(239,68,68,0.08)',
-                                color: 'var(--red)',
-                                cursor: revokingId === s.id ? 'not-allowed' : 'pointer',
-                                opacity: revokingId === s.id ? 0.6 : 1,
-                                flexShrink: 0,
+                                display: 'flex', alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '0.75rem', padding: '1rem 1.25rem',
+                                background: s.is_current ? 'rgba(212,168,67,0.06)' : 'var(--dark)',
+                                border: `1px solid ${s.is_current ? 'rgba(212,168,67,0.25)' : 'var(--border)'}`,
+                                borderRadius: '10px', flexWrap: 'wrap',
                               }}
                             >
-                              {revokingId === s.id ? 'Revoking...' : 'Revoke'}
-                            </button>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', flex: 1, minWidth: 0 }}>
+                                <div style={{
+                                  width: '36px', height: '36px', borderRadius: '8px',
+                                  background: s.is_current ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.05)',
+                                  border: `1px solid ${s.is_current ? 'rgba(212,168,67,0.3)' : 'var(--border)'}`,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  flexShrink: 0, color: s.is_current ? 'var(--gold)' : 'var(--gray)',
+                                }}>
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                                    <line x1="8" y1="21" x2="16" y2="21"/>
+                                    <line x1="12" y1="17" x2="12" y2="21"/>
+                                  </svg>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', minWidth: 0 }}>
+                                  <span style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                    {s.name}
+                                    {s.is_current && (
+                                      <span style={{
+                                        fontSize: '0.7rem', fontWeight: 600, padding: '0.1rem 0.4rem',
+                                        borderRadius: '20px', background: 'rgba(234,179,8,0.12)',
+                                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.06em',
+                                      }}>
+                                        Current
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>
+                                    Last used: {s.last_used_at} · Created: {s.created_at}
+                                  </span>
+                                </div>
+                              </div>
+                              {!s.is_current && (
+                                <button
+                                  type="button"
+                                  onClick={() => revokeSession(s.id)}
+                                  disabled={revokingId === s.id}
+                                  style={{
+                                    padding: '0.375rem 0.75rem', fontSize: '0.8125rem', fontWeight: 600,
+                                    borderRadius: '8px', border: '1px solid rgba(239,68,68,0.25)',
+                                    background: 'rgba(239,68,68,0.08)', color: 'var(--red)',
+                                    cursor: revokingId === s.id ? 'not-allowed' : 'pointer',
+                                    opacity: revokingId === s.id ? 0.6 : 1, flexShrink: 0,
+                                  }}
+                                >
+                                  {revokingId === s.id ? 'Revoking...' : 'Revoke'}
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

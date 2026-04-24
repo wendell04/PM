@@ -51,6 +51,11 @@ const EditIcon = () => (
     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
   </svg>
 );
+const TrashIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+  </svg>
+);
 const ExternalLinkIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
     <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
@@ -665,6 +670,7 @@ export default function VendorsApiTab({ onVendorsChange, materials = [], units =
 
   const openCreate = () => { setSelected(null); setSubmitError(''); setModal('form'); };
   const openEdit = (s) => { setSelected(s); setSubmitError(''); setModal('form'); };
+  const openDelete = (s) => { setSelected(s); setDeleteError(''); setModal('delete'); };
   const openCatalog = (s) => { setSelected(s); setModal('catalog'); };
   const closeModal = () => { setModal(null); setSelected(null); setSubmitError(''); setDeleteError(''); };
 
@@ -728,7 +734,27 @@ export default function VendorsApiTab({ onVendorsChange, materials = [], units =
         </div>
 
         {/* Loading */}
-        {loading && <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--gray)' }}>Loading vendors…</div>}
+        {loading && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
+            <style>{`@keyframes vSkel{0%,100%{background-position:-400px 0}100%{background-position:400px 0}}.v-skel{background:linear-gradient(90deg,var(--dark2) 25%,var(--dark3,#2a2a2a) 50%,var(--dark2) 75%);background-size:400px 100%;animation:vSkel 1.4s ease-in-out infinite;border-radius:8px;}`}</style>
+            {[...Array(4)].map((_, i) => (
+              <div key={i} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '14px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div className="v-skel" style={{ width: '44px', height: '44px', borderRadius: '12px', flexShrink: 0 }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', flex: 1 }}>
+                    <div className="v-skel" style={{ height: '16px', width: '60%' }} />
+                    <div className="v-skel" style={{ height: '12px', width: '40%' }} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div className="v-skel" style={{ height: '13px' }} />
+                  <div className="v-skel" style={{ height: '13px', width: '80%' }} />
+                  <div className="v-skel" style={{ height: '13px', width: '55%' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Error */}
         {!loading && error && (
@@ -763,6 +789,9 @@ export default function VendorsApiTab({ onVendorsChange, materials = [], units =
                     <div style={{ display: 'flex', gap: '0.25rem' }}>
                       <button onClick={() => openEdit(v)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem', cursor: 'pointer', color: 'var(--gray)' }} title="Edit">
                         <EditIcon />
+                      </button>
+                      <button onClick={() => openDelete(v)} style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', padding: '0.35rem', cursor: 'pointer', color: 'var(--red)' }} title="Delete">
+                        <TrashIcon />
                       </button>
                     </div>
                   </div>

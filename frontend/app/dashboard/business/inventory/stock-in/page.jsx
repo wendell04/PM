@@ -1686,27 +1686,26 @@ export default function StockInPage() {
   // ── Loading ──────────────────────────────────────────────────────────────────
   if (loading)
     return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "60vh",
-          color: "var(--gray)",
-        }}
-      >
-        <div style={{ textAlign: "center" }}>
-          <div
-            className="spinner"
-            style={{
-              width: "18px",
-              height: "18px",
-              margin: "0 auto 1rem",
-              color: "var(--gold)",
-            }}
-          />
-          <p>Loading Stock In…</p>
-        </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <style>{`
+          @keyframes siSkel { 0%,100%{background-position:-400px 0} 100%{background-position:400px 0} }
+          .si-skel {
+            background: linear-gradient(90deg, var(--dark2) 25%, var(--dark3, #2a2a2a) 50%, var(--dark2) 75%);
+            background-size: 400px 100%;
+            animation: siSkel 1.4s ease-in-out infinite;
+            border-radius: 8px;
+          }
+        `}</style>
+        <div className="si-skel" style={{ height: "48px", width: "220px", borderRadius: "6px" }} />
+        <div className="si-skel" style={{ height: "52px", borderRadius: "10px" }} />
+        {[...Array(5)].map((_, i) => (
+          <div key={i} style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+            <div className="si-skel" style={{ height: "40px", flex: 2 }} />
+            <div className="si-skel" style={{ height: "40px", flex: 1 }} />
+            <div className="si-skel" style={{ height: "40px", flex: 1 }} />
+            <div className="si-skel" style={{ height: "40px", width: "80px", flex: "0 0 80px" }} />
+          </div>
+        ))}
       </div>
     );
 
