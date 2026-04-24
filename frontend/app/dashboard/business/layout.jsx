@@ -293,14 +293,13 @@ export default function BusinessDashboardLayout({ children }) {
       setPasswordError("Current password is required.");
       return;
     }
-    if (passwordForm.newPassword.length < 8) {
-      setPasswordError("New password must be at least 8 characters.");
-      return;
-    }
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setPasswordError("Passwords do not match.");
-      return;
-    }
+    const pw = passwordForm.newPassword;
+    if (pw.length < 8)                       { setPasswordError("New password must be at least 8 characters."); return; }
+    if (!/[A-Z]/.test(pw))                   { setPasswordError("New password must contain at least one uppercase letter."); return; }
+    if (!/[a-z]/.test(pw))                   { setPasswordError("New password must contain at least one lowercase letter."); return; }
+    if (!/\d/.test(pw))                      { setPasswordError("New password must contain at least one number."); return; }
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(pw)) { setPasswordError("New password must contain at least one special character."); return; }
+    if (pw !== passwordForm.confirmPassword) { setPasswordError("Passwords do not match."); return; }
 
     setIsSavingPassword(true);
     try {
