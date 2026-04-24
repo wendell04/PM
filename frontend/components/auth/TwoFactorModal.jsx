@@ -19,7 +19,7 @@ function maskEmail(email) {
  *   onSuccess   {function} — called with (redirectTo: string) after verified
  *   onBack      {function} — called when user clicks back/locked back button
  */
-export default function TwoFactorModal({ token, userEmail, userRole, onSuccess, onBack }) {
+export default function TwoFactorModal({ token, userEmail, userRole, onSuccess, onBack, persistLogin = false }) {
   const inputRefs = useRef([]);
   const hasSentInitial = useRef(false);
 
@@ -121,7 +121,8 @@ export default function TwoFactorModal({ token, userEmail, userRole, onSuccess, 
           try {
             const deviceResult = await rememberDevice(token);
             if (deviceResult.device_token) {
-              localStorage.setItem('device_token', deviceResult.device_token);
+              const deviceStorage = persistLogin ? localStorage : sessionStorage;
+              deviceStorage.setItem('device_token', deviceResult.device_token);
             }
           } catch { /* non-fatal */ }
         }

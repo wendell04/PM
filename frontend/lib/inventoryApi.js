@@ -465,3 +465,18 @@ export async function fetchAllStockHistory(inventoryIds, token) {
     .filter((r) => r.status === 'fulfilled')
     .flatMap((r) => r.value ?? []);
 }
+
+function authHeaders(token) {
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+}
+
+export async function fetchBoms(token) {
+  const res = await fetchWithTimeout(
+    `${API_URL}/api/admin/bom`,
+    { method: 'GET', headers: authHeaders(token) },
+    20000,
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'Failed to fetch BOMs.');
+  return (data.data ?? []).map((b) => ({ ...b, id: b.id ?? b._id }));
+}

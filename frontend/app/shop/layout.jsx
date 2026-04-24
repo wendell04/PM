@@ -676,7 +676,9 @@ export default function ShopLayout({ children }) {
   const [cartInitialized, setCartInitialized] = useState(false);
   const pendingCartAdds = useRef([]);
   const syncTimeoutRef = useRef(null);
+  const searchRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -700,7 +702,24 @@ export default function ShopLayout({ children }) {
   const handleSearchClear = () => {
     setSearchQuery('');
     window.dispatchEvent(new CustomEvent('pmp_search', { detail: { query: '' } }));
+    searchRef.current?.blur();
   };
+
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = document.activeElement?.tagName;
+      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      if (e.key === '/' && !inInput) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (e.key === 'Escape' && searchRef.current === document.activeElement) {
+        handleSearchClear();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const openAuthModalWithRedirect = (returnPath) => {
     if (returnPath) sessionStorage.setItem('pre_login_redirect', returnPath);
@@ -1399,7 +1418,7 @@ export default function ShopLayout({ children }) {
 
             {/* Center — Search bar — B-01 */}
             {pathname !== '/shop/cart' && (
-              <div className="shop-navbar-search">
+              <div className={`shop-navbar-search${searchFocused ? ' focused' : ''}`}>
                 <svg
                   className="shop-navbar-search-icon"
                   width="16" height="16" viewBox="0 0 24 24"
@@ -1410,11 +1429,14 @@ export default function ShopLayout({ children }) {
                   <line x1="21" y1="21" x2="16.65" y2="16.65"/>
                 </svg>
                 <input
+                  ref={searchRef}
                   type="text"
                   className="shop-navbar-search-input"
                   placeholder="Search products..."
                   value={searchQuery}
                   onChange={handleSearchChange}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
                 />
                 {searchQuery && (
                   <button

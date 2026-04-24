@@ -25,12 +25,32 @@ export const STATUS_MAP = {
   cancelled:        { label: 'Cancelled',      color: 'var(--danger, #ef4444)'  },
 };
 
-/**
- * Inline status badge — usable in both 'use client' pages and server components.
- * Returns a <span> — no external dependencies.
- */
+const STATUS_KEY_MAP = {
+  'pending':        'Pending',
+  'in production':  'In Production',
+  'for delivery':   'For Delivery',
+  'delivered':      'Delivered',
+  'cancelled':      'Cancelled',
+  'returned':       'Returned',
+  'refunded':       'Refunded',
+  'queued':         'Queued',
+  'in progress':    'In Progress',
+  'completed':      'Completed',
+  'pending_review': 'pending_review',
+  'confirmed':      'confirmed',
+  'processing':     'processing',
+  'ready':          'ready',
+};
+
+export function normalizeOrderStatus(status) {
+  if (!status) return status;
+  const lower = status.toLowerCase();
+  return STATUS_KEY_MAP[lower] ?? status;
+}
+
 export function StatusBadge({ status }) {
-  const s = STATUS_MAP[status] || { label: status ?? '—', color: 'var(--gray)' };
+  const key = normalizeOrderStatus(status);
+  const s = STATUS_MAP[key] || { label: key ?? '—', color: 'var(--gray)' };
   return (
     <span style={{
       display: 'inline-block',

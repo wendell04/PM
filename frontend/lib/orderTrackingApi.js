@@ -39,3 +39,35 @@ export async function fetchMyOrder(token, id) {
   const data = await res.json();
   return data.data ?? data;
 }
+
+export async function fetchMyShopOrders(token) {
+  const res = await fetchWithTimeout(`${API_URL}/api/orders/my?limit=50&page=1`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  }, 20000);
+  if (res.status === 401) throw new Error('Unauthorized');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || 'Failed to fetch orders');
+  }
+  const data = await res.json();
+  return data.data?.data ?? data.data ?? (Array.isArray(data) ? data : []);
+}
+
+export async function fetchMyShopOrder(token, id) {
+  const res = await fetchWithTimeout(`${API_URL}/api/orders/my/${id}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  }, 20000);
+  if (res.status === 401) throw new Error('Unauthorized');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || 'Failed to fetch order');
+  }
+  const data = await res.json();
+  return data.data ?? data;
+}

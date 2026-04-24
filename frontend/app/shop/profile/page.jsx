@@ -237,8 +237,8 @@ export default function CustomerProfilePage() {
       setSaveError('First name and last name are required');
       return;
     }
-    if (!profileForm.phoneNumber.trim() || !/^\+63\d{10}$/.test(profileForm.phoneNumber.trim())) {
-      setSaveError('Phone number must be in the format +63XXXXXXXXXX (e.g. +639171234567).');
+    if (!profileForm.phoneNumber.trim() || !/^(\+?63|0)9\d{9}$/.test(profileForm.phoneNumber.trim())) {
+      setSaveError('Phone number must be a valid PH number (e.g. 09171234567 or +639171234567).');
       return;
     }
     if (!profileForm.address.trim() || profileForm.address.trim().length < 3) {

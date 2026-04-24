@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useCart } from '../layout';
@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import '@/app/shop/shop.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const MAX_QTY = 99;
 
 // Mirrors layout’s openAuthModalWithRedirect — cart cannot import shop layout, so we dispatch the same event.
 function openAuthModalWithRedirect(returnPath) {
@@ -95,6 +96,10 @@ export default function CartPage() {
   const [error, setError] = useState(null);
   const [removingId, setRemovingId] = useState(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const removeTimerRef = useRef(null);
+
+  useEffect(() => () => { if (removeTimerRef.current) clearTimeout(removeTimerRef.current); }, []);
 
   // Re-compute unit prices based on current qty
   const enrichedCart = useMemo(() => (cartItems || []).map(item => {
@@ -110,6 +115,10 @@ export default function CartPage() {
         name: item.productName,
         images: item.image ? [item.image] : [],
       },
+      stockCap: (() => {
+        const tracked = item.trackInventory && item.stockStatus !== 'upon-order';
+        return tracked ? Math.max(item.stock ?? 99, 1) : 99;
+      })(),
     };
   }), [cartItems]);
 
@@ -140,7 +149,8 @@ export default function CartPage() {
   const handleRemoveItem = (productId, variantId, index) => {
     const key = `${productId}_${variantId ?? 'none'}`;
     setRemovingId(key);
-    const timer = setTimeout(() => {
+    if (removeTimerRef.current) clearTimeout(removeTimerRef.current);
+    removeTimerRef.current = setTimeout(() => {
       removeFromCart(productId, variantId ?? null);
       setSelectedItems(prev => {
         const newSet = new Set(prev);
@@ -149,7 +159,6 @@ export default function CartPage() {
       });
       setRemovingId(null);
     }, 300);
-    return () => clearTimeout(timer);
   };
 
   const handleDeleteSelected = async () => {
@@ -162,7 +171,8 @@ export default function CartPage() {
     setSelectedItems(new Set());
   };
 
-  function handlePlaceOrder() {
+  async function handlePlaceOrder() {
+    if (isCheckingOut) return;
     if (!token) {
       // Flush guest cart to localStorage immediately
       // before showing login modal, so the merge
@@ -207,10 +217,16 @@ export default function CartPage() {
         isCustom:    i.isCustom    ?? false,
       })),
       notes,
+      fromCart: true,
     };
 
-    sessionStorage.setItem('checkout_payload', JSON.stringify(payload));
-    router.push('/shop/checkout');
+    setIsCheckingOut(true);
+    try {
+      sessionStorage.setItem('checkout_payload', JSON.stringify(payload));
+      router.push('/shop/checkout');
+    } finally {
+      setIsCheckingOut(false);
+    }
   }
 
   {/* success state removed — order placement now redirects to /shop/payment-success */}
@@ -374,8 +390,9 @@ export default function CartPage() {
                         {item.qty}
                       </span>
                       <button
-                        onClick={() => updateQty(item.productId, item.variantId ?? null, item.qty + 1)}
+                        onClick={() => updateQty(item.productId, item.variantId ?? null, Math.min(item.qty + 1, item.stockCap))}
                         className="cart-qty-btn"
+                        disabled={item.qty >= item.stockCap}
                       >
                         +
                       </button>
@@ -452,11 +469,15 @@ export default function CartPage() {
               </label>
               <textarea
                 rows={3}
-                placeholder="e.g. design requests, preferred pickup date, special instructions..."
+                maxLength={500}
+                placeholder="e.g. design requests, color preferences, special instructions..."
                 value={notes}
-                onChange={e => setNotes(e.target.value)}
+                onChange={e => setNotes(e.target.value.slice(0, 500))}
                 className="cart-notes-input"
               />
+              <span style={{ fontSize: '0.7rem', color: 'var(--gray)', display: 'block', textAlign: 'right' }}>
+                {notes.length}/500
+              </span>
             </div>
 
             {/* Error Message */}
@@ -469,10 +490,18 @@ export default function CartPage() {
               </div>
             )}
 
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: 'var(--gray)', margin: '0 0 0.5rem' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+              <span>Delivery address is selected at checkout.</span>
+            </div>
+
             {/* Place Order Button */}
             <button
               onClick={handlePlaceOrder}
-              disabled={selectedItems.size === 0}
+              disabled={selectedItems.size === 0 || isCheckingOut}
               className="cart-place-order-btn"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

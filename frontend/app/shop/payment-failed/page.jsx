@@ -5,6 +5,7 @@ import Link from 'next/link';
 export default function PaymentFailedPage() {
   const searchParams = useSearchParams();
   const orderId      = searchParams.get('id');
+  const cancelled    = searchParams.get('cancelled') === '1';
 
   return (
     <div style={{
@@ -51,7 +52,7 @@ export default function PaymentFailedPage() {
           color: 'var(--white)',
           marginBottom: '8px',
         }}>
-          Payment Failed
+          {cancelled ? 'Payment Cancelled' : 'Payment Failed'}
         </h1>
 
         <p style={{
@@ -60,8 +61,9 @@ export default function PaymentFailedPage() {
           marginBottom: '32px',
           lineHeight: 1.6,
         }}>
-          Your payment was not completed. Your order has been saved —
-          you can retry payment from your order history.
+          {cancelled
+            ? 'You cancelled the payment. Your order has been saved — you can retry from your order history.'
+            : 'Your payment was not completed. Your order has been saved — you can retry from your order history.'}
         </p>
 
         {orderId && (
@@ -89,7 +91,7 @@ export default function PaymentFailedPage() {
 
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
           <Link
-            href="/shop/orders"
+            href="/shop/orders-history"
             style={{
               display: 'inline-flex',
               alignItems: 'center',

@@ -83,8 +83,8 @@ export default function AddressBook() {
     if (!formData.barangay.trim()) errors.barangay = 'Barangay is required';
     if (!formData.city.trim()) errors.city = 'City is required';
     if (!formData.province.trim()) errors.province = 'Province is required';
-    if (!formData.zip.trim()) errors.zip = 'ZIP Code is required';
-    if (!formData.phone.trim()) errors.phone = 'Phone is required';
+    if (!formData.zip.trim() || !/^\d{4}$/.test(formData.zip.trim())) errors.zip = 'ZIP Code must be a 4-digit number';
+    if (!formData.phone.trim() || !/^\+63\d{10}$/.test(formData.phone.trim())) errors.phone = 'Phone must be in the format +63XXXXXXXXXX';
     // subdivision is optional - no validation
     setFormErrors(errors);
     return Object.keys(errors).length === 0;

@@ -404,7 +404,7 @@ export default function ShopOrdersPage() {
                       This order can no longer be cancelled as it has already been confirmed and is in progress.
                     </div>
                   )}
-                  {order.status === 'delivered' && (
+                  {order.status === 'delivered' && order.productId && (
                     <button
                       onClick={() => router.push(`/shop/products/${order.productId}`)}
                       style={{
@@ -543,7 +543,7 @@ export default function ShopOrdersPage() {
 
             {/* Footer */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', gap: '8px' }}>
-              {selectedOrder.status === 'delivered' && (
+              {selectedOrder.status === 'delivered' && selectedOrder.productId && (
                 <button
                   onClick={() => { closeDetail(); router.push(`/shop/products/${selectedOrder.productId}`); }}
                   style={{

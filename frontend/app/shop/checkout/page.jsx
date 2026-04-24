@@ -28,6 +28,7 @@ export default function CheckoutPage() {
   // UI state
   const [addressLoading, setAddressLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
+  const [fromCart, setFromCart] = useState(false);
   const [error, setError] = useState(null);
   const [payloadError, setPayloadError] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -58,6 +59,7 @@ export default function CheckoutPage() {
         return;
       }
       setItems(payload.items);
+      setFromCart(payload.fromCart === true);
       if (payload.designUrl) {
         setDesignPreviewUrl(payload.designUrl);
       }
@@ -112,12 +114,11 @@ export default function CheckoutPage() {
 
   // ── Computed ──
   const selectedAddress = addresses.find(a => a.id === selectedAddressId) ?? null;
-  const DELIVERY_FEE = 80;
   const subtotal        = items.reduce((sum, i) => sum + (i.unitPrice * i.qty), 0);
   const hasCustomItem = items.some(i => i.isCustom === true);
   const voucherDiscount = appliedVoucher ? appliedVoucher.discountAmount : 0;
   const total           = Math.max(0, subtotal - voucherDiscount);
-  const grandTotal      = total + DELIVERY_FEE;
+  const grandTotal      = total; // Delivery is manually arranged — no fixed fee
 
   async function handleApplyVoucher() {
     if (!voucherInput.trim()) return;
@@ -173,8 +174,19 @@ export default function CheckoutPage() {
       return;
     }
 
-    // Minimum ₱100 only applies to online payment (PayMongo requirement)
-    if (paymentMethod === 'online' && total < 100) {
+    if (!selectedAddress.phone?.trim()) {
+      setError('Your delivery address is missing a contact number. Please select a different address or update it in your profile.');
+      return;
+    }
+    const requiredFields = ['street', 'barangay', 'city', 'province'];
+    const missingField = requiredFields.find(f => !selectedAddress[f]?.trim());
+    if (missingField) {
+      setError('Your delivery address is incomplete. Please select a different address or update it in your profile.');
+      return;
+    }
+
+    // Minimum ₱100 only applies to online payment (PayMongo requirement — charged amount is grandTotal)
+    if (paymentMethod === 'online' && grandTotal < 100) {
       setError('Minimum order amount is ₱100.00 for online payment. Please add more items or choose Cash on Delivery.');
       return;
     }
@@ -213,7 +225,7 @@ export default function CheckoutPage() {
         formData.append('deliveryAddress', JSON.stringify(deliveryAddress));
         formData.append('paymentMethod', paymentMethod);
         if (appliedVoucher?.code) formData.append('voucherCode', appliedVoucher.code);
-        formData.append('shippingFee', String(DELIVERY_FEE));
+        formData.append('shippingFee', '0');
         fetchBody = formData;
         fetchHeaders = {
           Authorization: `Bearer ${token}`,
@@ -224,7 +236,7 @@ export default function CheckoutPage() {
           deliveryAddress,
           design_notes: designNotes || null,
           paymentMethod,
-          shippingFee: DELIVERY_FEE,
+          shippingFee: 0,
           ...(appliedVoucher?.code ? { voucherCode: appliedVoucher.code } : {}),
         });
         fetchHeaders = {
@@ -377,9 +389,9 @@ export default function CheckoutPage() {
         ) : (
           <div>
             <p className="checkout-no-address">No saved addresses. Please add one in your profile.</p>
-            <Link href="/shop/profile" className="checkout-profile-link">
-              Manage Addresses →
-            </Link>
+            <a href="/shop/profile" target="_blank" rel="noopener noreferrer" className="checkout-profile-link">
+              Manage Addresses (opens in new tab) →
+            </a>
           </div>
         )}
       </div>
@@ -600,10 +612,11 @@ export default function CheckoutPage() {
           <textarea
             id="design-notes"
             rows={3}
+            maxLength={500}
             className="checkout-notes-input"
             placeholder="Describe what you want printed — colors, text, placement, size, or any other details..."
             value={designNotes}
-            onChange={e => setDesignNotes(e.target.value)}
+            onChange={e => setDesignNotes(e.target.value.slice(0, 500))}
           />
         </div>
       </div>}
@@ -615,14 +628,10 @@ export default function CheckoutPage() {
           <span>₱{subtotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
         <div className="checkout-summary-row">
-          <span>Shipping</span>
-          <span className="checkout-shipping-note">To be arranged</span>
+          <span>Delivery</span>
+          <span className="checkout-shipping-note">Billed separately</span>
         </div>
         <div className="checkout-divider" />
-        <div className="checkout-summary-row" style={{ color: 'var(--gray)', fontSize: '0.9rem' }}>
-          <span>Delivery Fee</span>
-          <span>₱{DELIVERY_FEE.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-        </div>
 
         {/* Voucher Code */}
         <div style={{ marginTop: '0.75rem', marginBottom: '0.5rem' }}>
@@ -630,8 +639,9 @@ export default function CheckoutPage() {
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <input
                 type="text"
+                maxLength={50}
                 value={voucherInput}
-                onChange={e => setVoucherInput(e.target.value.toUpperCase())}
+                onChange={e => setVoucherInput(e.target.value.toUpperCase().slice(0, 50))}
                 onKeyDown={e => e.key === 'Enter' && handleApplyVoucher()}
                 placeholder="Voucher code"
                 style={{
@@ -729,7 +739,7 @@ export default function CheckoutPage() {
               Cash on Delivery
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-              Pay when your order arrives. Our team will contact you to confirm delivery details.
+              Pay the product total upon delivery. Our team will contact you to confirm delivery details and arrange the delivery fee separately.
             </div>
           </div>
         </div>
@@ -756,8 +766,8 @@ export default function CheckoutPage() {
               Online Payment
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-              GCash · PayMaya · Credit / Debit Card — via secure PayMongo payment page.
-              {total < 100 && (
+              Pay the product total securely via GCash, PayMaya, or Card. Delivery fee will be arranged separately by our team.
+              {grandTotal < 100 && (
                 <span style={{ color: 'var(--red)', display: 'block', marginTop: '0.25rem' }}>
                   ⚠ Minimum ₱100.00 required for online payment.
                 </span>
@@ -779,7 +789,7 @@ export default function CheckoutPage() {
 
       <button
         onClick={handlePlaceOrder}
-        disabled={placing || !selectedAddress || items.length === 0 || (paymentMethod === 'online' && total < 100)}
+        disabled={placing || !selectedAddress || items.length === 0 || (paymentMethod === 'online' && grandTotal < 100)}
         className="checkout-place-btn"
       >
         {placing ? (
@@ -803,8 +813,8 @@ export default function CheckoutPage() {
 
       <p className="checkout-disclaimer">
         {paymentMethod === 'cod'
-          ? 'By placing this order, you agree to our terms. You will pay upon delivery.'
-          : 'By placing this order, you agree to our terms. You will be redirected to complete payment securely.'}
+          ? 'By placing this order, you agree to our terms. You will pay the product total upon delivery. Delivery fee will be billed separately.'
+          : 'By placing this order, you agree to our terms. You will be redirected to pay the product total. Delivery fee will be billed separately.'}
       </p>
 
       {/* ADDRESS PICKER MODAL */}
@@ -850,9 +860,9 @@ export default function CheckoutPage() {
             </div>
 
             <div className="checkout-modal-footer">
-              <Link href="/shop/profile" className="checkout-manage-link">
-                Manage Addresses →
-              </Link>
+              <a href="/shop/profile" target="_blank" rel="noopener noreferrer" className="checkout-manage-link">
+                Manage Addresses (opens in new tab) →
+              </a>
             </div>
           </div>
         </div>
@@ -883,7 +893,7 @@ export default function CheckoutPage() {
               Cancel Checkout?
             </h3>
             <p style={{ margin: '0 0 20px', fontSize: '0.875rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-              Are you sure you want to cancel? Your cart will be cleared and you will be returned to the shop.
+              Are you sure you want to go back? Your cart items will be kept.
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
@@ -900,9 +910,8 @@ export default function CheckoutPage() {
               </button>
               <button
                 onClick={() => {
-                  clearCart();
                   setShowCancelModal(false);
-                  router.push('/shop');
+                  router.push(fromCart ? '/shop/cart' : '/shop');
                 }}
                 style={{
                   padding: '10px 20px', borderRadius: '8px',

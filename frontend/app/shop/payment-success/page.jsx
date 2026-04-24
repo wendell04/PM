@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { useCart } from '@/context/CartContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -11,6 +12,7 @@ export default function PaymentSuccessPage() {
   const searchParams  = useSearchParams();
   const router        = useRouter();
   const { token }     = useAuth();
+  const { clearCart } = useCart();
   const orderId       = searchParams.get('id');
   const method        = searchParams.get('method'); // 'cod' or null (online)
   const isCod         = method === 'cod';
@@ -19,7 +21,12 @@ export default function PaymentSuccessPage() {
   // Clear checkout payload on confirmed success (online payment lands here after PayMongo)
   useEffect(() => {
     sessionStorage.removeItem('checkout_payload');
-  }, []);
+    // Only clear cart if this is a confirmed successful payment landing
+    // (orderId present in URL = came from PayMongo redirect or COD confirmation)
+    if (orderId) {
+      clearCart();
+    }
+  }, [orderId]);
 
   const [order,   setOrder]   = useState(null);
   const [loading, setLoading] = useState(true);
@@ -180,6 +187,14 @@ export default function PaymentSuccessPage() {
                 })}
               </span>
             </div>
+            {order?.shippingFee > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Shipping Fee</span>
+                <span style={{ color: 'var(--white)', fontSize: '0.85rem' }}>
+                  ₱{Number(order.shippingFee).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>
                 Status

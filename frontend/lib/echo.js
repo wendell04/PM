@@ -35,6 +35,10 @@ export function getEcho(token) {
     },
   });
 
+  echoInstance.connector.pusher.connection.bind('error', () => {});
+  echoInstance.connector.pusher.connection.bind('failed', () => {});
+  echoInstance.connector.pusher.connection.bind('unavailable', () => {});
+
   echoToken = token;
   return echoInstance;
 }

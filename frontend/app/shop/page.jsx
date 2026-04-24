@@ -498,58 +498,17 @@ export default function ShopPage() {
         </span>
       </div>
 
-      {/* Search + Filter bar */}
-      <div className="shop-filter-bar">
-        {/* Category dropdown */}
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <select
-            value={category}
-            onChange={e => setCategory(e.target.value)}
-            style={{
-              padding: '0.75rem 2.5rem 0.75rem 1rem',
-              background: 'var(--dark)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '10px',
-              color: category === 'All' ? 'var(--gray)' : 'var(--gold)',
-              fontSize: '0.9rem',
-              fontWeight: 500,
-              cursor: 'pointer',
-              outline: 'none',
-              appearance: 'none',
-              WebkitAppearance: 'none',
-              minWidth: '160px',
-              transition: 'border-color 0.2s',
-            }}
-            onFocus={e => e.target.style.borderColor = 'rgba(212,168,67,0.5)'}
-            onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+      {/* Category pills */}
+      <div className="shop-category-pills">
+        {categories.map(cat => (
+          <button
+            key={cat}
+            onClick={() => setCategory(cat)}
+            className={`shop-category-pill${category === cat ? ' active' : ''}`}
           >
-            {categories.map(cat => (
-              <option
-                key={cat}
-                value={cat}
-                style={{ background: 'var(--dark)', color: 'var(--white)' }}
-              >
-                {cat}
-              </option>
-            ))}
-          </select>
-          {/* Chevron icon */}
-          <svg
-            width="14" height="14" viewBox="0 0 24 24" fill="none"
-            stroke={category === 'All' ? 'var(--gray)' : 'var(--gold)'}
-            strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-            style={{
-              position: 'absolute',
-              right: '10px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              pointerEvents: 'none',
-              flexShrink: 0,
-            }}
-          >
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </div>
+            {cat}
+          </button>
+        ))}
       </div>
 
       {/* Results count */}

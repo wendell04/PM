@@ -47,6 +47,7 @@ export default function TwoFactorChallengePage() {
       token={token}
       userEmail={userEmail}
       userRole={userRole}
+      persistLogin={rememberMe}
       onSuccess={(redirectTo) => {
         // OTP verified — now write credentials to final storage
         const pendingToken = sessionStorage.getItem('pmp_pending_token');
