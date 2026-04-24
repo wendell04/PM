@@ -435,7 +435,7 @@ const LandingPage = ({onEnterShop}) => {
     if (!validateForm()) return;
     setIsRegistering(true);
     try {
-      const response = await fetch(`${API_URL}/api/register`, {
+      const response = await fetchWithTimeout(`${API_URL}/api/register`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -484,7 +484,7 @@ const LandingPage = ({onEnterShop}) => {
     if (Object.keys(newErrors).length > 0) return;
     setIsLoggingIn(true);
     try {
-      const response = await fetch(`${API_URL}/api/login`, {
+      const response = await fetchWithTimeout(`${API_URL}/api/login`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -551,7 +551,7 @@ const LandingPage = ({onEnterShop}) => {
     setVerifyError('');
     setIsVerifying(true);
     try {
-      const response = await fetch(`${API_URL}/api/verify-email`, {
+      const response = await fetchWithTimeout(`${API_URL}/api/verify-email`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({email: registeredEmail, code: verificationCode}),
@@ -589,7 +589,7 @@ const handleForgotSubmit = async () => {
   setForgotError('');
   setIsSendingReset(true);
   try {
-    const response = await fetch(`${API_URL}/api/forgot-password`, {
+    const response = await fetchWithTimeout(`${API_URL}/api/forgot-password`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({email: forgotEmail}),
@@ -613,7 +613,7 @@ const handleResetLinkClick = async (token, email) => {
   if (!token || !email) return { valid: false, error: 'Invalid link' };
   setIsSendingReset(true);
   try {
-    const response = await fetch(`${API_URL}/api/verify-reset-token`, {
+    const response = await fetchWithTimeout(`${API_URL}/api/verify-reset-token`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({token, email}),
@@ -635,7 +635,7 @@ const handleSendResetCode = async () => {
   setForgotError('');
   setIsSendingReset(true);
   try {
-    const response = await fetch(`${API_URL}/api/send-reset-code`, {
+    const response = await fetchWithTimeout(`${API_URL}/api/send-reset-code`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({email: forgotEmail, token: forgotLinkToken}),
@@ -659,7 +659,7 @@ const handleForgotVerifyCode = async () => {
   setForgotError('');
   setIsSendingReset(true);
   try {
-    const response = await fetch(`${API_URL}/api/verify-reset-code`, {
+    const response = await fetchWithTimeout(`${API_URL}/api/verify-reset-code`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({email: forgotEmail, code: forgotCode}),
@@ -681,7 +681,7 @@ const handleForgotResend = async () => {
   setForgotResendSuccess(false);
   setForgotError('');
   try {
-    const response = await fetch(`${API_URL}/api/send-reset-code`, {
+    const response = await fetchWithTimeout(`${API_URL}/api/send-reset-code`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({email: forgotEmail}),
@@ -714,7 +714,7 @@ const handleForgotResetPassword = async () => {
   setForgotError('');
   setIsSendingReset(true);
   try {
-    const response = await fetch(`${API_URL}/api/reset-password`, {
+    const response = await fetchWithTimeout(`${API_URL}/api/reset-password`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({email: forgotEmail, code: forgotCode, password: forgotNewPassword, password_confirmation: forgotConfirmPassword}),
@@ -741,7 +741,7 @@ const handleForgotResetPassword = async () => {
     setResendSuccess(false);
     setVerifyError('');
     try {
-      const response = await fetch(`${API_URL}/api/resend-code`, {
+      const response = await fetchWithTimeout(`${API_URL}/api/resend-code`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({email: registeredEmail}),

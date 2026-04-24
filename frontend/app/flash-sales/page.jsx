@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
   || 'http://127.0.0.1:8000';
@@ -14,8 +15,10 @@ export default function FlashSalesStorefront() {
   useEffect(() => {
     const fetchSales = async () => {
       try {
-        const res = await fetch(
-          `${API_URL}/api/storefront/flash-sales`
+        const res = await fetchWithTimeout(
+          `${API_URL}/api/storefront/flash-sales`,
+          {},
+          15000
         );
         if (!res.ok) throw new Error('Failed to load');
         const data = await res.json();

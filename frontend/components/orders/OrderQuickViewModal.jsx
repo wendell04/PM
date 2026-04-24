@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStatusBadge, getPaymentBadge } from '@/lib/utils/orderHelpers';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -51,14 +52,14 @@ export default function OrderQuickViewModal({
     setCodError(null);
     setIsUpdating(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/orders/${order._id}`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${order._id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ paymentStatus: 'paid' }),
-      });
+      }, 15000);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.message || 'Failed to confirm COD payment');
@@ -81,9 +82,9 @@ export default function OrderQuickViewModal({
     setOrder(null);
 
     try {
-      const res = await fetch(`${API_URL}/api/orders/${orderId}`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/orders/${orderId}`, {
         headers: { Authorization: `Bearer ${token}` },
-      });
+      }, 15000);
       if (res.status === 401) throw new Error('Unauthorized');
       if (res.status === 404) throw new Error('not found');
       if (!res.ok) throw new Error('fetch failed');
@@ -144,14 +145,14 @@ export default function OrderQuickViewModal({
       }
       if (Object.keys(payload).length === 0) return;
 
-      const res = await fetch(`${API_URL}/api/admin/orders/${orderId}`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${orderId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
-      });
+      }, 15000);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.message || 'Update failed');
@@ -178,12 +179,13 @@ export default function OrderQuickViewModal({
     setDesignAction('approving');
     setDesignError(null);
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `${API_URL}/api/admin/orders/${orderId}/approve-design`,
         {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
-        }
+        },
+        15000
       );
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -203,7 +205,7 @@ export default function OrderQuickViewModal({
     setDesignAction('rejecting');
     setDesignError(null);
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `${API_URL}/api/admin/orders/${orderId}/reject-design`,
         {
           method: 'POST',
@@ -212,7 +214,8 @@ export default function OrderQuickViewModal({
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ reason: rejectReason.trim() || null }),
-        }
+        },
+        15000
       );
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
