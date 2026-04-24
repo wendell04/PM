@@ -52,22 +52,41 @@ export function AuthProvider({children}) {
             try {
                 if (!stored || !storedToken) return;
 
-                const user = JSON.parse(stored);
+                // Skip remote validation if validated within the last 5 minutes
+                const lastValidated = parseInt(localStorage.getItem('auth_validated_at') || sessionStorage.getItem('auth_validated_at') || '0', 10);
+                if (Date.now() - lastValidated < 5 * 60 * 1000) return;
+
+                // Skip if we already attempted within the last 60 seconds (prevents
+                // spamming the server on every page load when the API is unreachable)
+                const lastChecked = parseInt(localStorage.getItem('auth_checked_at') || sessionStorage.getItem('auth_checked_at') || '0', 10);
+                if (Date.now() - lastChecked < 60 * 1000) return;
+
+                // Stamp the attempt time before the call so even a crash won't spam
+                const attemptStamp = String(Date.now());
+                try {
+                    if (ssToken) sessionStorage.setItem('auth_checked_at', attemptStamp);
+                    else localStorage.setItem('auth_checked_at', attemptStamp);
+                } catch { /* storage full */ }
+
                 const res = await fetchWithTimeout(`${API_URL}/api/user`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${storedToken}`,
                     },
-                }, 8000); // 8s cap — faster than default 30s for auth check on refresh
+                }, 8000);
 
                 if (res.status === 401) {
                     // Token is genuinely invalid — clear and redirect
                     sessionStorage.setItem('sessionExpired', 'true');
                     localStorage.removeItem('auth_token');
                     localStorage.removeItem('auth_user');
+                    localStorage.removeItem('auth_validated_at');
+                    localStorage.removeItem('auth_checked_at');
                     sessionStorage.removeItem('auth_token');
                     sessionStorage.removeItem('auth_user');
+                    sessionStorage.removeItem('auth_validated_at');
+                    sessionStorage.removeItem('auth_checked_at');
                     setCurrentUser(null);
                     setToken(null);
                     window.location.href = '/';
@@ -75,7 +94,7 @@ export function AuthProvider({children}) {
                 }
 
                 if (!res.ok) {
-                    // Non-401 failure (network error, 500, timeout) —
+                    // Non-401 failure (503 = DB down, 500 = server error, etc.) —
                     // keep existing session, do not log out
                     return;
                 }
@@ -83,6 +102,17 @@ export function AuthProvider({children}) {
                 const userData = await res.json();
                 setCurrentUser(userData.user ?? userData);
                 setToken(storedToken);
+                // Stamp successful validation so we skip the call for the next 5 minutes
+                const stamp = String(Date.now());
+                try {
+                    if (ssToken) {
+                        sessionStorage.setItem('auth_validated_at', stamp);
+                        sessionStorage.setItem('auth_checked_at', stamp);
+                    } else {
+                        localStorage.setItem('auth_validated_at', stamp);
+                        localStorage.setItem('auth_checked_at', stamp);
+                    }
+                } catch { /* storage full */ }
             } catch {
                 // Network failure or timeout on refresh —
                 // do NOT clear storage or redirect
@@ -174,21 +204,25 @@ export function AuthProvider({children}) {
         try {
             const logoutToken = token;
             if (logoutToken) {
-                await fetch(`${API_URL}/api/logout`, {
+                await fetchWithTimeout(`${API_URL}/api/logout`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${logoutToken}`,
                     },
-                });
+                }, 10000);
             }
         } catch (err) {
             console.error('Logout error: ', err);
         } finally {
             localStorage.removeItem('auth_token');
             localStorage.removeItem('auth_user');
+            localStorage.removeItem('auth_validated_at');
+            localStorage.removeItem('auth_checked_at');
             sessionStorage.removeItem('auth_token');
             sessionStorage.removeItem('auth_user');
+            sessionStorage.removeItem('auth_validated_at');
+            sessionStorage.removeItem('auth_checked_at');
             setCurrentUser(null);
             setToken(null);
             try {
