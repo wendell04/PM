@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use App\Services\PriceResolver;
 
 class WalkInOrderController extends Controller
 {
@@ -78,7 +79,7 @@ class WalkInOrderController extends Controller
 
                 // Server-side price sanity: resolve expected price and reject
                 // if client price deviates by more than 1 peso (rounding tolerance)
-                $resolvedPrice = $this->resolvePrice($product, $qty, $item['variantId'] ?? null);
+                $resolvedPrice = PriceResolver::resolve($product, $qty, $item['variantId'] ?? null);
                 if ($resolvedPrice !== null && abs($unitPrice - $resolvedPrice) > 1.00) {
                     return response()->json([
                         'message' => "Price mismatch for \"{$product->name}\". Expected ₱" . number_format($resolvedPrice, 2) . ", received ₱" . number_format($unitPrice, 2) . ".",
@@ -120,7 +121,9 @@ class WalkInOrderController extends Controller
                 'paymentMethod'   => $validated['paymentMethod'],
                 'orderSource'     => 'walk-in',
                 'deliveryAddress' => null,
-                'notes'           => $validated['notes'] ?? null,
+                'notes'           => isset($validated['notes'])
+                    ? htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                    : null,
                 'isRush'          => false,
                 'checkoutRestricted' => false,
                 'downPayment'     => $netAmount,
@@ -298,41 +301,5 @@ class WalkInOrderController extends Controller
         }
     }
 
-    /**
-     * Mirrors OrderController::resolvePrice() exactly.
-     * variantId → variantPrices → priceTiers → price → flatPrice
-     */
-    private function resolvePrice(Product $product, int $qty, ?string $variantId = null): ?float
-    {
-        if ($variantId && !empty($product->variantPrices)) {
-            if (isset($product->variantPrices[$variantId])) {
-                return (float) $product->variantPrices[$variantId];
-            }
-        }
-
-        $tiers = $product->priceTiers ?? [];
-        if (!empty($tiers)) {
-            usort($tiers, fn($a, $b) => ($a['minQty'] ?? 0) <=> ($b['minQty'] ?? 0));
-            $matchedPrice = null;
-            foreach ($tiers as $tier) {
-                $min = (int) ($tier['minQty'] ?? 1);
-                $max = isset($tier['maxQty']) ? (int) $tier['maxQty'] : PHP_INT_MAX;
-                if ($qty >= $min && $qty <= $max) {
-                    $matchedPrice = (float) $tier['price'];
-                    break;
-                }
-            }
-            if ($matchedPrice === null && !empty($tiers)) {
-                $matchedPrice = (float) end($tiers)['price'];
-            }
-            if ($matchedPrice === null) return null;
-            return $matchedPrice;
-        }
-
-        if ($product->price !== null)      return (float) $product->price;
-        if ($product->flatPrice !== null)  return (float) $product->flatPrice;
-
-        return null;
-    }
 }
 

@@ -546,7 +546,9 @@ class InventoryController extends Controller
                         'sellingPrice'  => $validated['sellingPrice'] ?? null,
                         'saleDate'      => $validated['saleDate'] ?? null,
                         'customerName'  => $validated['customerName'] ?? null,
-                        'remarks'       => $validated['remarks'] ?? null,
+                        'remarks'       => isset($validated['remarks'])
+                            ? htmlspecialchars(strip_tags(trim($validated['remarks'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                            : null,
                         'performedBy'   => $validated['performedBy'] ?? null,
                         'createdAt'     => now(),
                     ]);
@@ -569,7 +571,9 @@ class InventoryController extends Controller
                     'sellingPrice'  => $validated['sellingPrice'] ?? null,
                     'saleDate'      => $validated['saleDate'] ?? null,
                     'customerName'  => $validated['customerName'] ?? null,
-                    'remarks'       => $validated['remarks'] ?? null,
+                    'remarks'       => isset($validated['remarks'])
+                        ? htmlspecialchars(strip_tags(trim($validated['remarks'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                        : null,
                     'performedBy'   => $validated['performedBy'] ?? null,
                     'createdAt'     => now(),
                 ]);

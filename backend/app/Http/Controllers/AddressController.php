@@ -56,16 +56,19 @@ class AddressController extends Controller
             }
         }
 
-        // Create new address with UUID
+        $san = fn(?string $v) => $v !== null
+            ? htmlspecialchars(strip_tags(trim($v)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            : '';
+
         $newAddress = [
             'id'           => Str::uuid()->toString(),
-            'label'        => $validated['label'] ?? '',
-            'house_number' => $validated['house_number'],
-            'street'       => $validated['street'],
-            'subdivision'  => $validated['subdivision'] ?? '',
-            'barangay'     => $validated['barangay'],
-            'city'         => $validated['city'],
-            'province'     => $validated['province'],
+            'label'        => $san($validated['label'] ?? null),
+            'house_number' => $san($validated['house_number']),
+            'street'       => $san($validated['street']),
+            'subdivision'  => $san($validated['subdivision'] ?? null),
+            'barangay'     => $san($validated['barangay']),
+            'city'         => $san($validated['city']),
+            'province'     => $san($validated['province']),
             'zip'          => $validated['zip'],
             'phone'        => $validated['phone'],
             'is_default'   => $isDefault,
@@ -121,15 +124,19 @@ class AddressController extends Controller
             }
         }
 
+        $san = fn(?string $v) => $v !== null
+            ? htmlspecialchars(strip_tags(trim($v)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            : '';
+
         // Merge changes
         $addresses[$index] = array_merge($addresses[$index], [
-            'label'        => $validated['label'] ?? '',
-            'house_number' => $validated['house_number'],
-            'street'       => $validated['street'],
-            'subdivision'  => $validated['subdivision'] ?? '',
-            'barangay'     => $validated['barangay'],
-            'city'         => $validated['city'],
-            'province'     => $validated['province'],
+            'label'        => $san($validated['label'] ?? null),
+            'house_number' => $san($validated['house_number']),
+            'street'       => $san($validated['street']),
+            'subdivision'  => $san($validated['subdivision'] ?? null),
+            'barangay'     => $san($validated['barangay']),
+            'city'         => $san($validated['city']),
+            'province'     => $san($validated['province']),
             'zip'          => $validated['zip'],
             'phone'        => $validated['phone'],
             'is_default'   => $isDefault,

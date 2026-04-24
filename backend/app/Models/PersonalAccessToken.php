@@ -54,19 +54,23 @@ class PersonalAccessToken extends Model implements HasAbilities
      */
     public static function findToken($token)
     {
-        if (strpos($token, '|') === false) {
-            return static::where(
-                'token', hash('sha256', $token)
-            )->first();
-        }
+        try {
+            if (strpos($token, '|') === false) {
+                return static::where('token', hash('sha256', $token))->first();
+            }
 
-        [$id, $token] = explode('|', $token, 2);
+            [$id, $token] = explode('|', $token, 2);
+            $instance = static::find($id);
 
-        $instance = static::find($id);
-
-        if ($instance) {
-            return hash('sha256', $token) === $instance->token
-                ? $instance : null;
+            if ($instance) {
+                return hash('sha256', $token) === $instance->token ? $instance : null;
+            }
+        } catch (\MongoDB\Driver\Exception\ConnectionTimeoutException $e) {
+            \Illuminate\Support\Facades\Log::error('MongoDB unreachable (Sanctum): ' . $e->getMessage());
+            abort(503, 'Database temporarily unavailable.');
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Token lookup failed: ' . $e->getMessage());
+            abort(503, 'Database temporarily unavailable.');
         }
     }
 }

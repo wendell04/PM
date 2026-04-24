@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ContactFormMail;
-use App\Mail\LoginAnomalyMail;
 use App\Mail\VerificationCodeMail;
 use App\Mail\WelcomeMail;
 use App\Models\User;
@@ -203,25 +202,6 @@ class AuthController extends Controller
             $user->save();
 
             Log::info('Login successful', ['email' => $user->email, 'ip' => $ip]);
-
-            // Send login alert asynchronously (after response)
-            $alertRecipient = $user->email;
-            $alertName      = $user->firstName ?? 'User';
-            $alertIp        = $ip;
-            $alertAgent     = $this->parseDeviceName($request->userAgent() ?? 'Unknown');
-            $alertTime      = now()->setTimezone('Asia/Manila')->format('F j, Y \a\t g:i A T');
-
-            app()->terminating(function () use (
-                $alertRecipient, $alertName, $alertIp, $alertAgent, $alertTime
-            ) {
-                try {
-                    Mail::to($alertRecipient)->send(
-                        new LoginAnomalyMail($alertName, $alertIp, $alertAgent, $alertTime)
-                    );
-                } catch (\Exception $e) {
-                    Log::error('LoginAnomalyMail failed: ' . $e->getMessage());
-                }
-            });
 
             $requires2fa  = false;
             $twoFaEnabled = (bool) ($user->two_factor_enabled ?? false);

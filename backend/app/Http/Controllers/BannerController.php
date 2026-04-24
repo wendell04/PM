@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Banner;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class BannerController extends Controller
 {
@@ -14,7 +15,9 @@ class BannerController extends Controller
     public function index()
     {
         try {
-            $banners = Banner::orderBy('order', 'asc')->get();
+            $banners = Cache::remember('admin_banners', 120, function () {
+                return Banner::orderBy('order', 'asc')->get();
+            });
             return $this->successResponse('Banners retrieved.', $banners);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching banners.');
@@ -54,6 +57,7 @@ class BannerController extends Controller
                 'scheduleEnd' => $validated['scheduleEnd'] ?? null,
             ]);
 
+            Cache::forget('admin_banners');
             return $this->successResponse('Banner created.', $banner, 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
@@ -90,6 +94,7 @@ class BannerController extends Controller
 
             $banner->update($validated);
 
+            Cache::forget('admin_banners');
             return $this->successResponse('Banner updated.', $banner);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
@@ -113,6 +118,7 @@ class BannerController extends Controller
 
             $banner->delete();
 
+            Cache::forget('admin_banners');
             return $this->successResponse('Banner deleted.');
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while deleting banner.');

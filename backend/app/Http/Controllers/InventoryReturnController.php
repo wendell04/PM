@@ -6,6 +6,7 @@ use App\Models\Inventory;
 use App\Models\InventoryReturn;
 use App\Models\StockHistory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class InventoryReturnController extends Controller
 {
@@ -53,17 +54,16 @@ class InventoryReturnController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $pendingCount   = InventoryReturn::where('status', 'pending')->count();
-            $replacedCount  = InventoryReturn::where('status', 'replaced')->count();
-            $writtenOffCount= InventoryReturn::where('status', 'written_off')->count();
-            $totalLoss      = (float) InventoryReturn::sum('totalLoss');
+            $data = Cache::remember('admin_return_stats', 30, function () {
+                return [
+                    'pendingCount'    => InventoryReturn::where('status', 'pending')->count(),
+                    'replacedCount'   => InventoryReturn::where('status', 'replaced')->count(),
+                    'writtenOffCount' => InventoryReturn::where('status', 'written_off')->count(),
+                    'totalLoss'       => (float) InventoryReturn::sum('totalLoss'),
+                ];
+            });
 
-            return response()->json(['data' => [
-                'pendingCount'    => $pendingCount,
-                'replacedCount'   => $replacedCount,
-                'writtenOffCount' => $writtenOffCount,
-                'totalLoss'       => $totalLoss,
-            ]]);
+            return response()->json(['data' => $data]);
         } catch (\Exception $e) {
             return response()->json(['message' => 'An unexpected error occurred while fetching return stats.'], 500);
         }
@@ -119,12 +119,13 @@ class InventoryReturnController extends Controller
                 'unitCost'      => (float) ($inventory->averageCost ?? 0),
                 'totalLoss'     => (float) ($inventory->averageCost ?? 0) * $qty,
                 'status'        => $validated['status'] ?? 'pending',
-                'notes'         => $validated['notes'] ?? '',
+                'notes'         => htmlspecialchars(strip_tags(trim($validated['notes'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 'resolvedAt'    => null,
                 'createdAt'     => now(),
                 'updatedAt'     => now(),
             ]);
 
+            Cache::forget('admin_return_stats');
             return response()->json(['data' => $inventoryReturn], 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
@@ -162,7 +163,7 @@ class InventoryReturnController extends Controller
             $inventoryReturn->updatedAt  = now();
 
             if (isset($validated['notes'])) {
-                $inventoryReturn->notes = $validated['notes'];
+                $inventoryReturn->notes = htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             }
 
             // Replacement received: restore stock to inventory batches + audit trail
@@ -247,6 +248,7 @@ class InventoryReturnController extends Controller
 
             $inventoryReturn->save();
 
+            Cache::forget('admin_return_stats');
             return response()->json(['data' => $inventoryReturn]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);

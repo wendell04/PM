@@ -27,11 +27,13 @@ class ProfileController extends Controller
                 'address' => 'required|string|min:3',
             ]);
 
-            $user->firstName = $request->firstName;
-            $user->lastName = $request->lastName;
-            $user->email = $request->email;
+            $san = fn(string $v) => htmlspecialchars(strip_tags(trim($v)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+            $user->firstName   = $san($request->firstName);
+            $user->lastName    = $san($request->lastName);
+            $user->email       = $request->email;
             $user->phoneNumber = $request->phoneNumber;
-            $user->address = $request->address;
+            $user->address     = $san($request->address);
             $user->save();
 
             return $this->successResponse('Profile updated successfully.', [

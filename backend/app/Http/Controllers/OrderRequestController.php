@@ -117,7 +117,9 @@ class OrderRequestController extends Controller
             'selectedVariants' => $selectedVariants,
             'quantity'         => $validated['quantity'],
             'designUrl'        => $validated['designUrl'] ?? null,
-            'designNotes'      => $validated['designNotes'] ?? null,
+            'designNotes'      => isset($validated['designNotes'])
+                ? htmlspecialchars(strip_tags(trim($validated['designNotes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                : null,
             'isCustom'         => $validated['isCustom'] ?? false,
             'suggestedPrice'   => $suggestedPrice,
             'finalPrice'       => null,
@@ -212,7 +214,9 @@ class OrderRequestController extends Controller
         $newEntry = [
             'status'    => $validated['status'],
             'timestamp' => now()->toJSON(),
-            'note'      => $validated['note'] ?? null,
+            'note'      => isset($validated['note'])
+                ? htmlspecialchars(strip_tags(trim($validated['note'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                : null,
             'updatedBy' => $user ? trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) : 'admin',
         ];
 
@@ -260,7 +264,9 @@ class OrderRequestController extends Controller
         }
 
         if (array_key_exists('adminComment', $validated)) {
-            $req->adminComment = $validated['adminComment'] ?? null;
+            $req->adminComment = isset($validated['adminComment'])
+                ? htmlspecialchars(strip_tags(trim($validated['adminComment'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                : null;
         }
 
         if (array_key_exists('mockupUrl', $validated)) {

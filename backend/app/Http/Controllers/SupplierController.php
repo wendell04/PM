@@ -96,7 +96,9 @@ class SupplierController extends Controller
                 'phone'         => $validated['phone'] ?? null,
                 'email'         => $validated['email'] ?? null,
                 'address'       => $validated['address'] ?? null,
-                'notes'         => $validated['notes'] ?? null,
+                'notes'         => isset($validated['notes'])
+                    ? htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                    : null,
                 'itemsSupplied' => $validated['itemsSupplied'] ?? [],
                 'isActive'      => true,
             ]);

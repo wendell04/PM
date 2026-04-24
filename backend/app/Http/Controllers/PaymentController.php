@@ -253,7 +253,36 @@ class PaymentController extends Controller
             $orderId     = (string) $order->_id;
             $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
             $amountInCentavos = (int) round($totalAmount * 100);
-            $description = "PersonalizeMe Prints — Order #{$orderId}";
+
+            // ── Build PayMongo line items ─────────────────────────────────
+            // Show per-product breakdown when no voucher discount (amounts must sum to total).
+            // Fall back to a single bundled item when a voucher reduces the total.
+            if ($discountAmount > 0) {
+                $pmLineItems = [[
+                    'currency' => 'PHP',
+                    'amount'   => $amountInCentavos,
+                    'name'     => 'Order #' . strtoupper(substr($orderId, -8)) . ' (' . count($orderItems) . ' item' . (count($orderItems) !== 1 ? 's' : '') . ')',
+                    'quantity' => 1,
+                ]];
+            } else {
+                $pmLineItems = array_map(fn($item) => [
+                    'currency' => 'PHP',
+                    'amount'   => (int) round(($item['unitPrice'] ?? 0) * 100),
+                    'name'     => ($item['productName'] ?? 'Product') . ($item['variantName'] ? ' — ' . $item['variantName'] : ''),
+                    'quantity' => (int) ($item['qty'] ?? 1),
+                ], $orderItems);
+            }
+
+            // Delivery fee — only shown when a real fee is set (manually booked courier).
+            // Omitted entirely when 0 so PayMongo does not display a ₱0 fee row.
+            if ($shippingFee > 0) {
+                $pmLineItems[] = [
+                    'currency' => 'PHP',
+                    'amount'   => (int) round($shippingFee * 100),
+                    'name'     => 'Delivery Fee',
+                    'quantity' => 1,
+                ];
+            }
 
             // ── Create PayMongo Checkout Session (/v1/checkout_sessions) ──
             $response = Http::withBasicAuth($this->secretKey, '')
@@ -267,12 +296,7 @@ class PaymentController extends Controller
                             ],
                             'reference_number'     => (string) $orderId,
                             'payment_method_types' => ['gcash', 'paymaya', 'card'],
-                            'line_items'           => [[
-                                'currency'   => 'PHP',
-                                'amount'     => $amountInCentavos,
-                                'name'       => $description,
-                                'quantity'   => 1,
-                            ]],
+                            'line_items'           => $pmLineItems,
                             'redirect'    => [
                                 'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}",
                                 'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}",
@@ -611,11 +635,20 @@ class PaymentController extends Controller
                     ?? $paymentAttrs['external_reference_number']
                     ?? null;
 
+                $totalAmount = (float) ($order->totalAmount ?? 0);
                 $order->paymentStatus           = 'paid';
                 $order->paymentDate             = now();
                 $order->paymentMethod           = $paymentMethod;
                 $order->paymongoPaymentId       = $paymentId;
                 $order->paymongoReferenceNumber = $referenceNum;
+                $order->downPayment             = $totalAmount;
+                $order->balance                 = 0;
+                $order->paymentHistory          = [[
+                    'amount'    => $totalAmount,
+                    'method'    => $paymentMethod ?? 'online',
+                    'note'      => 'Online payment via PayMongo' . ($referenceNum ? " ({$referenceNum})" : ''),
+                    'paidAt'    => now()->toDateTimeString(),
+                ]];
                 $order->updatedAt               = now();
                 $order->save();
 

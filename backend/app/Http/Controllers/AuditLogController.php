@@ -105,7 +105,9 @@ class AuditLogController extends Controller
                 'sellingPrice' => $validated['sellingPrice'] ?? null,
                 'customerName' => $validated['customerName'] ?? null,
                 'saleDate'     => $validated['saleDate'] ?? null,
-                'remarks'      => $validated['remarks'] ?? '',
+                'remarks'      => isset($validated['remarks'])
+                    ? htmlspecialchars(strip_tags(trim($validated['remarks'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                    : '',
                 'performedBy'  => $validated['performedBy'] ?? null,
                 'createdAt'    => now(),
             ]);

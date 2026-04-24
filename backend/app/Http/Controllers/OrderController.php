@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\Sale;
 use App\Models\Inventory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -498,9 +499,10 @@ class OrderController extends Controller
                     $downPayment    = $order->downPayment ?? 0;
                     $paymentMethod  = $order->paymentMethod ?? '';
                     $paymentHistory = $order->paymentHistory ?? [];
+                    $paymentStatus  = $order->paymentStatus ?? '';
 
                     $hasCodMethod  = $paymentMethod === 'cod';
-                    $hasAnyPayment = $downPayment > 0 || count($paymentHistory) > 0;
+                    $hasAnyPayment = $downPayment > 0 || count($paymentHistory) > 0 || $paymentStatus === 'paid';
 
                     if (!$hasCodMethod && !$hasAnyPayment) {
                         return response()->json([
@@ -607,28 +609,33 @@ class OrderController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $base = Order::query()
-                ->when($request->filled('startDate'), fn($q) => $q->where('createdAt', '>=', $request->startDate))
-                ->when($request->filled('endDate'),   fn($q) => $q->where('createdAt', '<=', $request->endDate));
+            $cacheKey = 'admin_order_stats_' . md5($request->query->__toString());
+            $data = Cache::remember($cacheKey, 30, function () use ($request) {
+                $base = Order::query()
+                    ->when($request->filled('startDate'), fn($q) => $q->where('createdAt', '>=', $request->startDate))
+                    ->when($request->filled('endDate'),   fn($q) => $q->where('createdAt', '<=', $request->endDate));
 
-            $totalOrders     = (clone $base)->count();
-            $pendingOrders   = (clone $base)->where('orderStatus', 'Pending')->count();
-            $completedOrders = (clone $base)->where('orderStatus', 'Delivered')->count();
-            $cancelledOrders = (clone $base)->where('orderStatus', 'Cancelled')->count();
-            $totalRevenue    = (clone $base)->where('orderStatus', 'Delivered')->sum('totalAmount');
+                $totalOrders     = (clone $base)->count();
+                $pendingOrders   = (clone $base)->where('orderStatus', 'Pending')->count();
+                $completedOrders = (clone $base)->where('orderStatus', 'Delivered')->count();
+                $cancelledOrders = (clone $base)->where('orderStatus', 'Cancelled')->count();
+                $totalRevenue    = (clone $base)->where('orderStatus', 'Delivered')->sum('totalAmount');
 
-            $cancellationRate = $totalOrders > 0
-                ? round(($cancelledOrders / $totalOrders) * 100, 2)
-                : 0;
+                $cancellationRate = $totalOrders > 0
+                    ? round(($cancelledOrders / $totalOrders) * 100, 2)
+                    : 0;
 
-            return $this->successResponse('Order statistics fetched successfully.', [
-                'totalOrders'      => $totalOrders,
-                'pendingOrders'    => $pendingOrders,
-                'completedOrders'  => $completedOrders,
-                'cancelledOrders'  => $cancelledOrders,
-                'totalRevenue'     => $totalRevenue,
-                'cancellationRate' => $cancellationRate,
-            ]);
+                return [
+                    'totalOrders'      => $totalOrders,
+                    'pendingOrders'    => $pendingOrders,
+                    'completedOrders'  => $completedOrders,
+                    'cancelledOrders'  => $cancelledOrders,
+                    'totalRevenue'     => $totalRevenue,
+                    'cancellationRate' => $cancellationRate,
+                ];
+            });
+
+            return $this->successResponse('Order statistics fetched successfully.', $data);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching order statistics.');
         }
@@ -983,9 +990,10 @@ class OrderController extends Controller
                 $downPayment    = $order->downPayment ?? 0;
                 $paymentMethod  = $order->paymentMethod ?? '';
                 $paymentHistory = $order->paymentHistory ?? [];
+                $paymentStatus  = $order->paymentStatus ?? '';
 
                 $hasCodMethod    = $paymentMethod === 'cod';
-                $hasAnyPayment   = $downPayment > 0 || count($paymentHistory) > 0;
+                $hasAnyPayment   = $downPayment > 0 || count($paymentHistory) > 0 || $paymentStatus === 'paid';
 
                 if (!$hasCodMethod && !$hasAnyPayment) {
                     return response()->json([

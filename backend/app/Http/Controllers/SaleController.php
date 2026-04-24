@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Sale;
 use App\Models\Inventory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class SaleController extends Controller
@@ -153,7 +154,7 @@ class SaleController extends Controller
                 'customerEmail'   => $validated['customerEmail'] ?? 'N/A',
                 'source'          => $validated['source'] ?? 'manual',
                 'status'          => $validated['status'] ?? 'completed',
-                'notes'           => $validated['notes'] ?? '',
+                'notes'           => htmlspecialchars(strip_tags(trim($validated['notes'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 'createdAt'       => now(),
             ]);
 
@@ -183,6 +184,10 @@ class SaleController extends Controller
                 'notes'  => 'nullable|string',
             ]);
 
+            if (isset($validated['notes'])) {
+                $validated['notes'] = htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            }
+
             $sale->update($validated);
 
             return $this->successResponse('Sale updated successfully.', $sale);
@@ -200,68 +205,71 @@ class SaleController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $query = Sale::where('status', 'completed');
+            $cacheKey = 'admin_sales_summary_' . md5($request->query->__toString());
+            $data = Cache::remember($cacheKey, 30, function () use ($request) {
+                $query = Sale::where('status', 'completed');
 
-            if ($request->filled('startDate')) {
-                $query->where('saleDate', '>=', $request->startDate);
-            }
-
-            if ($request->filled('endDate')) {
-                $query->where('saleDate', '<=', $request->endDate);
-            }
-
-            $totalSales   = $query->count();
-            $totalRevenue = $query->sum('totalPrice');
-            $totalCost    = $query->sum('cost');
-            $totalProfit  = $totalRevenue - $totalCost;
-
-            // Group by source (re-query — $query is already consumed above)
-            $manualSales = Sale::where('status', 'completed')
-                ->where('source', 'manual')
-                ->sum('totalPrice');
-
-            $onlineSales = Sale::where('status', 'completed')
-                ->where('source', 'online')
-                ->sum('totalPrice');
-
-            // Optional period grouping for charts
-            $groupBy  = $request->input('groupBy'); // daily | weekly | monthly
-            $grouped  = [];
-
-            if (in_array($groupBy, ['daily', 'weekly', 'monthly'])) {
-                $allSales = Sale::where('status', 'completed')
-                    ->when($request->filled('startDate'), fn($q) => $q->where('saleDate', '>=', $request->startDate))
-                    ->when($request->filled('endDate'),   fn($q) => $q->where('saleDate', '<=', $request->endDate))
-                    ->get(['saleDate', 'totalPrice', 'cost']);
-
-                $buckets = [];
-                foreach ($allSales as $sale) {
-                    $date = \Carbon\Carbon::parse($sale->saleDate);
-                    $key  = match ($groupBy) {
-                        'daily'   => $date->format('Y-m-d'),
-                        'weekly'  => $date->format('Y-W'),
-                        'monthly' => $date->format('Y-m'),
-                    };
-                    if (!isset($buckets[$key])) {
-                        $buckets[$key] = ['period' => $key, 'revenue' => 0, 'cost' => 0, 'profit' => 0];
-                    }
-                    $buckets[$key]['revenue'] += (float) ($sale->totalPrice ?? 0);
-                    $buckets[$key]['cost']    += (float) ($sale->cost       ?? 0);
-                    $buckets[$key]['profit']  += (float) ($sale->totalPrice ?? 0) - (float) ($sale->cost ?? 0);
+                if ($request->filled('startDate')) {
+                    $query->where('saleDate', '>=', $request->startDate);
                 }
-                ksort($buckets);
-                $grouped = array_values($buckets);
-            }
 
-            return $this->successResponse('Sales summary fetched successfully.', [
-                'totalSales'   => $totalSales,
-                'totalRevenue' => $totalRevenue,
-                'totalCost'    => $totalCost,
-                'totalProfit'  => $totalProfit,
-                'manualSales'  => $manualSales,
-                'onlineSales'  => $onlineSales,
-                'grouped'      => $grouped,
-            ]);
+                if ($request->filled('endDate')) {
+                    $query->where('saleDate', '<=', $request->endDate);
+                }
+
+                $totalSales   = $query->count();
+                $totalRevenue = $query->sum('totalPrice');
+                $totalCost    = $query->sum('cost');
+                $totalProfit  = $totalRevenue - $totalCost;
+
+                $manualSales = Sale::where('status', 'completed')
+                    ->where('source', 'manual')
+                    ->sum('totalPrice');
+
+                $onlineSales = Sale::where('status', 'completed')
+                    ->where('source', 'online')
+                    ->sum('totalPrice');
+
+                $groupBy = $request->input('groupBy');
+                $grouped = [];
+
+                if (in_array($groupBy, ['daily', 'weekly', 'monthly'])) {
+                    $allSales = Sale::where('status', 'completed')
+                        ->when($request->filled('startDate'), fn($q) => $q->where('saleDate', '>=', $request->startDate))
+                        ->when($request->filled('endDate'),   fn($q) => $q->where('saleDate', '<=', $request->endDate))
+                        ->get(['saleDate', 'totalPrice', 'cost']);
+
+                    $buckets = [];
+                    foreach ($allSales as $sale) {
+                        $date = \Carbon\Carbon::parse($sale->saleDate);
+                        $key  = match ($groupBy) {
+                            'daily'   => $date->format('Y-m-d'),
+                            'weekly'  => $date->format('Y-W'),
+                            'monthly' => $date->format('Y-m'),
+                        };
+                        if (!isset($buckets[$key])) {
+                            $buckets[$key] = ['period' => $key, 'revenue' => 0, 'cost' => 0, 'profit' => 0];
+                        }
+                        $buckets[$key]['revenue'] += (float) ($sale->totalPrice ?? 0);
+                        $buckets[$key]['cost']    += (float) ($sale->cost       ?? 0);
+                        $buckets[$key]['profit']  += (float) ($sale->totalPrice ?? 0) - (float) ($sale->cost ?? 0);
+                    }
+                    ksort($buckets);
+                    $grouped = array_values($buckets);
+                }
+
+                return [
+                    'totalSales'   => $totalSales,
+                    'totalRevenue' => $totalRevenue,
+                    'totalCost'    => $totalCost,
+                    'totalProfit'  => $totalProfit,
+                    'manualSales'  => $manualSales,
+                    'onlineSales'  => $onlineSales,
+                    'grouped'      => $grouped,
+                ];
+            });
+
+            return $this->successResponse('Sales summary fetched successfully.', $data);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching the sales summary.');
         }
@@ -279,42 +287,42 @@ class SaleController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $query = Sale::where('status', 'completed');
+            $cacheKey = 'admin_top_products_' . md5($request->query->__toString());
+            $data = Cache::remember($cacheKey, 30, function () use ($request) {
+                $query = Sale::where('status', 'completed');
 
-            if ($request->filled('startDate')) {
-                $query->where('saleDate', '>=', $request->startDate);
-            }
-
-            if ($request->filled('endDate')) {
-                $query->where('saleDate', '<=', $request->endDate);
-            }
-
-            $sales = $query->get(['productName', 'category', 'quantity', 'totalPrice']);
-
-            // Group by productName in PHP — MongoDB driver does not support groupBy+sum in one chain
-            $grouped = [];
-            foreach ($sales as $sale) {
-                $key = $sale->productName ?? 'Unknown';
-                if (!isset($grouped[$key])) {
-                    $grouped[$key] = [
-                        'productName' => $key,
-                        'category'    => $sale->category ?? '',
-                        'totalQty'    => 0,
-                        'totalRevenue'=> 0,
-                    ];
+                if ($request->filled('startDate')) {
+                    $query->where('saleDate', '>=', $request->startDate);
                 }
-                $grouped[$key]['totalQty']     += (int)   ($sale->quantity   ?? 0);
-                $grouped[$key]['totalRevenue'] += (float) ($sale->totalPrice ?? 0);
-            }
 
-            usort($grouped, fn($a, $b) => $b['totalQty'] <=> $a['totalQty']);
+                if ($request->filled('endDate')) {
+                    $query->where('saleDate', '<=', $request->endDate);
+                }
 
-            $limit  = max(1, min(20, (int) $request->input('limit', 5)));
-            $topN   = array_slice(array_values($grouped), 0, $limit);
+                $sales = $query->get(['productName', 'category', 'quantity', 'totalPrice']);
 
-            return $this->successResponse('Top products fetched successfully.', [
-                'products' => $topN,
-            ]);
+                $grouped = [];
+                foreach ($sales as $sale) {
+                    $key = $sale->productName ?? 'Unknown';
+                    if (!isset($grouped[$key])) {
+                        $grouped[$key] = [
+                            'productName' => $key,
+                            'category'    => $sale->category ?? '',
+                            'totalQty'    => 0,
+                            'totalRevenue'=> 0,
+                        ];
+                    }
+                    $grouped[$key]['totalQty']     += (int)   ($sale->quantity   ?? 0);
+                    $grouped[$key]['totalRevenue'] += (float) ($sale->totalPrice ?? 0);
+                }
+
+                usort($grouped, fn($a, $b) => $b['totalQty'] <=> $a['totalQty']);
+
+                $limit = max(1, min(20, (int) $request->input('limit', 5)));
+                return ['products' => array_slice(array_values($grouped), 0, $limit)];
+            });
+
+            return $this->successResponse('Top products fetched successfully.', $data);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching top products.');
         }

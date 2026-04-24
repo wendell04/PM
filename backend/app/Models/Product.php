@@ -13,6 +13,7 @@ class Product extends Model
     protected $fillable = [
         'inventoryId',
         'bomId',
+        'bomGroupName',
         'isCustom',
         'name',
         'description',
@@ -29,6 +30,7 @@ class Product extends Model
         'flatPrice',
         'priceTiers',
         'variantPrices',
+        'variantStock',
         'trackInventory',
         'stock',
         'stockStatus',

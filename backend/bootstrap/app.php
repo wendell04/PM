@@ -5,6 +5,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\HandleCors;
 use Illuminate\Auth\AuthenticationException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use App\Http\Middleware\SecurityHeaders;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -32,6 +33,16 @@ return Application::configure(basePath: dirname(__DIR__))
                     'success' => false,
                     'message' => 'Unauthenticated.',
                 ], 401);
+            }
+        });
+
+        // Database unavailable (MongoDB timeout) — return 503 so clients keep the session
+        $exceptions->render(function (HttpException $e, $request) {
+            if ($e->getStatusCode() === 503 && ($request->is('api/*') || $request->expectsJson())) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Service temporarily unavailable. Please try again.',
+                ], 503);
             }
         });
 

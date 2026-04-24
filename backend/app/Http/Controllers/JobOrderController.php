@@ -96,7 +96,7 @@ class JobOrderController extends Controller
                 'isRush'           => $validated['isRush'] ?? false,
                 'joStatus'         => 'Queued',
                 'assignedTo'       => $validated['assignedTo'] ?? null,
-                'notes'            => $validated['notes'] ?? '',
+                'notes'            => htmlspecialchars(strip_tags(trim($validated['notes'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 'designNotes'      => $linkedOrder?->designNotes ?? null,
                 'designFilePath'   => $linkedOrder?->designFilePath ?? null,
                 'adminComment'     => $linkedOrder?->adminComment ?? null,
@@ -140,6 +140,10 @@ class JobOrderController extends Controller
                 'assignedTo'       => 'nullable|string',
                 'notes'            => 'nullable|string',
             ]);
+
+            if (isset($validated['notes'])) {
+                $validated['notes'] = htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            }
 
             $jobOrder->update($validated);
             $jobOrder->updatedAt = now();

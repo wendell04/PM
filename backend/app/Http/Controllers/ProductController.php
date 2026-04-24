@@ -136,8 +136,10 @@ class ProductController extends Controller
             $validated = $request->validate([
                 'name'              => 'required|string|max:200',
                 'inventoryId'       => [
-                    'required',
+                    'nullable',
+                    'string',
                     function ($attribute, $value, $fail) {
+                        if (!$value) return;
                         $found = Inventory::where('_id', $value)
                             ->where('isActive', true)
                             ->exists();
@@ -173,6 +175,8 @@ class ProductController extends Controller
                 'isCustom'          => 'boolean',
                 'isActive'          => 'boolean',
                 'bomId'             => 'nullable|string|max:24',
+                'bomGroupName'      => 'nullable|string|max:200',
+                'variantStock'      => 'nullable|array',
             ]);
 
             // Check for duplicate (same category + subCategoryName)
@@ -185,35 +189,34 @@ class ProductController extends Controller
                 return $this->errorResponse('Duplicate product: A product with this category and sub-category already exists.', 422);
             }
 
-            // Validate inventory link (1:1 relationship)
-            $existingProduct = Product::where('inventoryId', $validated['inventoryId'])
-                                      ->where('isActive', true)
-                                      ->first();
-            if ($existingProduct) {
-                return $this->errorResponse('This inventory item is already linked to another product.', 422);
-            }
+            // Inventory-linked product checks (only when inventoryId provided)
+            if (!empty($validated['inventoryId'])) {
+                $existingProduct = Product::where('inventoryId', $validated['inventoryId'])
+                                          ->where('isActive', true)
+                                          ->first();
+                if ($existingProduct) {
+                    return $this->errorResponse('This inventory item is already linked to another product.', 422);
+                }
 
-            // Get inventory to auto-fill stock if trackInventory is enabled
-            $inventory = Inventory::find($validated['inventoryId']);
-            if (!$inventory) {
-                return $this->notFoundResponse('Inventory item');
-            }
+                $inventory = Inventory::find($validated['inventoryId']);
+                if (!$inventory) {
+                    return $this->notFoundResponse('Inventory item');
+                }
 
-            // Auto-set stock from inventory if not provided
-            if (!isset($validated['stock']) && $validated['trackInventory'] ?? false) {
-                $validated['stock'] = $inventory->stockQty;
-            }
+                if (!isset($validated['stock']) && ($validated['trackInventory'] ?? false)) {
+                    $validated['stock'] = $inventory->stockQty;
+                }
 
-            // Auto-set stock status
-            if (!isset($validated['stockStatus'])) {
-                if ($inventory->isOnDemand) {
-                    $validated['stockStatus'] = 'upon-order';
-                } elseif (($validated['stock'] ?? 0) === 0) {
-                    $validated['stockStatus'] = 'out-of-stock';
-                } elseif (($validated['stock'] ?? 0) <= 10) {
-                    $validated['stockStatus'] = 'low-stock';
-                } else {
-                    $validated['stockStatus'] = 'in-stock';
+                if (!isset($validated['stockStatus'])) {
+                    if ($inventory->isOnDemand) {
+                        $validated['stockStatus'] = 'upon-order';
+                    } elseif (($validated['stock'] ?? 0) === 0) {
+                        $validated['stockStatus'] = 'out-of-stock';
+                    } elseif (($validated['stock'] ?? 0) <= 10) {
+                        $validated['stockStatus'] = 'low-stock';
+                    } else {
+                        $validated['stockStatus'] = 'in-stock';
+                    }
                 }
             }
 

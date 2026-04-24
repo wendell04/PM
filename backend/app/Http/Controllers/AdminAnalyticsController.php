@@ -9,6 +9,7 @@ use App\Models\Sale;
 use App\Models\StockHistory;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class AdminAnalyticsController extends Controller
@@ -20,65 +21,59 @@ class AdminAnalyticsController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $totalOrders = Order::count();
+            $data = Cache::remember('admin_dashboard_stats', 30, function () {
+                $totalOrders   = Order::count();
+                $pendingOrders = Order::where('orderStatus', 'Pending')->count();
+                $totalRevenue  = (float) Sale::where('status', 'completed')->sum('totalPrice');
+                $totalProducts = Product::where('isPublished', true)->count();
 
-            $pendingOrders = Order::where('orderStatus', 'Pending')->count();
+                $invActive           = Inventory::where('isActive', true)->get();
+                $totalInventoryItems = $invActive->count();
 
-            $totalRevenue = (float) Sale::where('status', 'completed')->sum('totalPrice');
+                $lowStockCount = $invActive->filter(function ($i) {
+                    if ($i->isOnDemand) return false;
+                    return (int) ($i->stockQty ?? 0) < (int) ($i->minStockLevel ?? 0)
+                        && (int) ($i->stockQty ?? 0) > 0;
+                })->count();
 
-            $totalProducts = Product::where('isPublished', true)->count();
+                $outOfStockCount = $invActive->filter(function ($i) {
+                    if ($i->isOnDemand) return false;
+                    return (int) ($i->stockQty ?? 0) <= 0;
+                })->count();
 
-            $invActive = Inventory::where('isActive', true)->get();
-            $totalInventoryItems = $invActive->count();
+                $recentOrders = Order::orderBy('createdAt', 'desc')
+                    ->limit(5)
+                    ->get()
+                    ->map(function ($o) {
+                        $name = $o->customerName
+                            ?? data_get($o->userSnapshot, 'name')
+                            ?? data_get($o->customer, 'name')
+                            ?? '—';
+                        return [
+                            '_id'          => (string) $o->_id,
+                            'orderId'      => $o->orderId ?? (string) $o->_id,
+                            'customerName' => $name,
+                            'totalAmount'  => (float) ($o->totalAmount ?? 0),
+                            'orderStatus'  => $o->orderStatus ?? 'Pending',
+                            'createdAt'    => $o->createdAt,
+                        ];
+                    })
+                    ->values()
+                    ->all();
 
-            $lowStockCount = $invActive->filter(function ($i) {
-                if ($i->isOnDemand) {
-                    return false;
-                }
+                return [
+                    'totalOrders'         => $totalOrders,
+                    'pendingOrders'       => $pendingOrders,
+                    'totalRevenue'        => $totalRevenue,
+                    'totalProducts'       => $totalProducts,
+                    'totalInventoryItems' => $totalInventoryItems,
+                    'lowStockCount'       => $lowStockCount,
+                    'outOfStockCount'     => $outOfStockCount,
+                    'recentOrders'        => $recentOrders,
+                ];
+            });
 
-                return (int) ($i->stockQty ?? 0) < (int) ($i->minStockLevel ?? 0)
-                    && (int) ($i->stockQty ?? 0) > 0;
-            })->count();
-
-            $outOfStockCount = $invActive->filter(function ($i) {
-                if ($i->isOnDemand) {
-                    return false;
-                }
-
-                return (int) ($i->stockQty ?? 0) <= 0;
-            })->count();
-
-            $recentOrders = Order::orderBy('createdAt', 'desc')
-                ->limit(5)
-                ->get()
-                ->map(function ($o) {
-                    $name = $o->customerName
-                        ?? data_get($o->userSnapshot, 'name')
-                        ?? data_get($o->customer, 'name')
-                        ?? '—';
-
-                    return [
-                        '_id'          => (string) $o->_id,
-                        'orderId'      => $o->orderId ?? (string) $o->_id,
-                        'customerName' => $name,
-                        'totalAmount'  => (float) ($o->totalAmount ?? 0),
-                        'orderStatus'  => $o->orderStatus ?? 'Pending',
-                        'createdAt'    => $o->createdAt,
-                    ];
-                })
-                ->values()
-                ->all();
-
-            return $this->successResponse('Dashboard stats.', [
-                'totalOrders'           => $totalOrders,
-                'pendingOrders'         => $pendingOrders,
-                'totalRevenue'          => $totalRevenue,
-                'totalProducts'         => $totalProducts,
-                'totalInventoryItems'   => $totalInventoryItems,
-                'lowStockCount'         => $lowStockCount,
-                'outOfStockCount'       => $outOfStockCount,
-                'recentOrders'          => $recentOrders,
-            ]);
+            return $this->successResponse('Dashboard stats.', $data);
         } catch (\Exception $e) {
             Log::error('dashboardStats: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
 

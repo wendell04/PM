@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use App\Models\RolePermission;
 
 class RolePermissionController extends Controller
@@ -49,20 +50,23 @@ class RolePermissionController extends Controller
             $user = $request->user();
             if (!$user) return $this->unauthorizedResponse();
 
-            // Admin and owner have full access to everything
-            if (in_array($user->role, ['admin', 'owner'])) {
-                $all = RolePermission::defaultPermissions();
-                $full = array_map(fn() => true, $all);
-                return $this->successResponse('Permissions fetched.', [
-                    'role'        => $user->role,
-                    'permissions' => $full,
-                ]);
-            }
+            $userId = (string) ($user->_id ?? $user->id);
+            $data = Cache::remember("admin_permissions_{$userId}", 60, function () use ($user) {
+                if (in_array($user->role, ['admin', 'owner'])) {
+                    $all = RolePermission::defaultPermissions();
+                    return [
+                        'role'        => $user->role,
+                        'permissions' => array_map(fn() => true, $all),
+                    ];
+                }
 
-            return $this->successResponse('Permissions fetched.', [
-                'role'        => $user->role,
-                'permissions' => RolePermission::forRole($user->role),
-            ]);
+                return [
+                    'role'        => $user->role,
+                    'permissions' => RolePermission::forRole($user->role),
+                ];
+            });
+
+            return $this->successResponse('Permissions fetched.', $data);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to fetch permissions.');
         }
@@ -107,6 +111,12 @@ class RolePermissionController extends Controller
                     'updatedBy'   => (string) $request->user()->_id,
                     'updatedAt'   => now(),
                 ]);
+            }
+
+            // Invalidate per-user permission caches for all staff with this role
+            $affected = \App\Models\User::where('role', $role)->pluck('_id');
+            foreach ($affected as $uid) {
+                Cache::forget("admin_permissions_{$uid}");
             }
 
             return $this->successResponse('Role permissions updated successfully.', [
