@@ -841,15 +841,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                       >
                         {m.stockQty === 0 && onDeleteZeroStock ? (
                           <button
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  `Delete "${m.name}"? This action cannot be undone.`,
-                                )
-                              ) {
-                                onDeleteZeroStock(m._id);
-                              }
-                            }}
+                            onClick={() => onDeleteZeroStock(m._id ?? m.id, m.name)}
                             style={{
                               background: "rgba(239,68,68,0.1)",
                               border: "1px solid rgba(239,68,68,0.2)",
@@ -1245,15 +1237,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                             >
                               {child.stockQty === 0 && onDeleteZeroStock ? (
                                 <button
-                                  onClick={() => {
-                                    if (
-                                      window.confirm(
-                                        `Delete "${child.name}"? This action cannot be undone.`,
-                                      )
-                                    ) {
-                                      onDeleteZeroStock(child._id);
-                                    }
-                                  }}
+                                  onClick={() => onDeleteZeroStock(child._id ?? child.id, child.name)}
                                   style={{
                                     background: "rgba(239,68,68,0.1)",
                                     border: "1px solid rgba(239,68,68,0.2)",
@@ -1319,10 +1303,12 @@ export default function StocksPage() {
   const [selectSearch, setSelectSearch] = useState("");
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedMaterials, setSelectedMaterials] = useState([]);
-  const [reductionItems, setReductionItems] = useState([]); // multi-select: array of items
+  const [reductionItems, setReductionItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [badOrders, setBadOrders] = useState([]);
+  const [alertModal, setAlertModal] = useState(null); // { type: 'success'|'error', message }
+  const [confirmModal, setConfirmModal] = useState(null); // { message, onConfirm }
 
   const refresh = useCallback(async () => {
     if (!token) return;
@@ -1390,7 +1376,7 @@ export default function StocksPage() {
             customerName:
               apiReason === "sales-outside" ? customer || null : null,
             unitCost: unitCost || null,
-            performedBy: user?.name || user?.email || null,
+            performedBy: user?.username || user?.name || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.email || null,
           },
           token,
         );
@@ -1403,25 +1389,28 @@ export default function StocksPage() {
       setReductionItem(null);
       setReductionItems([]);
       await refresh();
-      alert(
-        `Stock updated successfully!\n\n${calls.length} adjustment(s) completed.`,
-      );
+      setAlertModal({ type: 'success', message: `Stock updated successfully. ${calls.length} adjustment(s) completed.` });
     } catch (err) {
       console.error("Stock reduction failed:", err);
-      alert(err?.message || "✗ Stock update failed.");
+      setAlertModal({ type: 'error', message: err?.message || 'Stock update failed.' });
       setError(err?.message || "Failed to adjust stock.");
     }
   };
 
-  const handleDeleteZeroStock = async (materialId) => {
-    if (!token) return;
-    try {
-      await deleteInventory(materialId, token);
-      await refresh();
-    } catch (err) {
-      console.error(err);
-      alert(err?.message || "Failed to delete item.");
-    }
+  const handleDeleteZeroStock = (materialId, materialName) => {
+    setConfirmModal({
+      message: `Delete "${materialName}"? This action cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        try {
+          await deleteInventory(materialId, token);
+          await refresh();
+        } catch (err) {
+          console.error(err);
+          setAlertModal({ type: 'error', message: err?.message || 'Failed to delete item.' });
+        }
+      },
+    });
   };
 
   const tabStyle = (tab) => ({
@@ -1780,9 +1769,10 @@ export default function StocksPage() {
                       key={String(m.id ?? m._id)}
                       onClick={() => {
                         if (multiSelectMode) {
+                          const mId = m.id ?? m._id;
                           setSelectedMaterials((prev) =>
-                            prev.some((x) => x._id === m._id)
-                              ? prev.filter((x) => x._id !== m._id)
+                            prev.some((x) => (x.id ?? x._id) === mId)
+                              ? prev.filter((x) => (x.id ?? x._id) !== mId)
                               : [...prev, m],
                           );
                         } else {
@@ -1801,19 +1791,19 @@ export default function StocksPage() {
                         alignItems: "center",
                         background:
                           multiSelectMode &&
-                          selectedMaterials.some((x) => x._id === m._id)
+                          selectedMaterials.some((x) => (x.id ?? x._id) === (m.id ?? m._id))
                             ? "rgba(212,168,67,0.08)"
                             : "transparent",
                         borderLeft:
                           multiSelectMode &&
-                          selectedMaterials.some((x) => x._id === m._id)
+                          selectedMaterials.some((x) => (x.id ?? x._id) === (m.id ?? m._id))
                             ? "3px solid #D4A843"
                             : "3px solid transparent",
                       }}
                       onMouseEnter={(e) => {
                         if (
                           !multiSelectMode ||
-                          !selectedMaterials.some((x) => x._id === m._id)
+                          !selectedMaterials.some((x) => (x.id ?? x._id) === (m.id ?? m._id))
                         )
                           e.currentTarget.style.background =
                             "rgba(212,168,67,0.06)";
@@ -1821,7 +1811,7 @@ export default function StocksPage() {
                       onMouseLeave={(e) => {
                         e.currentTarget.style.background =
                           multiSelectMode &&
-                          selectedMaterials.some((x) => x._id === m._id)
+                          selectedMaterials.some((x) => (x.id ?? x._id) === (m.id ?? m._id))
                             ? "rgba(212,168,67,0.08)"
                             : "transparent";
                       }}
@@ -1987,6 +1977,45 @@ export default function StocksPage() {
           inventory={materials}
           masterlist={null}
         />
+      )}
+
+      {/* Alert Modal */}
+      {alertModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: 'var(--dark2)', border: `1px solid ${alertModal.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, borderRadius: '14px', padding: '2rem', maxWidth: '420px', width: '100%', textAlign: 'center' }}>
+            <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: alertModal.type === 'success' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
+              {alertModal.type === 'success' ? (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" /></svg>
+              ) : (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+              )}
+            </div>
+            <p style={{ color: '#E5E2E1', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>{alertModal.message}</p>
+            <button onClick={() => setAlertModal(null)} style={{ background: alertModal.type === 'success' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', border: `1px solid ${alertModal.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, color: alertModal.type === 'success' ? '#22c55e' : '#ef4444', borderRadius: '8px', padding: '0.5rem 1.5rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Modal */}
+      {confirmModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: 'var(--dark2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '14px', padding: '2rem', maxWidth: '420px', width: '100%', textAlign: 'center' }}>
+            <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+            </div>
+            <p style={{ color: '#E5E2E1', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>{confirmModal.message}</p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+              <button onClick={() => setConfirmModal(null)} style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--gray)', borderRadius: '8px', padding: '0.5rem 1.5rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
+                Cancel
+              </button>
+              <button onClick={confirmModal.onConfirm} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', borderRadius: '8px', padding: '0.5rem 1.5rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
     </ErrorBoundary>

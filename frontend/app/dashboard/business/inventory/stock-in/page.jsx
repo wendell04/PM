@@ -10,6 +10,7 @@ import {
   fetchSuppliers,
 } from "@/lib/inventoryApi";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchUnits } from "@/lib/unitsApi";
 import { genDocNumber, thStyle } from "../utils";
 import AddStockModal from "./AddStockModal";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -1309,6 +1310,7 @@ export default function StockInPage() {
   const { token } = useAuth();
   const [materials, setMaterials] = useState([]);
   const [vendors, setVendors] = useState([]);
+  const [units, setUnits] = useState([]);
   const [stockInLog, setStockInLog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -1354,12 +1356,20 @@ export default function StockInPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [mats, sups] = await Promise.all([
+      const [mats, sups, rawUnits] = await Promise.all([
         fetchInventory(token),
         fetchSuppliers(token),
+        fetchUnits(token).catch(() => []),
       ]);
       setMaterials(mats.map((m) => ({ ...m, id: m.id ?? m._id })));
       setVendors(sups.map((v) => ({ ...v, id: v.id ?? v._id })));
+      setUnits(
+        (Array.isArray(rawUnits) ? rawUnits : []).map((u) => ({
+          id: u._id || u.id,
+          code: u.abbreviation || u.code || "",
+          name: u.name,
+        })),
+      );
     } catch (e) {
       setLoadError(e?.message || "Failed to load");
       setInfoModal({
@@ -2696,6 +2706,7 @@ export default function StockInPage() {
         onSave={handleSaveStock}
         materials={materials}
         vendors={vendors}
+        units={units}
         onAddVendor={(categories) => {
           setVendorPreFillCategories(categories || []);
           setShowAddVendor(true);
