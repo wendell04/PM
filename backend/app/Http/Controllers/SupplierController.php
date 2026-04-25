@@ -70,13 +70,16 @@ class SupplierController extends Controller
             }
 
             $validated = $request->validate([
-                'name'          => 'required|string|max:255',
-                'contactPerson' => 'nullable|string|max:255',
-                'phone'         => 'nullable|string|max:20',
-                'email'         => 'nullable|email|max:255',
-                'address'       => 'nullable|string|max:500',
-                'notes'         => 'nullable|string',
-                'itemsSupplied' => 'nullable|array',
+                'name'             => 'required|string|max:255',
+                'contacts'         => 'nullable|array',
+                'contacts.*'       => 'nullable|string|max:255',
+                'phones'           => 'nullable|array',
+                'phones.*'         => 'nullable|string|max:50',
+                'emails'           => 'nullable|array',
+                'emails.*'         => 'nullable|string|max:255',
+                'address'          => 'nullable|string|max:500',
+                'notes'            => 'nullable|string',
+                'itemsSupplied'    => 'nullable|array',
                 'itemsSupplied.*.name' => 'nullable|string|max:255',
                 'itemsSupplied.*.uom'  => 'nullable|string|max:50',
             ]);
@@ -92,9 +95,9 @@ class SupplierController extends Controller
 
             $supplier = Supplier::create([
                 'name'          => $validated['name'],
-                'contactPerson' => $validated['contactPerson'] ?? null,
-                'phone'         => $validated['phone'] ?? null,
-                'email'         => $validated['email'] ?? null,
+                'contacts'      => $validated['contacts'] ?? [],
+                'phones'        => $validated['phones'] ?? [],
+                'emails'        => $validated['emails'] ?? [],
                 'address'       => $validated['address'] ?? null,
                 'notes'         => isset($validated['notes'])
                     ? htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
@@ -127,16 +130,19 @@ class SupplierController extends Controller
             }
 
             $validated = $request->validate([
-                'name'          => 'sometimes|required|string|max:255',
-                'contactPerson' => 'nullable|string|max:255',
-                'phone'         => 'nullable|string|max:20',
-                'email'         => 'nullable|email|max:255',
-                'address'       => 'nullable|string|max:500',
-                'notes'         => 'nullable|string',
-                'itemsSupplied' => 'nullable|array',
+                'name'             => 'sometimes|required|string|max:255',
+                'contacts'         => 'nullable|array',
+                'contacts.*'       => 'nullable|string|max:255',
+                'phones'           => 'nullable|array',
+                'phones.*'         => 'nullable|string|max:50',
+                'emails'           => 'nullable|array',
+                'emails.*'         => 'nullable|string|max:255',
+                'address'          => 'nullable|string|max:500',
+                'notes'            => 'nullable|string',
+                'itemsSupplied'    => 'nullable|array',
                 'itemsSupplied.*.name' => 'nullable|string|max:255',
                 'itemsSupplied.*.uom'  => 'nullable|string|max:50',
-                'isActive'      => 'sometimes|boolean',
+                'isActive'         => 'sometimes|boolean',
             ]);
 
             // Check for duplicate if name changed

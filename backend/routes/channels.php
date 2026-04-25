@@ -13,6 +13,11 @@ Broadcast::channel('admin.notifications', function ($user) {
     return in_array($user->role ?? null, ['admin', 'owner']);
 });
 
+// Private channel per-user for real-time in-app notifications
+Broadcast::channel('user.{userId}', function ($user, $userId) {
+    return (string) ($user->_id ?? $user->id) === (string) $userId;
+});
+
 // Private channel for individual order tracking
 Broadcast::channel('order.{orderId}', function ($user, $orderId) {
     $order = \App\Models\Order::find($orderId);

@@ -1498,7 +1498,7 @@ export default function StockReductionModal({
                             fontSize: "0.82rem",
                           }}
                         >
-                          {batch.batchId}
+                          {batch.invoiceNumber || batch.batchId}
                         </span>
                         {isPicked && (
                           <span
@@ -1547,8 +1547,8 @@ export default function StockReductionModal({
                           {peso(batch.unitCost || 0)}
                         </strong>
                       </span>
-                      {batch.invoiceNumber && (
-                        <span>Invoice: {batch.invoiceNumber}</span>
+                      {!batch.invoiceNumber && (
+                        <span style={{ fontSize: "0.65rem", opacity: 0.5 }}>ID: {batch.batchId.substring(0, 8)}…</span>
                       )}
                     </div>
                     <div

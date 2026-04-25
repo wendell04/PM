@@ -37,6 +37,7 @@ export default function BusinessDashboardLayout({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifLoading, setNotifLoading] = useState(false);
+  const [selectedNotif, setSelectedNotif] = useState(null);
   const notifRef = useRef(null);
 
   // Profile form state
@@ -377,6 +378,15 @@ export default function BusinessDashboardLayout({ children }) {
     };
   }, [token]);
 
+  // Suppress DOM-Event unhandled rejections (Pusher/WebSocket internals)
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.reason instanceof Event) e.preventDefault();
+    };
+    window.addEventListener('unhandledrejection', handler);
+    return () => window.removeEventListener('unhandledrejection', handler);
+  }, []);
+
   // Close notification panel on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -515,6 +525,7 @@ export default function BusinessDashboardLayout({ children }) {
       children: [
         { name: "Catalog", href: "/dashboard/business/products" },
         { name: "Banners", href: "/dashboard/business/banners" },
+        { name: "Reviews", href: "/dashboard/business/reviews" },
       ],
     },
     {
@@ -609,6 +620,7 @@ export default function BusinessDashboardLayout({ children }) {
       "/dashboard/business/inventory": "Inventory",
       "/dashboard/business/products": "Products",
       "/dashboard/business/banners": "Banners",
+      "/dashboard/business/reviews": "Reviews",
       "/dashboard/business/flash-sales": "Flash Sales",
       "/dashboard/business/vouchers": "Vouchers",
       "/dashboard/business/sales": "Sales",
@@ -669,6 +681,75 @@ export default function BusinessDashboardLayout({ children }) {
           className="sidebar-overlay"
           onClick={() => setSidebarOpen(false)}
         />
+      )}
+
+      {/* Notification Detail Modal */}
+      {selectedNotif && (
+        <div
+          onClick={() => setSelectedNotif(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10000,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--dark2)',
+              border: '1px solid var(--border)',
+              borderRadius: '14px',
+              width: '100%', maxWidth: '460px',
+              padding: '1.75rem',
+              display: 'flex', flexDirection: 'column', gap: '1rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--white)', lineHeight: 1.4 }}>
+                {selectedNotif.title}
+              </h3>
+              <button
+                onClick={() => setSelectedNotif(null)}
+                style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--gray)', lineHeight: 1.6 }}>
+              {selectedNotif.message}
+            </p>
+            {selectedNotif.data?.orderId && (
+              <a
+                href={`/dashboard/business/orders`}
+                style={{ fontSize: '0.8rem', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}
+                onClick={() => setSelectedNotif(null)}
+              >
+                View Order →
+              </a>
+            )}
+            <div style={{ fontSize: '0.75rem', color: 'var(--gray)', opacity: 0.6, marginTop: '0.25rem' }}>
+              {new Date(selectedNotif.created_at).toLocaleString('en-PH', {
+                year: 'numeric', month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+              })}
+            </div>
+            <button
+              onClick={() => setSelectedNotif(null)}
+              style={{
+                marginTop: '0.25rem', padding: '0.6rem',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px', color: 'var(--white)',
+                fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Logout Confirmation Modal */}
@@ -1144,19 +1225,23 @@ export default function BusinessDashboardLayout({ children }) {
                         </div>
                       </div>
                     ) : (
-                      notifications.map((n) => {
-                        const id = n._id || n.id;
+                      notifications.map((n, i) => {
+                        const id = n._id ?? n.id ?? String(i);
                         return (
                           <div
                             key={id}
-                            onClick={() => !n.is_read && handleMarkRead(id)}
+                            onClick={() => {
+                              if (!n.is_read) handleMarkRead(id);
+                              setSelectedNotif(n);
+                              setNotifOpen(false);
+                            }}
                             style={{
                               padding: "0.875rem 1.25rem",
                               borderBottom: "1px solid rgba(255,255,255,0.05)",
                               background: n.is_read
                                 ? "transparent"
                                 : "rgba(212,168,67,0.06)",
-                              cursor: n.is_read ? "default" : "pointer",
+                              cursor: "pointer",
                               display: "flex",
                               gap: "0.75rem",
                               alignItems: "flex-start",

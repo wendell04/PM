@@ -26,4 +26,17 @@ class Notification extends Model
     protected $indexes = [
         ['key' => ['user_id' => 1, 'is_read' => 1]],
     ];
+
+    protected static function booted(): void
+    {
+        static::created(function (self $notification) {
+            try {
+                broadcast(new \App\Events\UserNotificationCreated(
+                    (string) $notification->user_id
+                ));
+            } catch (\Exception) {
+                // Reverb may not be running; polling covers the gap
+            }
+        });
+    }
 }

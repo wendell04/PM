@@ -18,9 +18,6 @@ export default function ProductDetailPage() {
   const [activeImage, setActiveImage] = useState(0);
   const [selectedVariants, setSelectedVariants] = useState({});
   const [quantity, setQuantity] = useState(1);
-  const [designUrl, setDesignUrl] = useState('');
-  const [designNotes, setDesignNotes] = useState('');
-  // Design preview: URL.createObjectURL only; file upload happens at checkout.
   const [flashSale, setFlashSale] = useState(null);
 
   const params = useParams();
@@ -31,6 +28,14 @@ export default function ProductDetailPage() {
   const [addedToCart, setAddedToCart] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+
+  // ── Reviews state ─────────────────────────────────
+  const [reviews, setReviews]               = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsPage, setReviewsPage]       = useState(1);
+  const [reviewsTotalPages, setReviewsTotalPages] = useState(1);
+  const [reviewsAvg, setReviewsAvg]         = useState(null);
+  const [reviewsTotalCount, setReviewsTotalCount] = useState(0);
 
   // ── Custom order request modal state ──
   const [showRequestModal, setShowRequestModal] = useState(false);
@@ -72,6 +77,36 @@ export default function ProductDetailPage() {
     };
     fetchProduct();
   }, [id]);
+
+  // Reset review state when product changes
+  useEffect(() => {
+    setReviews([]);
+    setReviewsPage(1);
+    setReviewsAvg(null);
+    setReviewsTotalCount(0);
+    setReviewsTotalPages(1);
+  }, [id]);
+
+  // Fetch reviews
+  useEffect(() => {
+    if (!id) return;
+    setReviewsLoading(true);
+    fetchWithTimeout(
+      `${API_URL}/api/products/${id}/reviews?page=${reviewsPage}&per_page=5`,
+      {},
+      10000
+    ).then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (!data) return;
+        const d = data.data ?? data;
+        setReviews(prev => reviewsPage === 1 ? (d.reviews ?? []) : [...prev, ...(d.reviews ?? [])]);
+        setReviewsAvg(d.avgRating ?? null);
+        setReviewsTotalCount(d.total ?? 0);
+        setReviewsTotalPages(d.totalPages ?? 1);
+      })
+      .catch(() => {})
+      .finally(() => setReviewsLoading(false));
+  }, [id, reviewsPage]);
 
   // Fetch flash sale
   useEffect(() => {
@@ -233,8 +268,6 @@ export default function ProductDetailPage() {
       await addToCart(
         {
           ...product,
-          designUrl: designUrl || null,
-          designNotes: designNotes || null,
           flatPrice: unitPrice ?? product.flatPrice ?? product.price ?? 0,
         },
         quantity,
@@ -302,8 +335,6 @@ export default function ProductDetailPage() {
       await addToCart(
         {
           ...product,
-          designUrl: designUrl || null,
-          designNotes: designNotes || null,
           flatPrice: resolvedPrice,
         },
         quantity,
@@ -328,10 +359,10 @@ export default function ProductDetailPage() {
           variantName: resolveVariantName(selectedVariants),
           qty:         quantity,
           unitPrice:   resolvedPrice,
-          designUrl:   designUrl || null,
+          designUrl:   null,
         }],
-        notes:      designNotes || '',
-        designUrl:  designUrl || null,
+        notes:     '',
+        designUrl: null,
       };
       sessionStorage.setItem('checkout_payload', JSON.stringify(payload));
       router.push('/shop/checkout');
@@ -355,6 +386,7 @@ export default function ProductDetailPage() {
   const tiers = product ? getTiers(product) : [];
 
   return (
+    <>
     <div style={{ padding: '2rem 1rem',
       maxWidth: '1100px', margin: '0 auto' }}>
 
@@ -513,6 +545,7 @@ export default function ProductDetailPage() {
                         width: '60px', height: '60px',
                         borderRadius: '8px',
                         overflow: 'hidden', padding: 0,
+                        position: 'relative',
                         border: activeImage === i
                           ? '2px solid var(--gold)'
                           : '2px solid var(--border)',
@@ -815,18 +848,14 @@ export default function ProductDetailPage() {
                     justifyContent: 'center',
                   }}>−</button>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={quantity}
-                  min={1}
-                  max={effectiveMaxQty}
-                  onChange={e => setQuantity(
-                    Math.min(
-                      Math.max(1, parseInt(e.target.value) || 1),
-                      effectiveMaxQty
-                    )
-                  )}
-                  onKeyDown={e => ['e','E','+','-']
-                    .includes(e.key) && e.preventDefault()}
+                  onChange={e => {
+                    const v = parseInt(e.target.value.replace(/\D/g, '')) || 1;
+                    setQuantity(Math.min(Math.max(1, v), effectiveMaxQty));
+                  }}
                   style={{
                     width: '64px', textAlign: 'center',
                     padding: '0.5rem',
@@ -835,9 +864,6 @@ export default function ProductDetailPage() {
                     borderRadius: '8px',
                     color: 'var(--white)',
                     fontSize: '0.95rem', fontWeight: 700,
-                    MozAppearance: 'textfield',
-                    WebkitAppearance: 'none',
-                    appearance: 'textfield',
                   }}
                 />
                 <button
@@ -855,133 +881,6 @@ export default function ProductDetailPage() {
                   }}>+</button>
               </div>
             </div>
-
-            {/* Design upload */}
-            <div>
-              <div style={{ fontSize: '0.8rem',
-                fontWeight: 600, color: 'var(--gray)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                marginBottom: '0.5rem' }}>
-                Upload Your Design
-                <span style={{ color: 'var(--gray)',
-                  fontWeight: 400,
-                  textTransform: 'none',
-                  letterSpacing: 0,
-                  fontSize: '0.75rem',
-                  marginLeft: '0.4rem' }}>
-                  (optional)
-                </span>
-              </div>
-
-              {designUrl ? (
-                <div style={{ display: 'flex',
-                  alignItems: 'center', gap: '0.75rem',
-                  padding: '0.75rem 1rem',
-                  background: 'rgba(74,222,128,0.08)',
-                  border: '1px solid rgba(74,222,128,0.3)',
-                  borderRadius: '8px' }}>
-                  <svg width="16" height="16"
-                    viewBox="0 0 24 24" fill="none"
-                    stroke="#4ade80" strokeWidth="2.5">
-                    <path d="M20 6L9 17l-5-5"/>
-                  </svg>
-                  <span style={{ fontSize: '0.85rem',
-                    color: '#4ade80', fontWeight: 600 }}>
-                    Design uploaded
-                  </span>
-                  <button
-                    onClick={() => setDesignUrl('')}
-                    style={{ marginLeft: 'auto',
-                      background: 'none', border: 'none',
-                      color: 'var(--gray)',
-                      cursor: 'pointer',
-                      fontSize: '0.8rem' }}>
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <label style={{
-                  display: 'block',
-                  padding: '1rem',
-                  border: '2px dashed var(--border)',
-                  borderRadius: '8px',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  color: 'var(--gray)',
-                  fontSize: '0.85rem',
-                  transition: 'border-color 0.2s',
-                }}>
-                  Click to upload design file
-                  <div style={{ fontSize: '0.75rem',
-                    marginTop: '0.25rem',
-                    color: 'var(--gray)', opacity: 0.7 }}>
-                    JPG, PNG, PDF, AI, PSD, SVG (max 10MB)
-                  </div>
-                  <input type="file" style={{ display: 'none' }}
-                    accept=".jpg,.jpeg,.png,.pdf,.ai,.psd,.svg"
-                    onChange={e => {
-                      const f = e.target.files?.[0];
-                      if (f) {
-                        if (f.size > 10 * 1024 * 1024) {
-                          setError('File must be under 10MB.');
-                          e.target.value = '';
-                          return;
-                        }
-                        const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-                        if (!ALLOWED_TYPES.includes(f.type)) {
-                          setError('Only JPG, PNG, WebP, or PDF files are allowed.');
-                          e.target.value = '';
-                          return;
-                        }
-                        // Store URL via URL.createObjectURL for preview only.
-                        // Actual upload happens at checkout via FormData.
-                        setDesignUrl(URL.createObjectURL(f));
-                      }
-                    }}
-                  />
-                </label>
-              )}
-            </div>
-
-            {/* Design notes */}
-            <div>
-              <div style={{ fontSize: '0.8rem',
-                fontWeight: 600, color: 'var(--gray)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                marginBottom: '0.5rem' }}>
-                Notes / Instructions
-                <span style={{ color: 'var(--gray)',
-                  fontWeight: 400,
-                  textTransform: 'none',
-                  letterSpacing: 0,
-                  fontSize: '0.75rem',
-                  marginLeft: '0.4rem' }}>
-                  (optional)
-                </span>
-              </div>
-              <textarea
-                value={designNotes}
-                onChange={e => setDesignNotes(e.target.value)}
-                maxLength={1000}
-                placeholder="e.g. Print on front only, use white ink..."
-                style={{
-                  width: '100%', minHeight: '80px',
-                  padding: '0.625rem 0.875rem',
-                  background: 'var(--dark2)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '8px',
-                  color: 'var(--white)',
-                  fontSize: '0.875rem',
-                  resize: 'vertical',
-                  boxSizing: 'border-box',
-                  lineHeight: 1.5,
-                }}
-              />
-            </div>
-
-            {/* Inline submit errors removed — handled at checkout */}
 
             {/* Action buttons */}
             {token ? (
@@ -1141,6 +1040,113 @@ export default function ProductDetailPage() {
               Request Custom Order
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ── Customer Reviews ──────────────────────────── */}
+      {(reviewsTotalCount > 0 || reviewsLoading) && (
+        <div style={{ marginTop: '3rem', paddingTop: '2rem', borderTop: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--white)' }}>
+              Customer Reviews
+            </h2>
+            {reviewsAvg !== null && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ display: 'flex', gap: '2px' }}>
+                  {[1,2,3,4,5].map(s => (
+                    <svg key={s} width="16" height="16" viewBox="0 0 24 24"
+                      fill={s <= Math.round(reviewsAvg) ? 'var(--gold)' : 'none'}
+                      stroke="var(--gold)" strokeWidth="1.5"
+                      strokeLinecap="round" strokeLinejoin="round"
+                    >
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    </svg>
+                  ))}
+                </div>
+                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--gold)' }}>
+                  {reviewsAvg}
+                </span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
+                  ({reviewsTotalCount} {reviewsTotalCount === 1 ? 'review' : 'reviews'})
+                </span>
+              </div>
+            )}
+          </div>
+
+          {reviews.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {reviews.map((r, i) => (
+                <div key={i} style={{
+                  padding: '16px',
+                  background: 'var(--dark2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                    <div style={{
+                      width: '32px', height: '32px', borderRadius: '50%',
+                      background: 'rgba(212,168,67,0.15)',
+                      border: '1px solid rgba(212,168,67,0.3)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold)',
+                      flexShrink: 0,
+                    }}>
+                      {(r.customerName || 'C').charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--white)' }}>
+                        {r.customerName || 'Customer'}
+                      </div>
+                      <div style={{ display: 'flex', gap: '2px', marginTop: '2px' }}>
+                        {[1,2,3,4,5].map(s => (
+                          <svg key={s} width="12" height="12" viewBox="0 0 24 24"
+                            fill={s <= r.rating ? 'var(--gold)' : 'none'}
+                            stroke="var(--gold)" strokeWidth="1.5"
+                            strokeLinecap="round" strokeLinejoin="round"
+                          >
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                          </svg>
+                        ))}
+                      </div>
+                    </div>
+                    <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--gray)' }}>
+                      {r.created_at ? new Date(r.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray)', lineHeight: 1.6 }}>
+                    {r.comment}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {reviewsLoading && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+              {[1,2].map(i => (
+                <div key={i} style={{
+                  height: '80px', background: 'var(--dark2)', borderRadius: '10px',
+                  border: '1px solid var(--border)', animation: 'pulse 1.5s ease-in-out infinite',
+                }} />
+              ))}
+            </div>
+          )}
+
+          {!reviewsLoading && reviewsPage < reviewsTotalPages && (
+            <button
+              onClick={() => setReviewsPage(p => p + 1)}
+              style={{
+                marginTop: '16px', width: '100%',
+                padding: '10px 20px', borderRadius: '8px',
+                border: '1px solid var(--border)',
+                background: 'var(--dark2)',
+                color: 'var(--gray)', fontSize: '0.875rem',
+                fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Load More Reviews
+            </button>
+          )}
         </div>
       )}
 
@@ -1460,5 +1466,6 @@ export default function ProductDetailPage() {
         </div>
       );
     })()}
+    </>
   );
 }

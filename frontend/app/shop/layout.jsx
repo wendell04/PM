@@ -15,6 +15,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
 } from '@/lib/notificationApi';
+import { getEcho, disconnectEcho } from '@/lib/echo';
 import './shop.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -748,6 +749,7 @@ export default function ShopLayout({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifLoading, setNotifLoading] = useState(false);
+  const [selectedNotif, setSelectedNotif] = useState(null);
   const notifRef = useRef(null);
   const [logoutBanner, setLogoutBanner] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
@@ -1205,6 +1207,34 @@ export default function ShopLayout({ children }) {
     return () => clearInterval(interval);
   }, [user]);
 
+  // Real-time notifications via Reverb/Echo on user's private channel
+  useEffect(() => {
+    const token = getToken();
+    if (!token || !user) return;
+    const userId = user?._id ?? user?.id;
+    if (!userId) return;
+    const echo = getEcho(token);
+    if (!echo) return;
+    try {
+      echo.private(`user.${userId}`)
+        .listen('.notification.created', () => {
+          setUnreadCount(prev => prev + 1);
+        });
+    } catch {
+      // Reverb not reachable — polling covers it
+    }
+    return () => { disconnectEcho(); };
+  }, [user]);
+
+  // Suppress DOM-Event unhandled rejections (Pusher/WebSocket internals)
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.reason instanceof Event) e.preventDefault();
+    };
+    window.addEventListener('unhandledrejection', handler);
+    return () => window.removeEventListener('unhandledrejection', handler);
+  }, []);
+
   // Close notification panel on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -1294,6 +1324,75 @@ export default function ShopLayout({ children }) {
 
   return (
     <>
+      {/* Notification Detail Modal */}
+      {selectedNotif && (
+        <div
+          onClick={() => setSelectedNotif(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10000,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#1a1a1a',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '14px',
+              width: '100%', maxWidth: '440px',
+              padding: '1.75rem',
+              display: 'flex', flexDirection: 'column', gap: '1rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#fff', lineHeight: 1.4 }}>
+                {selectedNotif.title}
+              </h3>
+              <button
+                onClick={() => setSelectedNotif(null)}
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <p style={{ margin: 0, fontSize: '0.9rem', color: 'rgba(255,255,255,0.75)', lineHeight: 1.6 }}>
+              {selectedNotif.message}
+            </p>
+            {selectedNotif.data?.orderId && (
+              <a
+                href={`/shop/orders`}
+                style={{ fontSize: '0.8rem', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}
+                onClick={() => setSelectedNotif(null)}
+              >
+                View Order →
+              </a>
+            )}
+            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', marginTop: '0.25rem' }}>
+              {new Date(selectedNotif.created_at).toLocaleString('en-PH', {
+                year: 'numeric', month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+              })}
+            </div>
+            <button
+              onClick={() => setSelectedNotif(null)}
+              style={{
+                marginTop: '0.25rem', padding: '0.6rem',
+                background: 'rgba(255,255,255,0.07)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '8px', color: '#fff',
+                fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Logout Confirmation Modal */}
       {logoutConfirmOpen && (
         <div
@@ -1560,15 +1659,19 @@ export default function ShopLayout({ children }) {
                               </div>
                             </div>
                           ) : (
-                            notifications.map((n) => {
-                              const id = n._id || n.id;
+                            notifications.map((n, i) => {
+                              const id = n._id ?? n.id ?? String(i);
                               return (
                                 <div
                                   key={id}
-                                  onClick={() =>
-                                    !n.is_read && handleMarkRead(id)}
+                                  onClick={() => {
+                                    if (!n.is_read) handleMarkRead(id);
+                                    setSelectedNotif(n);
+                                    setNotifOpen(false);
+                                  }}
                                   className={`shop-notif-item${
                                     n.is_read ? '' : ' unread'}`}
+                                  style={{ cursor: 'pointer' }}
                                 >
                                   <div className={`shop-notif-dot${
                                     n.is_read ? ' read' : ''}`} />

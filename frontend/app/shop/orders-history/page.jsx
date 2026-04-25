@@ -10,6 +10,10 @@ import { getEcho, disconnectEcho } from '@/lib/echo';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { useCart } from '@/app/shop/layout';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+const TABS = ['All', 'Pending', 'In Production', 'For Delivery', 'Delivered', 'Cancelled'];
+
 const TRACK_STEPS = [
   {
     key: 'Pending',
@@ -128,10 +132,8 @@ function OrderTracker({ status, statusHistory = [] }) {
         {TRACK_STEPS.map((step, idx) => {
           const isDone    = idx < currentIdx;
           const isCurrent = idx === currentIdx;
-          const isPending = idx > currentIdx;
           return (
             <div key={step.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-              {/* Connector line — left */}
               {idx > 0 && (
                 <div style={{
                   position: 'absolute',
@@ -143,7 +145,6 @@ function OrderTracker({ status, statusHistory = [] }) {
                   transition: 'background 0.3s',
                 }} />
               )}
-              {/* Connector line — right */}
               {idx < TRACK_STEPS.length - 1 && (
                 <div style={{
                   position: 'absolute',
@@ -155,7 +156,6 @@ function OrderTracker({ status, statusHistory = [] }) {
                   transition: 'background 0.3s',
                 }} />
               )}
-              {/* Step circle */}
               <div style={{
                 width: '28px',
                 height: '28px',
@@ -187,7 +187,6 @@ function OrderTracker({ status, statusHistory = [] }) {
                   </svg>
                 ) : step.icon}
               </div>
-              {/* Label + timestamp */}
               <div style={{
                 marginTop: '0.4rem',
                 fontSize: '0.68rem',
@@ -225,6 +224,25 @@ function OrderTracker({ status, statusHistory = [] }) {
   );
 }
 
+function PaymentStatusBadge({ status }) {
+  if (!status || status === 'paid') return null;
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      padding: '2px 8px',
+      borderRadius: '999px',
+      fontSize: '0.7rem',
+      fontWeight: 600,
+      background: status === 'unpaid' ? 'rgba(239,68,68,0.1)' : 'rgba(234,179,8,0.1)',
+      color: status === 'unpaid' ? 'var(--red)' : 'var(--gold)',
+      border: `1px solid ${status === 'unpaid' ? 'rgba(239,68,68,0.25)' : 'rgba(234,179,8,0.25)'}`,
+    }}>
+      {status === 'unpaid' ? 'Unpaid' : 'Partial Payment'}
+    </span>
+  );
+}
+
 function SkeletonCard() {
   return (
     <div style={{
@@ -244,6 +262,17 @@ function SkeletonCard() {
   );
 }
 
+function apiHeaders(token) {
+  const h = {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/json',
+  };
+  if (process.env.NODE_ENV === 'development') {
+    h['ngrok-skip-browser-warning'] = '1';
+  }
+  return h;
+}
+
 // ─── Main Page ──────────────────────────────────────────
 export default function OrdersHistoryPage() {
   const { token } = useAuth();
@@ -253,6 +282,8 @@ export default function OrdersHistoryPage() {
   const [orders, setOrders]             = useState([]);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState(null);
+  const [activeTab, setActiveTab]       = useState('All');
+  const [visibleCount, setVisibleCount] = useState(5);
 
   // Detail modal
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -265,10 +296,30 @@ export default function OrdersHistoryPage() {
   const [reorderMsg, setReorderMsg]         = useState('');
 
   // Cancel dialog
-  const [cancelTarget, setCancelTarget]   = useState(null);
-  const [cancelling, setCancelling]       = useState(false);
-  const [cancelError, setCancelError]     = useState(null);
-  const [visibleCount, setVisibleCount]   = useState(5);
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelling, setCancelling]     = useState(false);
+  const [cancelError, setCancelError]   = useState(null);
+
+  // Pay Now
+  const [payNowLoading, setPayNowLoading] = useState(false);
+  const [payNowError, setPayNowError]     = useState(null);
+
+  // Design re-upload
+  const [showReupload, setShowReupload]       = useState(false);
+  const [reuploadFile, setReuploadFile]       = useState(null);
+  const [reuploadNotes, setReuploadNotes]     = useState('');
+  const [reuploadLoading, setReuploadLoading] = useState(false);
+  const [reuploadError, setReuploadError]     = useState(null);
+  const [reuploadSuccess, setReuploadSuccess] = useState(false);
+
+  // Reviews
+  const [existingReview, setExistingReview]       = useState(null);
+  const [reviewCheckLoading, setReviewCheckLoading] = useState(false);
+  const [reviewRating, setReviewRating]           = useState(0);
+  const [reviewComment, setReviewComment]         = useState('');
+  const [reviewSubmitting, setReviewSubmitting]   = useState(false);
+  const [reviewError, setReviewError]             = useState(null);
+  const [reviewSuccess, setReviewSuccess]         = useState(false);
 
   // ── Load orders list ───────────────────────────────
   const loadOrders = useCallback(async () => {
@@ -299,9 +350,7 @@ export default function OrdersHistoryPage() {
   useEffect(() => {
     if (!token) return;
     pollRef.current = setInterval(() => {
-      if (!modalOpen) {
-        loadOrders();
-      }
+      if (!modalOpen) loadOrders();
     }, 30000);
     return () => clearInterval(pollRef.current);
   }, [token, modalOpen, loadOrders]);
@@ -314,18 +363,14 @@ export default function OrdersHistoryPage() {
     });
     echoChannelsRef.current = [];
     let echo;
-    try {
-      echo = getEcho(token);
-    } catch { return; }
+    try { echo = getEcho(token); } catch { return; }
     if (!echo) return;
     orders.forEach(order => {
       const id = order._id ?? order.id;
       if (!id) return;
       try {
         const ch = echo.private(`order.${id}`)
-          .listen('.order.status.updated', () => {
-            loadOrders();
-          });
+          .listen('.order.status.updated', () => { loadOrders(); });
         echoChannelsRef.current.push(ch);
       } catch {}
     });
@@ -337,7 +382,6 @@ export default function OrdersHistoryPage() {
     };
   }, [token, orders, loadOrders]);
 
-  // Disconnect echo on unmount
   useEffect(() => {
     return () => {
       echoChannelsRef.current.forEach(ch => {
@@ -347,8 +391,45 @@ export default function OrdersHistoryPage() {
     };
   }, []);
 
+  // ── Reset modal-level state ────────────────────────
+  const resetModalState = () => {
+    setPayNowError(null);
+    setShowReupload(false);
+    setReuploadFile(null);
+    setReuploadNotes('');
+    setReuploadError(null);
+    setReuploadSuccess(false);
+    setReorderMsg('');
+    setExistingReview(null);
+    setReviewCheckLoading(false);
+    setReviewRating(0);
+    setReviewComment('');
+    setReviewSubmitting(false);
+    setReviewError(null);
+    setReviewSuccess(false);
+  };
+
+  // ── Load existing review for an order ─────────────
+  const loadOrderReview = useCallback(async (orderId) => {
+    setReviewCheckLoading(true);
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/orders/my/${orderId}/review`,
+        { headers: apiHeaders(token) },
+        10000
+      );
+      const data = await res.json();
+      if (res.ok && data.data) setExistingReview(data.data);
+    } catch {}
+    finally {
+      setReviewCheckLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
   // ── Open detail modal ──────────────────────────────
   const openDetail = useCallback(async (order) => {
+    resetModalState();
     setSelectedOrder(order);
     setDetailError(null);
     setDetailLoading(true);
@@ -357,42 +438,37 @@ export default function OrdersHistoryPage() {
       const data = await fetchMyOrder(token, order.id ?? order._id);
       const detail = data?.data ?? data;
       setSelectedOrder(detail);
+      if (detail?.orderStatus === 'Delivered') {
+        loadOrderReview(detail._id ?? detail.id ?? order._id ?? order.id);
+      }
     } catch (err) {
       setDetailError(err.message || 'Failed to load order details.');
     } finally {
       setDetailLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const closeModal = () => {
     setModalOpen(false);
     setSelectedOrder(null);
     setDetailError(null);
+    resetModalState();
   };
 
+  // ── Cancel order ───────────────────────────────────
   const cancelOrder = async () => {
     if (!cancelTarget || !token) return;
     setCancelling(true);
     setCancelError(null);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-      const headers = {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      };
-      if (process.env.NODE_ENV === 'development') {
-        headers['ngrok-skip-browser-warning'] = '1';
-      }
-      const res = await fetchWithTimeout(`${API_URL}/api/orders/my/${cancelTarget._id ?? cancelTarget.id}/cancel`, {
-        method: 'POST',
-        headers,
-      }, 15000);
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/orders/my/${cancelTarget._id ?? cancelTarget.id}/cancel`,
+        { method: 'POST', headers: { ...apiHeaders(token), 'Content-Type': 'application/json' } },
+        15000
+      );
       const data = await res.json();
-      if (!res.ok) {
-        setCancelError(data.message || 'Failed to cancel order.');
-        return;
-      }
+      if (!res.ok) { setCancelError(data.message || 'Failed to cancel order.'); return; }
       setCancelTarget(null);
       loadOrders();
     } catch (err) {
@@ -402,6 +478,7 @@ export default function OrdersHistoryPage() {
     }
   };
 
+  // ── Reorder ────────────────────────────────────────
   const handleReorder = async () => {
     if (!selectedOrder?.items?.length) return;
     setReorderLoading(true);
@@ -409,14 +486,9 @@ export default function OrdersHistoryPage() {
     try {
       for (const item of selectedOrder.items) {
         await addToCart(
-          {
-            _id:       item.productId,
-            name:      item.productName,
-            price:     item.unitPrice,
-            flatPrice: item.unitPrice,
-          },
+          { _id: item.productId, name: item.productName, price: item.unitPrice, flatPrice: item.unitPrice },
           item.qty ?? 1,
-          item.variantId   ?? null,
+          item.variantId ?? null,
           item.variantName ?? null,
         );
       }
@@ -429,13 +501,105 @@ export default function OrdersHistoryPage() {
     }
   };
 
+  // ── Pay Now ────────────────────────────────────────
+  const handlePayNow = async () => {
+    if (!selectedOrder || !token) return;
+    setPayNowLoading(true);
+    setPayNowError(null);
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/payment/create-order-pay-link`,
+        {
+          method: 'POST',
+          headers: { ...apiHeaders(token), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: selectedOrder._id ?? selectedOrder.id }),
+        },
+        15000
+      );
+      const data = await res.json();
+      if (!res.ok) { setPayNowError(data.message || 'Failed to create payment link.'); return; }
+      if (data.data?.checkoutUrl) {
+        window.location.href = data.data.checkoutUrl;
+      }
+    } catch (err) {
+      setPayNowError(err.message || 'Failed to create payment link.');
+    } finally {
+      setPayNowLoading(false);
+    }
+  };
+
+  // ── Re-upload design ───────────────────────────────
+  const handleReupload = async () => {
+    if (!selectedOrder || !token) return;
+    if (!reuploadFile && !reuploadNotes.trim()) return;
+    setReuploadLoading(true);
+    setReuploadError(null);
+    try {
+      const formData = new FormData();
+      if (reuploadFile) formData.append('design_file', reuploadFile);
+      if (reuploadNotes.trim()) formData.append('design_notes', reuploadNotes.trim());
+
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/orders/my/${selectedOrder._id ?? selectedOrder.id}/reupload-design`,
+        { method: 'POST', headers: apiHeaders(token), body: formData },
+        20000
+      );
+      const data = await res.json();
+      if (!res.ok) { setReuploadError(data.message || 'Failed to submit design.'); return; }
+
+      setReuploadSuccess(true);
+      setShowReupload(false);
+      setReuploadFile(null);
+      setReuploadNotes('');
+      const oid = selectedOrder._id ?? selectedOrder.id;
+      setSelectedOrder(prev => ({ ...prev, designStatus: 'pending_review', designRejectionReason: null }));
+      setOrders(prev => prev.map(o => (o._id ?? o.id) === oid ? { ...o, designStatus: 'pending_review' } : o));
+      setTimeout(() => setReuploadSuccess(false), 5000);
+    } catch (err) {
+      setReuploadError(err.message || 'Failed to submit design.');
+    } finally {
+      setReuploadLoading(false);
+    }
+  };
+
+  // ── Submit review ──────────────────────────────────
+  const handleSubmitReview = async () => {
+    if (!selectedOrder || !token || reviewRating === 0 || reviewComment.trim().length < 5) return;
+    setReviewSubmitting(true);
+    setReviewError(null);
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/orders/my/${selectedOrder._id ?? selectedOrder.id}/review`,
+        {
+          method: 'POST',
+          headers: { ...apiHeaders(token), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rating: reviewRating, comment: reviewComment }),
+        },
+        15000
+      );
+      const data = await res.json();
+      if (!res.ok) { setReviewError(data.message || 'Failed to submit review.'); return; }
+      setExistingReview(data.data);
+      setReviewSuccess(true);
+    } catch (err) {
+      setReviewError(err.message || 'Failed to submit review.');
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  // ── Derived: filtered + paginated orders ──────────
+  const filteredOrders = activeTab === 'All'
+    ? orders
+    : orders.filter(o => o.orderStatus === activeTab);
+
   // ── Render ─────────────────────────────────────────
   return (
     <div style={{ minHeight: '100vh', background: 'var(--dark)', padding: '24px 16px' }}>
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
 
         {/* Header */}
-        <div style={{ marginBottom: '24px' }}>
+        <div style={{ marginBottom: '20px' }}>
           <Link href="/shop" style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             color: 'var(--gray)', fontSize: '0.85rem', textDecoration: 'none',
@@ -450,6 +614,60 @@ export default function OrdersHistoryPage() {
             Your purchase orders
           </p>
         </div>
+
+        {/* Status filter tabs */}
+        {!loading && !error && orders.length > 0 && (
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '20px',
+            flexWrap: 'wrap',
+          }}>
+            {TABS.map(tab => {
+              const count = tab === 'All'
+                ? orders.length
+                : orders.filter(o => o.orderStatus === tab).length;
+              const isActive = activeTab === tab;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => { setActiveTab(tab); setVisibleCount(5); }}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '999px',
+                    border: `1px solid ${isActive ? 'var(--gold)' : 'var(--border)'}`,
+                    background: isActive ? 'rgba(212,168,67,0.12)' : 'var(--dark2)',
+                    color: isActive ? 'var(--gold)' : 'var(--gray)',
+                    fontSize: '0.8rem',
+                    fontWeight: isActive ? 700 : 500,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {tab}
+                  {count > 0 && (
+                    <span style={{
+                      padding: '1px 6px',
+                      borderRadius: '999px',
+                      background: isActive ? 'var(--gold)' : 'var(--border)',
+                      color: isActive ? 'var(--dark)' : 'var(--gray)',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      minWidth: '18px',
+                      textAlign: 'center',
+                      lineHeight: 1.6,
+                    }}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Loading skeletons */}
         {loading && (
@@ -485,7 +703,7 @@ export default function OrdersHistoryPage() {
           </div>
         )}
 
-        {/* Empty */}
+        {/* No orders at all */}
         {!loading && !error && orders.length === 0 && (
           <div style={{
             textAlign: 'center', padding: '4rem 1.5rem',
@@ -529,10 +747,24 @@ export default function OrdersHistoryPage() {
           </div>
         )}
 
+        {/* Empty state for active tab filter */}
+        {!loading && !error && orders.length > 0 && filteredOrders.length === 0 && (
+          <div style={{
+            textAlign: 'center', padding: '2.5rem 1.5rem',
+            background: 'var(--dark2)',
+            border: '1px solid var(--border)',
+            borderRadius: '12px',
+            color: 'var(--gray)',
+            fontSize: '0.875rem',
+          }}>
+            No {activeTab.toLowerCase()} orders.
+          </div>
+        )}
+
         {/* Order list */}
-        {!loading && !error && orders.length > 0 && (
+        {!loading && !error && filteredOrders.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {orders.slice(0, visibleCount).map(order => {
+            {filteredOrders.slice(0, visibleCount).map(order => {
               const oid = order.id ?? order._id;
               const items = order.items || [];
               const firstName = items[0]?.productName || items[0]?.product_name || 'Order';
@@ -562,9 +794,12 @@ export default function OrdersHistoryPage() {
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--white)' }}>
                       #{oid?.slice(-8).toUpperCase()}
                     </span>
-                    <StatusBadge status={order.orderStatus} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <PaymentStatusBadge status={order.paymentStatus} />
+                      <StatusBadge status={order.orderStatus} />
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '8px' }}>
                     {itemSummary}
                   </div>
                   <div style={{
@@ -600,7 +835,7 @@ export default function OrdersHistoryPage() {
                 </div>
               );
             })}
-            {orders.length > visibleCount && (
+            {filteredOrders.length > visibleCount && (
               <button
                 onClick={() => setVisibleCount(v => v + 5)}
                 style={{
@@ -625,7 +860,7 @@ export default function OrdersHistoryPage() {
                   e.currentTarget.style.color = 'var(--gray)';
                 }}
               >
-                Show more ({orders.length - visibleCount} remaining)
+                Show more ({filteredOrders.length - visibleCount} remaining)
               </button>
             )}
           </div>
@@ -678,18 +913,21 @@ export default function OrdersHistoryPage() {
             {/* Modal body */}
             <div style={{ padding: '24px', flex: 1 }}>
 
-              {/* Detail loading */}
               {detailLoading && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div style={{ height: '16px', background: 'var(--border)', borderRadius: '4px', width: '40%', animation: 'pulse 1.5s ease-in-out infinite' }} />
-                  <div style={{ height: '13px', background: 'var(--border)', borderRadius: '4px', width: '70%', animation: 'pulse 1.5s ease-in-out infinite', animationDelay: '0.1s' }} />
-                  <div style={{ height: '13px', background: 'var(--border)', borderRadius: '4px', width: '55%', animation: 'pulse 1.5s ease-in-out infinite', animationDelay: '0.2s' }} />
-                  <div style={{ marginTop: '0.5rem', height: '80px', background: 'var(--border)', borderRadius: '8px', animation: 'pulse 1.5s ease-in-out infinite', animationDelay: '0.15s' }} />
-                  <div style={{ height: '13px', background: 'var(--border)', borderRadius: '4px', width: '45%', animation: 'pulse 1.5s ease-in-out infinite', animationDelay: '0.25s' }} />
+                  {[40, 70, 55, 80, 45].map((w, i) => (
+                    <div key={i} style={{
+                      height: i === 3 ? '80px' : '13px',
+                      background: 'var(--border)',
+                      borderRadius: i === 3 ? '8px' : '4px',
+                      width: `${w}%`,
+                      animation: 'pulse 1.5s ease-in-out infinite',
+                      animationDelay: `${i * 0.1}s`,
+                    }} />
+                  ))}
                 </div>
               )}
 
-              {/* Detail error */}
               {!detailLoading && detailError && (
                 <div style={{
                   padding: '12px 16px', borderRadius: '8px',
@@ -715,7 +953,6 @@ export default function OrdersHistoryPage() {
                 </div>
               )}
 
-              {/* Detail content */}
               {!detailLoading && !detailError && selectedOrder && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
@@ -735,11 +972,11 @@ export default function OrdersHistoryPage() {
                     </h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {[
-                        ['Order ID',   `#${(selectedOrder.id ?? selectedOrder._id)?.slice(-8).toUpperCase()}`],
-                        ['Status',     null],
-                        ['Payment',    selectedOrder.paymentStatus],
-                        ['Date',       formatDate(selectedOrder.createdAt)],
-                        ['Method',     selectedOrder.paymentMethod
+                        ['Order ID', `#${(selectedOrder.id ?? selectedOrder._id)?.slice(-8).toUpperCase()}`],
+                        ['Status',   null],
+                        ['Payment',  null],
+                        ['Date',     formatDate(selectedOrder.createdAt)],
+                        ['Method',   selectedOrder.paymentMethod
                           ? <span className="payment-method-badge">{selectedOrder.paymentMethod}</span>
                           : '—'
                         ],
@@ -747,28 +984,33 @@ export default function OrdersHistoryPage() {
                         <div key={label} style={{
                           display: 'flex', justifyContent: 'space-between',
                           alignItems: 'center', gap: '8px',
+                          padding: '4px 0',
+                          borderBottom: '1px solid rgba(255,255,255,0.04)',
                         }}>
                           <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>{label}</span>
                           {label === 'Status'
                             ? <StatusBadge status={selectedOrder.orderStatus} />
-                            : (label === 'Method'
-                              ? value
-                              : <span style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>{value}</span>
-                            )
+                            : label === 'Payment'
+                              ? selectedOrder.paymentStatus === 'paid'
+                                ? <span style={{ fontSize: '0.875rem', color: 'var(--green)', fontWeight: 600 }}>Paid</span>
+                                : <PaymentStatusBadge status={selectedOrder.paymentStatus} />
+                              : label === 'Method'
+                                ? value
+                                : <span style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>{value}</span>
                           }
                         </div>
                       ))}
+
+                      {/* Design status */}
                       {selectedOrder.designStatus && (
                         <div style={{
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
-                          padding: '0.625rem 0',
-                          borderBottom: '1px solid var(--border)',
+                          padding: '4px 0',
+                          borderBottom: '1px solid rgba(255,255,255,0.04)',
                         }}>
-                          <span style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>
-                            Design Status
-                          </span>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Design Status</span>
                           <span style={{
                             display: 'inline-flex',
                             alignItems: 'center',
@@ -800,6 +1042,7 @@ export default function OrdersHistoryPage() {
                         </div>
                       )}
 
+                      {/* Rejection reason */}
                       {selectedOrder.designStatus === 'rejected' && selectedOrder.designRejectionReason && (
                         <div style={{
                           padding: '0.625rem 0.75rem',
@@ -808,10 +1051,134 @@ export default function OrdersHistoryPage() {
                           borderRadius: '8px',
                           fontSize: '0.8rem',
                           color: 'var(--gray)',
-                          marginTop: '0.5rem',
                         }}>
                           <strong style={{ color: 'var(--red)' }}>Rejection reason: </strong>
                           {selectedOrder.designRejectionReason}
+                        </div>
+                      )}
+
+                      {/* Re-upload design (when rejected) */}
+                      {selectedOrder.designStatus === 'rejected' && (
+                        <div style={{ marginTop: '4px' }}>
+                          {reuploadSuccess && (
+                            <div style={{
+                              padding: '10px 14px',
+                              background: 'rgba(74,222,128,0.08)',
+                              border: '1px solid rgba(74,222,128,0.3)',
+                              borderRadius: '8px',
+                              fontSize: '0.8rem',
+                              color: 'var(--green)',
+                              marginBottom: '10px',
+                            }}>
+                              Design resubmitted. We'll review it shortly.
+                            </div>
+                          )}
+                          {!showReupload ? (
+                            <button
+                              onClick={() => setShowReupload(true)}
+                              style={{
+                                padding: '8px 16px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--gold)',
+                                background: 'rgba(212,168,67,0.08)',
+                                color: 'var(--gold)',
+                                fontSize: '0.8rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                width: '100%',
+                              }}
+                            >
+                              Re-upload Design
+                            </button>
+                          ) : (
+                            <div style={{
+                              display: 'flex', flexDirection: 'column', gap: '10px',
+                              padding: '14px',
+                              background: 'var(--dark)',
+                              borderRadius: '10px',
+                              border: '1px solid var(--border)',
+                            }}>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--gray)', fontWeight: 600 }}>
+                                Re-upload Design
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '6px' }}>
+                                  File (JPG, PNG, PDF, AI, PSD, SVG — max 10MB)
+                                </div>
+                                <input
+                                  type="file"
+                                  accept=".jpg,.jpeg,.png,.webp,.pdf,.ai,.psd,.svg"
+                                  onChange={e => setReuploadFile(e.target.files?.[0] || null)}
+                                  style={{ fontSize: '0.8rem', color: 'var(--white)', width: '100%' }}
+                                />
+                              </div>
+                              <textarea
+                                placeholder="Updated design notes (optional)"
+                                value={reuploadNotes}
+                                onChange={e => setReuploadNotes(e.target.value)}
+                                maxLength={2000}
+                                rows={3}
+                                style={{
+                                  background: 'var(--dark2)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: '8px',
+                                  color: 'var(--white)',
+                                  fontSize: '0.8rem',
+                                  padding: '8px 12px',
+                                  resize: 'vertical',
+                                  outline: 'none',
+                                }}
+                              />
+                              {reuploadError && (
+                                <div style={{ color: 'var(--red)', fontSize: '0.8rem' }}>
+                                  {reuploadError}
+                                </div>
+                              )}
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                  onClick={handleReupload}
+                                  disabled={reuploadLoading || (!reuploadFile && !reuploadNotes.trim())}
+                                  style={{
+                                    flex: 1,
+                                    padding: '8px 16px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: (reuploadLoading || (!reuploadFile && !reuploadNotes.trim()))
+                                      ? 'var(--border)'
+                                      : 'var(--gold)',
+                                    color: 'var(--dark)',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 700,
+                                    cursor: (reuploadLoading || (!reuploadFile && !reuploadNotes.trim()))
+                                      ? 'not-allowed'
+                                      : 'pointer',
+                                  }}
+                                >
+                                  {reuploadLoading ? 'Submitting...' : 'Submit for Review'}
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setShowReupload(false);
+                                    setReuploadFile(null);
+                                    setReuploadNotes('');
+                                    setReuploadError(null);
+                                  }}
+                                  disabled={reuploadLoading}
+                                  style={{
+                                    padding: '8px 16px',
+                                    borderRadius: '8px',
+                                    border: '1px solid var(--border)',
+                                    background: 'var(--dark2)',
+                                    color: 'var(--gray)',
+                                    fontSize: '0.8rem',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -832,36 +1199,36 @@ export default function OrdersHistoryPage() {
                           const qty = item.qty || item.quantity || 1;
                           const lineTotal = item.lineTotal ?? (unitPrice * qty);
                           return (
-                          <div key={i} style={{
-                            display: 'flex', justifyContent: 'space-between',
-                            alignItems: 'center', gap: '8px',
-                            padding: '10px 14px',
-                            background: 'var(--dark)',
-                            borderRadius: '8px',
-                            border: '1px solid var(--border)',
-                          }}>
-                            <div>
-                              <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>
-                                {item.productName || item.product_name || 'Product'}
-                              </div>
-                              {item.category && (
-                                <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-                                  {item.category}
+                            <div key={i} style={{
+                              display: 'flex', justifyContent: 'space-between',
+                              alignItems: 'center', gap: '8px',
+                              padding: '10px 14px',
+                              background: 'var(--dark)',
+                              borderRadius: '8px',
+                              border: '1px solid var(--border)',
+                            }}>
+                              <div>
+                                <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>
+                                  {item.productName || item.product_name || 'Product'}
                                 </div>
-                              )}
+                                {item.category && (
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
+                                    {item.category}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>
+                                  {formatPeso(unitPrice)}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
+                                  qty: {qty}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>
+                                  {formatPeso(lineTotal)}
+                                </div>
+                              </div>
                             </div>
-                            <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                              <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>
-                                {formatPeso(unitPrice)}
-                              </div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-                                qty: {qty}
-                              </div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>
-                                Line: {formatPeso(lineTotal)}
-                              </div>
-                            </div>
-                          </div>
                           );
                         })}
                       </div>
@@ -877,11 +1244,27 @@ export default function OrdersHistoryPage() {
                       Pricing
                     </h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {selectedOrder.subtotal > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Subtotal</span>
+                          <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>
+                            {formatPeso(selectedOrder.subtotal)}
+                          </span>
+                        </div>
+                      )}
                       {selectedOrder.shippingFee > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Shipping</span>
                           <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>
                             {formatPeso(selectedOrder.shippingFee)}
+                          </span>
+                        </div>
+                      )}
+                      {selectedOrder.discountAmount > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Discount</span>
+                          <span style={{ fontSize: '0.875rem', color: 'var(--green)' }}>
+                            -{formatPeso(selectedOrder.discountAmount)}
                           </span>
                         </div>
                       )}
@@ -896,7 +1279,7 @@ export default function OrdersHistoryPage() {
                       {selectedOrder.balance > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Balance Due</span>
-                          <span style={{ fontSize: '0.875rem', color: 'var(--red)', fontWeight: 600 }}>
+                          <span style={{ fontSize: '0.875rem', color: 'var(--red)', fontWeight: 700 }}>
                             {formatPeso(selectedOrder.balance)}
                           </span>
                         </div>
@@ -912,9 +1295,56 @@ export default function OrdersHistoryPage() {
                         </span>
                       </div>
                     </div>
+
+                    {/* Pay Now — show for unpaid/partial orders that are not cancelled */}
+                    {selectedOrder.paymentStatus !== 'paid'
+                      && !['Cancelled', 'Returned'].includes(selectedOrder.orderStatus) && (
+                      <div style={{ marginTop: '14px' }}>
+                        {payNowError && (
+                          <div style={{
+                            padding: '8px 12px',
+                            background: 'rgba(239,68,68,0.08)',
+                            border: '1px solid rgba(239,68,68,0.2)',
+                            borderRadius: '8px',
+                            color: 'var(--red)',
+                            fontSize: '0.8rem',
+                            marginBottom: '8px',
+                          }}>
+                            {payNowError}
+                          </div>
+                        )}
+                        <button
+                          onClick={handlePayNow}
+                          disabled={payNowLoading}
+                          style={{
+                            width: '100%',
+                            padding: '11px 20px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: payNowLoading ? 'var(--border)' : 'var(--gold)',
+                            color: payNowLoading ? 'var(--gray)' : 'var(--dark)',
+                            fontSize: '0.875rem',
+                            fontWeight: 700,
+                            cursor: payNowLoading ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                          }}
+                        >
+                          {!payNowLoading && (
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                              <line x1="1" y1="10" x2="23" y2="10"/>
+                            </svg>
+                          )}
+                          {payNowLoading ? 'Creating payment link...' : 'Pay Now Online'}
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Section 4: Delivery */}
+                  {/* Section 4: Delivery Address */}
                   {selectedOrder.deliveryAddress && Object.keys(selectedOrder.deliveryAddress).length > 0 && (
                     <div>
                       <h3 style={{
@@ -933,16 +1363,82 @@ export default function OrdersHistoryPage() {
                         lineHeight: 1.6,
                       }}>
                         {[
+                          selectedOrder.deliveryAddress.house_number,
                           selectedOrder.deliveryAddress.street,
+                          selectedOrder.deliveryAddress.subdivision,
+                          selectedOrder.deliveryAddress.barangay,
                           selectedOrder.deliveryAddress.city,
                           selectedOrder.deliveryAddress.province,
                           selectedOrder.deliveryAddress.zip,
                         ].filter(Boolean).join(', ')}
+                        {selectedOrder.deliveryAddress.phone && (
+                          <div style={{ marginTop: '4px', fontSize: '0.8rem', color: 'var(--gray)' }}>
+                            {selectedOrder.deliveryAddress.phone}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
 
-                  {/* Section 5: Production */}
+                  {/* Section 5: Delivery Details (courier + tracking) */}
+                  {(selectedOrder.courierName || selectedOrder.trackingNumber) && (
+                    <div>
+                      <h3 style={{
+                        margin: '0 0 12px', fontSize: '0.8rem', fontWeight: 700,
+                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px',
+                      }}>
+                        Delivery Details
+                      </h3>
+                      <div style={{
+                        padding: '12px 14px',
+                        background: 'var(--dark)',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                      }}>
+                        {selectedOrder.courierName && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Courier</span>
+                            <span style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>
+                              {selectedOrder.courierName}
+                            </span>
+                          </div>
+                        )}
+                        {selectedOrder.trackingNumber && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Tracking #</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>
+                                {selectedOrder.trackingNumber}
+                              </span>
+                              <button
+                                onClick={() => navigator.clipboard?.writeText(selectedOrder.trackingNumber)}
+                                title="Copy tracking number"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: 'var(--gray)',
+                                  cursor: 'pointer',
+                                  padding: '2px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                }}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Section 6: Production */}
                   {selectedOrder.joId && (
                     <div>
                       <h3 style={{
@@ -973,6 +1469,159 @@ export default function OrdersHistoryPage() {
                           </div>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Section 7: Review */}
+                  {selectedOrder.orderStatus === 'Delivered' && (
+                    <div>
+                      <h3 style={{
+                        margin: '0 0 12px', fontSize: '0.8rem', fontWeight: 700,
+                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px',
+                      }}>
+                        Your Review
+                      </h3>
+
+                      {reviewCheckLoading && (
+                        <div style={{
+                          height: '60px',
+                          background: 'var(--border)',
+                          borderRadius: '8px',
+                          animation: 'pulse 1.5s ease-in-out infinite',
+                        }} />
+                      )}
+
+                      {!reviewCheckLoading && existingReview && (
+                        <div style={{
+                          padding: '14px',
+                          background: 'var(--dark)',
+                          borderRadius: '10px',
+                          border: '1px solid var(--border)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {[1,2,3,4,5].map(s => (
+                              <svg key={s} width="18" height="18" viewBox="0 0 24 24"
+                                fill={s <= existingReview.rating ? 'var(--gold)' : 'none'}
+                                stroke="var(--gold)" strokeWidth="1.5"
+                                strokeLinecap="round" strokeLinejoin="round"
+                              >
+                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                              </svg>
+                            ))}
+                            <span style={{ marginLeft: '6px', fontSize: '0.8rem', color: 'var(--gray)' }}>
+                              {existingReview.rating}/5
+                            </span>
+                          </div>
+                          <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--white)', lineHeight: 1.6 }}>
+                            {existingReview.comment}
+                          </p>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
+                            {formatDate(existingReview.created_at)}
+                          </div>
+                        </div>
+                      )}
+
+                      {!reviewCheckLoading && !existingReview && (
+                        <div style={{
+                          padding: '14px',
+                          background: 'var(--dark)',
+                          borderRadius: '10px',
+                          border: '1px solid var(--border)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '12px',
+                        }}>
+                          {reviewSuccess ? (
+                            <div style={{
+                              padding: '10px 14px',
+                              background: 'rgba(74,222,128,0.08)',
+                              border: '1px solid rgba(74,222,128,0.3)',
+                              borderRadius: '8px',
+                              fontSize: '0.875rem',
+                              color: 'var(--green)',
+                            }}>
+                              Thank you for your review!
+                            </div>
+                          ) : (
+                            <>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
+                                Rate your experience with this order
+                              </div>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                {[1,2,3,4,5].map(s => (
+                                  <button
+                                    key={s}
+                                    onClick={() => setReviewRating(s)}
+                                    style={{
+                                      background: 'none', border: 'none',
+                                      cursor: 'pointer', padding: '2px',
+                                      display: 'flex', alignItems: 'center',
+                                    }}
+                                  >
+                                    <svg width="28" height="28" viewBox="0 0 24 24"
+                                      fill={s <= reviewRating ? 'var(--gold)' : 'none'}
+                                      stroke="var(--gold)" strokeWidth="1.5"
+                                      strokeLinecap="round" strokeLinejoin="round"
+                                      style={{ transition: 'fill 0.1s' }}
+                                    >
+                                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                                    </svg>
+                                  </button>
+                                ))}
+                              </div>
+                              <textarea
+                                placeholder="Share your experience... (min. 5 characters)"
+                                value={reviewComment}
+                                onChange={e => setReviewComment(e.target.value)}
+                                maxLength={2000}
+                                rows={3}
+                                style={{
+                                  background: 'var(--dark2)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: '8px',
+                                  color: 'var(--white)',
+                                  fontSize: '0.8rem',
+                                  padding: '8px 12px',
+                                  resize: 'vertical',
+                                  outline: 'none',
+                                  width: '100%',
+                                  boxSizing: 'border-box',
+                                }}
+                              />
+                              {reviewError && (
+                                <div style={{ color: 'var(--red)', fontSize: '0.8rem' }}>
+                                  {reviewError}
+                                </div>
+                              )}
+                              <button
+                                onClick={handleSubmitReview}
+                                disabled={reviewSubmitting || reviewRating === 0 || reviewComment.trim().length < 5}
+                                style={{
+                                  padding: '9px 20px',
+                                  borderRadius: '8px',
+                                  border: 'none',
+                                  background: (reviewSubmitting || reviewRating === 0 || reviewComment.trim().length < 5)
+                                    ? 'var(--border)'
+                                    : 'var(--gold)',
+                                  color: (reviewSubmitting || reviewRating === 0 || reviewComment.trim().length < 5)
+                                    ? 'var(--gray)'
+                                    : 'var(--dark)',
+                                  fontSize: '0.875rem',
+                                  fontWeight: 700,
+                                  cursor: (reviewSubmitting || reviewRating === 0 || reviewComment.trim().length < 5)
+                                    ? 'not-allowed'
+                                    : 'pointer',
+                                }}
+                              >
+                                {reviewSubmitting ? 'Submitting...' : 'Submit Review'}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 

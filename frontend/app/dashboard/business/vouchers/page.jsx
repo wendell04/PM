@@ -33,6 +33,8 @@ export default function VouchersPage() {
   const [saving, setSaving]         = useState(false);
   const [deleteId, setDeleteId]     = useState(null);
   const [deleting, setDeleting]     = useState(false);
+  const [vPage, setVPage]           = useState(1);
+  const [vRpp, setVRpp]             = useState(10);
 
   const load = useCallback(async () => {
     if (!token) {
@@ -52,6 +54,10 @@ export default function VouchersPage() {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setVPage(1); }, [vouchers.length]);
+
+  const vTotalPages = Math.max(1, Math.ceil(vouchers.length / vRpp));
+  const pagedVouchers = vouchers.slice((vPage - 1) * vRpp, vPage * vRpp);
 
   function openCreate() {
     setEditTarget(null);
@@ -235,7 +241,7 @@ export default function VouchersPage() {
               </tr>
             </thead>
             <tbody>
-              {vouchers.map((v, idx) => {
+              {pagedVouchers.map((v, idx) => {
                 const isExpired = v.expiresAt && new Date(v.expiresAt) < new Date();
                 const isMaxed   = v.maxUses != null && v.usedCount >= v.maxUses;
                 return (
@@ -279,6 +285,23 @@ export default function VouchersPage() {
               })}
             </tbody>
           </table>
+        )}
+        {vouchers.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.625rem 1rem', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--gray)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              Rows per page:
+              <select value={vRpp} onChange={e => { setVRpp(Number(e.target.value)); setVPage(1); }} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', padding: '0.2rem 0.5rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+                {[5, 10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+              <button onClick={() => setVPage(p => Math.max(1, p - 1))} disabled={vPage <= 1} style={{ padding: '0.25rem 0.625rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: vPage <= 1 ? 'var(--gray)' : 'var(--white)', cursor: vPage <= 1 ? 'not-allowed' : 'pointer' }}>‹</button>
+              <button onClick={() => setVPage(p => Math.min(vTotalPages, p + 1))} disabled={vPage >= vTotalPages} style={{ padding: '0.25rem 0.625rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: vPage >= vTotalPages ? 'var(--gray)' : 'var(--white)', cursor: vPage >= vTotalPages ? 'not-allowed' : 'pointer' }}>›</button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              Page: <span style={{ padding: '0.2rem 0.6rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', minWidth: '28px', textAlign: 'center' }}>{vPage}</span> of {vTotalPages}
+            </div>
+          </div>
         )}
       </div>
 

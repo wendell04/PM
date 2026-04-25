@@ -239,6 +239,27 @@ class InventoryController extends Controller
         return $prefix . strtoupper(substr(str_replace('-', '', (string) \Illuminate\Support\Str::uuid()), 0, 8));
     }
 
+    /**
+     * When a client-provided SKU is already taken (e.g. by a soft-deleted item),
+     * increment the trailing numeric sequence until a free slot is found.
+     */
+    private function resolveSkuConflict(string $taken): string
+    {
+        if (preg_match('/^(.+-)(\d+)$/', $taken, $m)) {
+            $prefix = $m[1];
+            $len    = strlen($m[2]);
+            $n      = (int) $m[2] + 1;
+            while ($n < 999_999) {
+                $candidate = $prefix . str_pad((string) $n, $len, '0', STR_PAD_LEFT);
+                if (! Inventory::where('sku', $candidate)->exists()) {
+                    return $candidate;
+                }
+                $n++;
+            }
+        }
+        return $this->generateNextInventorySku();
+    }
+
     public function store(Request $request)
     {
         try {
@@ -276,12 +297,13 @@ class InventoryController extends Controller
                 return $this->errorResponse('Duplicate item: An item with this name and category already exists.', 422);
             }
 
-            $sku = isset($validated['sku']) && $validated['sku'] !== ''
-                ? $validated['sku']
-                : $this->generateNextInventorySku();
-
-            if (Inventory::where('sku', $sku)->exists()) {
-                return $this->errorResponse('Duplicate SKU: An item with this SKU already exists.', 422);
+            $clientSku = (isset($validated['sku']) && $validated['sku'] !== '') ? $validated['sku'] : null;
+            if ($clientSku) {
+                $sku = Inventory::where('sku', $clientSku)->exists()
+                    ? $this->resolveSkuConflict($clientSku)
+                    : $clientSku;
+            } else {
+                $sku = $this->generateNextInventorySku();
             }
 
             $unitCost = (float) $validated['unitCost'];

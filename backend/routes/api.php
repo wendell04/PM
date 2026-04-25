@@ -32,6 +32,7 @@ use App\Http\Controllers\BillOfMaterialController;
 use App\Http\Controllers\VoucherController;
 use App\Http\Controllers\WalkInOrderController;
 use App\Http\Controllers\AdminAnalyticsController;
+use App\Http\Controllers\ReviewController;
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::post('/register',        [AuthController::class, 'register'])->middleware('throttle:10,1');
@@ -59,9 +60,10 @@ Route::get('/user', function (Request $request) {
 
 // ─── Products (Public — no auth required) ────────────────────────────────────
 Route::middleware('throttle:60,1')->group(function () {
-    Route::get('/products/search', [ProductController::class, 'search']);
-    Route::get('/products',        [ProductController::class, 'index']);
-    Route::get('/products/{id}',   [ProductController::class, 'show']);
+    Route::get('/products/search',        [ProductController::class, 'search']);
+    Route::get('/products',               [ProductController::class, 'index']);
+    Route::get('/products/{id}',          [ProductController::class, 'show']);
+    Route::get('/products/{id}/reviews',  [ReviewController::class, 'productReviews']);
 });
 
 // ─── Protected — any authenticated user ──────────────────────────────────────
@@ -78,10 +80,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/profile/upload-avatar',[ProfileController::class, 'uploadAvatar']);
 
     // ─── Orders (Customer) ────────────────────────────────────────────────────
-    Route::get('/orders/my',             [OrderController::class, 'myOrders']);
-    Route::get('/orders/my/{id}',        [OrderController::class, 'myOrderShow']);
-    Route::post('/orders/my/{id}/cancel',[OrderController::class, 'cancelMyOrder']);
-    Route::post('/orders',               [OrderController::class, 'store']);
+    Route::get('/orders/my',                            [OrderController::class, 'myOrders']);
+    Route::get('/orders/my/{id}',                       [OrderController::class, 'myOrderShow']);
+    Route::post('/orders/my/{id}/cancel',               [OrderController::class, 'cancelMyOrder']);
+    Route::post('/orders/my/{id}/reupload-design',      [OrderController::class, 'reuploadDesign']);
+    Route::post('/orders',                              [OrderController::class, 'store']);
+
+    // ─── Reviews (Customer) ───────────────────────────────────────────────────
+    Route::get('/orders/my/{orderId}/review',           [ReviewController::class, 'myOrderReview']);
+    Route::post('/orders/my/{orderId}/review',          [ReviewController::class, 'store']);
 
     // ─── Cart ─────────────────────────────────────────────────────────────────
     Route::get('/cart',                  [CartController::class, 'index']);
@@ -256,6 +263,11 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::put('/admin/vouchers/{id}',         [VoucherController::class, 'update']);
     Route::delete('/admin/vouchers/{id}',      [VoucherController::class, 'destroy']);
     Route::patch('/admin/vouchers/{id}/toggle', [VoucherController::class, 'toggle']);
+
+    // ─── Reviews (Admin) ─────────────────────────────────────────────────────
+    Route::get('/admin/reviews',                        [ReviewController::class, 'adminIndex']);
+    Route::patch('/admin/reviews/{id}/visibility',      [ReviewController::class, 'toggleVisibility']);
+    Route::delete('/admin/reviews/{id}',                [ReviewController::class, 'destroy']);
 });
 
 // ─── Order Requests (Customer) ───────────────────────────────────────────────
@@ -294,4 +306,5 @@ Route::post('/payment/webhook',     [PaymentController::class, 'webhook']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payment/create-link',              [PaymentController::class, 'createLink']);
     Route::post('/payment/order-request-link',       [PaymentController::class, 'createOrderRequestLink']);
+    Route::post('/payment/create-order-pay-link',    [PaymentController::class, 'createOrderPayLink']);
 });

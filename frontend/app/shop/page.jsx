@@ -286,7 +286,7 @@ export default function ShopPage() {
   async function loadFlashSales() {
     try {
       const res = await fetchWithTimeout(
-        `${API_URL}/storefront/flash-sales`,
+        `${API_URL}/api/storefront/flash-sales`,
         {},
         30000
       );

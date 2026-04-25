@@ -990,8 +990,8 @@ export default function CustomerProfilePage() {
                       No orders yet.
                     </p>
                   ) : (
-                    orders.slice(0, 2).map(order => (
-                      <div key={order._id || order.orderId}
+                    orders.slice(0, 2).map((order, idx) => (
+                      <div key={order._id ?? order.orderId ?? idx}
                         style={{
                           display: 'flex',
                           justifyContent: 'space-between',

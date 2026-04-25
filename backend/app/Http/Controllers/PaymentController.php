@@ -715,4 +715,101 @@ class PaymentController extends Controller
         }
     }
 
+    /**
+     * POST /api/payment/create-order-pay-link
+     * Creates a PayMongo checkout session for an existing order's outstanding balance.
+     * Used when a customer wants to pay online for a COD or previously unpaid order.
+     * The webhook uses the raw orderId as reference_number to mark the order paid.
+     */
+    public function createOrderPayLink(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return $this->unauthorizedResponse();
+            }
+
+            $validated = $request->validate([
+                'orderId' => 'required|string|regex:/^[a-f0-9]{24}$/i',
+            ]);
+
+            $order = Order::where('_id', $validated['orderId'])
+                          ->where('userId', (string) $user->_id)
+                          ->first();
+
+            if (!$order) {
+                return $this->notFoundResponse('Order');
+            }
+
+            if ($order->paymentStatus === 'paid') {
+                return $this->errorResponse('This order has already been fully paid.', 422);
+            }
+
+            $totalPaid = collect($order->paymentHistory ?? [])->sum('amount');
+            $amountDue = round(max(0, (float) ($order->totalAmount ?? 0) - $totalPaid), 2);
+
+            if ($amountDue <= 0) {
+                return $this->errorResponse('No outstanding balance on this order.', 422);
+            }
+
+            $orderId          = (string) $order->_id;
+            $orderShortId     = strtoupper(substr($orderId, -8));
+            $amountInCentavos = (int) round($amountDue * 100);
+            $frontendUrl      = rtrim(config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000')), '/');
+
+            $pmResponse = Http::withBasicAuth($this->secretKey, '')
+                ->post("{$this->baseUrl}/checkout_sessions", [
+                    'data' => [
+                        'attributes' => [
+                            'billing' => [
+                                'name'  => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')),
+                                'email' => $user->email ?? '',
+                                'phone' => $user->phoneNumber ?? $user->phone ?? '',
+                            ],
+                            'send_email_receipt'   => true,
+                            'show_description'     => true,
+                            'show_line_items'      => true,
+                            'reference_number'     => $orderId,
+                            'payment_method_types' => ['gcash', 'paymaya', 'card'],
+                            'line_items' => [[
+                                'currency' => 'PHP',
+                                'amount'   => $amountInCentavos,
+                                'name'     => "Order #{$orderShortId}",
+                                'quantity' => 1,
+                            ]],
+                            'redirect' => [
+                                'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}",
+                                'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}",
+                            ],
+                            'cancel_url' => "{$frontendUrl}/shop/orders-history",
+                        ],
+                    ],
+                ]);
+
+            if (!$pmResponse->successful()) {
+                Log::error('PaymentController@createOrderPayLink: PayMongo error', [
+                    'status' => $pmResponse->status(),
+                    'body'   => $pmResponse->json(),
+                ]);
+                return $this->errorResponse('Failed to create payment session. Please try again.', 502);
+            }
+
+            $checkoutUrl = data_get($pmResponse->json(), 'data.attributes.checkout_url');
+            if (!$checkoutUrl) {
+                return $this->errorResponse('Payment session created but checkout URL is missing.', 502);
+            }
+
+            return $this->successResponse('Payment link created.', [
+                'orderId'     => $orderId,
+                'checkoutUrl' => $checkoutUrl,
+                'amountDue'   => $amountDue,
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to create payment link.');
+        }
+    }
+
 }

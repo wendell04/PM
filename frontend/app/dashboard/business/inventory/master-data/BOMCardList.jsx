@@ -4,38 +4,34 @@
 // FIFO = use oldest batches first (what you'll actually consume)
 function computeFifoCost(material, requiredQty = 1) {
   if (!material || !material.batches || material.batches.length === 0) {
-    return material?.baseCost || material?.averageCost || 0;
+    return material?.baseCost || 0;
   }
 
-  // Get all active batches sorted by date (FIFO order - oldest first)
+  const getBatchQty = (b) =>
+    b.remainingQty != null ? b.remainingQty : (b.goodQty ?? b.qtyGood ?? 0);
+
   const activeBatches = material.batches
-    .filter((b) => (b.remainingQty || 0) > 0)
+    .filter((b) => getBatchQty(b) > 0)
     .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
 
   if (activeBatches.length === 0) {
-    return material?.baseCost || material?.averageCost || 0;
+    return material?.baseCost || 0;
   }
 
-  // Simulate FIFO consumption to calculate actual cost
   let remaining = requiredQty;
   let totalCost = 0;
 
   for (const batch of activeBatches) {
     if (remaining <= 0) break;
-
-    const take = Math.min(remaining, batch.remainingQty || 0);
+    const take = Math.min(remaining, getBatchQty(batch));
     totalCost += take * (batch.unitCost || 0);
     remaining -= take;
   }
 
-  // If we couldn't fulfill all (backorder), use the average of what we have
   if (remaining > 0) {
-    const totalQty = activeBatches.reduce(
-      (sum, b) => sum + (b.remainingQty || 0),
-      0,
-    );
+    const totalQty = activeBatches.reduce((sum, b) => sum + getBatchQty(b), 0);
     const totalValue = activeBatches.reduce(
-      (sum, b) => sum + (b.remainingQty || 0) * (b.unitCost || 0),
+      (sum, b) => sum + getBatchQty(b) * (b.unitCost || 0),
       0,
     );
     const avgCost = totalQty > 0 ? totalValue / totalQty : 0;
@@ -48,32 +44,27 @@ function computeFifoCost(material, requiredQty = 1) {
 // Helper function to get cost statistics for a material (min, max, avg)
 function getMaterialCostStats(material) {
   if (!material || !material.batches || material.batches.length === 0) {
-    const cost = material?.baseCost || material?.averageCost || 0;
+    const cost = material?.baseCost || 0;
     return { avg: cost, min: cost, max: cost, batches: 0 };
   }
 
-  const activeBatches = material.batches.filter(
-    (b) => (b.remainingQty || 0) > 0,
-  );
+  const getBQ = (b) =>
+    b.remainingQty != null ? b.remainingQty : (b.goodQty ?? b.qtyGood ?? 0);
+
+  const activeBatches = material.batches.filter((b) => getBQ(b) > 0);
 
   if (activeBatches.length === 0) {
-    const cost = material?.baseCost || material?.averageCost || 0;
+    const cost = material?.baseCost || 0;
     return { avg: cost, min: cost, max: cost, batches: 0 };
   }
 
   const costs = activeBatches.map((b) => b.unitCost || 0);
   const totalValue = activeBatches.reduce(
-    (sum, b) => sum + (b.remainingQty || 0) * (b.unitCost || 0),
+    (sum, b) => sum + getBQ(b) * (b.unitCost || 0),
     0,
   );
-  const totalQty = activeBatches.reduce(
-    (sum, b) => sum + (b.remainingQty || 0),
-    0,
-  );
-  const avg =
-    totalQty > 0
-      ? totalValue / totalQty
-      : material?.baseCost || material?.averageCost || 0;
+  const totalQty = activeBatches.reduce((sum, b) => sum + getBQ(b), 0);
+  const avg = totalQty > 0 ? totalValue / totalQty : material?.baseCost || 0;
 
   return {
     avg,
@@ -258,9 +249,12 @@ export default function BOMCardList({
     const groups = {};
 
     filtered.forEach((bom) => {
-      const group = (bom.variantGroup || "").trim();
-      // If no variantGroup, use productName as the group name so it still appears as a collapsible header
-      const groupName = group || bom.productName;
+      const groupName = (
+        bom.productGroupName ||
+        bom.variantGroup ||
+        bom.productName ||
+        ""
+      ).trim() || bom.productName;
 
       if (!groups[groupName]) {
         groups[groupName] = [];

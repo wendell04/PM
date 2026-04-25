@@ -27,12 +27,10 @@ class BillOfMaterial extends Model
     // [{ inventoryId: ObjectId, materialName: string, qty: float, unit: string, unitCost: float }]
 
     protected $casts = [
-        'variantCombo' => 'array',
-        'components'   => 'array',
-        'totalCost'    => 'float',
-        'isActive'     => 'boolean',
-        'createdAt'    => 'datetime',
-        'updatedAt'    => 'datetime',
+        'totalCost'  => 'float',
+        'isActive'   => 'boolean',
+        'createdAt'  => 'datetime',
+        'updatedAt'  => 'datetime',
     ];
 
     protected $indexes = [

@@ -50,6 +50,12 @@ function IssueTypeBadge({ type }) {
       bg: "rgba(245,158,11,0.1)",
       border: "rgba(245,158,11,0.2)",
     },
+    writeoff: {
+      label: "Write-Off",
+      color: "#ef4444",
+      bg: "rgba(239,68,68,0.1)",
+      border: "rgba(239,68,68,0.2)",
+    },
     adjustment: {
       label: "Adjustment",
       color: "#9ca3af",
@@ -157,6 +163,12 @@ function StockOutHistoryTab({ stockOuts, materials }) {
     [filtered],
   );
 
+  const salesRevenue = filtered
+    .filter(
+      (so) => so.issueType === "manual_sale" || so.issueType === "sale",
+    )
+    .reduce((s, so) => s + (so.totalLoss || 0), 0);
+
   return (
     <div>
       {/* ── Summary Cards ── */}
@@ -175,45 +187,73 @@ function StockOutHistoryTab({ stockOuts, materials }) {
             <span className="summary-label">Total Records</span>
           </div>
         </div>
-        <div className="summary-card summary-card-danger">
+        <div
+          className={
+            summaryStats.totalQty === 0
+              ? "summary-card"
+              : "summary-card summary-card-danger"
+          }
+        >
           <div className="summary-content">
-            <span className="summary-value">{summaryStats.totalQty} pcs</span>
+            <span
+              className="summary-value"
+              style={summaryStats.totalQty === 0 ? { color: "var(--gray)" } : {}}
+            >
+              {summaryStats.totalQty} pcs
+            </span>
             <span className="summary-label">Total Qty Deducted</span>
           </div>
         </div>
         <div
           className="summary-card"
-          style={{
-            background: "rgba(34,197,94,0.08)",
-            borderColor: "rgba(34,197,94,0.3)",
-          }}
+          style={
+            salesRevenue === 0
+              ? {
+                  background: "rgba(255,255,255,0.04)",
+                  borderColor: "rgba(255,255,255,0.1)",
+                }
+              : {
+                  background: "rgba(34,197,94,0.08)",
+                  borderColor: "rgba(34,197,94,0.3)",
+                }
+          }
         >
           <div className="summary-content">
-            <span className="summary-value" style={{ color: "#22c55e" }}>
+            <span
+              className="summary-value"
+              style={{ color: salesRevenue === 0 ? "var(--gray)" : "#22c55e" }}
+            >
               ₱
-              {filtered
-                .filter(
-                  (so) =>
-                    so.issueType === "manual_sale" || so.issueType === "sale",
-                )
-                .reduce((s, so) => s + (so.totalLoss || 0), 0)
-                .toLocaleString("en-PH", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+              {salesRevenue.toLocaleString("en-PH", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </span>
             <span className="summary-label">Total Revenue (Sales)</span>
           </div>
         </div>
         <div
           className="summary-card"
-          style={{
-            background: "rgba(212,168,67,0.08)",
-            borderColor: "rgba(212,168,67,0.3)",
-          }}
+          style={
+            summaryStats.totalLoss === 0
+              ? {
+                  background: "rgba(255,255,255,0.04)",
+                  borderColor: "rgba(255,255,255,0.1)",
+                }
+              : {
+                  background: "rgba(212,168,67,0.08)",
+                  borderColor: "rgba(212,168,67,0.3)",
+                }
+          }
         >
           <div className="summary-content">
-            <span className="summary-value" style={{ color: "#D4A843" }}>
+            <span
+              className="summary-value"
+              style={{
+                color:
+                  summaryStats.totalLoss === 0 ? "var(--gray)" : "#D4A843",
+              }}
+            >
               ₱
               {summaryStats.totalLoss.toLocaleString("en-PH", {
                 minimumFractionDigits: 2,
@@ -225,113 +265,7 @@ function StockOutHistoryTab({ stockOuts, materials }) {
         </div>
       </div>
 
-      {/* ── Toolbar ── */}
-      <div
-        style={{
-          display: "flex",
-          gap: "0.75rem",
-          marginBottom: "1rem",
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ position: "relative", flex: 1, minWidth: "200px" }}>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search records..."
-            style={{
-              width: "100%",
-              padding: "0.6rem 1rem 0.6rem 2.5rem",
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid var(--border)",
-              borderRadius: "8px",
-              color: "#E5E2E1",
-              outline: "none",
-            }}
-          />
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            style={{
-              position: "absolute",
-              left: "0.75rem",
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "var(--gray)",
-              pointerEvents: "none",
-            }}
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
-          </svg>
-        </div>
-        <CustomDropdown
-          value={typeFilter}
-          onChange={setTypeFilter}
-          options={[
-            { value: "", label: "All Types" },
-            { value: "manual_sale", label: "Sale" },
-            { value: "damage", label: "Damage" },
-            { value: "scrap", label: "Scrap" },
-            { value: "lost", label: "Lost/Missing" },
-            { value: "adjustment", label: "Adjustment" },
-          ]}
-          placeholder="All Types"
-          style={{ minWidth: "140px" }}
-        />
-        <CustomDropdown
-          value={dateFilter}
-          onChange={setDateFilter}
-          options={[
-            { value: "all", label: "All Time" },
-            { value: "today", label: "Today" },
-            { value: "week", label: "This Week" },
-            { value: "month", label: "This Month" },
-            { value: "year", label: "This Year" },
-            { value: "custom", label: "Custom Range" },
-          ]}
-          placeholder="All Time"
-          style={{ minWidth: "140px" }}
-        />
-        {dateFilter === "custom" && (
-          <>
-            <input
-              type="date"
-              value={customDateFrom}
-              onChange={(e) => setCustomDateFrom(e.target.value)}
-              style={{
-                padding: "0.6rem 0.75rem",
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid var(--border)",
-                borderRadius: "8px",
-                color: "#E5E2E1",
-                outline: "none",
-              }}
-            />
-            <input
-              type="date"
-              value={customDateTo}
-              onChange={(e) => setCustomDateTo(e.target.value)}
-              style={{
-                padding: "0.6rem 0.75rem",
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid var(--border)",
-                borderRadius: "8px",
-                color: "#E5E2E1",
-                outline: "none",
-              }}
-            />
-          </>
-        )}
-      </div>
-
-      {/* ── Flat Table ── */}
+      {/* ── Table + Filter container ── */}
       <div
         style={{
           border: "1px solid var(--border)",
@@ -340,6 +274,135 @@ function StockOutHistoryTab({ stockOuts, materials }) {
           background: "var(--dark)",
         }}
       >
+        {/* Filter toolbar */}
+        <div
+          style={{
+            padding: "1.25rem 1.5rem",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            gap: "0.75rem",
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <div style={{ position: "relative", flex: 1, minWidth: "200px", maxWidth: "300px" }}>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              style={{
+                position: "absolute",
+                left: "0.75rem",
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "var(--gray)",
+                pointerEvents: "none",
+              }}
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search material, SKU…"
+              style={{
+                width: "100%",
+                padding: "0.55rem 1rem 0.55rem 2.25rem",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+                color: "#E5E2E1",
+                outline: "none",
+                fontSize: "0.82rem",
+              }}
+            />
+          </div>
+          <CustomDropdown
+            value={typeFilter}
+            onChange={setTypeFilter}
+            options={[
+              { value: "", label: "All Types" },
+              { value: "manual_sale", label: "Sale" },
+              { value: "damage", label: "Damage" },
+              { value: "scrap", label: "Scrap" },
+              { value: "lost", label: "Lost/Missing" },
+              { value: "writeoff", label: "Write-Off" },
+              { value: "adjustment", label: "Adjustment" },
+            ]}
+            placeholder="All Types"
+            style={{ minWidth: "140px" }}
+          />
+          <CustomDropdown
+            value={dateFilter}
+            onChange={setDateFilter}
+            options={[
+              { value: "all", label: "All Time" },
+              { value: "today", label: "Today" },
+              { value: "week", label: "This Week" },
+              { value: "month", label: "This Month" },
+              { value: "year", label: "This Year" },
+              { value: "custom", label: "Custom Range" },
+            ]}
+            placeholder="All Time"
+            style={{ minWidth: "140px" }}
+          />
+          {dateFilter === "custom" && (
+            <>
+              <input
+                type="date"
+                value={customDateFrom}
+                onChange={(e) => setCustomDateFrom(e.target.value)}
+                style={{
+                  padding: "0.55rem 0.75rem",
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "8px",
+                  color: "#E5E2E1",
+                  outline: "none",
+                  fontSize: "0.82rem",
+                }}
+              />
+              <input
+                type="date"
+                value={customDateTo}
+                onChange={(e) => setCustomDateTo(e.target.value)}
+                style={{
+                  padding: "0.55rem 0.75rem",
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "8px",
+                  color: "#E5E2E1",
+                  outline: "none",
+                  fontSize: "0.82rem",
+                }}
+              />
+            </>
+          )}
+          {filtered.length > 0 && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "0.25rem 0.75rem",
+                background: "rgba(212,168,67,0.1)",
+                border: "1px solid rgba(212,168,67,0.3)",
+                borderRadius: "20px",
+                fontSize: "0.72rem",
+                fontWeight: 600,
+                color: "#D4A843",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {filtered.length} record{filtered.length !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+
         {filtered.length === 0 ? (
           <div
             style={{
@@ -498,7 +561,7 @@ function StockOutHistoryTab({ stockOuts, materials }) {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {so.notes || "—"}
+                      {so.remarks || so.notes || "—"}
                     </td>
                   </tr>
                 ))}

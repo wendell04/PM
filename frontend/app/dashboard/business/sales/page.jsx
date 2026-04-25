@@ -123,6 +123,8 @@ export default function SalesListPage() {
   const [dateFilter, setDateFilter] = useState('all');
   const [customDateRange, setCustomDateRange] = useState({ fromMonth: 0, toMonth: 0, year: 2025 });
   const [expandedRows, setExpandedRows] = useState(new Set());
+  const [sPage, setSPage] = useState(1);
+  const [sRpp, setSRpp] = useState(10);
 
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const YEARS = [2025, 2026, 2027, 2028];
@@ -215,6 +217,8 @@ export default function SalesListPage() {
     return { label: 'Pending', color: 'var(--gold)', bg: 'rgba(250, 204, 21, 0.15)', border: 'rgba(250, 204, 21, 0.4)' };
   };
 
+  useEffect(() => { setSPage(1); }, [searchQuery, paymentFilter, dateFilter, customDateRange]);
+
   const filteredSales = useMemo(() => {
     return sales.filter(order => {
       const matchesSearch = 
@@ -258,6 +262,9 @@ export default function SalesListPage() {
       return matchesSearch && matchesPayment && matchesDate;
     });
   }, [sales, searchQuery, paymentFilter, dateFilter, customDateRange]);
+
+  const sTotalPages = Math.max(1, Math.ceil(filteredSales.length / sRpp));
+  const pagedSales = filteredSales.slice((sPage - 1) * sRpp, sPage * sRpp);
 
   // Calculate summary metrics (based on ALL sales, not filtered)
   const summaryMetrics = useMemo(() => {
@@ -619,7 +626,7 @@ export default function SalesListPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredSales.map(order => {
+              {pagedSales.map(order => {
                 const statusBadge = getStatusBadge(order);
                 const isExpanded = expandedRows.has(order.id);
                 const totalItems = order.items?.reduce((sum, item) => sum + item.quantity, 0) || order.quantity || 0;
@@ -742,6 +749,23 @@ export default function SalesListPage() {
               })}
             </tbody>
           </table>
+        )}
+        {filteredSales.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.625rem 1rem', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--gray)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              Rows per page:
+              <select value={sRpp} onChange={e => { setSRpp(Number(e.target.value)); setSPage(1); }} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', padding: '0.2rem 0.5rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+                {[5, 10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+              <button onClick={() => setSPage(p => Math.max(1, p - 1))} disabled={sPage <= 1} style={{ padding: '0.25rem 0.625rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: sPage <= 1 ? 'var(--gray)' : 'var(--white)', cursor: sPage <= 1 ? 'not-allowed' : 'pointer' }}>‹</button>
+              <button onClick={() => setSPage(p => Math.min(sTotalPages, p + 1))} disabled={sPage >= sTotalPages} style={{ padding: '0.25rem 0.625rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: sPage >= sTotalPages ? 'var(--gray)' : 'var(--white)', cursor: sPage >= sTotalPages ? 'not-allowed' : 'pointer' }}>›</button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              Page: <span style={{ padding: '0.2rem 0.6rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', minWidth: '28px', textAlign: 'center' }}>{sPage}</span> of {sTotalPages}
+            </div>
+          </div>
         )}
       </div>
     </div>

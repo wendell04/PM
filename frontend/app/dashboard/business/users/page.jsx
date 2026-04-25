@@ -105,6 +105,8 @@ export default function UserManagementPage() {
   const { token, currentUser } = useAuth();
 
   const [staff, setStaff] = useState([]);
+  const [uPage, setUPage] = useState(1);
+  const [uRpp, setURpp] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedStaff, setSelectedStaff] = useState(null);
@@ -413,9 +415,12 @@ export default function UserManagementPage() {
         </p>
       )}
 
-      {!loading && !error && staff.length > 0 && (
+      {!loading && !error && staff.length > 0 && (() => {
+        const uTotalPages = Math.max(1, Math.ceil(staff.length / uRpp));
+        const pagedStaff = staff.slice((uPage - 1) * uRpp, uPage * uRpp);
+        return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {staff.map((member) => {
+          {pagedStaff.map((member) => {
             const fullName = `${member.firstName || ''} ${member.lastName || ''}`.trim() || '—';
             const role = member.role;
             const badge = getRoleBadgeStyle(role);
@@ -502,8 +507,26 @@ export default function UserManagementPage() {
               </div>
             );
           })}
+          {staff.length > uRpp && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.625rem 1rem', border: '1px solid var(--border)', borderRadius: '10px', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--gray)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                Rows per page:
+                <select value={uRpp} onChange={e => { setURpp(Number(e.target.value)); setUPage(1); }} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', padding: '0.2rem 0.5rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+                  {[5, 10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                <button onClick={() => setUPage(p => Math.max(1, p - 1))} disabled={uPage <= 1} style={{ padding: '0.25rem 0.625rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: uPage <= 1 ? 'var(--gray)' : 'var(--white)', cursor: uPage <= 1 ? 'not-allowed' : 'pointer' }}>‹</button>
+                <button onClick={() => setUPage(p => Math.min(uTotalPages, p + 1))} disabled={uPage >= uTotalPages} style={{ padding: '0.25rem 0.625rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: uPage >= uTotalPages ? 'var(--gray)' : 'var(--white)', cursor: uPage >= uTotalPages ? 'not-allowed' : 'pointer' }}>›</button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                Page: <span style={{ padding: '0.2rem 0.6rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', minWidth: '28px', textAlign: 'center' }}>{uPage}</span> of {uTotalPages}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+        );
+      })()}
 
       {modalOpen && (
         <div

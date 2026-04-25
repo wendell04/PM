@@ -513,6 +513,182 @@ function InfoModal({ isOpen, onClose, title, message }) {
   );
 }
 
+// ── Bad Order Issues Popover ──────────────────────────────────────────────────
+function BadOrderIssuesPopover({
+  isOpen,
+  onClose,
+  damageIssues,
+  onChange,
+  qtyReceived,
+}) {
+  if (!isOpen) return null;
+
+  const totalBO = Object.values(damageIssues).reduce(
+    (s, v) => s + (parseInt(v) || 0),
+    0,
+  );
+
+  const handleChange = (type, val) => {
+    const num = val === "" ? 0 : parseInt(val) || 0;
+    const othersTotal = Object.entries(damageIssues)
+      .filter(([k]) => k !== type)
+      .reduce((s, [, v]) => s + (parseInt(v) || 0), 0);
+    const remaining = qtyReceived - othersTotal;
+    if (num > remaining) return;
+    onChange({ ...damageIssues, [type]: val });
+  };
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 9999 }} onClick={onClose}>
+      <div
+        className="modal-content"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: "380px", width: "90%" }}
+      >
+        <div className="modal-header">
+          <h2 className="modal-title" style={{ fontSize: "0.95rem" }}>
+            Bad Order Issues ({qtyReceived} units received)
+          </h2>
+          <button className="modal-close" onClick={onClose}>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="modal-body">
+          {totalBO > qtyReceived && (
+            <p
+              style={{
+                color: "#ef4444",
+                fontSize: "0.78rem",
+                marginBottom: "0.75rem",
+                fontWeight: 600,
+              }}
+            >
+              Total issues cannot exceed received quantity.
+            </p>
+          )}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.75rem",
+            }}
+          >
+            {DAMAGE_TYPES.map((dt) => {
+              const val = damageIssues[dt.id] || "";
+              const num = parseInt(val) || 0;
+              const othersTotal = Object.entries(damageIssues)
+                .filter(([k]) => k !== dt.id)
+                .reduce((s, [, v]) => s + (parseInt(v) || 0), 0);
+              const maxAllow = qtyReceived - othersTotal;
+              return (
+                <div key={dt.id}>
+                  <label
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      fontSize: "0.78rem",
+                      color: "#E5E2E1",
+                      fontWeight: 600,
+                      marginBottom: "0.35rem",
+                    }}
+                  >
+                    <span>{dt.label}</span>
+                    {num > 0 && (
+                      <span
+                        style={{
+                          fontSize: "0.65rem",
+                          color: "#D4A843",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {num} unit{num !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </label>
+                  <IntegerInput
+                    value={val}
+                    onChange={(e) => handleChange(dt.id, e.target.value)}
+                    min={0}
+                    max={maxAllow}
+                    placeholder="0"
+                    className="form-input"
+                    style={{
+                      width: "100%",
+                      background: "rgba(255,255,255,0.06)",
+                      border:
+                        num > 0
+                          ? "1px solid rgba(212,168,67,0.4)"
+                          : "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: "8px",
+                      color: num > 0 ? "#E5E2E1" : "var(--gray)",
+                      padding: "0.5rem 0.75rem",
+                      fontSize: "0.85rem",
+                      textAlign: "center",
+                      fontWeight: 700,
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div
+            style={{
+              marginTop: "1rem",
+              padding: "0.75rem",
+              background: "rgba(248,113,113,0.06)",
+              border: "1px solid rgba(248,113,113,0.2)",
+              borderRadius: "8px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "0.7rem",
+                color: "var(--gray)",
+                textTransform: "uppercase",
+                fontWeight: 600,
+              }}
+            >
+              Total Bad Orders
+            </span>
+            <span
+              style={{
+                fontSize: "1.1rem",
+                fontWeight: 800,
+                color: totalBO > 0 ? "#F87171" : "var(--gray)",
+              }}
+            >
+              {totalBO}{" "}
+              <span style={{ fontSize: "0.7rem", fontWeight: 500 }}>
+                units
+              </span>
+            </span>
+          </div>
+        </div>
+        <div className="modal-actions" style={{ justifyContent: "flex-end" }}>
+          <button type="button" className="btn-primary" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ADD STOCK MODAL — 3-Step Wizard
 // ══════════════════════════════════════════════════════════════════════════════
@@ -599,6 +775,7 @@ export default function AddStockModal({
   };
   const handleBackToStep1 = () => {
     setStep(1);
+    setSelectedMaterials([]);
     setStockRowsByMaterial({});
     setApplyAllCostByMaterial({});
     setInvoice({
@@ -638,13 +815,14 @@ export default function AddStockModal({
           selectedMaterialIds.includes(m.id),
         );
 
-        // Find common preferred vendor
+        // Find common preferred vendor (fall back to parent's preferredVendorId for variants)
         const vendorCounts = {};
         selectedMats.forEach((m) => {
-          if (m.preferredVendorId) {
-            vendorCounts[m.preferredVendorId] =
-              (vendorCounts[m.preferredVendorId] || 0) + 1;
-          }
+          const vid = m.preferredVendorId ||
+            (m.parentId
+              ? materials.find((p) => String(p.id ?? p._id) === String(m.parentId))?.preferredVendorId
+              : null);
+          if (vid) vendorCounts[vid] = (vendorCounts[vid] || 0) + 1;
         });
 
         let defaultVendorId = "";
@@ -705,7 +883,7 @@ export default function AddStockModal({
       const cat = m.category || "Uncategorized";
       if (!groups[cat]) groups[cat] = { category: cat, materials: [] };
       const variantCount = m.hasVariants
-        ? materials.filter((c) => c.parentId === m.id).length
+        ? materials.filter((c) => String(c.parentId) === String(m.id ?? m._id)).length
         : 0;
       groups[cat].materials.push({ ...m, variantCount });
     });
@@ -736,7 +914,7 @@ export default function AddStockModal({
         },
       ];
     }
-    const children = materials.filter((c) => c.parentId === mat.id);
+    const children = materials.filter((c) => String(c.parentId) === String(mat.id ?? mat._id));
     if (children.length === 0) {
       return [
         {
@@ -781,183 +959,6 @@ export default function AddStockModal({
     }));
   };
 
-  // ── Bad Order Issues Popover ───────────────────────────────────────────────
-  // Clickable popover to specify damage types when entering bad orders
-  function BadOrderIssuesPopover({
-    isOpen,
-    onClose,
-    damageIssues,
-    onChange,
-    qtyReceived,
-  }) {
-    if (!isOpen) return null;
-
-    const totalBO = Object.values(damageIssues).reduce(
-      (s, v) => s + (parseInt(v) || 0),
-      0,
-    );
-
-    const handleChange = (type, val) => {
-      const num = val === "" ? 0 : parseInt(val) || 0;
-      const othersTotal = Object.entries(damageIssues)
-        .filter(([k]) => k !== type)
-        .reduce((s, [, v]) => s + (parseInt(v) || 0), 0);
-      const remaining = qtyReceived - othersTotal;
-      if (num > remaining) return;
-      onChange({ ...damageIssues, [type]: val });
-    };
-
-    return (
-      <div className="modal-overlay" style={{ zIndex: 9999 }} onClick={onClose}>
-        <div
-          className="modal-content"
-          onClick={(e) => e.stopPropagation()}
-          style={{ maxWidth: "380px", width: "90%" }}
-        >
-          <div className="modal-header">
-            <h2 className="modal-title" style={{ fontSize: "0.95rem" }}>
-              Bad Order Issues ({qtyReceived} units received)
-            </h2>
-            <button className="modal-close" onClick={onClose}>
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <div className="modal-body">
-            {totalBO > qtyReceived && (
-              <p
-                style={{
-                  color: "#ef4444",
-                  fontSize: "0.78rem",
-                  marginBottom: "0.75rem",
-                  fontWeight: 600,
-                }}
-              >
-                Total issues cannot exceed received quantity.
-              </p>
-            )}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.75rem",
-              }}
-            >
-              {DAMAGE_TYPES.map((dt) => {
-                const val = damageIssues[dt.id] || "";
-                const num = parseInt(val) || 0;
-                const othersTotal = Object.entries(damageIssues)
-                  .filter(([k]) => k !== dt.id)
-                  .reduce((s, [, v]) => s + (parseInt(v) || 0), 0);
-                const maxAllow = qtyReceived - othersTotal;
-                return (
-                  <div key={dt.id}>
-                    <label
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        fontSize: "0.78rem",
-                        color: "#E5E2E1",
-                        fontWeight: 600,
-                        marginBottom: "0.35rem",
-                      }}
-                    >
-                      <span>{dt.label}</span>
-                      {num > 0 && (
-                        <span
-                          style={{
-                            fontSize: "0.65rem",
-                            color: "#D4A843",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {num} unit{num !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </label>
-                    <IntegerInput
-                      value={val}
-                      onChange={(e) => handleChange(dt.id, e.target.value)}
-                      min={0}
-                      max={maxAllow}
-                      placeholder="0"
-                      className="form-input"
-                      style={{
-                        width: "100%",
-                        background: "rgba(255,255,255,0.06)",
-                        border:
-                          num > 0
-                            ? "1px solid rgba(212,168,67,0.4)"
-                            : "1px solid rgba(255,255,255,0.1)",
-                        borderRadius: "8px",
-                        color: num > 0 ? "#E5E2E1" : "var(--gray)",
-                        padding: "0.5rem 0.75rem",
-                        fontSize: "0.85rem",
-                        textAlign: "center",
-                        fontWeight: 700,
-                        outline: "none",
-                        boxSizing: "border-box",
-                      }}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-            <div
-              style={{
-                marginTop: "1rem",
-                padding: "0.75rem",
-                background: "rgba(248,113,113,0.06)",
-                border: "1px solid rgba(248,113,113,0.2)",
-                borderRadius: "8px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "0.7rem",
-                  color: "var(--gray)",
-                  textTransform: "uppercase",
-                  fontWeight: 600,
-                }}
-              >
-                Total Bad Orders
-              </span>
-              <span
-                style={{
-                  fontSize: "1.1rem",
-                  fontWeight: 800,
-                  color: totalBO > 0 ? "#F87171" : "var(--gray)",
-                }}
-              >
-                {totalBO}{" "}
-                <span style={{ fontSize: "0.7rem", fontWeight: 500 }}>
-                  units
-                </span>
-              </span>
-            </div>
-          </div>
-          <div className="modal-actions" style={{ justifyContent: "flex-end" }}>
-            <button type="button" className="btn-primary" onClick={onClose}>
-              Done
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // ── Derived totals ───────────────────────────────────────────────────────────
   const totalReceived = selectedMaterials.reduce((sum, m) => {
     const rows = stockRowsByMaterial[m.id] || [];
@@ -979,16 +980,26 @@ export default function AddStockModal({
   const totalGood = totalReceived - totalDamaged;
 
   const categoriesWithQty = useMemo(() => {
-    const cats = selectedMaterials
-      .filter((m) =>
-        (stockRowsByMaterial[m.id] || []).some(
-          (r) => (parseInt(r.qty) || 0) > 0,
-        ),
-      )
-      .map((m) => m.category);
-    // Remove duplicates while preserving order
-    return [...new Set(cats)];
-  }, [selectedMaterials, stockRowsByMaterial]);
+    const cats = new Set();
+    Object.keys(stockRowsByMaterial).forEach((matId) => {
+      const rows = stockRowsByMaterial[matId] || [];
+      if (!rows.some((r) => (parseInt(r.qty) || 0) > 0)) return;
+      const mat = materials.find((m) => (m.id ?? m._id) === matId);
+      if (!mat) return;
+      const cat = mat.category ||
+        (mat.parentId
+          ? materials.find((p) => String(p.id ?? p._id) === String(mat.parentId))?.category
+          : null);
+      if (cat) cats.add(cat);
+    });
+    // Also include categories from directly selected parent materials
+    selectedMaterials.forEach((m) => {
+      if ((stockRowsByMaterial[m.id] || []).some((r) => (parseInt(r.qty) || 0) > 0) && m.category) {
+        cats.add(m.category);
+      }
+    });
+    return [...cats];
+  }, [selectedMaterials, stockRowsByMaterial, materials]);
 
   const totalInvoiceValue = useMemo(() => {
     return selectedMaterials.reduce((sum, m) => {
@@ -2983,10 +2994,11 @@ export default function AddStockModal({
                       <input
                         type="text"
                         value={invoice.invoiceNumber}
+                        maxLength={30}
                         onChange={(e) =>
                           setInvoice((p) => ({
                             ...p,
-                            invoiceNumber: e.target.value.slice(0, 50),
+                            invoiceNumber: e.target.value.slice(0, 30),
                           }))
                         }
                         placeholder="INV-2024-001"

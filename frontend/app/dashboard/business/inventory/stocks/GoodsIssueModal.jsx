@@ -261,7 +261,8 @@ export default function GoodsIssueModal({ materials, onClose, onConfirm, current
               type="text"
               placeholder="Optional"
               value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
+              maxLength={200}
+              onChange={(e) => setRemarks(e.target.value.slice(0, 200))}
               style={inputStyle}
             />
           </div>

@@ -5,14 +5,14 @@ import React, { memo, useMemo, useRef, useState } from "react";
 
 // ── Shared Styles ──────────────────────────────────────────────────────────────
 const thStyle = {
-  padding: "0.5rem 0.75rem",
+  padding: "0.625rem 1rem",
   textAlign: "left",
-  color: "#374151",
+  color: "var(--gray)",
   fontWeight: 700,
   fontSize: "0.65rem",
   textTransform: "uppercase",
-  letterSpacing: "0.05em",
-  borderBottom: "2px solid #e5e7eb",
+  letterSpacing: "0.08em",
+  borderBottom: "2px solid var(--border)",
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -73,13 +73,13 @@ function InventoryReports({ materials, stockOuts }) {
   // Damage Report Data
   const damageReport = useMemo(() => {
     const damages = filteredStockOuts.filter(
-      (so) => so.issueType === "damage" || so.issueType === "scrap",
+      (so) => so.issueType === "damage" || so.issueType === "scrap" || so.issueType === "writeoff" || so.issueType === "lost",
     );
     const grouped = {};
     damages.forEach((so) => {
       const cat =
-        materials?.find((m) => m._id === so.materialId)?.category ||
         so.category ||
+        materials?.find((m) => String(m.id ?? m._id) === String(so.inventoryId || so.materialId))?.category ||
         "Uncategorized";
       if (!grouped[cat]) grouped[cat] = [];
       grouped[cat].push(so);
@@ -97,8 +97,8 @@ function InventoryReports({ materials, stockOuts }) {
     const grouped = {};
     filteredStockOuts.forEach((so) => {
       const cat =
-        materials?.find((m) => m._id === so.materialId)?.category ||
         so.category ||
+        materials?.find((m) => String(m.id ?? m._id) === String(so.inventoryId || so.materialId))?.category ||
         "Uncategorized";
       if (!grouped[cat]) grouped[cat] = [];
       grouped[cat].push(so);
@@ -129,7 +129,7 @@ function InventoryReports({ materials, stockOuts }) {
       .filter((m) => {
         if (m.parentId) return false;
         if (m.hasVariants) {
-          const children = (materials || []).filter((c) => c.parentId === m._id);
+          const children = (materials || []).filter((c) => String(c.parentId) === String(m.id ?? m._id));
           return children.some((c) =>
             c.batches?.some(
               (b) =>
@@ -148,7 +148,7 @@ function InventoryReports({ materials, stockOuts }) {
         let goodStock, damaged, totalStock, avgCost, goodsValue, damageValue;
 
         if (hasChildren) {
-          const children = materials.filter((c) => c.parentId === m._id);
+          const children = materials.filter((c) => String(c.parentId) === String(m.id ?? m._id));
           const allChildrenBatches = children.flatMap((c) => c.batches || []);
           goodStock = allChildrenBatches.reduce((s, b) => s + (b.remainingQty || 0), 0);
           damaged = allChildrenBatches.reduce((s, b) => s + (b.damagedQty || 0), 0);

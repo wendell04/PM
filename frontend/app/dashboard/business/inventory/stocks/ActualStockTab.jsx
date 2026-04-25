@@ -60,7 +60,7 @@ function ActualStockTab({
   const [expandedInvoice, setExpandedInvoice] = useState(null);
   const [showCSVPreview, setShowCSVPreview] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const pendingPOs = pendingPOsProp;
   // Date range filter (default to This Month)
   const [dateRange, setDateRange] = useState("thisMonth");
@@ -817,6 +817,7 @@ function ActualStockTab({
         invTotal = 0,
         invValue = 0;
       inv.items.forEach((it) => {
+        const damaged = it.badOrder || it.damaged || 0;
         rows.push({
           type: "item",
           invoice: inv.invoiceNo,
@@ -827,13 +828,13 @@ function ActualStockTab({
           material: it.materialName,
           variant: it.variantName !== "—" ? it.variantName : "",
           good: it.good,
-          damaged: it.damaged,
+          damaged,
           total: it.total,
           unitCost: (it.unitCost || 0).toFixed(2),
           value: (it.value || 0).toFixed(2),
         });
         invGood += it.good;
-        invDamaged += it.damaged;
+        invDamaged += damaged;
         invTotal += it.total;
         invValue += it.value || 0;
       });
@@ -892,6 +893,7 @@ function ActualStockTab({
         ? new Date(inv.dateReceived).toLocaleDateString("en-PH")
         : "";
       inv.items.forEach((it) => {
+        const damaged = it.badOrder || it.damaged || 0;
         lines.push(
           [
             inv.invoiceNo,
@@ -900,14 +902,14 @@ function ActualStockTab({
             `"${it.materialName}"`,
             it.variantName !== "—" ? `"${it.variantName}"` : "",
             it.good,
-            it.damaged,
+            damaged,
             it.total,
             (it.unitCost || 0).toFixed(2),
             (it.value || 0).toFixed(2),
           ].join(","),
         );
         invGood += it.good;
-        invDamaged += it.damaged;
+        invDamaged += damaged;
         invTotal += it.total;
         invValue += it.value || 0;
       });
@@ -1432,7 +1434,7 @@ function ActualStockTab({
                           >
                             {mat.name}
                           </div>
-                          {mat.sku && (
+                          {mat.sku && !mat.hasVariants && (
                             <div
                               style={{
                                 fontSize: "0.65rem",
@@ -1928,82 +1930,21 @@ function ActualStockTab({
             </tbody>
           </table>
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                gap: "0.5rem",
-                padding: "0.75rem",
-                borderTop: "1px solid var(--border)",
-              }}
-            >
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                style={{
-                  padding: "0.35rem 0.75rem",
-                  background:
-                    currentPage === 1
-                      ? "rgba(255,255,255,0.03)"
-                      : "rgba(255,255,255,0.06)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "6px",
-                  color: currentPage === 1 ? "var(--gray)" : "#E5E2E1",
-                  cursor: currentPage === 1 ? "not-allowed" : "pointer",
-                  fontSize: "0.8rem",
-                }}
-              >
-                ‹ Prev
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                (page) => (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    style={{
-                      padding: "0.35rem 0.65rem",
-                      background:
-                        currentPage === page
-                          ? "var(--gold)"
-                          : "rgba(255,255,255,0.06)",
-                      border:
-                        currentPage === page
-                          ? "1px solid var(--gold)"
-                          : "1px solid var(--border)",
-                      borderRadius: "6px",
-                      color: currentPage === page ? "#000" : "#E5E2E1",
-                      cursor: "pointer",
-                      fontSize: "0.8rem",
-                      fontWeight: currentPage === page ? 700 : 400,
-                    }}
-                  >
-                    {page}
-                  </button>
-                ),
-              )}
-              <button
-                onClick={() =>
-                  setCurrentPage((p) => Math.min(totalPages, p + 1))
-                }
-                disabled={currentPage === totalPages}
-                style={{
-                  padding: "0.35rem 0.75rem",
-                  background:
-                    currentPage === totalPages
-                      ? "rgba(255,255,255,0.03)"
-                      : "rgba(255,255,255,0.06)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "6px",
-                  color: currentPage === totalPages ? "var(--gray)" : "#E5E2E1",
-                  cursor:
-                    currentPage === totalPages ? "not-allowed" : "pointer",
-                  fontSize: "0.8rem",
-                }}
-              >
-                Next ›
-              </button>
+          {filtered.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.625rem 1rem", borderTop: "1px solid var(--border)", flexWrap: "wrap", gap: "0.5rem", fontSize: "0.8rem", color: "var(--gray)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                Rows per page:
+                <select value={itemsPerPage} onChange={e => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }} style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer" }}>
+                  {[5, 10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1} style={{ padding: "0.25rem 0.625rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: currentPage <= 1 ? "var(--gray)" : "var(--white)", cursor: currentPage <= 1 ? "not-allowed" : "pointer" }}>‹</button>
+                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} style={{ padding: "0.25rem 0.625rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: currentPage >= totalPages ? "var(--gray)" : "var(--white)", cursor: currentPage >= totalPages ? "not-allowed" : "pointer" }}>›</button>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                Page: <span style={{ padding: "0.2rem 0.6rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", minWidth: "28px", textAlign: "center" }}>{currentPage}</span> of {totalPages}
+              </div>
             </div>
           )}
         </div>

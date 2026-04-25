@@ -1548,4 +1548,110 @@ class OrderController extends Controller
             return $this->serverErrorResponse($e, 'Failed to cancel order.');
         }
     }
+
+    /**
+     * POST /api/orders/my/{id}/reupload-design
+     * Customer re-uploads design after admin rejection.
+     * Only allowed when designStatus === 'rejected'.
+     */
+    public function reuploadDesign(Request $request, $id)
+    {
+        try {
+            $user = $this->getAuthUser($request);
+            if (!$user) {
+                return $this->unauthorizedResponse();
+            }
+
+            $order = Order::where('_id', $id)
+                          ->where('userId', (string) $user->_id)
+                          ->first();
+
+            if (!$order) {
+                return $this->notFoundResponse('Order');
+            }
+
+            if ($order->designStatus !== 'rejected') {
+                return $this->errorResponse('Design can only be re-uploaded when the previous submission was rejected.', 422);
+            }
+
+            $validated = $request->validate([
+                'design_file'  => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf,ai,psd,svg|max:10240',
+                'design_notes' => 'nullable|string|max:2000',
+            ]);
+
+            if (!$request->hasFile('design_file') && empty(trim($validated['design_notes'] ?? ''))) {
+                return $this->errorResponse('Please provide a new design file or updated notes.', 422);
+            }
+
+            $designFilePath = $order->designFilePath;
+            if ($request->hasFile('design_file') && $request->file('design_file')->isValid()) {
+                try {
+                    if ($designFilePath) {
+                        Storage::disk('public')->delete($designFilePath);
+                    }
+                    $designFilePath = $request->file('design_file')->store('designs', 'public');
+                } catch (\Exception $fileErr) {
+                    Log::warning('reuploadDesign: file upload failed', ['error' => $fileErr->getMessage()]);
+                }
+            }
+
+            $order->designFilePath        = $designFilePath;
+            $order->designStatus          = 'pending_review';
+            $order->designRejectionReason = null;
+
+            if (!empty(trim($validated['design_notes'] ?? ''))) {
+                $order->designNotes = htmlspecialchars(
+                    strip_tags(trim($validated['design_notes'])),
+                    ENT_QUOTES | ENT_SUBSTITUTE,
+                    'UTF-8'
+                );
+            }
+
+            $order->updatedAt = now();
+            $order->save();
+
+            // Notify all admins/owners
+            try {
+                $admins = User::whereIn('role', ['admin', 'owner'])->get();
+                $customerName = trim("{$user->firstName} {$user->lastName}");
+                $orderShort   = strtoupper(substr((string) $order->_id, -8));
+                foreach ($admins as $admin) {
+                    Notification::create([
+                        'user_id'    => (string) $admin->_id,
+                        'type'       => 'design_resubmitted',
+                        'title'      => 'Design Resubmitted',
+                        'message'    => "{$customerName} resubmitted a design for order #{$orderShort}. Please review.",
+                        'is_read'    => false,
+                        'data'       => ['orderId' => (string) $order->_id],
+                        'created_at' => now(),
+                    ]);
+                }
+            } catch (\Exception $notifErr) {
+                Log::warning('reuploadDesign: admin notification failed', ['error' => $notifErr->getMessage()]);
+            }
+
+            try {
+                ActivityLog::create([
+                    'action'           => 'design_resubmitted',
+                    'entityType'       => 'order',
+                    'entityId'         => (string) $order->_id,
+                    'description'      => 'Customer resubmitted design for order #' .
+                        strtoupper(substr((string) $order->_id, -8)),
+                    'performedBy'      => trim("{$user->firstName} {$user->lastName}"),
+                    'performedByEmail' => $user->email ?? null,
+                    'metadata'         => ['orderId' => (string) $order->_id],
+                    'createdAt'        => now(),
+                ]);
+            } catch (\Exception $logErr) {
+                Log::warning('ActivityLog write failed (reuploadDesign)', ['error' => $logErr->getMessage()]);
+            }
+
+            return $this->successResponse('Design resubmitted for review.', $order);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to resubmit design.');
+        }
+    }
 }
