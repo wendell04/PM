@@ -15,7 +15,7 @@ const securityHeaders = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https://res.cloudinary.com https://images.unsplash.com https://via.placeholder.com",
+      "img-src 'self' data: blob: https://res.cloudinary.com https://images.unsplash.com https://via.placeholder.com",
       "font-src 'self'",
       `connect-src 'self' ${apiUrl} ${ssaUrl} https://api.paymongo.com ws: wss:`,
       "frame-ancestors 'none'",

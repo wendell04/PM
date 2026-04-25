@@ -3127,6 +3127,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
 
   // Step 4 — Availability + Media
   const [stockMap, setStockMap] = useState({});
+  const [isMadeToOrder, setIsMadeToOrder] = useState(false);
   const [thumbnail, setThumbnail] = useState(null);
   const [images, setImages] = useState([]);
   const [dragOverThumb, setDragOverThumb] = useState(false);
@@ -3293,6 +3294,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
   // ── Save ──
   const handleSave = async () => {
     if (!selectedBoms.length) return;
+    if (!token) { onPriceError("Sign in required."); return; }
     setUploadingMedia(true);
     try {
       let thumbFinal = null;
@@ -3315,9 +3317,11 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
         : [];
       const primaryId = primaryBom?.id;
       const stockVal = isStandalone ? (parseInt(stockMap[primaryId]) || 0) : null;
-      const variantStock = hasVariants ? selectedBoms.reduce((acc, { bom }) => ({ ...acc, [bom.id]: parseInt(stockMap[bom.id]) || 0 }), {}) : undefined;
+      const variantStock = hasVariants
+        ? selectedBoms.reduce((acc, { bom }) => ({ ...acc, [bom.id]: parseInt(stockMap[bom.id]) || 0 }), {})
+        : undefined;
 
-      onSave({
+      const productData = {
         productName: storefrontName,
         subCategoryName: storefrontName,
         subCategoryCode: storefrontName.split(" ").filter((w) => w).map((w) => w[0]).join("").toUpperCase().slice(0, 8),
@@ -3336,15 +3340,20 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
         stock: stockVal,
         variantStock,
         trackInventory: true,
+        isMadeToOrder,
         bomId: isStandalone ? primaryId : undefined,
         bomGroupName: storefrontName,
         thumbnail: thumbFinal,
         images: galleryUrls,
         isPublished,
         isArchived: false,
-      });
+      };
+
+      const saved = await createProduct(normalizeProductForApi(productData), token);
+      onSave(saved);
+      onClose();
     } catch (err) {
-      onPriceError(err.message || "Image upload failed.");
+      onPriceError(err.message || "Save failed.");
     } finally {
       setUploadingMedia(false);
     }
@@ -3726,8 +3735,22 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
           {/* ─── STEP 4: Availability + Media ───────────────────────── */}
           {step === 4 && (
             <div>
+              {/* Made to Order toggle */}
+              <div style={{ marginBottom: "1.25rem", padding: "0.875rem 1rem", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", borderRadius: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: "#E5E2E1", fontSize: "0.875rem" }}>Made to Order</div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.15rem" }}>
+                    {isMadeToOrder ? "Published with 0 stock — fulfil orders on demand." : "Stock is capped to what you can currently produce."}
+                  </div>
+                </div>
+                <button type="button" onClick={() => setIsMadeToOrder((p) => !p)}
+                  style={{ position: "relative", display: "inline-flex", alignItems: "center", width: "44px", height: "24px", borderRadius: "12px", border: "none", background: isMadeToOrder ? "#D4A843" : "var(--border)", cursor: "pointer", flexShrink: 0, padding: 0 }}>
+                  <span style={{ position: "absolute", left: isMadeToOrder ? "22px" : "2px", width: "20px", height: "20px", borderRadius: "50%", background: "#fff", transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.3)" }} />
+                </button>
+              </div>
+
               {/* Stock */}
-              {priceType !== "inquiry" && (
+              {!isMadeToOrder && (
                 <div style={{ marginBottom: "1.5rem" }}>
                   <p style={secTitle}>Storefront Availability</p>
                   {isStandalone ? (
@@ -6148,7 +6171,12 @@ export default function ProductListPage() {
             products={products}
             token={token}
             onClose={() => setShowAddModal(false)}
-            onSave={handleSaveEdit}
+            onSave={(saved) => {
+              const t = { ...saved, id: saved.id ?? saved._id ?? "", tiers: saved.tiers ?? saved.priceTiers ?? [] };
+              setProducts((prev) => [t, ...prev]);
+              setShowSaveSuccess(true);
+              setTimeout(() => setShowSaveSuccess(false), 3000);
+            }}
             onPriceError={(msg) => {
               setPriceErrorMessage(msg);
               setShowPriceErrorModal(true);
