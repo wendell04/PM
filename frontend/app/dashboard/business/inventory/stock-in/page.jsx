@@ -144,10 +144,11 @@ function AddVendorQuickModal({
     email: "",
     categories: [],
   });
+  const [fieldErrors, setFieldErrors] = useState({});
   const [infoModal, setInfoModal] = useState(null);
 
   useEffect(() => {
-    if (isOpen)
+    if (isOpen) {
       setForm({
         name: "",
         contact: "",
@@ -156,45 +157,50 @@ function AddVendorQuickModal({
         email: "",
         categories: preFillCategories.length > 0 ? preFillCategories : [],
       });
+      setFieldErrors({});
+    }
   }, [isOpen, preFillCategories]);
 
   const handlePhoneChange = (e) => {
-    const val = e.target.value.replace(/[^0-9-]/g, "").slice(0, 15);
-    setForm((p) => ({ ...p, phone: val }));
+    const val = e.target.value.replace(/[^0-9+]/g, "");
+    let cleaned = val;
+    if (cleaned.startsWith("+63")) cleaned = "+63" + cleaned.slice(3).replace(/\D/g, "").slice(0, 10);
+    else if (cleaned.startsWith("0")) cleaned = "0" + cleaned.slice(1).replace(/\D/g, "").slice(0, 10);
+    else cleaned = cleaned.replace(/\D/g, "").slice(0, 11);
+    setForm((p) => ({ ...p, phone: cleaned }));
+    if (fieldErrors.phone) setFieldErrors((e) => ({ ...e, phone: "" }));
+  };
+
+  const isValidEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
+  const isValidPhone = (v) => {
+    const digits = v.replace(/\D/g, "");
+    if (v.startsWith("+63")) return digits.length === 12;
+    if (v.startsWith("0")) return digits.length === 11;
+    return digits.length >= 7;
   };
 
   const handleSubmit = () => {
-    if (!form.name.trim()) {
-      setInfoModal({
-        title: "Validation Error",
-        message: "Please enter a vendor name.",
-      });
+    const errs = {};
+    if (!form.name.trim()) errs.name = "Company name is required.";
+    if (!form.contact.trim()) errs.contact = "Contact person is required.";
+    if (!form.email.trim()) {
+      errs.email = "Email is required.";
+    } else if (!isValidEmail(form.email)) {
+      errs.email = "Enter a valid email address (e.g. juan@gmail.com).";
+    }
+    if (!form.phone.trim()) {
+      errs.phone = "Phone number is required.";
+    } else if (!isValidPhone(form.phone)) {
+      errs.phone = "Enter a valid PH number (e.g. 09171234567 or +639171234567).";
+    }
+    if (!form.address.trim()) errs.address = "Address is required.";
+    if (Object.keys(errs).length > 0) { setFieldErrors(errs); return; }
+    if (existingVendors.some((v) => v.name.toLowerCase() === form.name.trim().toLowerCase())) {
+      setFieldErrors((e) => ({ ...e, name: `"${form.name.trim()}" already exists.` }));
       return;
     }
-    if (!form.contact.trim()) {
-      setInfoModal({
-        title: "Validation Error",
-        message: "Please enter a contact person.",
-      });
-      return;
-    }
-    if (
-      existingVendors.some(
-        (v) => v.name.toLowerCase() === form.name.trim().toLowerCase(),
-      )
-    ) {
-      setInfoModal({
-        title: "Duplicate Vendor",
-        message: `"${form.name.trim()}" already exists.`,
-      });
-      return;
-    }
-    onAdd({
-      ...form,
-      name: form.name.trim(),
-      contact: form.contact.trim(),
-      address: form.address.trim(),
-    });
+    setFieldErrors({});
+    onAdd({ ...form, name: form.name.trim(), contact: form.contact.trim(), address: form.address.trim() });
     onClose();
   };
 
@@ -331,6 +337,16 @@ function AddVendorQuickModal({
             gap: "1.25rem",
           }}
         >
+          {preFillCategories.length > 0 && (
+            <div style={{ background: "rgba(212,168,67,0.06)", border: "1px solid rgba(212,168,67,0.2)", borderRadius: "10px", padding: "0.75rem 1rem" }}>
+              <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#D4A843", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.5rem" }}>Items auto-set as supplied</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                {preFillCategories.map((cat) => (
+                  <span key={cat} style={{ background: "rgba(212,168,67,0.15)", border: "1px solid rgba(212,168,67,0.3)", borderRadius: "6px", padding: "0.2rem 0.6rem", fontSize: "0.78rem", color: "#D4A843", fontWeight: 600 }}>{cat} · pcs</span>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <label style={labelStyle}>
               Vendor Name <span style={{ color: "#ef4444" }}>*</span>
@@ -338,26 +354,15 @@ function AddVendorQuickModal({
             <input
               type="text"
               value={form.name}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, name: e.target.value.slice(0, 80) }))
-              }
+              onChange={(e) => { setForm((p) => ({ ...p, name: e.target.value.slice(0, 80) })); if (fieldErrors.name) setFieldErrors((er) => ({ ...er, name: "" })); }}
               placeholder="e.g., SanRoque Trading"
               autoFocus
               maxLength={80}
-              style={{
-                ...inputStyle,
-                borderColor: "rgba(212,168,67,0.4)",
-                boxShadow: "0 0 0 3px rgba(212,168,67,0.1)",
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = "rgba(212,168,67,0.6)";
-                e.target.style.boxShadow = "0 0 0 3px rgba(212,168,67,0.15)";
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = "rgba(212,168,67,0.4)";
-                e.target.style.boxShadow = "0 0 0 3px rgba(212,168,67,0.1)";
-              }}
+              style={{ ...inputStyle, borderColor: fieldErrors.name ? "#ef4444" : "rgba(212,168,67,0.4)", boxShadow: "0 0 0 3px rgba(212,168,67,0.1)" }}
+              onFocus={(e) => { e.target.style.borderColor = fieldErrors.name ? "#ef4444" : "rgba(212,168,67,0.6)"; e.target.style.boxShadow = "0 0 0 3px rgba(212,168,67,0.15)"; }}
+              onBlur={(e) => { e.target.style.borderColor = fieldErrors.name ? "#ef4444" : "rgba(212,168,67,0.4)"; e.target.style.boxShadow = "0 0 0 3px rgba(212,168,67,0.1)"; }}
             />
+            {fieldErrors.name && <span style={{ fontSize: "0.72rem", color: "#ef4444", marginTop: "0.25rem", display: "block" }}>{fieldErrors.name}</span>}
           </div>
           <div>
             <label style={labelStyle}>
@@ -365,28 +370,25 @@ function AddVendorQuickModal({
             </label>
             <input
               type="text"
-              className="form-input"
               value={form.contact}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, contact: e.target.value.slice(0, 60) }))
-              }
+              onChange={(e) => { setForm((p) => ({ ...p, contact: e.target.value.slice(0, 60) })); if (fieldErrors.contact) setFieldErrors((er) => ({ ...er, contact: "" })); }}
               placeholder="e.g., Juan Dela Cruz"
               maxLength={60}
-              style={inputStyle}
+              style={{ ...inputStyle, borderColor: fieldErrors.contact ? "#ef4444" : undefined }}
             />
+            {fieldErrors.contact && <span style={{ fontSize: "0.72rem", color: "#ef4444", marginTop: "0.25rem", display: "block" }}>{fieldErrors.contact}</span>}
           </div>
           <div>
-            <label style={labelStyle}>Email</label>
+            <label style={labelStyle}>Email <span style={{ color: "#ef4444" }}>*</span></label>
             <input
-              type="email"
+              type="text"
               value={form.email}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, email: e.target.value.slice(0, 100) }))
-              }
-              placeholder="e.g., vendor@email.com"
+              onChange={(e) => { setForm((p) => ({ ...p, email: e.target.value.slice(0, 100) })); if (fieldErrors.email) setFieldErrors((er) => ({ ...er, email: "" })); }}
+              placeholder="e.g., vendor@gmail.com"
               maxLength={100}
-              style={inputStyle}
+              style={{ ...inputStyle, borderColor: fieldErrors.email ? "#ef4444" : undefined }}
             />
+            {fieldErrors.email && <span style={{ fontSize: "0.72rem", color: "#ef4444", marginTop: "0.25rem", display: "block" }}>{fieldErrors.email}</span>}
           </div>
           <div
             style={{
@@ -396,32 +398,29 @@ function AddVendorQuickModal({
             }}
           >
             <div>
-              <label style={labelStyle}>Phone</label>
+              <label style={labelStyle}>Phone <span style={{ color: "#ef4444" }}>*</span></label>
               <input
                 type="text"
                 value={form.phone}
                 onChange={handlePhoneChange}
-                placeholder="09xx-xxx-xxxx"
-                maxLength={15}
+                placeholder="09171234567"
+                maxLength={13}
                 inputMode="tel"
-                style={inputStyle}
+                style={{ ...inputStyle, borderColor: fieldErrors.phone ? "#ef4444" : undefined }}
               />
+              {fieldErrors.phone && <span style={{ fontSize: "0.68rem", color: "#ef4444", marginTop: "0.25rem", display: "block" }}>{fieldErrors.phone}</span>}
             </div>
             <div>
-              <label style={labelStyle}>Address</label>
+              <label style={labelStyle}>Address <span style={{ color: "#ef4444" }}>*</span></label>
               <input
                 type="text"
                 value={form.address}
-                onChange={(e) =>
-                  setForm((p) => ({
-                    ...p,
-                    address: e.target.value.slice(0, 100),
-                  }))
-                }
+                onChange={(e) => { setForm((p) => ({ ...p, address: e.target.value.slice(0, 100) })); if (fieldErrors.address) setFieldErrors((er) => ({ ...er, address: "" })); }}
                 placeholder="e.g., Marikina City"
                 maxLength={100}
-                style={inputStyle}
+                style={{ ...inputStyle, borderColor: fieldErrors.address ? "#ef4444" : undefined }}
               />
+              {fieldErrors.address && <span style={{ fontSize: "0.68rem", color: "#ef4444", marginTop: "0.25rem", display: "block" }}>{fieldErrors.address}</span>}
             </div>
           </div>
         </div>
@@ -610,7 +609,7 @@ function ConfirmSaveModal({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
+              gridTemplateColumns: "1fr 1fr",
               gap: "0.75rem",
               marginBottom: "1rem",
             }}
@@ -629,13 +628,6 @@ function ConfirmSaveModal({
                 color: "#F87171",
                 bg: "rgba(248,113,113,0.06)",
                 border: "rgba(248,113,113,0.2)",
-              },
-              {
-                label: "Min Level",
-                value: "10",
-                color: "#E5E2E1",
-                bg: "rgba(255,255,255,0.03)",
-                border: "rgba(255,255,255,0.08)",
               },
             ].map((c, i) => (
               <div
@@ -1303,6 +1295,37 @@ function VendorCombobox({
   );
 }
 
+function buildStockLog(mats) {
+  return mats
+    .filter((m) => Array.isArray(m.batches) && m.batches.length > 0)
+    .flatMap((m) =>
+      m.batches
+        .filter((b) => (b.goodQty ?? 0) > 0)
+        .map((b) => ({
+          id: b.batchId || `${m.id}-${b.dateReceived}`,
+          materialId: m.id,
+          materialName: m.name,
+          sku: m.sku || "",
+          category: m.category || "",
+          uom: m.uom || "pcs",
+          vendorId: b.supplierId || null,
+          vendorName: b.vendorName || "General Merchandise",
+          receivedQty: b.goodQty || 0,
+          goodQty: b.goodQty || 0,
+          damagedQty: b.qtyDamaged || 0,
+          unitCost: b.unitCost || 0,
+          totalCost: (b.goodQty || 0) * (b.unitCost || 0),
+          invoiceNo: b.invoiceNumber || "",
+          deliveryDate: b.dateReceived ? b.dateReceived.split("T")[0] : "",
+          notes: "",
+          receiptImage: null,
+          dateReceived: b.dateReceived || "",
+          dateAdded: b.createdAt || b.dateReceived || "",
+        })),
+    )
+    .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1322,6 +1345,7 @@ export default function StockInPage() {
 
   // Confirm modal
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [pendingStockData, setPendingStockData] = useState(null);
   const [pendingEntries, setPendingEntries] = useState([]);
   const [pendingGood, setPendingGood] = useState(0);
   const [pendingDamaged, setPendingDamaged] = useState(0);
@@ -1334,6 +1358,8 @@ export default function StockInPage() {
   // History tab
   const [historySearch, setHistorySearch] = useState("");
   const [historyVendorFilter, setHistoryVendorFilter] = useState("");
+  const [hPage, setHPage] = useState(1);
+  const [hRpp, setHRpp] = useState(10);
 
   // Reports tab
   const [reportMode, setReportMode] = useState("month");
@@ -1361,7 +1387,8 @@ export default function StockInPage() {
         fetchSuppliers(token),
         fetchUnits(token).catch(() => []),
       ]);
-      setMaterials(mats.map((m) => ({ ...m, id: m.id ?? m._id })));
+      const normalized = mats.map((m) => ({ ...m, id: m.id ?? m._id }));
+      setMaterials(normalized);
       setVendors(sups.map((v) => ({ ...v, id: v.id ?? v._id })));
       setUnits(
         (Array.isArray(rawUnits) ? rawUnits : []).map((u) => ({
@@ -1370,6 +1397,7 @@ export default function StockInPage() {
           name: u.name,
         })),
       );
+      setStockInLog(buildStockLog(normalized));
     } catch (e) {
       setLoadError(e?.message || "Failed to load");
       setInfoModal({
@@ -1405,8 +1433,8 @@ export default function StockInPage() {
     setWizardVendors([]);
   };
 
-  // Handle save from AddStockModal — API: adjust-stock (restock) + returns (bad orders)
-  const handleSaveStock = async (stockData) => {
+  // Build preview data and show confirmation BEFORE making any API calls
+  const handleSaveStock = (stockData) => {
     if (!stockData || stockData.length === 0) return;
     if (!token) {
       setInfoModal({
@@ -1420,18 +1448,56 @@ export default function StockInPage() {
     let totalGoodAll = 0;
     let totalDamagedAll = 0;
 
-    try {
-      for (const entry of stockData) {
-        const received = entry.receivedQty || 0;
-        const good = entry.goodQty ?? 0;
-        const boSum = (entry.badOrders || []).reduce(
-          (s, b) => s + (parseInt(b.qty, 10) || 0),
-          0,
-        );
-        const damaged = entry.damagedQty ?? boSum;
-        totalGoodAll += good;
-        totalDamagedAll += damaged;
+    for (const entry of stockData) {
+      const received = entry.receivedQty || 0;
+      const good = entry.goodQty ?? 0;
+      const boSum = (entry.badOrders || []).reduce(
+        (s, b) => s + (parseInt(b.qty, 10) || 0),
+        0,
+      );
+      const damaged = entry.damagedQty ?? boSum;
+      totalGoodAll += good;
+      totalDamagedAll += damaged;
 
+      const unitCost = entry.unitCost || 0;
+      entries.push({
+        id: genDocNumber("SI"),
+        materialId: entry.materialId,
+        materialName: entry.materialName,
+        sku: entry.sku || "",
+        category: "",
+        uom: entry.uom || "pcs",
+        vendorId: entry.vendorId || null,
+        vendorName: entry.vendorName || "General Merchandise",
+        receivedQty: received,
+        goodQty: good,
+        damagedQty: damaged,
+        unitCost,
+        totalCost: received * unitCost,
+        invoiceNo: entry.invoiceNumber || "",
+        deliveryDate: entry.dateReceived?.split("T")[0] || "",
+        notes: entry.notes || "",
+        receiptImage: entry.receiptImage || null,
+        dateReceived: entry.dateReceived,
+        dateAdded: new Date().toISOString(),
+      });
+    }
+
+    setPendingStockData(stockData);
+    setPendingEntries(entries);
+    setPendingGood(totalGoodAll);
+    setPendingDamaged(totalDamagedAll);
+    setPendingShortage(0);
+    setShowConfirmModal(true);
+  };
+
+  // Called when user clicks "Add Item" in the confirmation modal — makes API calls
+  const handleConfirmSave = async () => {
+    setShowConfirmModal(false);
+    if (!pendingStockData || pendingStockData.length === 0) return;
+    try {
+      for (const entry of pendingStockData) {
+        const good = entry.goodQty ?? 0;
         const invId = entry.materialId;
         const unitCost = entry.unitCost || 0;
 
@@ -1466,45 +1532,18 @@ export default function StockInPage() {
             });
           }
         }
-
-        entries.push({
-          id: genDocNumber("SI"),
-          materialId: entry.materialId,
-          materialName: entry.materialName,
-          sku: entry.sku || "",
-          category: "",
-          uom: entry.uom || "pcs",
-          vendorId: entry.vendorId || null,
-          vendorName: entry.vendorName || "General Merchandise",
-          receivedQty: received,
-          goodQty: good,
-          damagedQty: damaged,
-          unitCost,
-          totalCost: received * unitCost,
-          invoiceNo: entry.invoiceNumber || "",
-          deliveryDate: entry.dateReceived?.split("T")[0] || "",
-          notes: entry.notes || "",
-          receiptImage: entry.receiptImage || null,
-          dateReceived: entry.dateReceived,
-          dateAdded: new Date().toISOString(),
-        });
       }
 
       const [mats, sups] = await Promise.all([
         fetchInventory(token),
         fetchSuppliers(token),
       ]);
-      setMaterials(mats.map((m) => ({ ...m, id: m.id ?? m._id })));
+      const normalized = mats.map((m) => ({ ...m, id: m.id ?? m._id }));
+      setMaterials(normalized);
       setVendors(sups.map((v) => ({ ...v, id: v.id ?? v._id })));
-
-      setStockInLog((prev) => [...entries, ...prev]);
-
-      setPendingEntries(entries);
-      setPendingGood(totalGoodAll);
-      setPendingDamaged(totalDamagedAll);
-      setPendingShortage(0);
-      setShowConfirmModal(true);
+      setStockInLog(buildStockLog(normalized));
       setToast({ type: "success", message: "Stock-in saved successfully." });
+      setPendingStockData(null);
     } catch (e) {
       setInfoModal({
         title: "Stock-in failed",
@@ -1512,8 +1551,6 @@ export default function StockInPage() {
       });
     }
   };
-
-  const handleConfirmSave = () => setShowConfirmModal(false);
 
   // Reports
   const generateReport = () => {
@@ -1591,7 +1628,7 @@ export default function StockInPage() {
         "Invoice No",
         "Delivery Date",
         "Received Qty",
-        "Damaged",
+        "Bad Orders",
         "Unit Cost",
         "Total Cost",
       ].join(","),
@@ -1670,6 +1707,11 @@ export default function StockInPage() {
           new Date(a.dateAdded || a.dateReceived),
       );
   }, [stockInLog, historySearch, historyVendorFilter]);
+
+  useEffect(() => { setHPage(1); }, [historySearch, historyVendorFilter]);
+
+  const hTotalPages = Math.max(1, Math.ceil(filteredHistory.length / hRpp));
+  const pagedHistory = filteredHistory.slice((hPage - 1) * hRpp, hPage * hRpp);
 
   const historyVendors = useMemo(() => {
     const map = new Map();
@@ -1786,23 +1828,7 @@ export default function StockInPage() {
       )}
 
       {/* Page Header */}
-      <div className="page-header no-print">
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            gap: "1rem",
-          }}
-        >
-          <div>
-            <h1 className="page-title">Stock In</h1>
-            <p className="page-subtitle">
-              Manual stock entries — multi-material, per-variant, with invoice
-              tracking.
-            </p>
-          </div>
+      <div className="page-header no-print" style={{ justifyContent: "flex-end" }}>
           <button
             type="button"
             className="btn-primary"
@@ -1829,7 +1855,6 @@ export default function StockInPage() {
             </svg>
             Add Stock
           </button>
-        </div>
       </div>
 
       {/* Tabs */}
@@ -1837,9 +1862,12 @@ export default function StockInPage() {
         <div
           style={{
             display: "flex",
-            gap: 0,
+            gap: "0.25rem",
             marginBottom: "1.5rem",
-            borderBottom: "2px solid var(--border)",
+            background: "rgba(255,255,255,0.04)",
+            borderRadius: "10px",
+            padding: "0.25rem",
+            width: "fit-content",
           }}
         >
           {[
@@ -1851,19 +1879,15 @@ export default function StockInPage() {
               type="button"
               onClick={() => setActiveTab(tab.key)}
               style={{
-                padding: "0.75rem 1.25rem",
-                background: "transparent",
-                border: "none",
-                borderBottom:
-                  activeTab === tab.key
-                    ? "2px solid #D4A843"
-                    : "2px solid transparent",
-                color: activeTab === tab.key ? "#D4A843" : "var(--gray)",
-                fontWeight: activeTab === tab.key ? 700 : 600,
-                fontSize: "0.85rem",
+                padding: "0.625rem 1.25rem",
+                fontSize: "0.825rem",
+                fontWeight: 700,
                 cursor: "pointer",
-                transition: "all 0.2s",
-                marginBottom: "-2px",
+                borderRadius: "8px",
+                border: "none",
+                background: activeTab === tab.key ? "var(--gold)" : "transparent",
+                color: activeTab === tab.key ? "#000" : "var(--gray)",
+                transition: "all 0.15s",
               }}
             >
               {tab.label}
@@ -1983,8 +2007,6 @@ export default function StockInPage() {
               <div
                 style={{
                   overflowX: "auto",
-                  maxHeight: "60vh",
-                  overflowY: "auto",
                 }}
               >
                 <table
@@ -2016,7 +2038,7 @@ export default function StockInPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredHistory.map((e, idx) => (
+                    {pagedHistory.map((e, idx) => (
                       <tr
                         key={e.id || idx}
                         style={{
@@ -2140,6 +2162,23 @@ export default function StockInPage() {
                     ))}
                   </tbody>
                 </table>
+                {filteredHistory.length > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.625rem 1rem", borderTop: "1px solid var(--border)", flexWrap: "wrap", gap: "0.5rem", fontSize: "0.8rem", color: "var(--gray)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      Rows per page:
+                      <select value={hRpp} onChange={e => { setHRpp(Number(e.target.value)); setHPage(1); }} style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer" }}>
+                        {[5, 10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                      <button onClick={() => setHPage(p => Math.max(1, p - 1))} disabled={hPage <= 1} style={{ padding: "0.25rem 0.625rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: hPage <= 1 ? "var(--gray)" : "var(--white)", cursor: hPage <= 1 ? "not-allowed" : "pointer" }}>‹</button>
+                      <button onClick={() => setHPage(p => Math.min(hTotalPages, p + 1))} disabled={hPage >= hTotalPages} style={{ padding: "0.25rem 0.625rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: hPage >= hTotalPages ? "var(--gray)" : "var(--white)", cursor: hPage >= hTotalPages ? "not-allowed" : "pointer" }}>›</button>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                      Page: <span style={{ padding: "0.2rem 0.6rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", minWidth: "28px", textAlign: "center" }}>{hPage}</span> of {hTotalPages}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2413,7 +2452,7 @@ export default function StockInPage() {
                     color: "#D4A843",
                   },
                   {
-                    label: "Damaged on Arrival",
+                    label: "Bad Orders",
                     value: reportSummary.totalDamaged.toLocaleString(),
                     color: "#ef4444",
                   },
@@ -2641,7 +2680,7 @@ export default function StockInPage() {
                         "Material",
                         "Vendor",
                         "Qty",
-                        "Damaged",
+                        "Bad Orders",
                         "Unit Cost",
                         "Total",
                         "Invoice No.",
@@ -2804,9 +2843,9 @@ export default function StockInPage() {
           createSupplier(
             {
               name: data.name.trim(),
-              contactPerson: data.contact?.trim() || null,
-              phone: data.phone?.trim() || null,
-              email: data.email?.trim() || null,
+              contacts: data.contact?.trim() ? [data.contact.trim()] : [],
+              phones: data.phone?.trim() ? [data.phone.trim()] : [],
+              emails: data.email?.trim() ? [data.email.trim()] : [],
               address: data.address?.trim() || null,
               notes: null,
               itemsSupplied: (data.categories || []).map((name) => ({
@@ -2994,7 +3033,7 @@ export default function StockInPage() {
                         textTransform: "uppercase",
                       }}
                     >
-                      Damaged
+                      Bad Orders
                     </th>
                     <th
                       style={{

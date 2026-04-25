@@ -1,9 +1,84 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+
+function CategoryCombobox({ options, value, onChange, inputStyle, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef(null);
+
+  useEffect(() => { setQuery(value || ''); }, [value]);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = (options || []).filter((o) => !query || o.toLowerCase().includes(query.toLowerCase()));
+  const exactMatch = (options || []).some((o) => o.toLowerCase() === query.trim().toLowerCase());
+
+  const select = (name) => { onChange(name); setQuery(name); setOpen(false); };
+
+  const handleInput = (e) => {
+    const val = e.target.value;
+    setQuery(val);
+    onChange(val);
+    setOpen(true);
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative', flex: 1 }}>
+      <div style={{ position: 'relative' }}>
+        <input
+          value={query}
+          onChange={handleInput}
+          onFocus={() => setOpen(true)}
+          placeholder={placeholder || 'Select or type a category...'}
+          style={{ ...inputStyle, paddingRight: '2.25rem', width: '100%', boxSizing: 'border-box' }}
+        />
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          style={{ position: 'absolute', right: '0.6rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', padding: 0, display: 'flex', alignItems: 'center' }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points={open ? '18 15 12 9 6 15' : '6 9 12 15 18 9'} />
+          </svg>
+        </button>
+      </div>
+      {open && (filtered.length > 0 || (query.trim() && !exactMatch)) && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 300, background: 'var(--dark2, #1a1a1a)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden', maxHeight: '180px', overflowY: 'auto' }}>
+          {filtered.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onMouseDown={() => select(name)}
+              style={{ display: 'block', width: '100%', padding: '0.55rem 0.75rem', background: 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.04)', color: '#E5E2E1', fontSize: '0.82rem', textAlign: 'left', cursor: 'pointer' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(212,168,67,0.1)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              {name}
+            </button>
+          ))}
+          {query.trim() && !exactMatch && (
+            <button
+              type="button"
+              onMouseDown={() => { onChange(query.trim()); setOpen(false); }}
+              style={{ display: 'block', width: '100%', padding: '0.55rem 0.75rem', background: 'rgba(212,168,67,0.06)', border: 'none', borderTop: filtered.length > 0 ? '1px solid rgba(255,255,255,0.08)' : 'none', color: '#D4A843', fontSize: '0.82rem', textAlign: 'left', cursor: 'pointer', fontWeight: 600 }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(212,168,67,0.15)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(212,168,67,0.06)')}
+            >
+              + Use &ldquo;{query.trim()}&rdquo; as new category
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 import { useAuth } from '@/contexts/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import CustomDropdown from '@/app/components/CustomDropdown';
 import {
   fetchSuppliers,
   createSupplier,
@@ -70,41 +145,24 @@ const LockIcon = () => (
   </svg>
 );
 
-// ─── Shared styles ────────────────────────────────────────
-const inputStyle = {
-  width: '100%',
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: '8px',
-  color: '#E5E2E1',
-  padding: '0.625rem 0.75rem',
-  fontSize: '0.85rem',
-  outline: 'none',
-  boxSizing: 'border-box',
-};
-const inputErrorStyle = { ...inputStyle, borderColor: '#ef4444' };
-const labelStyle = {
-  display: 'block',
-  fontSize: '0.78rem',
-  fontWeight: 700,
-  color: 'var(--gray)',
-  marginBottom: '6px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.04em',
-};
-const errorText = {
-  fontSize: '0.72rem',
-  color: '#ef4444',
-  marginTop: '0.2rem',
-  display: 'block',
-};
+
+function normalizeVendor(v) {
+  const base = { ...v, id: v.id ?? v._id };
+  return {
+    ...base,
+    contacts: Array.isArray(base.contacts) ? base.contacts : (base.contactPerson ? [base.contactPerson] : []),
+    phones:   Array.isArray(base.phones)   ? base.phones   : (base.phone        ? [base.phone]        : []),
+    emails:   Array.isArray(base.emails)   ? base.emails   : (base.email        ? [base.email]        : []),
+  };
+}
 
 function normalizeVendorList(list) {
-  return (Array.isArray(list) ? list : []).map((v) => ({ ...v, id: v.id ?? v._id }));
+  return (Array.isArray(list) ? list : []).map(normalizeVendor);
 }
 
 // ─── Vendor Catalog Modal ──────────────────────────────────
 function VendorCatalogModal({ vendor, materials, inventory, onClose }) {
+  const [catalogSearch, setCatalogSearch] = useState('');
   if (!vendor) return null;
 
   const linkedMaterials = useMemo(
@@ -220,8 +278,19 @@ function VendorCatalogModal({ vendor, materials, inventory, onClose }) {
           {/* Purchase history */}
           {batchRows.length > 0 ? (
             <div>
-              <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '0.6rem' }}>
-                Purchase History ({batchRows.length} batches)
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>
+                  Purchase History ({batchRows.length} batches)
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ position: 'absolute', left: '0.5rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--gray)', pointerEvents: 'none' }}><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                  <input
+                    value={catalogSearch}
+                    onChange={(e) => setCatalogSearch(e.target.value)}
+                    placeholder="Filter by item or invoice..."
+                    style={{ padding: '0.4rem 0.75rem 0.4rem 1.75rem', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', borderRadius: '6px', color: '#E5E2E1', fontSize: '0.75rem', outline: 'none', width: '200px' }}
+                  />
+                </div>
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                 <thead>
@@ -232,7 +301,11 @@ function VendorCatalogModal({ vendor, materials, inventory, onClose }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {batchRows.map((r, i) => (
+                  {batchRows.filter((r) => {
+                    if (!catalogSearch.trim()) return true;
+                    const q = catalogSearch.toLowerCase();
+                    return r.itemName?.toLowerCase().includes(q) || r.invoiceNumber?.toLowerCase().includes(q);
+                  }).map((r, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                       <td style={{ padding: '0.5rem 0.6rem', color: '#E5E2E1' }}>{r.itemName}</td>
                       <td style={{ padding: '0.5rem 0.6rem', color: 'var(--gray)', fontFamily: 'monospace', fontSize: '0.72rem' }}>{r.invoiceNumber}</td>
@@ -261,16 +334,17 @@ function VendorCatalogModal({ vendor, materials, inventory, onClose }) {
 function VendorFormModal({ vendor, allVendors, materials, units, onClose, onSave, isSubmitting, submitError }) {
   const [form, setForm] = useState({
     name: '',
-    contactPerson: '',
-    phone: '',
-    email: '',
+    contact: [],
+    phones: [],
+    emails: [],
     address: '',
     notes: '',
     itemsSupplied: [],
   });
+  const [newContact, setNewContact] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newEmail, setNewEmail] = useState('');
   const [itemNameInput, setItemNameInput] = useState('');
-  const [itemUomInput, setItemUomInput] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const [errors, setErrors] = useState({});
 
   const linkedMaterials = useMemo(
@@ -285,324 +359,307 @@ function VendorFormModal({ vendor, allVendors, materials, units, onClose, onSave
     return items;
   }, [linkedMaterials]);
 
-  const allKnownItems = useMemo(() => {
+  const availableCategories = useMemo(() => {
     const seen = new Set();
-    const items = [];
+    (materials || []).forEach((m) => { if (m.category) seen.add(m.category); });
     (allVendors || []).forEach((v) => {
       (v.itemsSupplied || []).forEach((item) => {
         const name = typeof item === 'string' ? item : item.name;
-        if (name && !seen.has(name)) { seen.add(name); items.push(name); }
+        if (name) seen.add(name);
       });
     });
-    return items.sort();
-  }, [allVendors]);
-
-  const suggestions = useMemo(() => {
-    const existing = new Set((form.itemsSupplied || []).map((i) => i.name?.toLowerCase()));
-    const q = itemNameInput.toLowerCase();
-    return allKnownItems.filter((n) => !existing.has(n.toLowerCase()) && (!q || n.toLowerCase().includes(q)));
-  }, [itemNameInput, allKnownItems, form.itemsSupplied]);
+    return [...seen].sort();
+  }, [materials, allVendors]);
 
   useEffect(() => {
     if (vendor) {
       setForm({
         name: vendor.name || '',
-        contactPerson: vendor.contactPerson || '',
-        phone: vendor.phone || '',
-        email: vendor.email || '',
+        contact: Array.isArray(vendor.contacts) ? vendor.contacts : (vendor.contactPerson ? [vendor.contactPerson] : []),
+        phones:  Array.isArray(vendor.phones)   ? vendor.phones   : (vendor.phone        ? [vendor.phone]        : []),
+        emails:  Array.isArray(vendor.emails)   ? vendor.emails   : (vendor.email        ? [vendor.email]        : []),
         address: vendor.address || '',
         notes: vendor.notes || '',
         itemsSupplied: (Array.isArray(vendor.itemsSupplied) ? vendor.itemsSupplied : []).map(
-          (item) => typeof item === 'string' ? { name: item, uom: '' } : { name: item.name || '', uom: item.uom || '' }
+          (item) => typeof item === 'string' ? { name: item, uom: 'pcs' } : { name: item.name || '', uom: item.uom || 'pcs' }
         ),
       });
+    } else {
+      setForm({ name: '', contact: [], phones: [], emails: [], address: '', notes: '', itemsSupplied: [] });
     }
     setItemNameInput('');
-    setItemUomInput(units && units.length > 0 ? units[0].code : '');
+    setNewContact('');
+    setNewPhone('');
+    setNewEmail('');
     setErrors({});
-  }, [vendor, units]);
+  }, [vendor]);
 
-  useEffect(() => {
-    if (!itemUomInput && units && units.length > 0) setItemUomInput(units[0].code);
-  }, [units, itemUomInput]);
+  const fInStyle = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#E5E2E1', padding: '0.625rem 0.75rem', fontSize: '0.85rem', outline: 'none' };
+  const fInErrStyle = { ...fInStyle, borderColor: '#ef4444' };
+  const addBtn = { background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '6px', padding: '0.5rem 0.75rem', color: '#D4A843', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' };
+  const chipStyle = { display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.25rem 0.5rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.75rem', color: '#E5E2E1' };
+  const chipXBtn = { background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', padding: 0, display: 'flex' };
 
   const addItem = () => {
     const trimmed = itemNameInput.trim();
     if (!trimmed) return;
     if ((form.itemsSupplied || []).some((i) => i.name.toLowerCase() === trimmed.toLowerCase())) return;
-    setForm((p) => ({ ...p, itemsSupplied: [...(p.itemsSupplied || []), { name: trimmed, uom: itemUomInput }] }));
+    setForm((p) => ({ ...p, itemsSupplied: [...(p.itemsSupplied || []), { name: trimmed, uom: 'pcs' }] }));
     setItemNameInput('');
-    setShowSuggestions(false);
   };
 
   const removeItem = (idx) => {
-    const item = form.itemsSupplied[idx];
-    if (usedItems.has(item.name)) return;
+    if (usedItems.has(form.itemsSupplied[idx]?.name)) return;
     setForm((p) => ({ ...p, itemsSupplied: p.itemsSupplied.filter((_, i) => i !== idx) }));
   };
 
-  const handleItemKeyDown = (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); addItem(); }
+  const addContact = () => {
+    const trimmed = newContact.trim();
+    if (!trimmed || form.contact.includes(trimmed)) return;
+    setForm((p) => ({ ...p, contact: [...p.contact, trimmed] }));
+    setNewContact('');
+    if (errors.contact) setErrors((er) => ({ ...er, contact: '' }));
+  };
+
+  const addPhone = () => {
+    const trimmed = newPhone.trim();
+    if (!trimmed || form.phones.includes(trimmed)) return;
+    setForm((p) => ({ ...p, phones: [...p.phones, trimmed] }));
+    setNewPhone('');
+    if (errors.phone) setErrors((er) => ({ ...er, phone: '' }));
+  };
+
+  const addEmail = () => {
+    const trimmed = newEmail.trim();
+    if (!trimmed || form.emails.includes(trimmed)) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setErrors((er) => ({ ...er, email: 'Enter a valid email address.' }));
+      return;
+    }
+    setForm((p) => ({ ...p, emails: [...p.emails, trimmed] }));
+    setNewEmail('');
+    if (errors.email) setErrors((er) => ({ ...er, email: '' }));
   };
 
   const handlePhoneInput = (val) => {
-    let cleaned = val.replace(/[^0-9+\-\s]/g, '');
-    if (cleaned.startsWith('+63')) {
-      const digits = cleaned.slice(3).replace(/[^0-9]/g, '').slice(0, 10);
-      cleaned = '+63' + digits;
-    } else if (cleaned.startsWith('63') && !cleaned.startsWith('6')) {
-      const digits = cleaned.slice(2).replace(/[^0-9]/g, '').slice(0, 10);
-      cleaned = '+63' + digits;
-    } else {
-      const digits = cleaned.replace(/[^0-9]/g, '').slice(0, 11);
-      cleaned = digits;
-    }
-    setForm((p) => ({ ...p, phone: cleaned }));
-    if (errors.phone) setErrors((er) => ({ ...er, phone: '' }));
+    let cleaned = val.replace(/[^0-9+]/g, '');
+    if (cleaned.startsWith('+63')) cleaned = '+63' + cleaned.slice(3).replace(/[^0-9]/g, '').slice(0, 10);
+    else if (cleaned.startsWith('0')) cleaned = '0' + cleaned.slice(1).replace(/[^0-9]/g, '').slice(0, 10);
+    else cleaned = cleaned.replace(/[^0-9]/g, '').slice(0, 11);
+    setNewPhone(cleaned);
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     const newErrors = {};
-    if (!form.name.trim()) newErrors.name = 'Company name is required.';
-    if ((form.itemsSupplied || []).filter((i) => i.name?.trim()).length === 0)
-      newErrors.items = 'Add at least one item this vendor supplies.';
-    if (form.phone && !/^(\+63\d{10}|09\d{9}|0\d{9,10})$/.test(form.phone.replace(/\s/g, '')))
-      newErrors.phone = 'Enter a valid PH phone number (e.g. 09171234567 or +639171234567).';
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
-      newErrors.email = 'Enter a valid email address.';
+    if (!form.name.trim()) newErrors.name = 'Company name is required';
+    if ((form.itemsSupplied || []).filter((i) => i.name?.trim()).length === 0) newErrors.items = 'Add at least one item';
+    if (form.contact.length === 0) newErrors.contact = 'Add at least one contact person';
+    if (form.phones.length === 0) newErrors.phone = 'Add at least one phone number';
+    if (form.emails.length === 0) newErrors.email = 'Add at least one email';
+    if (!form.address.trim()) newErrors.address = 'Address is required';
     if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
     setErrors({});
-    onSave({ ...form, itemsSupplied: (form.itemsSupplied || []).filter((i) => i.name?.trim()) });
+    onSave({
+      name: form.name,
+      contacts: form.contact,
+      phones: form.phones,
+      emails: form.emails,
+      address: form.address,
+      notes: form.notes,
+      itemsSupplied: (form.itemsSupplied || []).filter((i) => i.name?.trim()),
+    });
   };
 
-  const uomSelectOrInput = (value, onChange) => {
-    if (units && units.length > 0) {
-      return (
-        <CustomDropdown
-          value={value}
-          onChange={onChange}
-          options={units.map((u) => ({ value: u.code, label: u.name }))}
-          placeholder="UOM"
-          style={{ flex: 1, minWidth: '110px' }}
-        />
-      );
-    }
-    return (
-      <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder="UOM" style={{ ...inputStyle, flex: 1, minWidth: '80px' }} />
-    );
-  };
+  const uomOptions = units && units.length > 0
+    ? units.map((u) => <option key={u.code} value={u.code}>{u.name}</option>)
+    : [
+        <option key="pcs" value="pcs">Pieces</option>,
+        <option key="bottle" value="bottle">Bottle</option>,
+        <option key="liter" value="liter">Liter</option>,
+        <option key="kg" value="kg">Kilogram</option>,
+        <option key="meter" value="meter">Meter</option>,
+        <option key="roll" value="roll">Roll</option>,
+        <option key="box" value="box">Box</option>,
+        <option key="pack" value="pack">Pack</option>,
+        <option key="set" value="set">Set</option>,
+      ];
 
   return (
-    <div
-      onClick={onClose}
-      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '580px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-      >
-        {/* Header */}
-        <div style={{ padding: '24px 28px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#E5E2E1' }}>
-            {vendor ? 'Edit Vendor' : 'Add New Vendor'}
-          </h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', padding: '4px' }}>
+    <div className="modal-overlay">
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '560px' }}>
+        <div className="modal-header">
+          <h2 className="modal-title">{vendor ? 'Edit Vendor' : 'Add New Vendor'}</h2>
+          <button className="modal-close" onClick={onClose}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
           </button>
         </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
-        {/* Body */}
-        <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-          {/* Company Name */}
-          <div>
-            <label style={labelStyle}>
-              Company Name <span style={{ color: '#ef4444' }}>*</span>
-              {hasLinkedMaterials && (
-                <span style={{ fontSize: '0.65rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>
-                  (Locked — {linkedMaterials.length} material{linkedMaterials.length > 1 ? 's' : ''} linked)
-                </span>
-              )}
-            </label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => { setForm((p) => ({ ...p, name: e.target.value.slice(0, 100) })); if (errors.name) setErrors((er) => ({ ...er, name: '' })); }}
-              placeholder="e.g. Global Garments Inc."
-              maxLength={100}
-              readOnly={hasLinkedMaterials}
-              style={hasLinkedMaterials ? { ...inputStyle, opacity: 0.5, cursor: 'not-allowed' } : (errors.name ? inputErrorStyle : inputStyle)}
-            />
-            {errors.name && <span style={errorText}>{errors.name}</span>}
-          </div>
-
-          {/* Items Supplied */}
-          <div>
-            <label style={labelStyle}>
-              Items Supplied <span style={{ color: '#ef4444' }}>*</span>
-              {hasLinkedMaterials && (
-                <span style={{ fontSize: '0.6rem', color: 'var(--gray)', marginLeft: '0.5rem', fontWeight: 400 }}>
-                  (Locked items are used by linked materials)
-                </span>
-              )}
-            </label>
-            {errors.items && <span style={errorText}>{errors.items}</span>}
-
-            {/* Existing items */}
-            {(form.itemsSupplied || []).length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                {(form.itemsSupplied || []).map((item, i) => {
-                  const isUsed = usedItems.has(item.name);
-                  return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', padding: '0.5rem 0.75rem', background: isUsed ? 'rgba(212,168,67,0.08)' : 'rgba(255,255,255,0.04)', border: `1px solid ${isUsed ? 'rgba(212,168,67,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                        <span style={{ fontSize: '0.82rem', color: '#E5E2E1', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
-                        <span style={{ fontSize: '0.62rem', color: 'var(--gray)', textTransform: 'uppercase' }}>{item.uom || '—'}</span>
-                      </div>
-                      {isUsed ? (
-                        <LockIcon />
-                      ) : (
-                        <button type="button" onClick={() => removeItem(i)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', padding: '0.2rem 0.4rem', cursor: 'pointer', color: '#f87171', fontSize: '0.7rem', lineHeight: 1 }}>✕</button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Add item row */}
-            <div style={{ display: 'flex', gap: '0.5rem', position: 'relative' }}>
-              <input
-                type="text"
-                value={itemNameInput}
-                onChange={(e) => { setItemNameInput(e.target.value.slice(0, 60)); setShowSuggestions(true); }}
-                onFocus={() => setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                onKeyDown={handleItemKeyDown}
-                placeholder="Item name…"
-                maxLength={60}
-                style={{ ...inputStyle, flex: 2 }}
-              />
-              {uomSelectOrInput(itemUomInput, setItemUomInput)}
-              <button type="button" onClick={addItem} className="btn-primary" style={{ padding: '0 1rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                + Add
-              </button>
-              {/* Suggestions */}
-              {showSuggestions && suggestions.length > 0 && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: '#1a1a1a', border: '1px solid var(--border)', borderRadius: '8px', maxHeight: '160px', overflowY: 'auto', marginTop: '0.25rem', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
-                  {suggestions.map((name, i) => (
-                    <button key={i} type="button" onMouseDown={() => { setItemNameInput(name); setShowSuggestions(false); }}
-                      style={{ display: 'block', width: '100%', padding: '0.5rem 0.75rem', background: 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.05)', color: '#E5E2E1', fontSize: '0.8rem', textAlign: 'left', cursor: 'pointer' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(212,168,67,0.1)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      {name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Contact Person */}
-          <div>
-            <label style={labelStyle}>
-              Contact Person
-              <span style={{ fontWeight: 400, color: 'var(--gray)', marginLeft: '0.4rem', textTransform: 'none', letterSpacing: 0 }}>({form.contactPerson.length}/60)</span>
-            </label>
-            <input
-              type="text"
-              value={form.contactPerson}
-              onChange={(e) => {
-                const val = e.target.value.replace(/[^a-zA-ZÀ-ÿ\s'.,-]/g, '').slice(0, 60);
-                setForm((p) => ({ ...p, contactPerson: val }));
-              }}
-              placeholder="e.g. Juan dela Cruz"
-              maxLength={60}
-              style={inputStyle}
-            />
-            <span style={{ fontSize: '0.68rem', color: 'var(--gray)', marginTop: '3px', display: 'block' }}>Letters and spaces only</span>
-          </div>
-
-          {/* Phone + Email */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            {/* Company Name */}
             <div>
-              <label style={labelStyle}>
-                Phone
-                <span style={{ fontWeight: 400, color: 'var(--gray)', marginLeft: '0.4rem', textTransform: 'none', letterSpacing: 0 }}>({form.phone.replace(/\s/g,'').length}/13)</span>
+              <label className="form-label">
+                Company Name <span className="required">*</span>
+                {hasLinkedMaterials && (
+                  <span style={{ fontSize: '0.65rem', color: '#f59e0b', marginLeft: '0.5rem', fontWeight: 600 }}>
+                    (Locked: {linkedMaterials.length} material{linkedMaterials.length > 1 ? 's' : ''} linked)
+                  </span>
+                )}
               </label>
               <input
                 type="text"
-                value={form.phone}
-                onChange={(e) => handlePhoneInput(e.target.value)}
-                placeholder="09171234567"
-                maxLength={14}
-                style={errors.phone ? inputErrorStyle : inputStyle}
-              />
-              {errors.phone
-                ? <span style={errorText}>{errors.phone}</span>
-                : <span style={{ fontSize: '0.68rem', color: 'var(--gray)', marginTop: '3px', display: 'block' }}>09xxxxxxxxx or +63xxxxxxxxxx</span>
-              }
-            </div>
-            <div>
-              <label style={labelStyle}>Email</label>
-              <input
-                type="email"
-                value={form.email}
-                onChange={(e) => { setForm((p) => ({ ...p, email: e.target.value.slice(0, 100) })); if (errors.email) setErrors((er) => ({ ...er, email: '' })); }}
-                placeholder="supplier@example.com"
+                value={form.name}
+                onChange={(e) => { setForm((p) => ({ ...p, name: e.target.value.slice(0, 100) })); if (errors.name) setErrors((er) => ({ ...er, name: '' })); }}
+                placeholder="e.g., Global Garments Inc."
                 maxLength={100}
-                style={errors.email ? inputErrorStyle : inputStyle}
+                readOnly={hasLinkedMaterials}
+                style={hasLinkedMaterials ? { ...fInStyle, opacity: 0.5, cursor: 'not-allowed' } : { ...fInStyle, borderColor: errors.name ? '#ef4444' : undefined }}
               />
-              {errors.email && <span style={errorText}>{errors.email}</span>}
+              {errors.name && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '0.2rem', display: 'block' }}>{errors.name}</span>}
             </div>
-          </div>
 
-          {/* Address */}
-          <div>
-            <label style={labelStyle}>
-              Address
-              <span style={{ fontWeight: 400, color: 'var(--gray)', marginLeft: '0.4rem', textTransform: 'none', letterSpacing: 0 }}>({form.address.length}/150)</span>
-            </label>
-            <input
-              type="text"
-              value={form.address}
-              onChange={(e) => setForm((p) => ({ ...p, address: e.target.value.slice(0, 150) }))}
-              placeholder="Street, City, Province"
-              maxLength={150}
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label style={labelStyle}>
-              Notes
-              <span style={{ fontWeight: 400, color: 'var(--gray)', marginLeft: '0.4rem', textTransform: 'none', letterSpacing: 0 }}>({(form.notes || '').length}/300)</span>
-            </label>
-            <textarea
-              value={form.notes}
-              onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value.slice(0, 300) }))}
-              placeholder="Optional notes about this vendor"
-              rows={3}
-              maxLength={300}
-              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
-            />
-          </div>
-
-          {submitError && (
-            <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'rgba(239,68,68,0.08)', border: '1px solid var(--red)', fontSize: '13px', color: 'var(--red)' }}>
-              {submitError}
+            {/* Items Supplied */}
+            <div>
+              <label className="form-label">
+                Items Supplied <span className="required">*</span>
+                {hasLinkedMaterials && (
+                  <span style={{ fontSize: '0.6rem', color: 'var(--gray)', marginLeft: '0.5rem', fontWeight: 400 }}>(Locked items cannot be removed)</span>
+                )}
+              </label>
+              {errors.items && <span style={{ fontSize: '0.72rem', color: '#ef4444', marginBottom: '0.3rem', display: 'block' }}>{errors.items}</span>}
+              {(form.itemsSupplied || []).length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  {(form.itemsSupplied || []).map((item, i) => {
+                    const isUsed = usedItems.has(item.name);
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', padding: '0.5rem 0.75rem', background: isUsed ? 'rgba(212,168,67,0.08)' : 'rgba(255,255,255,0.04)', border: `1px solid ${isUsed ? 'rgba(212,168,67,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                          <span style={{ fontSize: '0.82rem', color: '#E5E2E1', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase' }}>{item.uom || 'pcs'}</span>
+                        </div>
+                        {isUsed ? (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2.5" style={{ flexShrink: 0 }}><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+                        ) : (
+                          <button type="button" onClick={() => removeItem(i)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', padding: '0.2rem 0.4rem', cursor: 'pointer', color: '#f87171', lineHeight: 1, fontSize: '0.7rem' }}>✕</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <CategoryCombobox
+                  options={availableCategories.filter((n) => !(form.itemsSupplied || []).some((i) => i.name?.toLowerCase() === n.toLowerCase()))}
+                  value={itemNameInput}
+                  onChange={setItemNameInput}
+                  inputStyle={fInStyle}
+                />
+                <button type="button" className="btn-primary" onClick={addItem} style={{ padding: '0 1rem', whiteSpace: 'nowrap', flexShrink: 0 }}>+ Add</button>
+              </div>
             </div>
-          )}
 
-          {/* Actions */}
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-            <button type="button" onClick={onClose} disabled={isSubmitting} style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--gray)', fontSize: '14px', cursor: isSubmitting ? 'not-allowed' : 'pointer', opacity: isSubmitting ? 0.6 : 1 }}>
-              Cancel
-            </button>
-            <button type="submit" disabled={isSubmitting} className="btn-primary" style={{ padding: '10px 28px', opacity: isSubmitting ? 0.6 : 1 }}>
-              {isSubmitting ? 'Saving…' : (vendor ? 'Save Changes' : 'Add Vendor')}
+            {/* Contact Person */}
+            <div>
+              <label className="form-label">Contact Person <span className="required">*</span></label>
+              {form.contact.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                  {form.contact.map((c, idx) => (
+                    <span key={idx} style={chipStyle}>
+                      {c}
+                      <button type="button" onClick={() => setForm((p) => ({ ...p, contact: p.contact.filter((_, i) => i !== idx) }))} style={chipXBtn}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input type="text" style={fInStyle} value={newContact}
+                  onChange={(e) => setNewContact(e.target.value.slice(0, 80))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addContact(); } }}
+                  placeholder="Juan Dela Cruz" maxLength={80}
+                />
+                <button type="button" onClick={addContact} style={addBtn}>+ Add</button>
+              </div>
+              {errors.contact && <p style={{ fontSize: '0.72rem', color: 'var(--red)', marginTop: '0.25rem' }}>{errors.contact}</p>}
+            </div>
+
+            {/* Email */}
+            <div>
+              <label className="form-label">Email <span className="required">*</span></label>
+              {form.emails.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                  {form.emails.map((e, idx) => (
+                    <span key={idx} style={chipStyle}>
+                      {e}
+                      <button type="button" onClick={() => setForm((p) => ({ ...p, emails: p.emails.filter((_, i) => i !== idx) }))} style={chipXBtn}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input type="email" style={fInStyle} value={newEmail}
+                  onChange={(e) => { setNewEmail(e.target.value.slice(0, 100)); if (errors.email) setErrors((er) => ({ ...er, email: '' })); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
+                  placeholder="vendor@email.com" maxLength={100}
+                />
+                <button type="button" onClick={addEmail} style={addBtn}>+ Add</button>
+              </div>
+              {errors.email && <p style={{ fontSize: '0.72rem', color: 'var(--red)', marginTop: '0.25rem' }}>{errors.email}</p>}
+            </div>
+
+            {/* Phone */}
+            <div>
+              <label className="form-label">Phone <span className="required">*</span></label>
+              {form.phones.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                  {form.phones.map((ph, idx) => (
+                    <span key={idx} style={chipStyle}>
+                      {ph}
+                      <button type="button" onClick={() => setForm((p) => ({ ...p, phones: p.phones.filter((_, i) => i !== idx) }))} style={chipXBtn}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input type="text" style={fInStyle} value={newPhone}
+                  onChange={(e) => handlePhoneInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPhone(); } }}
+                  placeholder="09xx-xxx-xxxx" maxLength={15} inputMode="tel"
+                />
+                <button type="button" onClick={addPhone} style={addBtn}>+ Add</button>
+              </div>
+              {errors.phone && <p style={{ fontSize: '0.72rem', color: 'var(--red)', marginTop: '0.25rem' }}>{errors.phone}</p>}
+            </div>
+
+            {/* Address */}
+            <div>
+              <label className="form-label">Address <span className="required">*</span></label>
+              <textarea
+                style={{ ...fInStyle, resize: 'vertical', minHeight: '60px' }}
+                value={form.address}
+                onChange={(e) => { setForm((p) => ({ ...p, address: e.target.value.slice(0, 200) })); if (errors.address) setErrors((er) => ({ ...er, address: '' })); }}
+                placeholder="Full address" maxLength={200}
+              />
+              {errors.address && <p style={{ fontSize: '0.72rem', color: 'var(--red)', marginTop: '0.25rem' }}>{errors.address}</p>}
+            </div>
+
+            {submitError && (
+              <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'rgba(239,68,68,0.08)', border: '1px solid var(--red)', fontSize: '13px', color: 'var(--red)' }}>
+                {submitError}
+              </div>
+            )}
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmitting}>Cancel</button>
+            <button type="submit" className="btn-primary" disabled={isSubmitting} style={{ opacity: isSubmitting ? 0.6 : 1 }}>
+              {isSubmitting ? 'Saving…' : (vendor ? 'Save Changes' : 'Save Vendor')}
             </button>
           </div>
         </form>
@@ -612,7 +669,7 @@ function VendorFormModal({ vendor, allVendors, materials, units, onClose, onSave
 }
 
 // ─── Main Tab ─────────────────────────────────────────────
-export default function VendorsApiTab({ onVendorsChange, materials = [], units = [] }) {
+export default function VendorsApiTab({ onVendorsChange, materials = [], units = [], onOpenUnits }) {
   const { token } = useAuth();
 
   const [suppliers, setSuppliers]   = useState([]);
@@ -662,9 +719,9 @@ export default function VendorsApiTab({ onVendorsChange, materials = [], units =
     const q = search.toLowerCase();
     return suppliers.filter((s) =>
       s.name?.toLowerCase().includes(q) ||
-      s.contactPerson?.toLowerCase().includes(q) ||
-      s.email?.toLowerCase().includes(q) ||
-      s.phone?.toLowerCase().includes(q),
+      (s.contacts || []).some((c) => c.toLowerCase().includes(q)) ||
+      (s.emails || []).some((e) => e.toLowerCase().includes(q)) ||
+      (s.phones || []).some((p) => p.toLowerCase().includes(q)),
     );
   }, [suppliers, search]);
 
@@ -712,11 +769,6 @@ export default function VendorsApiTab({ onVendorsChange, materials = [], units =
       <div>
         {/* Toolbar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-          {/* Inline count badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#E5E2E1', lineHeight: 1 }}>{suppliers.length}</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Vendors</span>
-          </div>
           {/* Search + Add */}
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
             <div className="search-wrapper" style={{ maxWidth: '300px' }}>
@@ -726,10 +778,22 @@ export default function VendorsApiTab({ onVendorsChange, materials = [], units =
               <input className="search-input" placeholder="Search vendors…" value={search} onChange={(e) => setSearch(e.target.value)} />
               {search && <button className="search-clear" onClick={() => setSearch('')}>×</button>}
             </div>
-            <button className="btn-primary" onClick={openCreate}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
-              Add New Supplier
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {onOpenUnits && (
+                <button
+                  type="button"
+                  onClick={onOpenUnits}
+                  style={{ padding: "0.625rem 1rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--gray)", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", whiteSpace: "nowrap" }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="4" rx="1"/><rect x="2" y="10" width="20" height="4" rx="1"/><rect x="2" y="16" width="20" height="4" rx="1"/></svg>
+                  Units
+                </button>
+              )}
+              <button className="btn-primary" onClick={openCreate}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
+                Add New Vendor
+              </button>
+            </div>
           </div>
         </div>
 
@@ -798,19 +862,21 @@ export default function VendorsApiTab({ onVendorsChange, materials = [], units =
 
                   {/* Contact Info */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', fontSize: '0.825rem' }}>
-                    {v.contactPerson && (
+                    {(v.contacts || []).length > 0 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#E5E2E1' }}>
-                        <span style={{ color: 'var(--gray)', flexShrink: 0 }}><PersonIcon /></span> {v.contactPerson}
+                        <span style={{ color: 'var(--gray)', flexShrink: 0 }}><PersonIcon /></span>
+                        {v.contacts[0]}
+                        {v.contacts.length > 1 && <span style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>+{v.contacts.length - 1}</span>}
                       </div>
                     )}
-                    {v.phone && (
+                    {(v.phones || []).length > 0 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#E5E2E1' }}>
-                        <span style={{ color: 'var(--gray)', flexShrink: 0 }}><PhoneIcon /></span> {v.phone}
+                        <span style={{ color: 'var(--gray)', flexShrink: 0 }}><PhoneIcon /></span> {v.phones[0]}
                       </div>
                     )}
-                    {v.email && (
+                    {(v.emails || []).length > 0 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--gray)' }}>
-                        <span style={{ flexShrink: 0 }}><EmailIcon /></span> {v.email}
+                        <span style={{ flexShrink: 0 }}><EmailIcon /></span> {v.emails[0]}
                       </div>
                     )}
                     {v.address && (

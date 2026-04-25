@@ -42,7 +42,7 @@ function fifoUnitCostForBom(mat, qty) {
   const q = Number(qty) || 1;
   if (!mat) return 0;
   if (!mat.batches?.length)
-    return Number(mat.baseCost ?? mat.averageCost ?? 0);
+    return Number(mat.baseCost || 0);
   const active = [...mat.batches]
     .filter((b) => (b.remainingQty || 0) > 0)
     .sort(
@@ -50,7 +50,7 @@ function fifoUnitCostForBom(mat, qty) {
         new Date(a.dateReceived) - new Date(b.dateReceived),
     );
   if (!active.length)
-    return Number(mat.baseCost ?? mat.averageCost ?? 0);
+    return Number(mat.baseCost || 0);
   let remaining = q;
   let cost = 0;
   for (const batch of active) {
@@ -996,16 +996,18 @@ function supplierPayloadFromVendorRecord(v) {
     })
     .filter((i) => i.name);
 
+  const toArr = (newField, oldField) => {
+    if (Array.isArray(newField) && newField.length > 0) return newField;
+    if (Array.isArray(oldField) && oldField.length > 0) return oldField;
+    if (typeof oldField === "string" && oldField.trim()) return [oldField.trim()];
+    return [];
+  };
+
   return {
     name: (v.name || "").trim(),
-    contactPerson:
-      Array.isArray(v.contact) && v.contact[0]
-        ? v.contact[0]
-        : v.contactPerson || "",
-    phone:
-      Array.isArray(v.phone) && v.phone[0] ? v.phone[0] : v.phone || "",
-    email:
-      Array.isArray(v.email) && v.email[0] ? v.email[0] : v.email || "",
+    contacts: toArr(v.contacts, v.contact),
+    phones:   toArr(v.phones,   v.phone),
+    emails:   toArr(v.emails,   v.email),
     address: v.address || "",
     notes: v.notes || "",
     itemsSupplied: items,
@@ -1021,13 +1023,18 @@ function MaterialMasterTab({
   units,
   refreshMaterials,
   onVendorsChange,
+  onOpenUnits,
 }) {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [expandedParents, setExpandedParents] = useState(new Set());
+  const [matPage, setMatPage] = useState(1);
+  const [matPerPage, setMatPerPage] = useState(10);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editMaterial, setEditMaterial] = useState(null);
   const [viewMaterial, setViewMaterial] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [saveConfirm, setSaveConfirm] = useState({ open: false, args: null });
   const [infoModal, setInfoModal] = useState({
     isOpen: false,
     title: "",
@@ -1049,6 +1056,12 @@ function MaterialMasterTab({
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
   }, [refreshMaterials]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   // ── Batch Helper: Compute stock from batches ──────────────────────────────
   const getStockQty = (material) => {
@@ -1209,6 +1222,11 @@ function MaterialMasterTab({
     return result;
   }, [search, categoryFilter, groupedMaterials]);
 
+  useEffect(() => { setMatPage(1); }, [search, categoryFilter]);
+
+  const totalMatPages = Math.max(1, Math.ceil(filteredMaterials.length / matPerPage));
+  const pagedMaterials = filteredMaterials.slice((matPage - 1) * matPerPage, matPage * matPerPage);
+
   const toggleExpand = (id) => {
     setExpandedParents((prev) => {
       const next = new Set(prev);
@@ -1245,7 +1263,7 @@ function MaterialMasterTab({
       setInfoModal({
         isOpen: true,
         title: "Cannot Delete",
-        message: `Cannot delete "${mat?.name}" — it has existing stock or batches. Archive the material instead, or reduce stock to zero first.`,
+        message: `Cannot delete "${mat?.name}" — it has existing stock or purchase batches.`,
       });
       return;
     }
@@ -1259,11 +1277,16 @@ function MaterialMasterTab({
       return;
     }
 
+    const isParent = !!mat?.hasVariants;
+    const isChild = !!mat?.parentId;
+    const deleteMessage = isParent
+      ? `Delete "${mat?.name}" and all its variants? This cannot be undone.`
+      : `Delete "${mat?.name}"? This action cannot be undone.`;
+
     setConfirmModal({
       isOpen: true,
-      title: "Delete Material",
-      message:
-        "Are you sure you want to delete this material? Children will also be deleted. This action cannot be undone.",
+      title: isChild ? "Delete Variant" : "Delete Material",
+      message: deleteMessage,
       onConfirm: async () => {
         if (!token) {
           setInfoModal({
@@ -1271,14 +1294,10 @@ function MaterialMasterTab({
             title: "Sign in required",
             message: "Sign in as admin to delete inventory.",
           });
-          setConfirmModal({
-            isOpen: false,
-            title: "",
-            message: "",
-            onConfirm: null,
-          });
+          setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null });
           return;
         }
+        setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null });
         try {
           const childRows = materials.filter((m) => m.parentId === id);
           for (const c of childRows) {
@@ -1286,6 +1305,7 @@ function MaterialMasterTab({
           }
           if (isLikelyMongoId(id)) await deleteInventory(id, token);
           await refreshMaterials();
+          setToast({ type: "success", message: `"${mat?.name}" deleted.` });
         } catch (e) {
           setInfoModal({
             isOpen: true,
@@ -1293,12 +1313,6 @@ function MaterialMasterTab({
             message: e?.message || "Could not delete material.",
           });
         }
-        setConfirmModal({
-          isOpen: false,
-          title: "",
-          message: "",
-          onConfirm: null,
-        });
       },
     });
   };
@@ -1372,6 +1386,7 @@ function MaterialMasterTab({
       await refreshMaterials();
       setShowAddModal(false);
       setEditMaterial(null);
+      // no toast on save
     } catch (e) {
       setInfoModal({
         isOpen: true,
@@ -1485,19 +1500,22 @@ function MaterialMasterTab({
             style={{ minWidth: "140px" }}
           />
         </div>
-        <button className="btn-primary" onClick={() => setShowAddModal(true)}>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-          >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          Add Material
-        </button>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          {onOpenUnits && (
+            <button
+              type="button"
+              onClick={onOpenUnits}
+              style={{ padding: "0.625rem 1rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--gray)", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", whiteSpace: "nowrap" }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="4" rx="1"/><rect x="2" y="10" width="20" height="4" rx="1"/><rect x="2" y="16" width="20" height="4" rx="1"/></svg>
+              Units
+            </button>
+          )}
+          <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
+            Add Material
+          </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -1607,7 +1625,7 @@ function MaterialMasterTab({
                 </td>
               </tr>
             ) : (
-              filteredMaterials.map((row) => {
+              pagedMaterials.map((row) => {
                 if (row.type === "standalone") {
                   const m = row.item;
                   return (
@@ -2105,6 +2123,23 @@ function MaterialMasterTab({
             )}
           </tbody>
         </table>
+        {filteredMaterials.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.625rem 1rem", borderTop: "1px solid var(--border)", flexWrap: "wrap", gap: "0.5rem", fontSize: "0.8rem", color: "var(--gray)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              Rows per page:
+              <select value={matPerPage} onChange={(e) => { setMatPerPage(Number(e.target.value)); setMatPage(1); }} style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer" }}>
+                {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+              <button onClick={() => setMatPage((p) => Math.max(1, p - 1))} disabled={matPage <= 1} style={{ padding: "0.25rem 0.625rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: matPage <= 1 ? "var(--gray)" : "var(--white)", cursor: matPage <= 1 ? "not-allowed" : "pointer" }}>‹</button>
+              <button onClick={() => setMatPage((p) => Math.min(totalMatPages, p + 1))} disabled={matPage >= totalMatPages} style={{ padding: "0.25rem 0.625rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: matPage >= totalMatPages ? "var(--gray)" : "var(--white)", cursor: matPage >= totalMatPages ? "not-allowed" : "pointer" }}>›</button>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              Page: <span style={{ padding: "0.2rem 0.6rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", minWidth: "28px", textAlign: "center" }}>{matPage}</span> of {totalMatPages}
+            </div>
+          </div>
+        )}
       </div>
 
       {showAddModal && (
@@ -2119,10 +2154,31 @@ function MaterialMasterTab({
             setShowAddModal(false);
             setEditMaterial(null);
           }}
-          onSave={handleSave}
+          onSave={(mat, ch, old) => setSaveConfirm({ open: true, args: [mat, ch, old] })}
           onAddCategory={handleAddCategory}
           onAddVendor={handleAddVendor}
         />
+      )}
+      {saveConfirm.open && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <div style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "14px", padding: "2rem", width: "400px", maxWidth: "92vw" }}>
+            <div style={{ fontSize: "0.6rem", color: "#D4A843", textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 700, marginBottom: "0.5rem" }}>Confirm Save</div>
+            <div style={{ fontSize: "1rem", fontWeight: 700, color: "#E5E2E1", marginBottom: "0.75rem" }}>
+              {editMaterial ? "Update Material?" : "Save Material?"}
+            </div>
+            <div style={{ fontSize: "0.85rem", color: "var(--gray)", marginBottom: "1.5rem" }}>
+              {editMaterial
+                ? `Apply changes to "${editMaterial.name}"?`
+                : `Create "${saveConfirm.args?.[0]?.name || "this material"}"?`}
+            </div>
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
+              <button onClick={() => setSaveConfirm({ open: false, args: null })} style={{ padding: "0.5rem 1.25rem", background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--gray)", cursor: "pointer", fontSize: "0.85rem" }}>Cancel</button>
+              <button onClick={() => { const a = saveConfirm.args; setSaveConfirm({ open: false, args: null }); handleSave(...a); }} style={{ padding: "0.5rem 1.25rem", background: "linear-gradient(135deg,#FFDF9F 0%,#D4A843 100%)", border: "none", borderRadius: "8px", color: "#000", fontWeight: 700, cursor: "pointer", fontSize: "0.85rem" }}>
+                {editMaterial ? "Update" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {viewMaterial && (
         <MaterialDetailsModal
@@ -2153,6 +2209,32 @@ function MaterialMasterTab({
         title={infoModal.title}
         message={infoModal.message}
       />
+
+      {/* Toast */}
+      {toast && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "1.5rem",
+            right: "1.5rem",
+            zIndex: 99999,
+            background: toast.type === "success" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
+            border: `1px solid ${toast.type === "success" ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)"}`,
+            color: toast.type === "success" ? "#4ade80" : "#f87171",
+            padding: "0.75rem 1.25rem",
+            borderRadius: "10px",
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            backdropFilter: "blur(8px)",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+          }}
+        >
+          {toast.type === "success" ? "✓" : "✕"} {toast.message}
+        </div>
+      )}
 
       {/* Category Input Modal */}
       {showCategoryInput && (
@@ -2241,6 +2323,7 @@ function MaterialMasterTab({
           vendor={null}
           allVendors={vendors}
           materials={materials}
+          units={units}
           onClose={() => {
             setShowVendorModal(false);
             setShowAddModal(true);
@@ -4231,7 +4314,7 @@ function MaterialFormModal({
 }
 
 
-function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
+function VendorFormModal({ vendor, allVendors, materials, units, onClose, onSave }) {
   const [form, setForm] = useState({
     name: "",
     contact: [],
@@ -4309,10 +4392,10 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
     if (vendor) {
       setForm({
         name: vendor.name || "",
-        contact: normalizeToArray(vendor.contact),
+        contact: normalizeToArray(vendor.contacts || vendor.contact),
         itemsSupplied: normalizeItems(vendor.itemsSupplied),
-        email: normalizeToArray(vendor.email),
-        phone: normalizeToArray(vendor.phone),
+        email: normalizeToArray(vendor.emails || vendor.email),
+        phone: normalizeToArray(vendor.phones || vendor.phone),
         address: vendor.address || "",
       });
     }
@@ -4705,15 +4788,9 @@ function VendorFormModal({ vendor, allVendors, materials, onClose, onSave }) {
                   value={itemUomInput}
                   onChange={(e) => setItemUomInput(e.target.value)}
                 >
-                  <option value="pcs">Pieces</option>
-                  <option value="bottle">Bottle</option>
-                  <option value="liter">Liter</option>
-                  <option value="kg">Kilogram</option>
-                  <option value="meter">Meter</option>
-                  <option value="roll">Roll</option>
-                  <option value="box">Box</option>
-                  <option value="pack">Pack</option>
-                  <option value="set">Set</option>
+                  {(units && units.length > 0 ? units : [{ code: "pcs", name: "Pieces" }]).map((u) => (
+                    <option key={u.code} value={u.code}>{u.name}</option>
+                  ))}
                 </select>
                 <button
                   type="button"
@@ -5384,7 +5461,7 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
           >
             <path d="M12 5v14M5 12h14" />
           </svg>
-          Add Product
+          Create Product
         </button>
       </div>
 
@@ -5559,8 +5636,7 @@ function UnitMasterTab({
       result = result.filter(
         (u) =>
           u.name.toLowerCase().includes(searchLower) ||
-          u.code.toLowerCase().includes(searchLower) ||
-          (u.description && u.description.toLowerCase().includes(searchLower)),
+          u.code.toLowerCase().includes(searchLower),
       );
     }
     return result;
@@ -5616,54 +5692,74 @@ function UnitMasterTab({
         </button>
       </div>
 
-      <div className="table-wrapper">
-        <table className="inventory-table">
+      <div
+        style={{
+          border: "1px solid var(--border)",
+          borderRadius: "12px",
+          overflow: "hidden",
+          background: "var(--dark)",
+        }}
+      >
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: "0.85rem",
+          }}
+        >
           <thead>
-            <tr>
-              <th style={{ width: "60px" }}>#</th>
-              <th>Code</th>
-              <th>Name</th>
-              <th>Description</th>
-              <th style={{ width: "120px", textAlign: "right" }}>Actions</th>
+            <tr
+              style={{
+                background: "rgba(0,0,0,0.3)",
+                borderBottom: "2px solid var(--border)",
+              }}
+            >
+              <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--gray)", width: "50px" }}>#</th>
+              <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--gray)" }}>Code</th>
+              <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--gray)" }}>Name</th>
+              <th style={{ padding: "0.75rem 1rem", textAlign: "right", fontWeight: 600, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--gray)", width: "120px" }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredUnits.length === 0 ? (
               <tr>
                 <td
-                  colSpan="5"
+                  colSpan="4"
                   style={{
                     textAlign: "center",
                     padding: "3rem",
                     color: "var(--gray)",
                   }}
                 >
-                  No units found
+                  {search ? "No units match your search." : "No units found."}
                 </td>
               </tr>
             ) : (
               filteredUnits.map((unit, index) => (
-                <tr key={unit.id}>
-                  <td style={{ color: "var(--gray)", fontSize: "0.85rem" }}>
+                <tr
+                  key={unit.id}
+                  style={{
+                    borderBottom: index < filteredUnits.length - 1 ? "1px solid var(--border)" : "none",
+                  }}
+                >
+                  <td style={{ padding: "0.75rem 1rem", color: "var(--gray)", fontSize: "0.8rem" }}>
                     {index + 1}
                   </td>
-                  <td>
+                  <td style={{ padding: "0.75rem 1rem" }}>
                     <code
                       style={{
                         background: "rgba(255,255,255,0.06)",
-                        padding: "0.25rem 0.5rem",
+                        padding: "0.2rem 0.5rem",
                         borderRadius: "4px",
-                        fontSize: "0.85rem",
+                        fontSize: "0.82rem",
+                        border: "1px solid rgba(255,255,255,0.08)",
                       }}
                     >
                       {unit.code}
                     </code>
                   </td>
-                  <td style={{ fontWeight: 600 }}>{unit.name}</td>
-                  <td style={{ color: "var(--gray)", fontSize: "0.85rem" }}>
-                    {unit.description || "-"}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
+                  <td style={{ padding: "0.75rem 1rem", fontWeight: 600 }}>{unit.name}</td>
+                  <td style={{ padding: "0.75rem 1rem", textAlign: "right" }}>
                     <div
                       style={{
                         display: "flex",
@@ -5762,7 +5858,6 @@ function UnitFormModal({ unit, onClose, onSave }) {
   const [formData, setFormData] = useState({
     code: unit?.code || "",
     name: unit?.name || "",
-    description: unit?.description || "",
   });
   const [errors, setErrors] = useState({});
 
@@ -5791,7 +5886,6 @@ function UnitFormModal({ unit, onClose, onSave }) {
       await onSave({
         code: formData.code.toLowerCase().trim(),
         name: formData.name.trim(),
-        description: formData.description.trim(),
       });
     }
   };
@@ -5933,7 +6027,8 @@ function UnitFormModal({ unit, onClose, onSave }) {
             <input
               type="text"
               value={formData.name}
-              onChange={(e) => handleChange("name", e.target.value)}
+              maxLength={50}
+              onChange={(e) => handleChange("name", e.target.value.slice(0, 50))}
               placeholder="e.g., Dozen, Bundle of 50, Yard"
               style={{
                 width: "100%",
@@ -5959,36 +6054,6 @@ function UnitFormModal({ unit, onClose, onSave }) {
                 {errors.name}
               </p>
             )}
-          </div>
-
-          <div style={{ marginBottom: "1.5rem" }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "0.5rem",
-                fontSize: "0.875rem",
-                fontWeight: 600,
-              }}
-            >
-              Description
-            </label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => handleChange("description", e.target.value)}
-              placeholder="e.g., 12 pieces per unit"
-              rows={3}
-              style={{
-                width: "100%",
-                padding: "0.625rem 0.75rem",
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: "8px",
-                color: "#E5E2E1",
-                fontSize: "0.875rem",
-                outline: "none",
-                resize: "vertical",
-              }}
-            />
           </div>
 
           <div
@@ -6134,6 +6199,7 @@ function DeleteConfirmModal({ unit, onClose, onConfirm }) {
 export default function MasterDataPage() {
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState("materials");
+  const [showUnitsModal, setShowUnitsModal] = useState(false);
   const [vendors, setVendors] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [boms, setBoms] = useState([]);
@@ -6286,14 +6352,6 @@ export default function MasterDataPage() {
     <ErrorBoundary>
     <div className="page-content-wrapper">
       <div className="page-header">
-        <div className="page-header-content">
-          <div>
-            <h1 className="page-title">Master Data</h1>
-            <p className="page-subtitle">
-              Manage materials, vendors, and bill of materials.
-            </p>
-          </div>
-        </div>
         <div
           style={{
             display: "flex",
@@ -6319,12 +6377,6 @@ export default function MasterDataPage() {
           <button style={tabStyle("bom")} onClick={() => setActiveTab("bom")}>
             Product Creation
           </button>
-          <button
-            style={tabStyle("units")}
-            onClick={() => setActiveTab("units")}
-          >
-            Units
-          </button>
         </div>
       </div>
 
@@ -6338,6 +6390,7 @@ export default function MasterDataPage() {
           units={units}
           refreshMaterials={refreshMaterials}
           onVendorsChange={setVendors}
+          onOpenUnits={() => setShowUnitsModal(true)}
         />
       )}
       {activeTab === "vendors" && (
@@ -6345,6 +6398,7 @@ export default function MasterDataPage() {
           onVendorsChange={setVendors}
           materials={materials}
           units={units}
+          onOpenUnits={() => setShowUnitsModal(true)}
         />
       )}
       {activeTab === "bom" && (
@@ -6356,15 +6410,33 @@ export default function MasterDataPage() {
           refreshBoms={refreshBoms}
         />
       )}
-      {activeTab === "units" && (
-        <UnitMasterTab
-          units={units}
-          onUnitsChange={setUnits}
-          vendors={vendors}
-          materials={materials}
-          token={token}
-          refreshUnits={refreshUnits}
-        />
+      {showUnitsModal && (
+        <div
+          onClick={() => setShowUnitsModal(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: "var(--dark2)", border: "1px solid var(--border)", borderRadius: "16px", width: "100%", maxWidth: "860px", maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1.25rem 1.5rem", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+              <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "#E5E2E1" }}>Units of Measurement</h2>
+              <button onClick={() => setShowUnitsModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--gray)", padding: "4px", display: "flex" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem" }}>
+              <UnitMasterTab
+                units={units}
+                onUnitsChange={setUnits}
+                vendors={vendors}
+                materials={materials}
+                token={token}
+                refreshUnits={refreshUnits}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
     </ErrorBoundary>

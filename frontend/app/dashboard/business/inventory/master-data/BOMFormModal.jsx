@@ -120,7 +120,10 @@ export default function BOMFormModal({
       setForm({
         productName: bom.productName || "",
         productGroupName: bom.productGroupName || "",
-        components: bom.components || [],
+        components: (bom.components || []).map((c) => ({
+          ...c,
+          materialId: c.materialId ?? c.inventoryId ?? "",
+        })),
       });
   }, [bom]);
 
@@ -131,7 +134,7 @@ export default function BOMFormModal({
   const addComponent = () =>
     setForm((p) => ({
       ...p,
-      components: [...p.components, { inventoryId: "", qty: 1 }],
+      components: [...p.components, { materialId: "", qty: 1 }],
     }));
   const removeComponent = (idx) =>
     setForm((p) => ({
@@ -148,19 +151,21 @@ export default function BOMFormModal({
   const sharedCost = useMemo(
     () =>
       form.components.reduce((sum, c) => {
-        const mat = materials.find(
-          (m) => String(m.id ?? m._id) === String(c.inventoryId),
-        );
+        const mat = materials.find((m) => m.id === c.materialId);
         // Use FIFO cost - what you'll actually pay when consuming from oldest stock
         if (!mat || !mat.batches || mat.batches.length === 0) {
-          return sum + (mat?.baseCost || mat?.averageCost || 0) * (c.qty || 0);
+          return sum + (mat?.baseCost || 0) * (c.qty || 0);
         }
 
+        const getBatchQty = (b) =>
+          b.remainingQty != null
+            ? b.remainingQty
+            : (b.goodQty ?? b.qtyGood ?? 0);
         const activeBatches = mat.batches
-          .filter((b) => (b.remainingQty || 0) > 0)
+          .filter((b) => getBatchQty(b) > 0)
           .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
         if (activeBatches.length === 0) {
-          return sum + (mat?.baseCost || mat?.averageCost || 0) * (c.qty || 0);
+          return sum + (mat?.baseCost || 0) * (c.qty || 0);
         }
 
         // Simulate FIFO consumption
@@ -169,19 +174,16 @@ export default function BOMFormModal({
 
         for (const batch of activeBatches) {
           if (remaining <= 0) break;
-          const take = Math.min(remaining, batch.remainingQty || 0);
+          const take = Math.min(remaining, getBatchQty(batch));
           batchCost += take * (batch.unitCost || 0);
           remaining -= take;
         }
 
         // If backorder, use average for remaining
         if (remaining > 0) {
-          const totalQty = activeBatches.reduce(
-            (s, b) => s + (b.remainingQty || 0),
-            0,
-          );
+          const totalQty = activeBatches.reduce((s, b) => s + getBatchQty(b), 0);
           const totalValue = activeBatches.reduce(
-            (s, b) => s + (b.remainingQty || 0) * (b.unitCost || 0),
+            (s, b) => s + getBatchQty(b) * (b.unitCost || 0),
             0,
           );
           const avgCost = totalQty > 0 ? totalValue / totalQty : 0;
@@ -198,10 +200,10 @@ export default function BOMFormModal({
       materials
         .filter((m) => m.hasVariants && !m.parentId)
         .map((m) => ({
-          id: m._id,
+          id: m.id,
           name: m.name,
           children: materials.filter(
-            (c) => String(c.parentId) === String(m.id ?? m._id),
+            (c) => String(c.parentId) === String(m.id),
           ),
         })),
     [materials],
@@ -223,7 +225,7 @@ export default function BOMFormModal({
     () =>
       checkedVariants.map((v) => ({
         ...v,
-        bomCost: sharedCost + (v.baseCost || v.averageCost || 0) * variantQty,
+        bomCost: sharedCost + (v.baseCost || 0) * variantQty,
       })),
     [checkedVariants, sharedCost, variantQty],
   );
@@ -247,7 +249,7 @@ export default function BOMFormModal({
   // Builds BOM array from a given variant list — used by both buttons
   const buildBOMs = (variants) => {
     const productGroupName = form.productGroupName.trim();
-    const sharedComponents = form.components.filter((c) => c.inventoryId);
+    const sharedComponents = form.components.filter((c) => c.materialId);
     return variants.map((v, i) => {
       // Extract just the variant-specific part (e.g., "Magic Mugs 11oz" from "Mugs - Magic Mugs 11oz")
       const variantNameOnly = v.name.includes(" - ")
@@ -263,7 +265,7 @@ export default function BOMFormModal({
         variantId: v.id,
         components: [
           ...sharedComponents,
-          { inventoryId: v._id, qty: variantQty },
+          { materialId: v.id, qty: variantQty },
         ],
         createdAt: new Date().toISOString(),
       };
@@ -288,9 +290,7 @@ export default function BOMFormModal({
     const errs = {};
     if (!form.productGroupName.trim())
       errs.productGroupName = "Product group name is required";
-    if (form.components.length === 0)
-      errs.components = "Add at least one component";
-    if (form.components.some((c) => !c.inventoryId))
+    if (form.components.some((c) => !c.materialId))
       errs.material = "Select a material for every row";
     if (Object.keys(errs).length) {
       setErrors(errs);
@@ -304,7 +304,11 @@ export default function BOMFormModal({
     setSubmitError("");
     setIsSubmitting(true);
     try {
-      await onSave({ ...bom, ...form });
+      await onSave({
+        ...bom,
+        ...form,
+        productName: form.productName.trim() || form.productGroupName.trim(),
+      });
     } catch (err) {
       setSubmitError(err?.message || "Save failed.");
     } finally {
@@ -313,8 +317,8 @@ export default function BOMFormModal({
   };
 
   const selectedMaterialIds = form.components
-    .filter((c) => c.inventoryId)
-    .map((c) => c.inventoryId);
+    .filter((c) => c.materialId)
+    .map((c) => c.materialId);
 
   // Get variant IDs to exclude from shared materials when variant picker is open
   const variantIdsToExclude = useMemo(() => {
@@ -326,13 +330,13 @@ export default function BOMFormModal({
     () =>
       materials
         .filter((m) => (!m.parentId && !m.hasVariants) || m.parentId)
-        .filter((m) => !selectedMaterialIds.includes(m._id))
-        .filter((m) => !variantIdsToExclude.includes(m._id)) // Exclude variants from shared materials
+        .filter((m) => !selectedMaterialIds.includes(m.id))
+        .filter((m) => !variantIdsToExclude.includes(m.id))
         .map((m) => {
           const p = m.parentId
-            ? materials.find((x) => x._id === m.parentId)
+            ? materials.find((x) => x.id === m.parentId)
             : null;
-          return { value: m.id ?? m._id, label: `${m.name}${p ? ` (${p.name})` : ""}` };
+          return { value: m.id, label: `${m.name}${p ? ` (${p.name})` : ""}` };
         }),
     [materials, selectedMaterialIds, variantIdsToExclude],
   );
@@ -787,8 +791,7 @@ export default function BOMFormModal({
                         {currentVariants.map((v) => {
                           const isChecked = checkedVariantIds.has(v.id);
                           const bomCost =
-                            sharedCost +
-                            (v.baseCost || v.averageCost || 0) * variantQty;
+                            sharedCost + (v.baseCost || 0) * variantQty;
                           return (
                             <div
                               key={v.id}
@@ -1000,16 +1003,15 @@ export default function BOMFormModal({
                 >
                   {form.components.map((comp, idx) => {
                     const selectedMat = materials.find(
-                      (m) => m._id === comp.inventoryId,
+                      (m) => m.id === comp.materialId,
                     );
                     const componentCost = selectedMat
-                      ? (selectedMat.baseCost || selectedMat.averageCost || 0) *
-                        (comp.qty || 0)
+                      ? (selectedMat.baseCost || 0) * (comp.qty || 0)
                       : 0;
                     const dropdownOptions = [
                       { value: "", label: "Search material…" },
                       ...(selectedMat
-                        ? [{ value: selectedMat._id, label: selectedMat.name }]
+                        ? [{ value: selectedMat.id, label: selectedMat.name }]
                         : []),
                       ...availableMaterials,
                     ];
@@ -1027,9 +1029,9 @@ export default function BOMFormModal({
                         }}
                       >
                         <CustomDropdown
-                          value={comp.inventoryId}
+                          value={comp.materialId}
                           onChange={(val) => {
-                            updateComponent(idx, "inventoryId", val);
+                            updateComponent(idx, "materialId", val);
                             if (errors.material)
                               setErrors((er) => ({ ...er, material: "" }));
                           }}
@@ -1199,6 +1201,16 @@ export default function BOMFormModal({
                 }
                 // If variants are selected, create BOMs for each
                 if (checkedVariantIds.size > 0 && onSaveBatch) {
+                  const batchErrs = {};
+                  if (!form.productGroupName.trim())
+                    batchErrs.productGroupName = "Product group name is required";
+                  if (form.components.some((c) => !c.materialId))
+                    batchErrs.material = "Select a material for every row";
+                  if (Object.keys(batchErrs).length) {
+                    setErrors(batchErrs);
+                    return;
+                  }
+                  setErrors({});
                   setIsSubmitting(true);
                   try {
                     const newBOMs = buildBOMs(checkedVariants);
@@ -1220,7 +1232,7 @@ export default function BOMFormModal({
                     errs.productGroupName = "Product group name is required";
                   if (form.components.length === 0)
                     errs.components = "Add at least one component";
-                  if (form.components.some((c) => !c.inventoryId))
+                  if (form.components.some((c) => !c.materialId))
                     errs.material = "Select a material for every row";
                   if (Object.keys(errs).length) {
                     setErrors(errs);

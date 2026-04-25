@@ -358,6 +358,8 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [expandedParents, setExpandedParents] = useState(new Set());
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const categories = useMemo(() => {
     const cats = new Set();
@@ -373,9 +375,9 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
     materials
       .filter((m) => m.parentId)
       .forEach((child) => {
-        if (!childrenMap.has(child.parentId))
-          childrenMap.set(child.parentId, []);
-        childrenMap.get(child.parentId).push(child);
+        const key = String(child.parentId);
+        if (!childrenMap.has(key)) childrenMap.set(key, []);
+        childrenMap.get(key).push(child);
       });
     const standalone = materials.filter((m) => !m.hasVariants && !m.parentId);
     return { parents, childrenMap, standalone };
@@ -442,7 +444,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
       rows.push({ type: "standalone", item: { ...m, stockQty: getStock(m) } });
     });
     groupedMaterials.parents.forEach((parent) => {
-      const children = groupedMaterials.childrenMap.get(parent._id) || [];
+      const children = groupedMaterials.childrenMap.get(String(parent.id ?? parent._id)) || [];
       const parentMatches = matchesFilters(parent);
       const displayChildren = children.map((c) => ({
         ...c,
@@ -481,11 +483,16 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupedMaterials, search, categoryFilter, statusFilter]);
 
+  useEffect(() => { setCurrentPage(1); }, [search, categoryFilter, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / rowsPerPage));
+  const pagedRows = filteredRows.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+
   const totalStock = materials
     .filter((m) => !m.parentId && m.procurementType !== "on-demand")
     .reduce((sum, m) => {
       if (m.hasVariants) {
-        const children = materials.filter((c) => c.parentId === m._id);
+        const children = materials.filter((c) => c.parentId === (m.id ?? m._id));
         return sum + children.reduce((cSum, c) => cSum + getStock(c), 0);
       }
       return sum + getStock(m);
@@ -519,7 +526,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
     .filter((m) => !m.parentId && m.procurementType !== "on-demand")
     .reduce((sum, m) => {
       if (m.hasVariants) {
-        const children = materials.filter((c) => c.parentId === m._id);
+        const children = materials.filter((c) => c.parentId === (m.id ?? m._id));
         return (
           sum +
           children.reduce(
@@ -544,15 +551,37 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
             <span className="summary-label">Total Stock</span>
           </div>
         </div>
-        <div className="summary-card summary-card-danger">
+        <div
+          className={
+            outOfStock === 0
+              ? "summary-card"
+              : "summary-card summary-card-danger"
+          }
+        >
           <div className="summary-content">
-            <span className="summary-value">{outOfStock}</span>
+            <span
+              className="summary-value"
+              style={outOfStock === 0 ? { color: "var(--gray)" } : {}}
+            >
+              {outOfStock}
+            </span>
             <span className="summary-label">Out of Stock</span>
           </div>
         </div>
-        <div className="summary-card summary-card-warning">
+        <div
+          className={
+            lowStock === 0
+              ? "summary-card"
+              : "summary-card summary-card-warning"
+          }
+        >
           <div className="summary-content">
-            <span className="summary-value">{lowStock}</span>
+            <span
+              className="summary-value"
+              style={lowStock === 0 ? { color: "var(--gray)" } : {}}
+            >
+              {lowStock}
+            </span>
             <span className="summary-label">Low Stock</span>
           </div>
         </div>
@@ -699,7 +728,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                 </td>
               </tr>
             ) : (
-              filteredRows.map((row) => {
+              pagedRows.map((row) => {
                 if (row.type === "standalone") {
                   const m = row.item;
                   const stockVal =
@@ -1283,6 +1312,23 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
             )}
           </tbody>
         </table>
+        {filteredRows.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.625rem 1rem", borderTop: "1px solid var(--border)", flexWrap: "wrap", gap: "0.5rem", fontSize: "0.8rem", color: "var(--gray)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              Rows per page:
+              <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer" }}>
+                {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+              <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} style={{ padding: "0.25rem 0.625rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: currentPage <= 1 ? "var(--gray)" : "var(--white)", cursor: currentPage <= 1 ? "not-allowed" : "pointer" }}>‹</button>
+              <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} style={{ padding: "0.25rem 0.625rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: currentPage >= totalPages ? "var(--gray)" : "var(--white)", cursor: currentPage >= totalPages ? "not-allowed" : "pointer" }}>›</button>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              Page: <span style={{ padding: "0.2rem 0.6rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", minWidth: "28px", textAlign: "center" }}>{currentPage}</span> of {totalPages}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1327,7 +1373,32 @@ export default function StocksPage() {
         .map((m) => m.id ?? m._id)
         .filter(Boolean);
       const history = await fetchAllStockHistory(ids, token);
-      setStockOuts(history.filter((h) => h.type === "deduction"));
+      const reasonToIssueType = (r) => {
+        if (r === "sales-outside" || r === "sale") return "manual_sale";
+        if (r === "damaged") return "damage";
+        if (r === "writeoff") return "writeoff";
+        if (r === "scrap") return "scrap";
+        if (r === "production") return "production";
+        if (r === "lost" || r === "missing") return "lost";
+        return "adjustment";
+      };
+      const normalizedOuts = history
+        .filter((h) => h.type === "deduction")
+        .map((h) => {
+          const mat = data.find((m) => String(m.id ?? m._id) === String(h.inventoryId));
+          return {
+            ...h,
+            materialName: mat?.name || h.materialName || "—",
+            sku: mat?.sku || h.sku || "",
+            uom: mat?.uom || h.uom || "pcs",
+            category: mat?.category || h.category || "Uncategorized",
+            issueType: reasonToIssueType(h.reason),
+            totalLoss: h.totalCost || 0,
+            dateIssued: h.createdAt,
+            quantity: Math.abs(h.quantity || 0),
+          };
+        });
+      setStockOuts(normalizedOuts);
     } catch (err) {
       setError(err.message || "Failed to load inventory.");
     } finally {
@@ -1352,16 +1423,18 @@ export default function StocksPage() {
     const calls = (variants || [])
       .filter((v) => (v.qtyFulfilled || 0) > 0)
       .map((variant) => {
-        const unitCost =
+        const mat = materials.find(
+          (m) =>
+            String(m.id ?? m._id) === String(variant.variantId) ||
+            (variant.sku && m.sku === variant.sku),
+        );
+        const fifoUnitCost =
           variant.qtyFulfilled > 0
             ? (variant.totalCostValue || 0) / variant.qtyFulfilled
             : 0;
-        const invId =
-          materials.find(
-            (m) =>
-              String(m._id) === String(variant.variantId) ||
-              (variant.sku && m.sku === variant.sku),
-          )?._id || variant.variantId;
+        const unitCost =
+          fifoUnitCost || mat?.baseCost || mat?.averageCost || null;
+        const invId = mat?.id ?? mat?._id ?? variant.variantId;
 
         return adjustInventoryStock(
           invId,
@@ -1375,7 +1448,7 @@ export default function StocksPage() {
             saleDate: apiReason === "sales-outside" ? saleDate || null : null,
             customerName:
               apiReason === "sales-outside" ? customer || null : null,
-            unitCost: unitCost || null,
+            unitCost,
             performedBy: user?.username || user?.name || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.email || null,
           },
           token,
@@ -1430,14 +1503,6 @@ export default function StocksPage() {
     <div className="page-content-wrapper">
       {/* Page Header */}
       <div className="page-header">
-        <div className="page-header-content">
-          <div>
-            <h1 className="page-title">Stock Overview</h1>
-            <p className="page-subtitle">
-              Monitor stock levels, track movements, and manage goods issues.
-            </p>
-          </div>
-        </div>
 
         {/* Tab Switcher */}
         <div
@@ -1700,7 +1765,7 @@ export default function StocksPage() {
                   if (!hasBatches && !hasStock) {
                     if (m.hasVariants) {
                       const children = materials.filter(
-                        (c) => c.parentId === m._id,
+                        (c) => String(c.parentId) === String(m.id ?? m._id),
                       );
                       const childStock = children.reduce(
                         (s, c) => s + (c.stockQty || 0),
@@ -1742,7 +1807,7 @@ export default function StocksPage() {
                   let variantCount = 0;
                   if (m.hasVariants) {
                     const children = materials.filter(
-                      (c) => c.parentId === m._id,
+                      (c) => String(c.parentId) === String(m.id ?? m._id),
                     );
                     // Only count children with actual batch data
                     const stockedChildren = children.filter(
@@ -1828,7 +1893,7 @@ export default function StocksPage() {
                             type="checkbox"
                             readOnly
                             checked={selectedMaterials.some(
-                              (x) => x._id === m._id,
+                              (x) => (x.id ?? x._id) === (m.id ?? m._id),
                             )}
                             style={{
                               width: "16px",

@@ -136,6 +136,9 @@ export default function BadOrdersPage() {
   const [confirm, setConfirm] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [rPage, setRPage] = useState(1);
+  const [rRpp, setRRpp] = useState(10);
+
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
@@ -159,6 +162,8 @@ export default function BadOrdersPage() {
     load();
   }, [load]);
 
+  useEffect(() => { setRPage(1); }, [filterDamage, dateFrom, dateTo]);
+
   const filtered = useMemo(() => {
     return rows.filter((r) => {
       if (filterDamage && (r.damageType || '') !== filterDamage) return false;
@@ -174,6 +179,9 @@ export default function BadOrdersPage() {
       return true;
     });
   }, [rows, filterDamage, dateFrom, dateTo]);
+
+  const rTotalPages = Math.max(1, Math.ceil(filtered.length / rRpp));
+  const pagedReturns = filtered.slice((rPage - 1) * rRpp, rPage * rRpp);
 
   async function applyStatus(id, status) {
     if (!token) return;
@@ -192,13 +200,6 @@ export default function BadOrdersPage() {
   return (
     <ErrorBoundary>
     <div style={{ padding: '1.5rem', maxWidth: '1280px', margin: '0 auto' }}>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 className="page-title">Bad Orders</h1>
-        <p style={{ margin: '0.35rem 0 0', fontSize: '0.875rem', color: 'var(--gray)' }}>
-          Damaged, defective, shortage, or wrong items received from suppliers
-        </p>
-      </div>
-
       {stats && (
         <div
           style={{
@@ -331,7 +332,7 @@ export default function BadOrdersPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => {
+              {pagedReturns.map((r) => {
                 const id = r._id ?? r.id;
                 const dmg = DAMAGE_STYLES[r.damageType] || DAMAGE_STYLES.other;
                 const st = STATUS_STYLES[r.status] || STATUS_STYLES.pending;
@@ -402,6 +403,23 @@ export default function BadOrdersPage() {
               })}
             </tbody>
           </table>
+          {filtered.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.625rem 1rem', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--gray)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                Rows per page:
+                <select value={rRpp} onChange={e => { setRRpp(Number(e.target.value)); setRPage(1); }} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', padding: '0.2rem 0.5rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+                  {[5, 10, 25, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                <button onClick={() => setRPage(p => Math.max(1, p - 1))} disabled={rPage <= 1} style={{ padding: '0.25rem 0.625rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: rPage <= 1 ? 'var(--gray)' : 'var(--white)', cursor: rPage <= 1 ? 'not-allowed' : 'pointer' }}>‹</button>
+                <button onClick={() => setRPage(p => Math.min(rTotalPages, p + 1))} disabled={rPage >= rTotalPages} style={{ padding: '0.25rem 0.625rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: rPage >= rTotalPages ? 'var(--gray)' : 'var(--white)', cursor: rPage >= rTotalPages ? 'not-allowed' : 'pointer' }}>›</button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                Page: <span style={{ padding: '0.2rem 0.6rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', minWidth: '28px', textAlign: 'center' }}>{rPage}</span> of {rTotalPages}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
