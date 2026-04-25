@@ -96,6 +96,7 @@ function bomToApiPayload(bom, materials) {
     productGroupName: bom.productGroupName || bom.productName,
     variantName,
     variantCombo: bom.variantCombo ?? null,
+    category: bom.category || null,
     components,
   };
 }

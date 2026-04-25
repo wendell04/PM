@@ -240,28 +240,19 @@ export default function BOMCardList({
         !q ||
         b.productName.toLowerCase().includes(q) ||
         generateBomSku(b, materials).toLowerCase().includes(q) ||
+        (b.category || "").toLowerCase().includes(q) ||
         (b.variantGroup || "").toLowerCase().includes(q),
     );
   }, [boms, search, materials]);
 
-  // Group BOMs by variantGroup
   const groupedBOMs = useMemo(() => {
     const groups = {};
-
     filtered.forEach((bom) => {
-      const groupName = (
-        bom.productGroupName ||
-        bom.variantGroup ||
-        bom.productName ||
-        ""
-      ).trim() || bom.productName;
-
-      if (!groups[groupName]) {
-        groups[groupName] = [];
-      }
+      const groupName =
+        bom.category || bom.variantGroup || bom.productGroupName || "Uncategorized";
+      if (!groups[groupName]) groups[groupName] = [];
       groups[groupName].push(bom);
     });
-
     return groups;
   }, [filtered]);
 
@@ -549,7 +540,7 @@ export default function BOMCardList({
                           borderRadius: "99px",
                         }}
                       >
-                        {groupBOMs.length} variant
+                        {groupBOMs.length} product
                         {groupBOMs.length !== 1 ? "s" : ""}
                       </span>
                     </div>
@@ -718,8 +709,8 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
             <BOMIcon filled />
           </div>
           <div>
-            {/* Variant group badge */}
-            {bom.variantGroup && (
+            {/* Category badge */}
+            {(bom.category || bom.variantGroup) && (
               <span
                 style={{
                   fontSize: "0.55rem",
@@ -733,7 +724,7 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
                   marginBottom: "0.25rem",
                 }}
               >
-                {bom.variantGroup}
+                {bom.category || bom.variantGroup}
               </span>
             )}
             <h3
@@ -744,9 +735,7 @@ function BOMCard({ bom, materials, onEdit, onDelete, onDuplicate }) {
                 margin: "0 0 0.15rem 0",
               }}
             >
-              {bom.variantGroup
-                ? bom.productName.replace(`${bom.variantGroup} - `, "")
-                : bom.productName}
+              {bom.productName}
             </h3>
             <code
               style={{

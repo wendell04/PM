@@ -236,6 +236,7 @@ export default function BOMFormModal({ bom, materials, units, categories = [], o
     const errs = {};
     if (!form.productName.trim()) errs.productName = "Product name is required";
     if (!form.category.trim()) errs.category = "Category is required";
+    if (form.components.length === 0) errs.components = "Add at least one component";
     if (form.components.some((c) => !c.materialId)) errs.material = "Select a material for every row";
     if (Object.keys(errs).length) { setErrors(errs); return; }
     if (!token) { setSubmitError("Sign in required."); return; }
