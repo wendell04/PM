@@ -3010,8 +3010,865 @@ function ProductExpandRow({ product, inv, colSpan }) {
   );
 }
 
-// ── Add Product Modal (BOM-based) ─────────────────────────────────────────────
+// ── Stepper ───────────────────────────────────────────────────────────────────
+function Stepper({ current, steps }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 0, marginBottom: "2rem" }}>
+      {steps.map((label, i) => (
+        <React.Fragment key={i}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.35rem", flexShrink: 0 }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+              background: i < current - 1 ? "#D4A843" : i === current - 1 ? "#D4A843" : "rgba(255,255,255,0.06)",
+              border: i === current - 1 ? "2px solid #D4A843" : "1px solid rgba(255,255,255,0.08)",
+              fontSize: "0.72rem", fontWeight: 800,
+              color: i <= current - 1 ? "#000" : "rgba(229,226,225,0.3)",
+              transition: "all 0.2s",
+            }}>
+              {i < current - 1 ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>
+              ) : i + 1}
+            </div>
+            <span style={{ fontSize: "0.58rem", fontWeight: 700, color: i === current - 1 ? "#D4A843" : "rgba(229,226,225,0.35)", textTransform: "uppercase", letterSpacing: "0.08em", whiteSpace: "nowrap" }}>
+              {label}
+            </span>
+          </div>
+          {i < steps.length - 1 && (
+            <div style={{ flex: 1, height: 1, background: i < current - 1 ? "#D4A843" : "rgba(255,255,255,0.08)", margin: "14px 0.5rem 0", transition: "background 0.3s" }} />
+          )}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+// ── Product Card Preview ───────────────────────────────────────────────────────
+function ProductCardPreview({ name, category, priceRange, variantCount, maxProducible, thumbnail }) {
+  return (
+    <div style={{ position: "sticky", top: "1rem" }}>
+      <div style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.15em", color: "rgba(229,226,225,0.3)", marginBottom: "0.75rem" }}>
+        Storefront Preview
+      </div>
+      <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden", maxWidth: "220px" }}>
+        <div style={{ width: "100%", aspectRatio: "1", background: "rgba(255,255,255,0.03)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+          {thumbnail ? (
+            <img src={thumbnail} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="M21 15l-5-5L5 21" />
+              </svg>
+              <span style={{ fontSize: "0.6rem", color: "rgba(229,226,225,0.2)" }}>No image</span>
+            </div>
+          )}
+        </div>
+        <div style={{ padding: "0.875rem" }}>
+          {category && (
+            <span style={{ display: "inline-block", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#D4A843", background: "rgba(212,168,67,0.1)", borderRadius: "4px", padding: "0.15rem 0.5rem", marginBottom: "0.4rem" }}>
+              {category}
+            </span>
+          )}
+          <div style={{ fontSize: "0.875rem", fontWeight: 700, color: "#E5E2E1", marginBottom: "0.3rem", lineHeight: 1.3 }}>
+            {name || <span style={{ color: "rgba(229,226,225,0.25)", fontStyle: "italic" }}>Product name</span>}
+          </div>
+          <div style={{ fontSize: "0.9rem", fontWeight: 800, color: "#D4A843", marginBottom: "0.4rem" }}>
+            {priceRange || <span style={{ fontSize: "0.72rem", color: "rgba(229,226,225,0.3)", fontWeight: 400 }}>Set price in Step 3</span>}
+          </div>
+          {variantCount > 1 && (
+            <div style={{ fontSize: "0.65rem", color: "rgba(229,226,225,0.45)", marginBottom: "0.35rem" }}>
+              {variantCount} size / finish options
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: maxProducible > 0 ? "#22c55e" : "#ef4444", flexShrink: 0 }} />
+            <span style={{ fontSize: "0.65rem", color: "rgba(229,226,225,0.45)" }}>
+              {maxProducible > 0 ? `${maxProducible} can be made` : "Out of stock"}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Add Product Modal (4-step BOM-based) ──────────────────────────────────────
 function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPriceError, token }) {
+  const allBoms = useMemo(() => (boms || []).filter((b) => b.productName), [boms]);
+  const existingCategories = useMemo(
+    () => [...new Set(products.map((p) => p.category).filter(Boolean))].sort(),
+    [products],
+  );
+
+  // ── Step state ──
+  const [step, setStep] = useState(1);
+  const [stepError, setStepError] = useState("");
+
+  // Step 1 — BOM selection
+  const [selectedBoms, setSelectedBoms] = useState([]); // [{bom, label}]
+  const [bomSearch, setBomSearch] = useState("");
+  const [bomOpen, setBomOpen] = useState(false);
+  const [variantSearches, setVariantSearches] = useState({}); // {idx: string}
+  const [variantOpens, setVariantOpens] = useState({}); // {idx: bool}
+  const bomSearchRef = useRef(null);
+
+  // Step 2 — Details
+  const [storefrontName, setStorefrontName] = useState("");
+  const [category, setCategory] = useState("");
+  const [description, setDescription] = useState("");
+  const [catOpen, setCatOpen] = useState(false);
+  const catRef = useRef(null);
+
+  // Step 3 — Pricing
+  const [priceType, setPriceType] = useState("fixed");
+  const [variantPrices, setVariantPrices] = useState({});
+  const [tiers, setTiers] = useState([{ id: 1, minQty: 1, maxQty: 20, prices: {} }]);
+
+  // Step 4 — Availability + Media
+  const [stockMap, setStockMap] = useState({});
+  const [thumbnail, setThumbnail] = useState(null);
+  const [images, setImages] = useState([]);
+  const [dragOverThumb, setDragOverThumb] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [isPublished, setIsPublished] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+
+  // ── Derived ──
+  const isStandalone = selectedBoms.length <= 1;
+  const hasVariants = selectedBoms.length > 1;
+  const primaryBom = selectedBoms[0]?.bom;
+
+  const maxProducible = useMemo(() => {
+    const result = {};
+    selectedBoms.forEach(({ bom }) => {
+      let min = Infinity;
+      (bom.components || []).forEach((comp) => {
+        const inv = inventoryList.find((i) => String(i.id) === String(comp.inventoryId ?? comp.materialId));
+        const can = Math.floor((inv?.stockQty || 0) / (comp.qty || 1));
+        if (can < min) min = can;
+      });
+      result[bom.id] = min === Infinity ? 0 : min;
+    });
+    return result;
+  }, [selectedBoms, inventoryList]);
+
+  const bomCostMap = useMemo(() => {
+    const result = {};
+    selectedBoms.forEach(({ bom }) => { result[bom.id] = bom.totalCost || 0; });
+    return result;
+  }, [selectedBoms]);
+
+  const bottleneckMap = useMemo(() => {
+    const result = {};
+    selectedBoms.forEach(({ bom }) => {
+      let minR = Infinity, minName = null;
+      (bom.components || []).forEach((comp) => {
+        const inv = inventoryList.find((i) => String(i.id) === String(comp.inventoryId ?? comp.materialId));
+        const r = Math.floor((inv?.stockQty || 0) / (comp.qty || 1));
+        if (r < minR) { minR = r; minName = comp.materialName; }
+      });
+      result[bom.id] = minName;
+    });
+    return result;
+  }, [selectedBoms, inventoryList]);
+
+  const priceWarnings = useMemo(() => {
+    if (priceType !== "fixed") return {};
+    const w = {};
+    selectedBoms.forEach(({ bom }) => {
+      const cost = bomCostMap[bom.id] || 0;
+      const p = parseFloat(variantPrices[bom.id]);
+      if (variantPrices[bom.id] !== "" && !isNaN(p) && cost > 0)
+        w[bom.id] = p < cost ? `Below cost — lose ₱${(cost - p).toFixed(2)}/unit` : null;
+    });
+    return w;
+  }, [variantPrices, bomCostMap, priceType, selectedBoms]);
+
+  const tierWarnings = useMemo(() => {
+    if (priceType !== "tiered") return {};
+    const w = {};
+    tiers.forEach((tier) => {
+      Object.entries(tier.prices || {}).forEach(([key, price]) => {
+        const cost = bomCostMap[key] || 0;
+        const p = parseFloat(price);
+        if (price !== "" && !isNaN(p) && cost > 0 && p < cost) w[`${tier.id}_${key}`] = true;
+      });
+    });
+    return w;
+  }, [tiers, bomCostMap, priceType]);
+
+  const overallMaxProducible = selectedBoms.length
+    ? Math.min(...selectedBoms.map((s) => maxProducible[s.bom.id] ?? 0))
+    : 0;
+
+  const priceRangeText = useMemo(() => {
+    if (priceType === "inquiry") return "For Inquiry";
+    if (priceType === "fixed") {
+      const prices = selectedBoms
+        .map((s) => parseFloat(variantPrices[s.bom.id]))
+        .filter((p) => !isNaN(p) && p > 0);
+      if (!prices.length) return "";
+      const mn = Math.min(...prices), mx = Math.max(...prices);
+      return mn === mx ? `₱${mn.toLocaleString("en-PH")}` : `₱${mn.toLocaleString("en-PH")} – ₱${mx.toLocaleString("en-PH")}`;
+    }
+    if (priceType === "tiered") {
+      const all = tiers.flatMap((t) => Object.values(t.prices || {}).map((p) => parseFloat(p)).filter((p) => !isNaN(p) && p > 0));
+      if (!all.length) return "";
+      const mn = Math.min(...all), mx = Math.max(...all);
+      return mn === mx ? `₱${mn.toLocaleString("en-PH")}` : `From ₱${mn.toLocaleString("en-PH")}`;
+    }
+    return "";
+  }, [priceType, variantPrices, tiers, selectedBoms]);
+
+  // ── Sync: when selectedBoms changes, reset pricing + stock ──
+  useEffect(() => {
+    const initPrices = {}, initStock = {}, initTierPrices = {};
+    selectedBoms.forEach(({ bom }) => {
+      initPrices[bom.id] = "";
+      initStock[bom.id] = "";
+      initTierPrices[bom.id] = "";
+    });
+    setVariantPrices(initPrices);
+    setStockMap(initStock);
+    const priceKey = isStandalone ? { __base__: "" } : initTierPrices;
+    setTiers([{ id: 1, minQty: 1, maxQty: 20, prices: priceKey }]);
+  }, [selectedBoms.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Sync: storefront name defaults to primary BOM name ──
+  useEffect(() => {
+    if (primaryBom && !storefrontName) setStorefrontName(primaryBom.productName || "");
+    if (primaryBom && !category) setCategory(primaryBom.category || "");
+  }, [primaryBom]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Outside click handlers ──
+  useEffect(() => {
+    const h = (e) => {
+      if (bomSearchRef.current && !bomSearchRef.current.contains(e.target)) setBomOpen(false);
+      if (catRef.current && !catRef.current.contains(e.target)) setCatOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  // ── Tier helpers ──
+  const addTier = () => {
+    const last = tiers[tiers.length - 1];
+    const emptyPrices = isStandalone ? { __base__: "" } : selectedBoms.reduce((acc, { bom }) => ({ ...acc, [bom.id]: "" }), {});
+    setTiers((p) => [...p, { id: Date.now(), minQty: last ? (parseInt(last.maxQty) || 0) + 1 : 1, maxQty: "", prices: emptyPrices }]);
+  };
+  const removeTier = (id) => setTiers(tiers.filter((t) => t.id !== id));
+  const updateTierRange = (id, field, val) => setTiers(tiers.map((t) => t.id === id ? { ...t, [field]: val } : t));
+  const updateTierPrice = (tierId, key, val) => setTiers(tiers.map((t) => t.id === tierId ? { ...t, prices: { ...t.prices, [key]: val } } : t));
+
+  // ── Image helpers ──
+  const mkImg = (file) => ({ file, preview: URL.createObjectURL(file), id: Date.now() + Math.random() });
+  const handleThumb = (files) => { const f = files[0]; if (f) setThumbnail(mkImg(f)); };
+  const handleGallery = (files) => setImages((p) => [...p, ...Array.from(files).map(mkImg)]);
+
+  // ── Step validation ──
+  const validateStep = () => {
+    if (step === 1) {
+      if (!selectedBoms.length) { setStepError("Select at least one product."); return false; }
+    }
+    if (step === 2) {
+      if (!storefrontName.trim()) { setStepError("Storefront name is required."); return false; }
+      if (!category.trim()) { setStepError("Category is required."); return false; }
+    }
+    if (step === 3 && priceType === "fixed") {
+      const allSet = selectedBoms.every(({ bom }) => variantPrices[bom.id] !== "" && parseFloat(variantPrices[bom.id]) > 0);
+      if (!allSet) { setStepError("Enter a price for every variant."); return false; }
+    }
+    if (step === 3 && priceType === "tiered") {
+      const allSet = tiers.every((t) => Object.values(t.prices).every((p) => p !== "" && parseFloat(p) > 0));
+      if (!allSet) { setStepError("Fill in all tier prices."); return false; }
+    }
+    setStepError("");
+    return true;
+  };
+
+  const goNext = () => { if (validateStep()) setStep((s) => s + 1); };
+  const goBack = () => { setStepError(""); setStep((s) => s - 1); };
+
+  // ── Save ──
+  const handleSave = async () => {
+    if (!selectedBoms.length) return;
+    setUploadingMedia(true);
+    try {
+      let thumbFinal = null;
+      if (thumbnail?.file) {
+        const up = await uploadImage(thumbnail.file, "pmp-products", token);
+        thumbFinal = up.url || up?.data?.url;
+      }
+      const galleryUrls = [];
+      for (const img of images) {
+        if (img.file) {
+          const up = await uploadImage(img.file, "pmp-products", token);
+          galleryUrls.push(up.url || up?.data?.url);
+        }
+      }
+      const syntheticVarGroups = hasVariants
+        ? [{ id: "bom-variant", name: "Type", options: selectedBoms.map((s) => ({ id: s.bom.id, value: s.label || s.bom.productName })) }]
+        : [];
+      const syntheticCombos = hasVariants
+        ? selectedBoms.map((s) => ({ id: s.bom.id, combo: { "bom-variant": s.label || s.bom.productName }, label: s.label || s.bom.productName }))
+        : [];
+      const primaryId = primaryBom?.id;
+      const stockVal = isStandalone ? (parseInt(stockMap[primaryId]) || 0) : null;
+      const variantStock = hasVariants ? selectedBoms.reduce((acc, { bom }) => ({ ...acc, [bom.id]: parseInt(stockMap[bom.id]) || 0 }), {}) : undefined;
+
+      onSave({
+        productName: storefrontName,
+        subCategoryName: storefrontName,
+        subCategoryCode: storefrontName.split(" ").filter((w) => w).map((w) => w[0]).join("").toUpperCase().slice(0, 8),
+        category,
+        description,
+        priceType,
+        ...(priceType === "fixed"
+          ? isStandalone
+            ? { price: variantPrices[primaryId] }
+            : { variantPrices }
+          : priceType === "tiered"
+          ? { tiers }
+          : {}),
+        variantGroups: syntheticVarGroups,
+        combinations: syntheticCombos,
+        stock: stockVal,
+        variantStock,
+        trackInventory: true,
+        bomId: isStandalone ? primaryId : undefined,
+        bomGroupName: storefrontName,
+        thumbnail: thumbFinal,
+        images: galleryUrls,
+        isPublished,
+        isArchived: false,
+      });
+    } catch (err) {
+      onPriceError(err.message || "Image upload failed.");
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  // ── BOM search filter ──
+  const usedBomIds = new Set(selectedBoms.map((s) => s.bom.id));
+  const filteredBoms = allBoms.filter(
+    (b) => !usedBomIds.has(b.id) && (!bomSearch || b.productName.toLowerCase().includes(bomSearch.toLowerCase()) || (b.category || "").toLowerCase().includes(bomSearch.toLowerCase()))
+  );
+
+  // ── UI ──
+  const secTitle = { fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: "rgba(229,226,225,0.5)", margin: "0 0 1rem 0" };
+  const inputSt = { width: "100%", background: "rgba(255,255,255,0.06)", border: "none", borderRadius: "10px", padding: "0.75rem 1rem", color: "#E5E2E1", fontSize: "0.875rem", outline: "none", boxSizing: "border-box" };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "16px", width: "100%", maxWidth: "900px", maxHeight: "92vh", overflowY: "auto", display: "flex", flexDirection: "column", scrollbarWidth: "thin", scrollbarColor: "var(--gold) var(--dark2)" }}
+      >
+        {/* Header */}
+        <div style={{ position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "1.25rem 1.5rem", background: "var(--dark)", borderBottom: "1px solid var(--border)" }}>
+          <div>
+            <h2 className="modal-title" style={{ margin: 0 }}>Add New Product</h2>
+            <p style={{ color: "var(--gray)", fontSize: "0.78rem", margin: "0.2rem 0 0" }}>
+              {step === 1 && "Select a product from your BOM catalog"}
+              {step === 2 && "Set storefront details and preview the card"}
+              {step === 3 && "Configure pricing and margins"}
+              {step === 4 && "Set availability, media, and publish"}
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background: "var(--dark2)", border: "1px solid var(--border)", borderRadius: "8px", width: "36px", height: "36px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--gray)", cursor: "pointer" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div style={{ padding: "1.5rem", flex: 1 }}>
+          <Stepper current={step} steps={["Select", "Details", "Pricing", "Availability"]} />
+
+          {/* ─── STEP 1: Select BOM ─────────────────────────────────── */}
+          {step === 1 && (
+            <div>
+              <p style={secTitle}>Primary Product</p>
+
+              {/* BOM search */}
+              <div ref={bomSearchRef} style={{ position: "relative", marginBottom: "1rem" }}>
+                <input
+                  type="text"
+                  style={inputSt}
+                  placeholder="Search product by name or category…"
+                  value={bomSearch}
+                  onChange={(e) => { setBomSearch(e.target.value); setBomOpen(true); }}
+                  onFocus={() => setBomOpen(true)}
+                />
+                {bomOpen && filteredBoms.length > 0 && (
+                  <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--dark2,#1a1a1a)", border: "1px solid var(--border)", borderRadius: "10px", zIndex: 100, maxHeight: "220px", overflowY: "auto" }}>
+                    {filteredBoms.slice(0, 20).map((b) => (
+                      <button key={b.id} type="button"
+                        onClick={() => {
+                          setSelectedBoms([{ bom: b, label: "" }]);
+                          setBomSearch("");
+                          setBomOpen(false);
+                        }}
+                        style={{ width: "100%", textAlign: "left", background: "none", border: "none", padding: "0.75rem 1rem", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+                        onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                      >
+                        <div>
+                          <div style={{ color: "#E5E2E1", fontWeight: 600, fontSize: "0.875rem" }}>{b.productName}</div>
+                          {b.category && <div style={{ color: "var(--gray)", fontSize: "0.72rem", marginTop: "0.1rem" }}>{b.category}</div>}
+                        </div>
+                        <div style={{ display: "flex", gap: "1rem", flexShrink: 0, fontSize: "0.72rem" }}>
+                          <span style={{ color: "#D4A843", fontWeight: 700 }}>₱{(b.totalCost || 0).toFixed(2)} cost</span>
+                        </div>
+                      </button>
+                    ))}
+                    {filteredBoms.length === 0 && <div style={{ padding: "1rem", color: "var(--gray)", fontSize: "0.85rem", textAlign: "center" }}>No BOMs found</div>}
+                  </div>
+                )}
+                {filteredBoms.length === 0 && !bomSearch && !selectedBoms.length && (
+                  <div style={{ padding: "0.5rem 0.25rem", color: "var(--gray)", fontSize: "0.75rem" }}>
+                    {allBoms.length === 0 ? "No BOMs found. Create a BOM first in Master Data." : "All BOMs already selected."}
+                  </div>
+                )}
+              </div>
+
+              {/* Selected BOM info table */}
+              {selectedBoms.length > 0 && (
+                <div style={{ marginBottom: "1.5rem", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
+                  <div style={{ padding: "0.75rem 1rem", background: "rgba(212,168,67,0.06)", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontWeight: 700, color: "#E5E2E1", fontSize: "0.9rem" }}>
+                      {isStandalone ? selectedBoms[0].bom.productName : `${selectedBoms.length} products selected`}
+                    </span>
+                    <button type="button" onClick={() => setSelectedBoms([])}
+                      style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer", fontSize: "0.72rem" }}>
+                      Clear
+                    </button>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: hasVariants ? "1.5fr 1fr 90px 90px 1fr" : "2fr 90px 90px 1fr", padding: "0.4rem 0.75rem", background: "rgba(0,0,0,0.15)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                    {hasVariants && <div style={{ fontSize: "0.6rem", color: "var(--gray)", textTransform: "uppercase", fontWeight: 700 }}>Variant</div>}
+                    <div style={{ fontSize: "0.6rem", color: "var(--gray)", textTransform: "uppercase", fontWeight: 700 }}>Product</div>
+                    <div style={{ fontSize: "0.6rem", color: "var(--gray)", textTransform: "uppercase", fontWeight: 700 }}>BOM Cost</div>
+                    <div style={{ fontSize: "0.6rem", color: "var(--gray)", textTransform: "uppercase", fontWeight: 700 }}>Max Stock</div>
+                    <div style={{ fontSize: "0.6rem", color: "var(--gray)", textTransform: "uppercase", fontWeight: 700 }}>Bottleneck</div>
+                  </div>
+                  {selectedBoms.map(({ bom }, i) => (
+                    <div key={bom.id} style={{ display: "grid", gridTemplateColumns: hasVariants ? "1.5fr 1fr 90px 90px 1fr" : "2fr 90px 90px 1fr", padding: "0.7rem 0.75rem", borderBottom: i < selectedBoms.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none", alignItems: "center" }}>
+                      {hasVariants && (
+                        <input
+                          type="text"
+                          value={selectedBoms[i].label}
+                          onChange={(e) => setSelectedBoms((p) => p.map((s, j) => j === i ? { ...s, label: e.target.value } : s))}
+                          placeholder="Label (e.g. 11oz)"
+                          style={{ ...inputSt, padding: "0.3rem 0.5rem", fontSize: "0.8rem", width: "90%", borderRadius: "6px" }}
+                        />
+                      )}
+                      <div style={{ fontSize: "0.82rem", color: "#E5E2E1", fontWeight: 600 }}>{bom.productName}</div>
+                      <div style={{ color: "#D4A843", fontWeight: 700, fontSize: "0.85rem" }}>₱{(bom.totalCost || 0).toFixed(2)}</div>
+                      <div style={{ fontWeight: 700, fontSize: "0.85rem", color: maxProducible[bom.id] === 0 ? "#ef4444" : "#E5E2E1" }}>
+                        {maxProducible[bom.id]} units
+                      </div>
+                      <div style={{ fontSize: "0.68rem", color: "#f59e0b" }}>
+                        {bottleneckMap[bom.id] && maxProducible[bom.id] === 0 ? bottleneckMap[bom.id] : "—"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add size/finish variant */}
+              {selectedBoms.length > 0 && (
+                <div>
+                  <p style={{ ...secTitle, marginBottom: "0.5rem" }}>Size / Finish Variants (optional)</p>
+                  <p style={{ fontSize: "0.72rem", color: "var(--gray)", marginBottom: "0.75rem" }}>
+                    Add another BOM if this product comes in different sizes or finishes (e.g. 11oz + 15oz). Each variant needs a label.
+                  </p>
+                  {selectedBoms.slice(1).map(({ bom }, rawIdx) => {
+                    const idx = rawIdx + 1;
+                    return (
+                      <div key={bom.id} style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.5rem" }}>
+                        <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", borderRadius: "8px", padding: "0.5rem 0.75rem", fontSize: "0.82rem", color: "#E5E2E1" }}>{bom.productName}</div>
+                        <button type="button" onClick={() => setSelectedBoms((p) => p.filter((_, j) => j !== idx))}
+                          style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer", padding: "0.25rem" }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <div style={{ position: "relative" }} ref={null}>
+                    <button type="button"
+                      onClick={() => setVariantOpens((p) => ({ ...p, new: !p.new }))}
+                      style={{ display: "flex", alignItems: "center", gap: "0.4rem", background: "none", border: "1px dashed rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.5rem 1rem", color: "var(--gray)", fontSize: "0.78rem", cursor: "pointer", width: "100%" }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
+                      Add size / finish variant
+                    </button>
+                    {variantOpens.new && (
+                      <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--dark2,#1a1a1a)", border: "1px solid var(--border)", borderRadius: "10px", zIndex: 100, maxHeight: "200px", overflowY: "auto" }}>
+                        <div style={{ padding: "0.5rem" }}>
+                          <input type="text" placeholder="Search BOM…"
+                            style={{ ...inputSt, padding: "0.5rem 0.75rem", fontSize: "0.8rem", marginBottom: "0.25rem" }}
+                            value={variantSearches.new || ""}
+                            onChange={(e) => setVariantSearches((p) => ({ ...p, new: e.target.value }))}
+                          />
+                        </div>
+                        {allBoms
+                          .filter((b) => !usedBomIds.has(b.id) && (!variantSearches.new || b.productName.toLowerCase().includes(variantSearches.new.toLowerCase())))
+                          .slice(0, 15)
+                          .map((b) => (
+                            <button key={b.id} type="button"
+                              onClick={() => {
+                                setSelectedBoms((p) => [...p, { bom: b, label: "" }]);
+                                setVariantOpens((p) => ({ ...p, new: false }));
+                                setVariantSearches((p) => ({ ...p, new: "" }));
+                              }}
+                              style={{ width: "100%", textAlign: "left", background: "none", border: "none", padding: "0.6rem 1rem", color: "#E5E2E1", fontSize: "0.82rem", cursor: "pointer" }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+                              onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                            >
+                              {b.productName}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── STEP 2: Details + Preview ──────────────────────────── */}
+          {step === 2 && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: "2rem", alignItems: "start" }}>
+              <div>
+                <p style={secTitle}>Product Details</p>
+                <div style={{ marginBottom: "1rem" }}>
+                  <label className="form-label">Storefront Name</label>
+                  <input type="text" className="form-input" value={storefrontName}
+                    onChange={(e) => setStorefrontName(e.target.value)}
+                    placeholder="e.g. Custom Ceramic Mug 11oz" />
+                </div>
+                <div style={{ marginBottom: "1rem" }} ref={catRef}>
+                  <label className="form-label">Category</label>
+                  <div style={{ position: "relative" }}>
+                    <input type="text" className="form-input" value={category}
+                      onChange={(e) => { setCategory(e.target.value); setCatOpen(true); }}
+                      onFocus={() => setCatOpen(true)}
+                      placeholder="e.g. Mugs, Stickers, Badges" />
+                    {catOpen && (existingCategories.some((c) => c.toLowerCase().includes(category.toLowerCase())) || (!existingCategories.find((c) => c.toLowerCase() === category.toLowerCase()) && category)) && (
+                      <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--dark2,#1a1a1a)", border: "1px solid var(--border)", borderRadius: "10px", zIndex: 100, maxHeight: "160px", overflowY: "auto" }}>
+                        {existingCategories.filter((c) => c.toLowerCase().includes(category.toLowerCase())).map((c) => (
+                          <button key={c} type="button" onClick={() => { setCategory(c); setCatOpen(false); }}
+                            style={{ width: "100%", textAlign: "left", background: "none", border: "none", padding: "0.6rem 1rem", color: "#E5E2E1", fontSize: "0.85rem", cursor: "pointer" }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+                            onMouseLeave={(e) => e.currentTarget.style.background = "none"}>{c}</button>
+                        ))}
+                        {category && !existingCategories.find((c) => c.toLowerCase() === category.toLowerCase()) && (
+                          <button type="button" onClick={() => setCatOpen(false)}
+                            style={{ width: "100%", textAlign: "left", background: "none", border: "none", borderTop: "1px solid rgba(255,255,255,0.06)", padding: "0.6rem 1rem", color: "#D4A843", fontSize: "0.78rem", cursor: "pointer", fontWeight: 700 }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(212,168,67,0.06)"}
+                            onMouseLeave={(e) => e.currentTarget.style.background = "none"}>
+                            + Use &ldquo;{category}&rdquo;
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="form-label">Description</label>
+                  <textarea className="form-textarea" value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Materials used, printing method, available sizes, customization options…"
+                    rows={4} />
+                </div>
+              </div>
+              <ProductCardPreview
+                name={storefrontName}
+                category={category}
+                priceRange={priceRangeText}
+                variantCount={selectedBoms.length}
+                maxProducible={overallMaxProducible}
+                thumbnail={thumbnail?.preview}
+              />
+            </div>
+          )}
+
+          {/* ─── STEP 3: Pricing ────────────────────────────────────── */}
+          {step === 3 && (
+            <div>
+              <p style={secTitle}>Pricing</p>
+              <div className="price-type-row" style={{ marginBottom: "1.25rem" }}>
+                {[{ val: "fixed", label: "Fixed Price" }, { val: "tiered", label: "Tier Price" }, { val: "inquiry", label: "For Inquiry" }].map(({ val, label }) => (
+                  <button key={val} type="button" className={`price-type-btn${priceType === val ? " selected" : ""}`} onClick={() => setPriceType(val)}>{label}</button>
+                ))}
+              </div>
+
+              {priceType === "fixed" && (
+                isStandalone ? (
+                  <div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--gray)", marginBottom: "0.5rem" }}>
+                      Floor price (BOM cost): <strong style={{ color: "#D4A843" }}>₱{(bomCostMap[primaryBom?.id] || 0).toFixed(2)}/unit</strong> — sell above this to profit
+                    </div>
+                    <div className="tier-price-cell">
+                      <span className="peso">₱</span>
+                      <NumberInput className="tier-input" value={variantPrices[primaryBom?.id] || ""} onChange={(e) => setVariantPrices((p) => ({ ...p, [primaryBom.id]: sanitizeNumber(e.target.value) }))} placeholder="0" min={0} step="0.01" />
+                    </div>
+                    {priceWarnings[primaryBom?.id] && <div style={{ marginTop: "0.4rem", fontSize: "0.78rem", color: "#f87171" }}>Warning: {priceWarnings[primaryBom.id]}</div>}
+                  </div>
+                ) : (
+                  <div className="tier-table-wrap">
+                    <table className="tier-table">
+                      <thead>
+                        <tr><th>Variant / Size</th><th>BOM Cost (Floor)</th><th>Your Price (₱)</th><th>Margin</th></tr>
+                      </thead>
+                      <tbody>
+                        {selectedBoms.map(({ bom, label }) => {
+                          const cost = bomCostMap[bom.id] || 0;
+                          const price = parseFloat(variantPrices[bom.id]);
+                          const hasP = variantPrices[bom.id] !== "" && !isNaN(price);
+                          const margin = hasP ? price - cost : null;
+                          return (
+                            <tr key={bom.id}>
+                              <td style={{ fontWeight: 600, color: "#E5E2E1" }}>{label || bom.productName}</td>
+                              <td style={{ color: "#D4A843", fontWeight: 700 }}>₱{cost.toFixed(2)}</td>
+                              <td>
+                                <div className="tier-price-cell">
+                                  <span className="peso">₱</span>
+                                  <NumberInput className="tier-input" value={variantPrices[bom.id] || ""} onChange={(e) => setVariantPrices((p) => ({ ...p, [bom.id]: sanitizeNumber(e.target.value) }))} placeholder="0" min={0} step="0.01" />
+                                </div>
+                              </td>
+                              <td>
+                                {margin !== null && (
+                                  <span style={{ fontSize: "0.78rem", fontWeight: 600, color: margin < 0 ? "#f87171" : "#22c55e" }}>
+                                    {margin < 0 ? `-₱${Math.abs(margin).toFixed(2)}` : `+₱${margin.toFixed(2)}`}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              )}
+
+              {priceType === "tiered" && (
+                <>
+                  {Object.keys(tierWarnings).length > 0 && (
+                    <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "6px", fontSize: "0.78rem", color: "#f87171" }}>
+                      Cells in red are priced below BOM cost — selling at a loss.
+                    </div>
+                  )}
+                  <div className="tier-table-wrap">
+                    <table className="tier-table smart-tier-table">
+                      <thead>
+                        <tr>
+                          <th>Tier</th>
+                          <th>Min Qty</th>
+                          <th>Max Qty</th>
+                          {isStandalone ? (
+                            <th>Price (₱)<div style={{ fontSize: "0.6rem", color: "#D4A843", fontWeight: 600 }}>floor ₱{(bomCostMap[primaryBom?.id] || 0).toFixed(2)}</div></th>
+                          ) : (
+                            selectedBoms.map(({ bom, label }) => (
+                              <th key={bom.id} className="tier-variant-header">
+                                {label || bom.productName}
+                                <div style={{ fontSize: "0.6rem", color: "#D4A843", fontWeight: 600 }}>floor ₱{(bomCostMap[bom.id] || 0).toFixed(2)}</div>
+                              </th>
+                            ))
+                          )}
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tiers.map((tier, idx) => (
+                          <tr key={tier.id}>
+                            <td><span className="tier-badge">Tier {idx + 1}</span></td>
+                            <td><NumberInput className="tier-input" value={tier.minQty ?? ""} placeholder="1" min={0} onChange={(e) => updateTierRange(tier.id, "minQty", e.target.value)} /></td>
+                            <td><NumberInput className="tier-input" value={tier.maxQty ?? ""} placeholder="∞" min={0} onChange={(e) => updateTierRange(tier.id, "maxQty", e.target.value)} /></td>
+                            {isStandalone ? (
+                              <td style={{ background: tierWarnings[`${tier.id}___base__`] ? "rgba(239,68,68,0.07)" : undefined }}>
+                                <div className="tier-price-cell">
+                                  <span className="peso" style={{ color: tierWarnings[`${tier.id}___base__`] ? "#f87171" : undefined }}>₱</span>
+                                  <NumberInput className="tier-input" value={tier.prices["__base__"] || ""} onChange={(e) => updateTierPrice(tier.id, "__base__", sanitizeNumber(e.target.value))} placeholder="0" min={0} step="0.01" />
+                                </div>
+                              </td>
+                            ) : (
+                              selectedBoms.map(({ bom }) => {
+                                const wkey = `${tier.id}_${bom.id}`;
+                                return (
+                                  <td key={bom.id} style={{ background: tierWarnings[wkey] ? "rgba(239,68,68,0.07)" : undefined }}>
+                                    <div className="tier-price-cell">
+                                      <span className="peso" style={{ color: tierWarnings[wkey] ? "#f87171" : undefined }}>₱</span>
+                                      <NumberInput className="tier-input" value={tier.prices[bom.id] || ""} onChange={(e) => updateTierPrice(tier.id, bom.id, sanitizeNumber(e.target.value))} placeholder="0" min={0} step="0.01" />
+                                    </div>
+                                  </td>
+                                );
+                              })
+                            )}
+                            <td>{tiers.length > 1 && <button type="button" className="btn-remove-tier" onClick={() => removeTier(tier.id)}>Remove</button>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button type="button" className="add-tier-btn" onClick={addTier}>Add Price Tier</button>
+                </>
+              )}
+
+              {priceType === "inquiry" && (
+                <div style={{ padding: "1rem", background: "rgba(212,168,67,0.08)", border: "1px solid rgba(212,168,67,0.3)", borderRadius: "8px", color: "var(--gold)", fontSize: "0.9rem" }}>
+                  This product will be listed as &ldquo;For Inquiry&rdquo; — customers will contact you for pricing.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── STEP 4: Availability + Media ───────────────────────── */}
+          {step === 4 && (
+            <div>
+              {/* Stock */}
+              {priceType !== "inquiry" && (
+                <div style={{ marginBottom: "1.5rem" }}>
+                  <p style={secTitle}>Storefront Availability</p>
+                  {isStandalone ? (
+                    <div>
+                      <div style={{ fontSize: "0.8rem", color: "var(--gray)", marginBottom: "0.75rem" }}>
+                        Max producible from current stock: <strong style={{ color: "#E5E2E1" }}>{maxProducible[primaryBom?.id] ?? 0} units</strong>
+                      </div>
+                      <label className="form-label">Storefront Stock</label>
+                      <NumberInput className="form-input"
+                        value={stockMap[primaryBom?.id] ?? String(maxProducible[primaryBom?.id] ?? 0)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (parseInt(val) > (maxProducible[primaryBom?.id] ?? 0)) return;
+                          setStockMap((p) => ({ ...p, [primaryBom.id]: val }));
+                        }}
+                        placeholder="0" min={0} max={maxProducible[primaryBom?.id] ?? 0} />
+                    </div>
+                  ) : (
+                    <div className="tier-table-wrap">
+                      <table className="tier-table">
+                        <thead><tr><th>Variant / Size</th><th>Max Producible</th><th>Storefront Stock</th></tr></thead>
+                        <tbody>
+                          {selectedBoms.map(({ bom, label }) => (
+                            <tr key={bom.id}>
+                              <td style={{ fontWeight: 600, color: "#E5E2E1" }}>{label || bom.productName}</td>
+                              <td style={{ color: maxProducible[bom.id] === 0 ? "#ef4444" : "var(--gray)" }}>{maxProducible[bom.id]} units</td>
+                              <td>
+                                <NumberInput className="tier-input"
+                                  value={stockMap[bom.id] ?? String(maxProducible[bom.id] ?? 0)}
+                                  onChange={(e) => {
+                                    if (parseInt(e.target.value) > maxProducible[bom.id]) return;
+                                    setStockMap((p) => ({ ...p, [bom.id]: e.target.value }));
+                                  }}
+                                  placeholder="0" min={0} max={maxProducible[bom.id]} />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Media */}
+              <p style={secTitle}>Product Media</p>
+              <div className="images-row">
+                <div className="images-col">
+                  <h2 className="form-section-title">Thumbnail</h2>
+                  {thumbnail ? (
+                    <div className="thumbnail-preview-wrap">
+                      <div className="thumbnail-preview">
+                        <img src={thumbnail.preview} alt="Thumbnail" />
+                        <button type="button" className="image-remove-btn" onClick={() => setThumbnail(null)}>×</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={`image-upload-area${dragOverThumb ? " drag-over" : ""}`}
+                      onDrop={(e) => { e.preventDefault(); setDragOverThumb(false); if (e.dataTransfer.files?.length) handleThumb(e.dataTransfer.files); }}
+                      onDragOver={(e) => { e.preventDefault(); setDragOverThumb(true); }}
+                      onDragLeave={() => setDragOverThumb(false)}
+                      onClick={() => document.getElementById("addThumbInput").click()}>
+                      <div className="image-upload-text"><strong>Click to upload thumbnail</strong> or drag and drop</div>
+                      <div className="image-upload-hint">PNG, JPG — 200×200 to 800×800px</div>
+                      <input id="addThumbInput" type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.length) handleThumb(e.target.files); }} />
+                    </div>
+                  )}
+                </div>
+                <div className="images-col">
+                  <h2 className="form-section-title">Product Gallery</h2>
+                  <div className={`image-upload-area${dragOver ? " drag-over" : ""}`}
+                    onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files?.length) handleGallery(e.dataTransfer.files); }}
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onClick={() => document.getElementById("addGalleryInput").click()}>
+                    <div className="image-upload-text"><strong>Click to upload</strong> or drag and drop</div>
+                    <div className="image-upload-hint">PNG, JPG, GIF</div>
+                    <input id="addGalleryInput" type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { if (e.target.files?.length) handleGallery(e.target.files); }} />
+                  </div>
+                  {images.length > 0 && (
+                    <div className="image-preview-grid">
+                      {images.map((img) => (
+                        <div key={img.id} className="image-preview-item">
+                          <img src={img.preview} alt="" />
+                          <button type="button" className="image-remove-btn" onClick={() => setImages(images.filter((i) => i.id !== img.id))}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Publish toggle */}
+              <div style={{ marginTop: "1.5rem", padding: "1rem", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", borderRadius: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: "#E5E2E1", fontSize: "0.875rem" }}>Publish immediately</div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.15rem" }}>
+                    {isPublished ? "Product will be visible to customers on save." : "Product will be saved as a draft."}
+                  </div>
+                </div>
+                <button type="button" onClick={() => setIsPublished((p) => !p)}
+                  style={{ position: "relative", display: "inline-flex", alignItems: "center", width: "44px", height: "24px", borderRadius: "12px", border: "none", background: isPublished ? "#D4A843" : "var(--border)", cursor: "pointer", flexShrink: 0, padding: 0 }}>
+                  <span style={{ position: "absolute", left: isPublished ? "22px" : "2px", width: "20px", height: "20px", borderRadius: "50%", background: "#fff", transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.3)" }} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step error */}
+          {stepError && (
+            <div style={{ marginTop: "1rem", padding: "0.625rem 1rem", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "8px", fontSize: "0.82rem", color: "#f87171" }}>
+              {stepError}
+            </div>
+          )}
+        </div>
+
+        {/* Footer navigation */}
+        <div style={{ padding: "1rem 1.5rem", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--dark)", position: "sticky", bottom: 0, zIndex: 10 }}>
+          <button type="button" onClick={step === 1 ? onClose : goBack}
+            style={{ background: "none", border: "1px solid var(--border)", borderRadius: "8px", padding: "0.5rem 1.25rem", color: "var(--gray)", fontSize: "0.82rem", cursor: "pointer" }}>
+            {step === 1 ? "Cancel" : "Back"}
+          </button>
+          {step < 4 ? (
+            <button type="button" onClick={goNext}
+              style={{ background: "linear-gradient(135deg,#FFDF9F 0%,#D4A843 100%)", border: "none", borderRadius: "8px", padding: "0.5rem 1.75rem", color: "#000", fontSize: "0.82rem", fontWeight: 700, cursor: "pointer" }}>
+              Continue
+            </button>
+          ) : (
+            <button type="button" onClick={handleSave} disabled={uploadingMedia}
+              style={{ background: "linear-gradient(135deg,#FFDF9F 0%,#D4A843 100%)", border: "none", borderRadius: "8px", padding: "0.5rem 1.75rem", color: "#000", fontSize: "0.82rem", fontWeight: 700, cursor: uploadingMedia ? "not-allowed" : "pointer", opacity: uploadingMedia ? 0.7 : 1 }}>
+              {uploadingMedia ? "Saving…" : isPublished ? "Publish Product" : "Save as Draft"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Old modal (unused — kept for reference) ───────────────────────────────────
+function AddProductModal_OLD_UNUSED({ boms, inventoryList, products, onClose, onSave, onPriceError, token }) {
   const productGroups = useMemo(() => {
     const groups = {};
     (boms || []).forEach((b) => {

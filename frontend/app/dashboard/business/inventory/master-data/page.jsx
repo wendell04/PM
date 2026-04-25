@@ -5335,50 +5335,15 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
 
   const handleSave = async (bom) => {
     if (!token) {
-      setInfoModal({
-        isOpen: true,
-        title: "Sign in required",
-        message: "Sign in as admin to save BOMs.",
-      });
+      setInfoModal({ isOpen: true, title: "Sign in required", message: "Sign in as admin to save BOMs." });
       return;
     }
     try {
-      const merged = {
-        ...bom,
-        variantName:
-          bom.variantName ||
-          bom.productName?.split(" - ").slice(-1)[0] ||
-          bom.productName ||
-          "Default",
-      };
-      const payload = bomToApiPayload(merged, materials);
+      const payload = bomToApiPayload(bom, materials);
       if (editBOM) {
-        const bid = editBOM.id ?? editBOM._id;
-        await updateBOM(bid, payload, token);
+        await updateBOM(editBOM.id ?? editBOM._id, payload, token);
       } else {
         await createBOM(payload, token);
-      }
-      await refreshBoms();
-      setShowAddModal(false);
-      setEditBOM(null);
-    } catch (e) {
-      throw e instanceof Error ? e : new Error(String(e));
-    }
-  };
-
-  const handleSaveBatch = async (newBOMs) => {
-    if (!token) return;
-    try {
-      for (const b of newBOMs) {
-        const merged = {
-          ...b,
-          variantName:
-            b.variantName ||
-            b.productName?.split(" - ").slice(-1)[0] ||
-            b.productName ||
-            "Default",
-        };
-        await createBOM(bomToApiPayload(merged, materials), token);
       }
       await refreshBoms();
       setShowAddModal(false);
@@ -5491,12 +5456,9 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
           bom={editBOM}
           materials={materials}
           units={units}
-          onClose={() => {
-            setShowAddModal(false);
-            setEditBOM(null);
-          }}
+          categories={[...new Set((boms || []).map((b) => b.category).filter(Boolean))]}
+          onClose={() => { setShowAddModal(false); setEditBOM(null); }}
           onSave={handleSave}
-          onSaveBatch={handleSaveBatch}
         />
       )}
       <InfoModal

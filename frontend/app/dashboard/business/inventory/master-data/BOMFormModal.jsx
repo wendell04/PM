@@ -1,17 +1,10 @@
-﻿import CustomDropdown from "@/app/components/CustomDropdown";
+import CustomDropdown from "@/app/components/CustomDropdown";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 function PlusIcon() {
   return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-    >
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
       <circle cx="12" cy="12" r="10" />
       <path d="M12 8v8M8 12h8" />
     </svg>
@@ -19,28 +12,14 @@ function PlusIcon() {
 }
 function TrashRowIcon() {
   return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-    >
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
     </svg>
   );
 }
 function CloseIcon({ size = 24 }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-    >
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M18 6L6 18M6 6l12 12" />
     </svg>
   );
@@ -78,69 +57,125 @@ const ghostBtnStyle = {
   borderRadius: "6px",
   padding: "0.3rem 0.75rem",
   color: "#D4A843",
-  fontSize: "0.7rem",
+  background: "none",
+  border: "1px solid rgba(212,168,67,0.2)",
+  fontSize: "0.72rem",
   fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: "0.1em",
   cursor: "pointer",
-  transition: "all 0.15s",
+  letterSpacing: "0.05em",
 };
 
-export default function BOMFormModal({
-  bom,
-  materials,
-  units,
-  onClose,
-  onSave,
-  onSaveBatch,
-}) {
+function CategoryCombobox({ value, onChange, options }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value || "");
+  const ref = useRef(null);
+
+  useEffect(() => { setQuery(value || ""); }, [value]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = options.filter((o) =>
+    o.toLowerCase().includes(query.toLowerCase())
+  );
+  const exactMatch = options.some((o) => o.toLowerCase() === query.toLowerCase());
+
+  const select = (val) => {
+    setQuery(val);
+    onChange(val);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <input
+        type="text"
+        value={query}
+        placeholder="e.g. Mugs, Stickers, Badges"
+        onChange={(e) => { setQuery(e.target.value); onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        style={{ ...inputStyle, border: "none" }}
+      />
+      {open && (filtered.length > 0 || (!exactMatch && query)) && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
+          background: "var(--dark2,#1a1a1a)", border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: "10px", zIndex: 200, maxHeight: "180px", overflowY: "auto",
+        }}>
+          {filtered.map((opt) => (
+            <button key={opt} type="button" onClick={() => select(opt)}
+              style={{
+                width: "100%", textAlign: "left", background: "none", border: "none",
+                padding: "0.6rem 1rem", color: opt === value ? "#D4A843" : "#E5E2E1",
+                fontSize: "0.85rem", cursor: "pointer", fontWeight: opt === value ? 700 : 400,
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+            >
+              {opt}
+            </button>
+          ))}
+          {!exactMatch && query && (
+            <button type="button" onClick={() => select(query)}
+              style={{
+                width: "100%", textAlign: "left", background: "none", border: "none",
+                borderTop: filtered.length ? "1px solid rgba(255,255,255,0.06)" : "none",
+                padding: "0.6rem 1rem", color: "#D4A843", fontSize: "0.8rem",
+                cursor: "pointer", fontWeight: 700,
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(212,168,67,0.06)"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+            >
+              + Use &ldquo;{query}&rdquo; as new category
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function BOMFormModal({ bom, materials, units, categories = [], onClose, onSave }) {
   const { token } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [errors, setErrors] = useState({});
 
   const uomLabel = (code) => {
-    if (!code) return '';
+    if (!code) return "";
     if (!units || units.length === 0) return code;
     const u = units.find((u) => u.code === code);
     return u ? u.name : code;
   };
-  const [submitError, setSubmitError] = useState("");
+
   const [form, setForm] = useState({
     productName: "",
-    productGroupName: "",
+    category: "",
     components: [],
   });
-  const [errors, setErrors] = useState({});
-  const [showVariantPicker, setShowVariantPicker] = useState(false);
-  const [selectedParentId, setSelectedParentId] = useState("");
-  const [checkedVariantIds, setCheckedVariantIds] = useState(new Set());
-  const [variantQty, setVariantQty] = useState(1);
 
   useEffect(() => {
-    if (bom)
+    if (bom) {
       setForm({
         productName: bom.productName || "",
-        productGroupName: bom.productGroupName || "",
+        category: bom.category || "",
         components: (bom.components || []).map((c) => ({
           ...c,
           materialId: c.materialId ?? c.inventoryId ?? "",
         })),
       });
+    }
   }, [bom]);
 
-  useEffect(() => {
-    setCheckedVariantIds(new Set());
-  }, [selectedParentId]);
-
   const addComponent = () =>
-    setForm((p) => ({
-      ...p,
-      components: [...p.components, { materialId: "", qty: 1 }],
-    }));
+    setForm((p) => ({ ...p, components: [...p.components, { materialId: "", qty: 1 }] }));
   const removeComponent = (idx) =>
-    setForm((p) => ({
-      ...p,
-      components: p.components.filter((_, i) => i !== idx),
-    }));
+    setForm((p) => ({ ...p, components: p.components.filter((_, i) => i !== idx) }));
   const updateComponent = (idx, field, value) =>
     setForm((p) => {
       const c = [...p.components];
@@ -148,166 +183,71 @@ export default function BOMFormModal({
       return { ...p, components: c };
     });
 
-  const sharedCost = useMemo(
-    () =>
-      form.components.reduce((sum, c) => {
-        const mat = materials.find((m) => m.id === c.materialId);
-        // Use FIFO cost - what you'll actually pay when consuming from oldest stock
-        if (!mat || !mat.batches || mat.batches.length === 0) {
-          return sum + (mat?.baseCost || 0) * (c.qty || 0);
-        }
+  const bomCost = useMemo(() => {
+    return form.components.reduce((sum, c) => {
+      const mat = materials.find((m) => m.id === c.materialId);
+      if (!mat || !mat.batches || mat.batches.length === 0) {
+        return sum + (mat?.baseCost || 0) * (c.qty || 0);
+      }
+      const getBatchQty = (b) =>
+        b.remainingQty != null ? b.remainingQty : (b.goodQty ?? b.qtyGood ?? 0);
+      const activeBatches = mat.batches
+        .filter((b) => getBatchQty(b) > 0)
+        .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
+      if (activeBatches.length === 0) {
+        return sum + (mat?.baseCost || 0) * (c.qty || 0);
+      }
+      let remaining = c.qty || 0;
+      let cost = 0;
+      for (const batch of activeBatches) {
+        if (remaining <= 0) break;
+        const take = Math.min(remaining, getBatchQty(batch));
+        cost += take * (batch.unitCost || 0);
+        remaining -= take;
+      }
+      if (remaining > 0) {
+        const totalQty = activeBatches.reduce((s, b) => s + getBatchQty(b), 0);
+        const totalVal = activeBatches.reduce((s, b) => s + getBatchQty(b) * (b.unitCost || 0), 0);
+        cost += remaining * (totalQty > 0 ? totalVal / totalQty : 0);
+      }
+      return sum + cost;
+    }, 0);
+  }, [form.components, materials]);
 
-        const getBatchQty = (b) =>
-          b.remainingQty != null
-            ? b.remainingQty
-            : (b.goodQty ?? b.qtyGood ?? 0);
-        const activeBatches = mat.batches
-          .filter((b) => getBatchQty(b) > 0)
-          .sort((a, b) => new Date(a.dateReceived) - new Date(b.dateReceived));
-        if (activeBatches.length === 0) {
-          return sum + (mat?.baseCost || 0) * (c.qty || 0);
-        }
+  const selectedMaterialIds = form.components
+    .filter((c) => c.materialId)
+    .map((c) => c.materialId);
 
-        // Simulate FIFO consumption
-        let remaining = c.qty || 0;
-        let batchCost = 0;
-
-        for (const batch of activeBatches) {
-          if (remaining <= 0) break;
-          const take = Math.min(remaining, getBatchQty(batch));
-          batchCost += take * (batch.unitCost || 0);
-          remaining -= take;
-        }
-
-        // If backorder, use average for remaining
-        if (remaining > 0) {
-          const totalQty = activeBatches.reduce((s, b) => s + getBatchQty(b), 0);
-          const totalValue = activeBatches.reduce(
-            (s, b) => s + getBatchQty(b) * (b.unitCost || 0),
-            0,
-          );
-          const avgCost = totalQty > 0 ? totalValue / totalQty : 0;
-          batchCost += remaining * avgCost;
-        }
-
-        return sum + batchCost;
-      }, 0),
-    [form.components, materials],
-  );
-
-  const parentProducts = useMemo(
+  const availableMaterials = useMemo(
     () =>
       materials
-        .filter((m) => m.hasVariants && !m.parentId)
-        .map((m) => ({
-          id: m.id,
-          name: m.name,
-          children: materials.filter(
-            (c) => String(c.parentId) === String(m.id),
-          ),
-        })),
-    [materials],
+        .filter((m) => (!m.parentId && !m.hasVariants) || m.parentId)
+        .filter((m) => !selectedMaterialIds.includes(m.id))
+        .map((m) => {
+          const p = m.parentId ? materials.find((x) => x.id === m.parentId) : null;
+          return { value: m.id, label: `${m.name}${p ? ` (${p.name})` : ""}` };
+        }),
+    [materials, selectedMaterialIds],
   );
 
-  const currentVariants = useMemo(() => {
-    if (!selectedParentId) return [];
-    return (
-      parentProducts.find((p) => p.id === selectedParentId)?.children || []
-    );
-  }, [selectedParentId, parentProducts]);
-
-  const checkedVariants = useMemo(
-    () => currentVariants.filter((v) => checkedVariantIds.has(v.id)),
-    [currentVariants, checkedVariantIds],
-  );
-
-  const variantCostPreview = useMemo(
-    () =>
-      checkedVariants.map((v) => ({
-        ...v,
-        bomCost: sharedCost + (v.baseCost || 0) * variantQty,
-      })),
-    [checkedVariants, sharedCost, variantQty],
-  );
-
-  const batchTotal = useMemo(
-    () => variantCostPreview.reduce((s, v) => s + v.bomCost, 0),
-    [variantCostPreview],
-  );
-
-  const toggleVariant = (id) =>
-    setCheckedVariantIds((prev) => {
-      const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-
-  const selectAll = () =>
-    setCheckedVariantIds(new Set(currentVariants.map((v) => v.id)));
-  const deselectAll = () => setCheckedVariantIds(new Set());
-
-  // Builds BOM array from a given variant list — used by both buttons
-  const buildBOMs = (variants) => {
-    const productGroupName = form.productGroupName.trim();
-    const sharedComponents = form.components.filter((c) => c.materialId);
-    return variants.map((v, i) => {
-      // Extract just the variant-specific part (e.g., "Magic Mugs 11oz" from "Mugs - Magic Mugs 11oz")
-      const variantNameOnly = v.name.includes(" - ")
-        ? v.name.split(" - ").slice(1).join(" - ")
-        : v.name;
-
-      return {
-        id: `bom-${Date.now()}-${i}`,
-        productName: `${productGroupName} - ${variantNameOnly}`,
-        productGroupName: productGroupName,
-        sku: "",
-        variantGroup: productGroupName,
-        variantId: v.id,
-        components: [
-          ...sharedComponents,
-          { materialId: v.id, qty: variantQty },
-        ],
-        createdAt: new Date().toISOString(),
-      };
-    });
-  };
-
-  const dispatchBatch = (boms) => {
-    if (typeof onSaveBatch === "function") {
-      onSaveBatch(boms);
-    } else {
-      boms.forEach((b) => onSave(b, true));
-      onClose();
-    }
-    setShowVariantPicker(false);
-    setSelectedParentId("");
-    setCheckedVariantIds(new Set());
-    setVariantQty(1);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const errs = {};
-    if (!form.productGroupName.trim())
-      errs.productGroupName = "Product group name is required";
-    if (form.components.some((c) => !c.materialId))
-      errs.material = "Select a material for every row";
-    if (Object.keys(errs).length) {
-      setErrors(errs);
-      return;
-    }
-    if (!token) {
-      setSubmitError("Sign in required to save BOMs.");
-      return;
-    }
-    setErrors({});
+  const handleSave = async () => {
+    if (isSubmitting) return;
     setSubmitError("");
+    const errs = {};
+    if (!form.productName.trim()) errs.productName = "Product name is required";
+    if (!form.category.trim()) errs.category = "Category is required";
+    if (form.components.some((c) => !c.materialId)) errs.material = "Select a material for every row";
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+    if (!token) { setSubmitError("Sign in required."); return; }
+    setErrors({});
     setIsSubmitting(true);
     try {
       await onSave({
         ...bom,
         ...form,
-        productName: form.productName.trim() || form.productGroupName.trim(),
+        productName: form.productName.trim(),
+        productGroupName: form.productName.trim(),
+        category: form.category.trim(),
       });
     } catch (err) {
       setSubmitError(err?.message || "Save failed.");
@@ -315,31 +255,6 @@ export default function BOMFormModal({
       setIsSubmitting(false);
     }
   };
-
-  const selectedMaterialIds = form.components
-    .filter((c) => c.materialId)
-    .map((c) => c.materialId);
-
-  // Get variant IDs to exclude from shared materials when variant picker is open
-  const variantIdsToExclude = useMemo(() => {
-    if (!showVariantPicker || !selectedParentId) return [];
-    return currentVariants.map((v) => v.id);
-  }, [showVariantPicker, selectedParentId, currentVariants]);
-
-  const availableMaterials = useMemo(
-    () =>
-      materials
-        .filter((m) => (!m.parentId && !m.hasVariants) || m.parentId)
-        .filter((m) => !selectedMaterialIds.includes(m.id))
-        .filter((m) => !variantIdsToExclude.includes(m.id))
-        .map((m) => {
-          const p = m.parentId
-            ? materials.find((x) => x.id === m.parentId)
-            : null;
-          return { value: m.id, label: `${m.name}${p ? ` (${p.name})` : ""}` };
-        }),
-    [materials, selectedMaterialIds, variantIdsToExclude],
-  );
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -358,921 +273,193 @@ export default function BOMFormModal({
         }}
       >
         {/* Header */}
-        <div
-          style={{
-            padding: "2rem 2rem 1.5rem",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-          }}
-        >
+        <div style={{ padding: "2rem 2rem 1.5rem", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <span
-              style={{
-                fontSize: "0.6rem",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.2em",
-                color: "#D4A843",
-                display: "block",
-                marginBottom: "0.25rem",
-              }}
-            >
-              {bom?.productName?.endsWith(" (Copy)")
-                ? "Duplicate Configuration"
-                : bom
-                  ? "Edit Configuration"
-                  : "New Configuration"}
+            <span style={{ fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.2em", color: "#D4A843", display: "block", marginBottom: "0.25rem" }}>
+              {bom?.productName?.endsWith(" (Copy)") ? "Duplicate Configuration" : bom ? "Edit Configuration" : "New Configuration"}
             </span>
-            <h2
-              style={{
-                fontSize: "1.5rem",
-                fontWeight: 800,
-                color: "#E5E2E1",
-                letterSpacing: "-0.02em",
-                margin: 0,
-              }}
-            >
-              {bom?.productName?.endsWith(" (Copy)")
-                ? "Duplicate BOM"
-                : bom
-                  ? "Edit BOM"
-                  : "Create New Product BOM"}
+            <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "#E5E2E1", letterSpacing: "-0.02em", margin: 0 }}>
+              {bom?.productName?.endsWith(" (Copy)") ? "Duplicate BOM" : bom ? "Edit BOM" : "Create Product BOM"}
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              color: "rgba(229,226,225,0.4)",
-              cursor: "pointer",
-              padding: "0.25rem",
-              lineHeight: 0,
-            }}
-          >
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(229,226,225,0.4)", cursor: "pointer", padding: "0.25rem", lineHeight: 0 }}>
             <CloseIcon />
           </button>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            flex: 1,
-            overflow: "hidden",
-          }}
-        >
-          <div style={{ padding: "0 2rem", overflowY: "auto", flex: 1 }}>
-            {/* Product Group */}
-            <div style={{ marginBottom: "2rem" }}>
-              <label style={labelStyle}>Product Group Name</label>
-              <input
-                type="text"
-                value={form.productGroupName}
-                onChange={(e) => {
-                  setForm((p) => ({
-                    ...p,
-                    productGroupName: e.target.value.slice(0, 100),
-                  }));
-                  if (errors.productGroupName)
-                    setErrors((er) => ({ ...er, productGroupName: "" }));
-                }}
-                placeholder="e.g. Custom Mugs, T-Shirts, Bags"
-                maxLength={100}
-                style={{
-                  ...inputStyle,
-                  border: errors.productGroupName
-                    ? "1px solid rgba(239,68,68,0.5)"
-                    : "none",
-                }}
-              />
-              <span
-                style={{
-                  fontSize: "0.6rem",
-                  color: "rgba(229,226,225,0.35)",
-                  marginTop: "0.25rem",
-                  display: "block",
-                }}
-              >
-                Group related BOMs together (e.g., all mug variants)
-              </span>
-              {errors.productGroupName && (
-                <span style={errorStyle}>{errors.productGroupName}</span>
-              )}
+        <div style={{ padding: "0 2rem", overflowY: "auto", flex: 1 }}>
+          {/* Product Name */}
+          <div style={{ marginBottom: "1.5rem" }}>
+            <label style={labelStyle}>Product Name</label>
+            <input
+              type="text"
+              value={form.productName}
+              onChange={(e) => {
+                setForm((p) => ({ ...p, productName: e.target.value.slice(0, 120) }));
+                if (errors.productName) setErrors((er) => ({ ...er, productName: "" }));
+              }}
+              placeholder="e.g. Custom Ceramic Mug 11oz"
+              maxLength={120}
+              style={{ ...inputStyle, border: errors.productName ? "1px solid rgba(239,68,68,0.5)" : "none" }}
+            />
+            {errors.productName && <span style={errorStyle}>{errors.productName}</span>}
+          </div>
+
+          {/* Category */}
+          <div style={{ marginBottom: "2rem" }}>
+            <label style={labelStyle}>Category</label>
+            <CategoryCombobox
+              value={form.category}
+              onChange={(val) => {
+                setForm((p) => ({ ...p, category: val }));
+                if (errors.category) setErrors((er) => ({ ...er, category: "" }));
+              }}
+              options={categories}
+            />
+            <span style={{ fontSize: "0.6rem", color: "rgba(229,226,225,0.35)", marginTop: "0.25rem", display: "block" }}>
+              Used to group products on the storefront — e.g. Mugs, Stickers, Badges
+            </span>
+            {errors.category && <span style={errorStyle}>{errors.category}</span>}
+          </div>
+
+          {/* BOM Cost Card */}
+          {form.components.length > 0 && (
+            <div style={{
+              background: "linear-gradient(135deg,rgba(255,255,255,0.06) 0%,rgba(255,255,255,0.03) 100%)",
+              borderRadius: "12px", padding: "1.25rem 1.5rem", marginBottom: "2rem",
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+            }}>
+              <div>
+                <p style={{ fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.15em", color: "rgba(229,226,225,0.5)", margin: "0 0 0.25rem 0" }}>
+                  BOM Cost
+                </p>
+                <span style={{ fontSize: "2rem", fontWeight: 800, color: "#D4A843", letterSpacing: "-0.03em" }}>
+                  ₱{bomCost.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                </span>
+                <span style={{ fontSize: "0.75rem", color: "rgba(229,226,225,0.4)", marginLeft: "0.5rem" }}>per unit</span>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: "0.35rem",
+                  padding: "0.25rem 0.75rem", borderRadius: "99px",
+                  background: "rgba(212,168,67,0.1)", color: "#D4A843",
+                  fontSize: "0.7rem", fontWeight: 700,
+                }}>
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#D4A843" }} />
+                  Floor Price
+                </span>
+                <p style={{ fontSize: "0.6rem", color: "rgba(229,226,225,0.35)", fontStyle: "italic", margin: "0.4rem 0 0 0" }}>
+                  {form.components.length} material{form.components.length !== 1 ? "s" : ""} · sell above this to profit
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Components Section */}
+          <div style={{ marginBottom: "1.5rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+              <div>
+                <h3 style={{ fontSize: "1rem", fontWeight: 800, color: "#E5E2E1", margin: "0 0 0.1rem 0" }}>Components</h3>
+                <p style={{ fontSize: "0.6rem", color: "rgba(229,226,225,0.35)", margin: 0 }}>
+                  Materials needed to make one unit of this product
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                {errors.material && <span style={errorStyle}>{errors.material}</span>}
+                {errors.components && <span style={errorStyle}>{errors.components}</span>}
+                <button type="button" onClick={addComponent} style={ghostBtnStyle}>
+                  <PlusIcon /> Add Material
+                </button>
+              </div>
             </div>
 
-            {/* Shared cost card */}
+            {/* Column headers */}
             {form.components.length > 0 && (
-              <div
-                style={{
-                  background:
-                    "linear-gradient(135deg,rgba(255,255,255,0.06) 0%,rgba(255,255,255,0.03) 100%)",
-                  borderRadius: "12px",
-                  padding: "1.25rem 1.5rem",
-                  marginBottom: "2rem",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <div>
-                  <p
-                    style={{
-                      fontSize: "0.6rem",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.15em",
-                      color: "rgba(229,226,225,0.5)",
-                      margin: "0 0 0.25rem 0",
-                    }}
-                  >
-                    Shared Cost
-                  </p>
-                  <span
-                    style={{
-                      fontSize: "2rem",
-                      fontWeight: 800,
-                      color: "#D4A843",
-                      letterSpacing: "-0.03em",
-                    }}
-                  >
-                    ₱
-                    {sharedCost.toLocaleString("en-PH", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "rgba(229,226,225,0.4)",
-                      marginLeft: "0.5rem",
-                    }}
-                  >
-                    per unit
-                  </span>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.35rem",
-                      padding: "0.25rem 0.75rem",
-                      borderRadius: "99px",
-                      background: "rgba(212,168,67,0.1)",
-                      color: "#D4A843",
-                      fontSize: "0.7rem",
-                      fontWeight: 700,
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: "6px",
-                        height: "6px",
-                        borderRadius: "50%",
-                        background: "#D4A843",
-                      }}
-                    />
-                    Shared Materials
-                  </span>
-                  <p
-                    style={{
-                      fontSize: "0.6rem",
-                      color: "rgba(229,226,225,0.35)",
-                      fontStyle: "italic",
-                      margin: "0.4rem 0 0 0",
-                    }}
-                  >
-                    {form.components.length} component
-                    {form.components.length > 1 ? "s" : ""} | variant cost added
-                    per BOM
-                  </p>
-                </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 72px 52px 100px 36px", gap: "0.75rem", padding: "0 1rem", marginBottom: "0.5rem" }}>
+                {["Material", "Qty", "Unit", "Cost", ""].map((h) => (
+                  <span key={h} style={{ fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(229,226,225,0.3)" }}>{h}</span>
+                ))}
               </div>
             )}
 
-            {/* Section: Shared Materials */}
-            <div style={{ marginBottom: "1.5rem" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "1rem",
-                }}
-              >
-                <div>
-                  <h3
-                    style={{
-                      fontSize: "1rem",
-                      fontWeight: 800,
-                      color: "#E5E2E1",
-                      margin: "0 0 0.1rem 0",
-                    }}
-                  >
-                    Shared Materials
-                  </h3>
-                  <p
-                    style={{
-                      fontSize: "0.6rem",
-                      color: "rgba(229,226,225,0.35)",
-                      margin: 0,
-                    }}
-                  >
-                    Ink, packaging, transfer paper — same across all variants
-                  </p>
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "0.5rem",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  {errors.material && (
-                    <span style={errorStyle}>{errors.material}</span>
-                  )}
-                  {errors.components && (
-                    <span style={errorStyle}>{errors.components}</span>
-                  )}
-                  {onSaveBatch && (
-                    <button
-                      type="button"
-                      onClick={() => setShowVariantPicker((p) => !p)}
-                      style={{
-                        ...ghostBtnStyle,
-                        background: showVariantPicker
-                          ? "rgba(212,168,67,0.1)"
-                          : "none",
-                        border: showVariantPicker
-                          ? "1px solid rgba(212,168,67,0.3)"
-                          : "1px solid rgba(212,168,67,0.2)",
-                      }}
-                    >
-                      Add All Variants
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={addComponent}
-                    style={{ ...ghostBtnStyle, border: "none" }}
-                  >
-                    <PlusIcon /> Add Material
-                  </button>
-                </div>
+            {form.components.length === 0 ? (
+              <div style={{ padding: "2rem", textAlign: "center", color: "var(--gray)", fontSize: "0.8rem", background: "rgba(255,255,255,0.02)", borderRadius: "12px", border: "1px dashed rgba(255,255,255,0.08)" }}>
+                No materials yet. Click Add Material to begin.
               </div>
-
-              {/* ── Variant Picker Panel ───────────────────────────────────────────
-                  Handles: no-variant (skip), single-dim, and multi-dim products.
-                  Multi-dim combos (e.g. Small White) are stored as flat children
-                  in Material Master, so we treat them identically to single-dim.
-                  "Add All" generates BOMs for EVERY child of selected parent.
-                  Checkboxes: user picks which children get their own BOM.
-              ──────────────────────────────────────────────────────────────────── */}
-              {showVariantPicker && (
-                <div
-                  style={{
-                    background: "rgba(212,168,67,0.04)",
-                    border: "1px solid rgba(212,168,67,0.2)",
-                    borderRadius: "12px",
-                    padding: "1.25rem",
-                    marginBottom: "1rem",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      marginBottom: "1rem",
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          fontWeight: 700,
-                          color: "#D4A843",
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {form.components.map((comp, idx) => {
+                  const selectedMat = materials.find((m) => m.id === comp.materialId);
+                  const componentCost = selectedMat ? (selectedMat.baseCost || 0) * (comp.qty || 0) : 0;
+                  const dropdownOptions = [
+                    { value: "", label: "Search material…" },
+                    ...(selectedMat ? [{ value: selectedMat.id, label: selectedMat.name }] : []),
+                    ...availableMaterials,
+                  ];
+                  return (
+                    <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 72px 52px 100px 36px", gap: "0.75rem", alignItems: "center", padding: "0.875rem 1rem", background: "rgba(14,14,14,0.5)", borderRadius: "12px" }}>
+                      <CustomDropdown
+                        value={comp.materialId}
+                        onChange={(val) => {
+                          updateComponent(idx, "materialId", val);
+                          if (errors.material) setErrors((er) => ({ ...er, material: "" }));
                         }}
-                      >
-                        Generate Separate BOMs — One per Variant
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.62rem",
-                          color: "rgba(229,226,225,0.4)",
-                          marginTop: "0.2rem",
-                        }}
-                      >
-                        Shared materials above are included in every generated
-                        BOM
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowVariantPicker(false)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "rgba(229,226,225,0.4)",
-                        cursor: "pointer",
-                        padding: "0.25rem",
-                        lineHeight: 0,
-                      }}
-                    >
-                      <CloseIcon size={18} />
-                    </button>
-                  </div>
-
-                  {/* Parent group dropdown */}
-                  <div style={{ marginBottom: "1rem" }}>
-                    <CustomDropdown
-                      value={selectedParentId}
-                      onChange={setSelectedParentId}
-                      options={[
-                        { value: "", label: "Select product group…" },
-                        ...parentProducts.map((p) => ({
-                          value: p.id,
-                          label: `${p.name} (${p.children.length} variant${p.children.length !== 1 ? "s" : ""})`,
-                        })),
-                      ]}
-                      placeholder="Select product group…"
-                    />
-                  </div>
-
-                  {/* Variant list with checkboxes */}
-                  {currentVariants.length > 0 && (
-                    <>
-                      {/* Shared cost indicator */}
-                      {form.components.length > 0 && (
-                        <div
-                          style={{
-                            fontSize: "0.65rem",
-                            color: "rgba(212,168,67,0.8)",
-                            background: "rgba(212,168,67,0.06)",
-                            borderRadius: "6px",
-                            padding: "0.4rem 0.75rem",
-                            marginBottom: "0.75rem",
-                          }}
-                        >
-                          + ₱
-                          {sharedCost.toLocaleString("en-PH", {
-                            minimumFractionDigits: 2,
-                          })}{" "}
-                          shared cost will be added to each BOM
-                        </div>
-                      )}
-
-                      {/* Select / Deselect controls */}
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          marginBottom: "0.6rem",
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: "0.65rem",
-                            color: "rgba(229,226,225,0.5)",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {checkedVariantIds.size} of {currentVariants.length}{" "}
-                          selected
-                        </div>
-                        <div style={{ display: "flex", gap: "0.5rem" }}>
-                          {[
-                            ["Select All", selectAll, "#D4A843"],
-                            [
-                              "Deselect All",
-                              deselectAll,
-                              "rgba(229,226,225,0.5)",
-                            ],
-                          ].map(([label, fn, color]) => (
-                            <button
-                              key={label}
-                              type="button"
-                              onClick={fn}
-                              style={{
-                                background: "none",
-                                border: "none",
-                                fontSize: "0.65rem",
-                                fontWeight: 700,
-                                color,
-                                cursor: "pointer",
-                                padding: "0.1rem 0.4rem",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.08em",
-                              }}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Checkbox rows */}
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "0.3rem",
-                          maxHeight: "180px",
-                          overflowY: "auto",
-                          marginBottom: "1rem",
-                        }}
-                      >
-                        {currentVariants.map((v) => {
-                          const isChecked = checkedVariantIds.has(v.id);
-                          const bomCost =
-                            sharedCost + (v.baseCost || 0) * variantQty;
-                          return (
-                            <div
-                              key={v.id}
-                              onClick={() => toggleVariant(v.id)}
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "20px 1fr auto auto",
-                                alignItems: "center",
-                                gap: "0.6rem",
-                                padding: "0.5rem 0.75rem",
-                                background: isChecked
-                                  ? "rgba(212,168,67,0.06)"
-                                  : "rgba(255,255,255,0.02)",
-                                border: `1px solid ${isChecked ? "rgba(212,168,67,0.2)" : "rgba(255,255,255,0.05)"}`,
-                                borderRadius: "8px",
-                                cursor: "pointer",
-                                transition: "all 0.15s",
-                              }}
-                            >
-                              {/* Custom checkbox */}
-                              <div
-                                style={{
-                                  width: "16px",
-                                  height: "16px",
-                                  borderRadius: "4px",
-                                  border: `2px solid ${isChecked ? "#D4A843" : "rgba(229,226,225,0.2)"}`,
-                                  background: isChecked
-                                    ? "#D4A843"
-                                    : "transparent",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  flexShrink: 0,
-                                  transition: "all 0.15s",
-                                }}
-                              >
-                                {isChecked && (
-                                  <svg
-                                    width="10"
-                                    height="10"
-                                    viewBox="0 0 12 12"
-                                    fill="none"
-                                  >
-                                    <path
-                                      d="M2 6l3 3 5-5"
-                                      stroke="#000"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    />
-                                  </svg>
-                                )}
-                              </div>
-                              <span
-                                style={{
-                                  fontSize: "0.8rem",
-                                  fontWeight: 500,
-                                  color: isChecked
-                                    ? "#E5E2E1"
-                                    : "rgba(229,226,225,0.6)",
-                                }}
-                              >
-                                {v.name}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: "0.65rem",
-                                  color: "var(--gray)",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {v.stockQty || 0} pcs
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: "0.75rem",
-                                  color: isChecked
-                                    ? "#D4A843"
-                                    : "rgba(212,168,67,0.35)",
-                                  fontWeight: 700,
-                                  fontFamily: "monospace",
-                                  minWidth: "70px",
-                                  textAlign: "right",
-                                }}
-                              >
-                                ₱
-                                {bomCost.toLocaleString("en-PH", {
-                                  minimumFractionDigits: 2,
-                                })}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Qty row */}
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.75rem",
-                          marginBottom: "0.75rem",
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: "0.7rem",
-                            color: "rgba(229,226,225,0.6)",
-                            fontWeight: 600,
-                          }}
-                        >
-                          Qty per variant:
-                        </span>
+                        options={dropdownOptions}
+                        placeholder="Search material…"
+                      />
+                      <div style={{ position: "relative" }}>
                         <input
                           type="text"
                           inputMode="numeric"
                           pattern="[0-9]*"
-                          value={variantQty}
+                          value={comp.qty || ""}
                           onChange={(e) => {
                             const v = e.target.value;
                             if (v === "" || /^\d+$/.test(v))
-                              setVariantQty(
-                                v === "" ? 1 : Math.max(1, parseInt(v, 10)),
-                              );
+                              updateComponent(idx, "qty", v === "" ? 0 : parseInt(v, 10));
                           }}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            width: "56px",
-                            background: "rgba(255,255,255,0.06)",
-                            border: "none",
-                            borderRadius: "8px",
-                            padding: "0.4rem 0.5rem",
-                            color: "#E5E2E1",
-                            fontSize: "0.85rem",
-                            textAlign: "center",
-                            fontWeight: 700,
-                            outline: "none",
-                          }}
+                          onKeyDown={(e) => { if (["e", "E", "+", "-", "."].includes(e.key)) e.preventDefault(); }}
+                          style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "none", borderRadius: "8px", padding: "0.625rem 0.5rem", color: comp.qty > 0 ? "#E5E2E1" : "transparent", fontSize: "0.85rem", textAlign: "center", fontWeight: 700, outline: "none", boxSizing: "border-box" }}
                         />
-                        <span
-                          style={{
-                            fontSize: "0.65rem",
-                            color: "rgba(229,226,225,0.3)",
-                          }}
-                        >
-                          per variant
-                        </span>
+                        {!comp.qty && (
+                          <span style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", color: "rgba(229,226,225,0.2)", fontSize: "0.85rem", fontWeight: 700, pointerEvents: "none" }}>0</span>
+                        )}
                       </div>
-
-                      {/* Summary pill */}
-                      {checkedVariantIds.size > 0 && (
-                        <div
-                          style={{
-                            fontSize: "0.65rem",
-                            color: "rgba(212,168,67,0.8)",
-                            background: "rgba(212,168,67,0.06)",
-                            borderRadius: "6px",
-                            padding: "0.4rem 0.75rem",
-                            marginBottom: "0.75rem",
-                          }}
-                        >
-                          {checkedVariantIds.size} BOMs | combined cost ₱
-                          {batchTotal.toLocaleString("en-PH", {
-                            minimumFractionDigits: 2,
-                          })}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {currentVariants.length === 0 && selectedParentId && (
-                    <div
-                      style={{
-                        padding: "1rem",
-                        textAlign: "center",
-                        color: "var(--gray)",
-                        fontSize: "0.8rem",
-                      }}
-                    >
-                      No variants found for this product.
+                      <div style={{ textAlign: "center", fontSize: "0.62rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.04em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        title={selectedMat ? uomLabel(selectedMat.uom) : ""}>
+                        {selectedMat ? uomLabel(selectedMat.uom) : "—"}
+                      </div>
+                      <div style={{ textAlign: "right", fontWeight: 800, color: "#E5E2E1", fontSize: "0.9rem" }}>
+                        {componentCost > 0 ? `₱${componentCost.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "—"}
+                      </div>
+                      <button type="button" onClick={() => removeComponent(idx)}
+                        style={{ background: "none", border: "none", color: "rgba(229,226,225,0.2)", cursor: "pointer", padding: "0.25rem", lineHeight: 0, transition: "color 0.15s" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(229,226,225,0.2)"; }}>
+                        <TrashRowIcon />
+                      </button>
                     </div>
-                  )}
-                </div>
-              )}
-
-              {/* Shared material rows */}
-              {form.components.length === 0 && !showVariantPicker ? (
-                <div
-                  style={{
-                    padding: "2rem",
-                    textAlign: "center",
-                    color: "var(--gray)",
-                    fontSize: "0.8rem",
-                    background: "rgba(255,255,255,0.02)",
-                    borderRadius: "12px",
-                    border: "1px dashed rgba(255,255,255,0.08)",
-                  }}
-                >
-                  No shared materials yet. Add ink, packaging, transfer paper,
-                  etc.
-                </div>
-              ) : (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.5rem",
-                  }}
-                >
-                  {form.components.map((comp, idx) => {
-                    const selectedMat = materials.find(
-                      (m) => m.id === comp.materialId,
-                    );
-                    const componentCost = selectedMat
-                      ? (selectedMat.baseCost || 0) * (comp.qty || 0)
-                      : 0;
-                    const dropdownOptions = [
-                      { value: "", label: "Search material…" },
-                      ...(selectedMat
-                        ? [{ value: selectedMat.id, label: selectedMat.name }]
-                        : []),
-                      ...availableMaterials,
-                    ];
-                    return (
-                      <div
-                        key={idx}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 72px 52px 100px 36px",
-                          gap: "0.75rem",
-                          alignItems: "center",
-                          padding: "0.875rem 1rem",
-                          background: "rgba(14,14,14,0.5)",
-                          borderRadius: "12px",
-                        }}
-                      >
-                        <CustomDropdown
-                          value={comp.materialId}
-                          onChange={(val) => {
-                            updateComponent(idx, "materialId", val);
-                            if (errors.material)
-                              setErrors((er) => ({ ...er, material: "" }));
-                          }}
-                          options={dropdownOptions}
-                          placeholder="Search material…"
-                        />
-                        <div style={{ position: "relative" }}>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            value={comp.qty || ""}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              if (v === "" || /^\d+$/.test(v))
-                                updateComponent(
-                                  idx,
-                                  "qty",
-                                  v === "" ? 0 : parseInt(v, 10),
-                                );
-                            }}
-                            onKeyDown={(e) => {
-                              if (["e", "E", "+", "-", "."].includes(e.key))
-                                e.preventDefault();
-                            }}
-                            style={{
-                              width: "100%",
-                              background: "rgba(255,255,255,0.06)",
-                              border: "none",
-                              borderRadius: "8px",
-                              padding: "0.625rem 0.5rem",
-                              color: comp.qty > 0 ? "#E5E2E1" : "transparent",
-                              fontSize: "0.85rem",
-                              textAlign: "center",
-                              fontWeight: 700,
-                              outline: "none",
-                              boxSizing: "border-box",
-                            }}
-                          />
-                          {!comp.qty && (
-                            <span
-                              style={{
-                                position: "absolute",
-                                top: "50%",
-                                left: "50%",
-                                transform: "translate(-50%,-50%)",
-                                color: "rgba(229,226,225,0.2)",
-                                fontSize: "0.85rem",
-                                fontWeight: 700,
-                                pointerEvents: "none",
-                              }}
-                            >
-                              0
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          style={{
-                            textAlign: "center",
-                            fontSize: "0.62rem",
-                            fontWeight: 700,
-                            color: "var(--gray)",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.04em",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                          title={selectedMat ? uomLabel(selectedMat.uom) : ''}
-                        >
-                          {selectedMat ? uomLabel(selectedMat.uom) : '—'}
-                        </div>
-                        <div
-                          style={{
-                            textAlign: "right",
-                            fontWeight: 800,
-                            color: "#E5E2E1",
-                            fontSize: "0.9rem",
-                          }}
-                        >
-                          {componentCost > 0
-                            ? `₱${componentCost.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
-                            : "—"}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeComponent(idx)}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "rgba(229,226,225,0.2)",
-                            cursor: "pointer",
-                            padding: "0.25rem",
-                            lineHeight: 0,
-                            transition: "color 0.15s",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.color = "#ef4444";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.color =
-                              "rgba(229,226,225,0.2)";
-                          }}
-                        >
-                          <TrashRowIcon />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Footer */}
-          <div
-            style={{
-              padding: "1.25rem 2rem",
-              background: "rgba(255,255,255,0.03)",
-              borderTop: "1px solid rgba(255,255,255,0.06)",
-              display: "flex",
-              justifyContent: "flex-end",
-              alignItems: "center",
-              gap: "1rem",
-              flexShrink: 0,
-              flexWrap: "wrap",
-            }}
-          >
-            {submitError ? (
-              <span
-                style={{
-                  ...errorStyle,
-                  marginRight: "auto",
-                  marginTop: 0,
-                }}
-              >
-                {submitError}
-              </span>
-            ) : null}
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              style={{
-                background: "none",
-                border: "none",
-                color: "rgba(229,226,225,0.6)",
-                fontSize: "0.75rem",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.15em",
-                cursor: isSubmitting ? "not-allowed" : "pointer",
-                padding: "0.625rem 1.5rem",
-                opacity: isSubmitting ? 0.6 : 1,
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={async () => {
-                if (isSubmitting) return;
-                setSubmitError("");
-                if (!token) {
-                  setSubmitError("Sign in required to save BOMs.");
-                  return;
-                }
-                // If variants are selected, create BOMs for each
-                if (checkedVariantIds.size > 0 && onSaveBatch) {
-                  const batchErrs = {};
-                  if (!form.productGroupName.trim())
-                    batchErrs.productGroupName = "Product group name is required";
-                  if (form.components.some((c) => !c.materialId))
-                    batchErrs.material = "Select a material for every row";
-                  if (Object.keys(batchErrs).length) {
-                    setErrors(batchErrs);
-                    return;
-                  }
-                  setErrors({});
-                  setIsSubmitting(true);
-                  try {
-                    const newBOMs = buildBOMs(checkedVariants);
-                    await onSaveBatch(newBOMs);
-                    onClose();
-                    setShowVariantPicker(false);
-                    setSelectedParentId("");
-                    setCheckedVariantIds(new Set());
-                    setVariantQty(1);
-                  } catch (err) {
-                    setSubmitError(err?.message || "Batch save failed.");
-                  } finally {
-                    setIsSubmitting(false);
-                  }
-                } else {
-                  // Normal single BOM save
-                  const errs = {};
-                  if (!form.productGroupName.trim())
-                    errs.productGroupName = "Product group name is required";
-                  if (form.components.length === 0)
-                    errs.components = "Add at least one component";
-                  if (form.components.some((c) => !c.materialId))
-                    errs.material = "Select a material for every row";
-                  if (Object.keys(errs).length) {
-                    setErrors(errs);
-                    return;
-                  }
-                  setErrors({});
-                  setIsSubmitting(true);
-                  try {
-                    await onSave({ ...bom, ...form });
-                  } catch (err) {
-                    setSubmitError(err?.message || "Save failed.");
-                  } finally {
-                    setIsSubmitting(false);
-                  }
-                }
-              }}
-              disabled={isSubmitting}
-              style={{
-                background: "linear-gradient(135deg,#FFDF9F 0%,#D4A843 100%)",
-                border: "none",
-                borderRadius: "8px",
-                color: "#000",
-                fontSize: "0.8rem",
-                fontWeight: 800,
-                cursor: isSubmitting ? "not-allowed" : "pointer",
-                padding: "0.625rem 2rem",
-                boxShadow: "0 4px 12px rgba(212,168,67,0.2)",
-                opacity: isSubmitting ? 0.75 : 1,
-              }}
-            >
-              {isSubmitting
-                ? "Saving..."
-                : checkedVariantIds.size > 0
-                  ? `Create ${checkedVariantIds.size} BOM${checkedVariantIds.size > 1 ? "s" : ""}`
-                  : bom
-                    ? "Save Changes"
-                    : "Create BOM"}
-            </button>
-          </div>
-        </form>
+          <div style={{ height: "1.5rem" }} />
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "1.25rem 2rem", background: "rgba(255,255,255,0.03)", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "1rem", flexShrink: 0, flexWrap: "wrap" }}>
+          {submitError && <span style={{ ...errorStyle, marginRight: "auto", marginTop: 0 }}>{submitError}</span>}
+          <button type="button" onClick={onClose} disabled={isSubmitting}
+            style={{ background: "none", border: "none", color: "rgba(229,226,225,0.6)", fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.15em", cursor: isSubmitting ? "not-allowed" : "pointer", padding: "0.625rem 1.5rem", opacity: isSubmitting ? 0.6 : 1 }}>
+            Cancel
+          </button>
+          <button type="button" onClick={handleSave} disabled={isSubmitting}
+            style={{ background: "linear-gradient(135deg,#FFDF9F 0%,#D4A843 100%)", border: "none", borderRadius: "8px", color: "#000", fontSize: "0.8rem", fontWeight: 800, cursor: isSubmitting ? "not-allowed" : "pointer", padding: "0.625rem 2rem", boxShadow: "0 4px 12px rgba(212,168,67,0.2)", opacity: isSubmitting ? 0.75 : 1 }}>
+            {isSubmitting ? "Saving..." : bom ? "Save Changes" : "Create BOM"}
+          </button>
+        </div>
       </div>
     </div>
   );
