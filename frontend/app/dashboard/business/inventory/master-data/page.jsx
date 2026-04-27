@@ -16,7 +16,6 @@ import {
 import { fetchBOMs, createBOM, updateBOM, deleteBOM } from "@/lib/bomApi";
 import { fetchUnits, saveUnit } from "@/lib/unitsApi";
 import VendorsApiTab from "./VendorsApiTab";
-import BOMCardList from "./BOMCardList";
 import BOMFormModal from "./BOMFormModal";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
@@ -31,6 +30,7 @@ function normalizeInventoryRow(row) {
     ...row,
     id: row.id ?? row._id,
     parentId: row.parentId ? String(row.parentId) : null,
+    preferredVendorId: row.preferredVendorId ?? row.supplierId ?? null,
   };
 }
 
@@ -814,7 +814,7 @@ function MaterialDetailsModal({ material, vendors, onClose }) {
                           fontFamily: "monospace",
                         }}
                       >
-                        {batch.batchId}
+                        {batch.invoiceNumber || batch.invoiceNo || `Batch #${idx + 1}`}
                       </div>
                       <span
                         style={{
@@ -861,9 +861,9 @@ function MaterialDetailsModal({ material, vendors, onClose }) {
                         </span>
                       </div>
                       <div>
-                        <span style={{ color: "var(--gray)" }}>Good Qty:</span>{" "}
+                        <span style={{ color: "var(--gray)" }}>In Stock:</span>{" "}
                         <span style={{ color: "#22c55e" }}>
-                          {batch.qtyGood || 0} {material.uom || "pcs"}
+                          {batch.remainingQty ?? batch.qtyGood ?? 0} {material.uom || "pcs"}
                         </span>
                       </div>
                       <div>
@@ -1280,8 +1280,18 @@ function MaterialMasterTab({
 
     const isParent = !!mat?.hasVariants;
     const isChild = !!mat?.parentId;
-    const deleteMessage = isParent
-      ? `Delete "${mat?.name}" and all its variants? This cannot be undone.`
+
+    if (isParent && children.length > 0) {
+      setInfoModal({
+        isOpen: true,
+        title: "Cannot Delete",
+        message: `"${mat?.name}" has ${children.length} variant${children.length > 1 ? "s" : ""}. Delete all variants first before deleting the parent material.`,
+      });
+      return;
+    }
+
+    const deleteMessage = isChild
+      ? `Delete variant "${mat?.name}"? This action cannot be undone.`
       : `Delete "${mat?.name}"? This action cannot be undone.`;
 
     setConfirmModal({
@@ -2072,22 +2082,6 @@ function MaterialMasterTab({
                               }}
                             >
                               <button
-                                onClick={() => {
-                                  setEditMaterial(child);
-                                  setShowAddModal(true);
-                                }}
-                                style={{
-                                  background: "rgba(255,255,255,0.05)",
-                                  border: "1px solid var(--border)",
-                                  borderRadius: "6px",
-                                  padding: "0.4rem",
-                                  cursor: "pointer",
-                                  color: "var(--gray)",
-                                }}
-                              >
-                                <EditIcon />
-                              </button>
-                              <button
                                 onClick={() => setViewMaterial(child)}
                                 style={{
                                   background: "rgba(255,255,255,0.05)",
@@ -2097,6 +2091,7 @@ function MaterialMasterTab({
                                   cursor: "pointer",
                                   color: "var(--gray)",
                                 }}
+                                title="View Details"
                               >
                                 <EyeIcon />
                               </button>
@@ -5220,6 +5215,10 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [editBOM, setEditBOM] = useState(null);
+  const [addVariantToGroup, setAddVariantToGroup] = useState(null);
+  const [expandedGroupsState, setExpandedGroupsState] = useState(new Set());
+  const [bomPage, setBomPage] = useState(1);
+  const [bomPerPage, setBomPerPage] = useState(10);
   const [infoModal, setInfoModal] = useState({
     isOpen: false,
     title: "",
@@ -5280,6 +5279,8 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
 
     return `BOM-${combined}`;
   };
+
+  useEffect(() => { setBomPage(1); }, [search]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -5347,8 +5348,6 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
         await createBOM(payload, token);
       }
       await refreshBoms();
-      setShowAddModal(false);
-      setEditBOM(null);
     } catch (e) {
       throw e instanceof Error ? e : new Error(String(e));
     }
@@ -5431,34 +5430,197 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
         </button>
       </div>
 
-      <BOMCardList
-        boms={filtered}
-        materials={materials}
-        search=""
-        onEdit={(b) => {
-          setEditBOM(b);
-          setShowAddModal(true);
-        }}
-        onDelete={handleDelete}
-        onDuplicate={(b) => {
-          setEditBOM({
-            ...b,
-            id: undefined,
-            productName: `${b.productName} (Copy)`,
-            sku: "",
-            createdAt: new Date().toISOString(),
-          });
-          setShowAddModal(true);
-        }}
-      />
+      {/* ── Grouped BOM table ── */}
+      {(() => {
+        const groups = {};
+        filtered.forEach((b) => {
+          const grp = b.productGroupName || b.productName || "Uncategorized";
+          if (!groups[grp]) groups[grp] = { category: b.category || "", boms: [] };
+          groups[grp].boms.push(b);
+        });
+        const groupEntries = Object.entries(groups);
+        if (groupEntries.length === 0) return (
+          <div style={{ textAlign: "center", padding: "3rem", color: "var(--gray)", fontSize: "0.875rem" }}>
+            No products yet. Click <strong style={{ color: "#D4A843" }}>Create Product</strong> to get started.
+          </div>
+        );
+        const totalPages = Math.ceil(groupEntries.length / bomPerPage);
+        const pagedEntries = groupEntries.slice((bomPage - 1) * bomPerPage, bomPage * bomPerPage);
+        return (
+          <>
+            <div style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+              {/* Table header */}
+              <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 160px 120px 130px", gap: 0, background: "rgba(255,255,255,0.03)", borderBottom: "1px solid var(--border)", padding: "0.75rem 1rem" }}>
+                {["", "Product / Variant", "BOM Cost", "Producible", "Actions"].map((h, i) => (
+                  <span key={i} style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(229,226,225,0.4)", textAlign: i >= 2 ? "right" : "left", paddingRight: i === 4 ? "0.25rem" : 0 }}>{h}</span>
+                ))}
+              </div>
+              {pagedEntries.map(([groupName, { category, boms: groupBoms }], gi) => {
+                const isExpanded = expandedGroupsState.has(groupName);
+                const isMulti = groupBoms.length > 1;
+                const costs = groupBoms.map((b) => b.totalCost || 0);
+                const minCost = Math.min(...costs);
+                const maxCost = Math.max(...costs);
+                const maxProd = groupBoms.reduce((sum, b) => {
+                  let mn = Infinity;
+                  (b.components || []).forEach((c) => {
+                    const inv = materials.find((m) => String(m.id) === String(c.inventoryId ?? c.materialId));
+                    const can = Math.floor((inv?.stockQty || 0) / (c.qty || 1));
+                    if (can < mn) mn = can;
+                  });
+                  return sum + (mn === Infinity ? 0 : mn);
+                }, 0);
+                return (
+                  <div key={groupName} style={{ borderBottom: gi < pagedEntries.length - 1 ? "1px solid var(--border)" : "none" }}>
+                    {/* Group row */}
+                    <div
+                      style={{ display: "grid", gridTemplateColumns: "40px 1fr 160px 120px 130px", gap: 0, padding: "0.875rem 1rem", alignItems: "center", cursor: isMulti ? "pointer" : "default", background: "transparent" }}
+                      onClick={() => isMulti && setExpandedGroupsState((p) => { const n = new Set(p); n.has(groupName) ? n.delete(groupName) : n.add(groupName); return n; })}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {isMulti && (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: isExpanded ? "#D4A843" : "var(--gray)", transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>
+                            <path d="M9 18l6-6-6-6" />
+                          </svg>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: "#E5E2E1", fontSize: "0.875rem" }}>{groupName}</div>
+                          {!isMulti && groupBoms[0]?.productName && groupBoms[0].productName !== groupName && (
+                            <div style={{ fontSize: "0.65rem", color: "var(--gray)", marginTop: "0.2rem" }}>{groupBoms[0].productName}</div>
+                          )}
+                        </div>
+                        {isMulti && (
+                          <span style={{ padding: "0.15rem 0.5rem", borderRadius: "4px", fontSize: "0.6rem", fontWeight: 700, background: "rgba(212,168,67,0.15)", color: "#D4A843", flexShrink: 0 }}>Has Variants</span>
+                        )}
+                      </div>
+                      <div style={{ fontWeight: 700, color: "#D4A843", fontSize: "0.875rem", fontFamily: "monospace", textAlign: "right" }}>
+                        {isMulti && minCost !== maxCost
+                          ? `₱${minCost.toFixed(2)} – ₱${maxCost.toFixed(2)}`
+                          : `₱${(groupBoms[0]?.totalCost || 0).toFixed(2)}`}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <span style={{ fontSize: "0.78rem", fontWeight: 600, color: maxProd === 0 ? "#ef4444" : "#22c55e" }}>{maxProd} units</span>
+                      </div>
+                      <div style={{ display: "flex", gap: "0.35rem", justifyContent: "flex-end" }}>
+                        {!isMulti && (
+                          <>
+                            <button type="button" title="Edit" onClick={(e) => { e.stopPropagation(); setEditBOM(groupBoms[0]); setShowAddModal(true); }}
+                              style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.3rem 0.5rem", color: "var(--gray)", cursor: "pointer" }}>
+                              <EditIcon />
+                            </button>
+                            <button type="button" title="Delete" onClick={(e) => { e.stopPropagation(); handleDelete(groupBoms[0].id ?? groupBoms[0]._id); }}
+                              style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.3rem 0.5rem", color: "var(--gray)", cursor: "pointer" }}>
+                              <TrashIcon />
+                            </button>
+                          </>
+                        )}
+                        {isMulti && (
+                          <button type="button" title="Add variant" onClick={(e) => { e.stopPropagation(); setEditBOM(null); setAddVariantToGroup(groupName); setShowAddModal(true); }}
+                            style={{ background: "rgba(212,168,67,0.08)", border: "1px solid rgba(212,168,67,0.2)", borderRadius: "6px", padding: "0.3rem 0.6rem", color: "#D4A843", cursor: "pointer", fontSize: "0.65rem", fontWeight: 700 }}>
+                            + Variant
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {/* Variant sub-rows */}
+                    {isMulti && isExpanded && (
+                      <div>
+                        {groupBoms.map((b, bi) => {
+                          const compRanges = (b.components || []).map((c) => {
+                            const mat = materials.find((m) => String(m.id) === String(c.inventoryId ?? c.materialId));
+                            const qty = c.qty || 1;
+                            const bc = (mat?.batches || []).filter((bt) => (bt.remainingQty || 0) > 0).map((bt) => bt.unitCost || 0).filter((v) => v > 0);
+                            const fallback = mat?.baseCost || mat?.averageCost || 0;
+                            const vals = bc.length > 0 ? bc : [fallback];
+                            return { min: Math.min(...vals) * qty, max: Math.max(...vals) * qty };
+                          });
+                          const minCost = compRanges.reduce((s, r) => s + r.min, 0) || b.totalCost || 0;
+                          const maxCost = compRanges.reduce((s, r) => s + r.max, 0) || b.totalCost || 0;
+                          const mp = (() => { let mn = Infinity; (b.components || []).forEach((c) => { const inv = materials.find((m) => String(m.id) === String(c.inventoryId ?? c.materialId)); const can = Math.floor((inv?.stockQty || 0) / (c.qty || 1)); if (can < mn) mn = can; }); return mn === Infinity ? 0 : mn; })();
+                          return (
+                            <div key={b.id ?? bi}
+                              style={{ display: "grid", gridTemplateColumns: "40px 1fr 160px 120px 130px", gap: 0, padding: "0.875rem 1rem", alignItems: "center", borderTop: "1px solid var(--border)", background: "transparent" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(229,226,225,0.25)", fontSize: "1rem", fontWeight: 300 }}>—</div>
+                              <div>
+                                <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "#E5E2E1" }}>{b.productName || groupName}</div>
+                                <div style={{ fontSize: "0.65rem", color: "var(--gray)", marginTop: "0.2rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {(b.components || []).map((c) => {
+                                    const invId = c.inventoryId ?? c.materialId;
+                                    const mat = materials.find((m) => String(m.id) === String(invId));
+                                    return `${mat?.name || "?"}${(c.qty || 1) > 1 ? ` ×${c.qty}` : ""}`;
+                                  }).join(" + ")}
+                                </div>
+                              </div>
+                              <div style={{ fontWeight: 700, color: "#D4A843", fontSize: "0.875rem", fontFamily: "monospace", textAlign: "right" }}>
+                                {minCost !== maxCost ? `₱${minCost.toFixed(2)} – ₱${maxCost.toFixed(2)}` : `₱${minCost.toFixed(2)}`}
+                              </div>
+                              <div style={{ fontSize: "0.78rem", color: mp === 0 ? "#ef4444" : "#22c55e", fontWeight: 600, textAlign: "right" }}>{mp} units</div>
+                              <div style={{ display: "flex", gap: "0.35rem", justifyContent: "flex-end" }}>
+                                <button type="button" title="Edit" onClick={() => { setEditBOM(b); setShowAddModal(true); }}
+                                  style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.3rem 0.5rem", color: "var(--gray)", cursor: "pointer" }}>
+                                  <EditIcon />
+                                </button>
+                                <button type="button" title="Delete" onClick={() => handleDelete(b.id ?? b._id)}
+                                  style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.3rem 0.5rem", color: "var(--gray)", cursor: "pointer" }}>
+                                  <TrashIcon />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            {/* Pagination inside table */}
+            <div style={{ borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.6rem 1rem", background: "rgba(255,255,255,0.02)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span style={{ fontSize: "0.72rem", color: "var(--gray)" }}>Rows per page:</span>
+                <select
+                  value={bomPerPage}
+                  onChange={(e) => { setBomPerPage(Number(e.target.value)); setBomPage(1); }}
+                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid var(--border)", borderRadius: "6px", color: "#E5E2E1", padding: "0.2rem 0.5rem", fontSize: "0.72rem", outline: "none" }}
+                >
+                  {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", fontSize: "0.72rem", color: "var(--gray)" }}>
+                <span>{(bomPage - 1) * bomPerPage + 1}–{Math.min(bomPage * bomPerPage, groupEntries.length)} of {groupEntries.length}</span>
+                <button
+                  onClick={() => setBomPage((p) => Math.max(1, p - 1))}
+                  disabled={bomPage === 1}
+                  style={{ background: "none", border: "1px solid var(--border)", borderRadius: "4px", color: bomPage === 1 ? "rgba(229,226,225,0.2)" : "#E5E2E1", cursor: bomPage === 1 ? "not-allowed" : "pointer", padding: "0.15rem 0.5rem", lineHeight: 1 }}>
+                  ‹
+                </button>
+                <button
+                  onClick={() => setBomPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={bomPage === totalPages}
+                  style={{ background: "none", border: "1px solid var(--border)", borderRadius: "4px", color: bomPage === totalPages ? "rgba(229,226,225,0.2)" : "#E5E2E1", cursor: bomPage === totalPages ? "not-allowed" : "pointer", padding: "0.15rem 0.5rem", lineHeight: 1 }}>
+                  ›
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+        );
+      })()}
 
       {showAddModal && (
         <BOMFormModal
           bom={editBOM}
+          addToGroup={addVariantToGroup}
           materials={materials}
           units={units}
           categories={[...new Set((boms || []).map((b) => b.category).filter(Boolean))]}
-          onClose={() => { setShowAddModal(false); setEditBOM(null); }}
+          productGroups={[...new Set((boms || []).map((b) => b.productGroupName || b.productName).filter(Boolean))]}
+          onClose={() => { setShowAddModal(false); setEditBOM(null); setAddVariantToGroup(null); }}
           onSave={handleSave}
         />
       )}

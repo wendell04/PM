@@ -63,6 +63,8 @@ class OrderController extends Controller
                 'items.*.variantName'         => 'nullable|string',
                 'items.*.qty'                 => 'required|integer|min:1',
                 'items.*.flashSaleId'         => 'nullable|string|max:24',
+                'items.*.designUrl'           => 'nullable|string',
+                'items.*.designNotes'         => 'nullable|string|max:2000',
                 'notes'                       => 'nullable|string|max:1000',
                 'paymentMethod'               => 'nullable|string|in:cod,online',
                 'deliveryAddress'             => 'nullable|array',
@@ -136,6 +138,8 @@ class OrderController extends Controller
                     'unitPrice'   => $unitPrice,
                     'lineTotal'   => $lineTotal,
                     'flashSaleId' => $flashSaleId,
+                    'designUrl'   => $item['designUrl']   ?? null,
+                    'designNotes' => $item['designNotes'] ?? null,
                 ];
             }
 

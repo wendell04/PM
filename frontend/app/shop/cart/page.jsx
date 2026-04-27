@@ -215,6 +215,8 @@ export default function CartPage() {
         qty:         i.qty,
         unitPrice:   i.unitPrice,
         isCustom:    i.isCustom    ?? false,
+        designUrl:   i.designUrl   ?? null,
+        designNotes: i.designNotes ?? null,
       })),
       notes,
       fromCart: true,

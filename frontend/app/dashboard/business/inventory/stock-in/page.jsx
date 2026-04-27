@@ -1827,43 +1827,12 @@ export default function StockInPage() {
         </div>
       )}
 
-      {/* Page Header */}
-      <div className="page-header no-print" style={{ justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={openWizard}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              background: "linear-gradient(135deg,#FFDF9F 0%,#D4A843 100%)",
-              color: "#000",
-              fontWeight: 700,
-              whiteSpace: "nowrap",
-            }}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Add Stock
-          </button>
-      </div>
-
-      {/* Tabs */}
-      <div className="no-print">
+      {/* Tabs + Add Stock */}
+      <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem" }}>
         <div
           style={{
             display: "flex",
             gap: "0.25rem",
-            marginBottom: "1.5rem",
             background: "rgba(255,255,255,0.04)",
             borderRadius: "10px",
             padding: "0.25rem",
@@ -1894,6 +1863,25 @@ export default function StockInPage() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={openWizard}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            background: "linear-gradient(135deg,#FFDF9F 0%,#D4A843 100%)",
+            color: "#000",
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Add Stock
+        </button>
       </div>
 
       {/* ═══ HISTORY TAB ═══ */}

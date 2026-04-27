@@ -828,13 +828,17 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                           fontSize: "0.8rem",
                         }}
                       >
-                        ₱
-                        {(m.baseCost || m.averageCost || 0).toLocaleString(
-                          "en-PH",
-                          {
-                            minimumFractionDigits: 2,
-                          },
-                        )}
+                        {(() => {
+                          const batchCosts = (m.batches || [])
+                            .filter((b) => (b.remainingQty || 0) > 0)
+                            .map((b) => b.unitCost || 0)
+                            .filter((c) => c > 0);
+                          const costs = batchCosts.length > 0 ? batchCosts : [m.baseCost || m.averageCost || 0].filter((c) => c > 0);
+                          if (costs.length === 0) return "₱0.00";
+                          const min = Math.min(...costs), max = Math.max(...costs);
+                          if (min === max) return `₱${min.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+                          return <span style={{ fontSize: "0.78rem", fontWeight: 600 }}>₱{min.toLocaleString("en-PH", { minimumFractionDigits: 2 })} – ₱{max.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>;
+                        })()}
                       </td>
                       <td
                         style={{
@@ -1074,26 +1078,20 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                         }}
                       >
                         {(() => {
-                          const costs = children
-                            .map((c) => c.baseCost || c.averageCost || 0)
-                            .filter((c) => c > 0);
+                          const batchCosts = children.flatMap((c) =>
+                            (c.batches || [])
+                              .filter((b) => (b.remainingQty || 0) > 0)
+                              .map((b) => b.unitCost || 0)
+                          ).filter((c) => c > 0);
+                          const costs = batchCosts.length > 0
+                            ? batchCosts
+                            : children.map((c) => c.baseCost || c.averageCost || 0).filter((c) => c > 0);
                           if (costs.length === 0) return "₱0.00";
-                          const min = Math.min(...costs),
-                            max = Math.max(...costs);
-                          if (min === max)
-                            return `₱${min.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+                          const min = Math.min(...costs), max = Math.max(...costs);
+                          if (min === max) return `₱${min.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
                           return (
-                            <span
-                              style={{ fontSize: "0.78rem", fontWeight: 600 }}
-                            >
-                              ₱
-                              {min.toLocaleString("en-PH", {
-                                minimumFractionDigits: 2,
-                              })}{" "}
-                              – ₱
-                              {max.toLocaleString("en-PH", {
-                                minimumFractionDigits: 2,
-                              })}
+                            <span style={{ fontSize: "0.78rem", fontWeight: 600 }}>
+                              ₱{min.toLocaleString("en-PH", { minimumFractionDigits: 2 })} – ₱{max.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
                             </span>
                           );
                         })()}
@@ -1224,13 +1222,14 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                                 fontSize: "0.78rem",
                               }}
                             >
-                              ₱
-                              {(child.baseCost || child.averageCost || 0).toLocaleString(
-                                "en-PH",
-                                {
-                                  minimumFractionDigits: 2,
-                                },
-                              )}
+                              {(() => {
+                                const bc = (child.batches || []).filter((b) => (b.remainingQty || 0) > 0).map((b) => b.unitCost || 0).filter((c) => c > 0);
+                                const costs = bc.length > 0 ? bc : [child.baseCost || child.averageCost || 0].filter((c) => c > 0);
+                                if (!costs.length) return "₱0.00";
+                                const min = Math.min(...costs), max = Math.max(...costs);
+                                if (min === max) return `₱${min.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+                                return `₱${min.toLocaleString("en-PH", { minimumFractionDigits: 2 })} – ₱${max.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+                              })()}
                             </td>
                             <td
                               style={{

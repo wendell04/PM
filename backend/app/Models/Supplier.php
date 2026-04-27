@@ -14,6 +14,9 @@ class Supplier extends Model
         'contactPerson',
         'phone',
         'email',
+        'contacts',
+        'phones',
+        'emails',
         'address',
         'notes',
         'itemsSupplied',
@@ -23,6 +26,9 @@ class Supplier extends Model
     protected $casts = [
         'isActive' => 'boolean',
         'itemsSupplied' => 'array',
+        'contacts' => 'array',
+        'phones' => 'array',
+        'emails' => 'array',
     ];
 
     protected $attributes = [

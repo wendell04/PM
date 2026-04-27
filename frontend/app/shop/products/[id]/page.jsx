@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
@@ -28,6 +27,7 @@ export default function ProductDetailPage() {
   const [addedToCart, setAddedToCart] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [showTiers, setShowTiers] = useState(false);
 
   // ── Reviews state ─────────────────────────────────
   const [reviews, setReviews]               = useState([]);
@@ -44,6 +44,12 @@ export default function ProductDetailPage() {
   const [reqSubmitting, setReqSubmitting] = useState(false);
   const [reqError, setReqError] = useState('');
   const [reqSuccess, setReqSuccess] = useState(false);
+
+  // ── Per-item design upload state (for isCustom products in cart flow) ──
+  const [cartDesignFile, setCartDesignFile] = useState(null);
+  const [cartDesignNotes, setCartDesignNotes] = useState('');
+  const [cartDesignUploading, setCartDesignUploading] = useState(false);
+  const [cartDesignError, setCartDesignError] = useState('');
 
   const id = params?.id;
 
@@ -130,83 +136,54 @@ export default function ProductDetailPage() {
     return p?.priceTiers ?? p?.tiers ?? [];
   }
 
-  function computePrice(p, qty, variants) {
+  function getTierForQty(p, qty) {
     const tiers = getTiers(p);
-
-    if (p.priceType === 'tiered' && tiers.length) {
-      const tier = tiers.find(t => {
-        const min = parseInt(t.minQty) || 0;
-        const max = t.maxQty !== null && t.maxQty !== ''
-          ? parseInt(t.maxQty) : Infinity;
-        return qty >= min && qty <= max;
-      });
-      if (!tier) return null;
-      const prices = tier.prices || {};
-      if (Object.keys(variants).length && Object.keys(prices).length > 1) {
-        const sorted = Object.fromEntries(
-          Object.entries(variants).sort(([a],[b]) => a.localeCompare(b))
-        );
-        const key = JSON.stringify(sorted);
-        const unit = prices[key] ?? Object.values(prices)[0] ?? null;
-        return unit ? parseFloat(unit) * qty : null;
-      }
-      const unit = prices['__base__']
-        ?? Object.values(prices)[0] ?? null;
-      return unit ? parseFloat(unit) * qty : null;
+    if (!tiers.length) return null;
+    const sorted = [...tiers].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0));
+    let match = sorted[sorted.length - 1];
+    for (const t of sorted) {
+      const min = parseInt(t.minQty) || 0;
+      const max = t.maxQty !== null && t.maxQty !== '' ? parseInt(t.maxQty) : Infinity;
+      if (qty >= min && qty <= max) { match = t; break; }
     }
+    return match;
+  }
 
+  function getPriceFromTier(tier, comboId) {
+    const prices = tier?.prices ?? {};
+    if (comboId && prices[comboId] !== undefined) return parseFloat(prices[comboId]) || null;
+    const vals = Object.values(prices).map(v => parseFloat(v)).filter(v => v > 0);
+    return vals.length ? Math.min(...vals) : null;
+  }
+
+  function computePrice(p, qty, variants) {
+    if (p.priceType === 'tiered') {
+      const tier = getTierForQty(p, qty);
+      const comboId = resolveCombo(variants)?.id ?? null;
+      const unit = getPriceFromTier(tier, comboId);
+      return unit != null ? unit * qty : null;
+    }
     if (p.priceType === 'fixed') {
       const vp = p.variantPrices ?? {};
-      if (Object.keys(variants).length && Object.keys(vp).length) {
-        const sorted = Object.fromEntries(
-          Object.entries(variants).sort(([a],[b]) => a.localeCompare(b))
-        );
-        const key = JSON.stringify(sorted);
-        const unit = vp[key] ?? Object.values(vp)[0] ?? null;
-        return unit ? parseFloat(unit) * qty : null;
-      }
-      const unit = p.price ?? p.flatPrice ?? null;
-      return unit ? parseFloat(unit) * qty : null;
+      const comboId = resolveCombo(variants)?.id ?? null;
+      const unit = (comboId && vp[comboId]) ? parseFloat(vp[comboId]) : parseFloat(p.price ?? p.flatPrice) || null;
+      return unit != null ? unit * qty : null;
     }
-
     return null;
   }
 
   function getUnitPrice(p, qty, variants) {
-    const tiers = getTiers(p);
-
-    if (p.priceType === 'tiered' && tiers.length) {
-      const tier = tiers.find(t => {
-        const min = parseInt(t.minQty) || 0;
-        const max = t.maxQty !== null && t.maxQty !== ''
-          ? parseInt(t.maxQty) : Infinity;
-        return qty >= min && qty <= max;
-      });
-      if (!tier) return null;
-      const prices = tier.prices || {};
-      if (Object.keys(variants).length && Object.keys(prices).length > 1) {
-        const sorted = Object.fromEntries(
-          Object.entries(variants).sort(([a],[b]) => a.localeCompare(b))
-        );
-        const key = JSON.stringify(sorted);
-        return parseFloat(prices[key] ?? Object.values(prices)[0]) || null;
-      }
-      return parseFloat(prices['__base__']
-        ?? Object.values(prices)[0]) || null;
+    if (p.priceType === 'tiered') {
+      const tier = getTierForQty(p, qty);
+      const comboId = resolveCombo(variants)?.id ?? null;
+      return getPriceFromTier(tier, comboId);
     }
-
     if (p.priceType === 'fixed') {
       const vp = p.variantPrices ?? {};
-      if (Object.keys(variants).length && Object.keys(vp).length) {
-        const sorted = Object.fromEntries(
-          Object.entries(variants).sort(([a],[b]) => a.localeCompare(b))
-        );
-        const key = JSON.stringify(sorted);
-        return parseFloat(vp[key] ?? Object.values(vp)[0]) || null;
-      }
+      const comboId = resolveCombo(variants)?.id ?? null;
+      if (comboId && vp[comboId]) return parseFloat(vp[comboId]) || null;
       return parseFloat(p.price ?? p.flatPrice) || null;
     }
-
     return null;
   }
 
@@ -249,12 +226,23 @@ export default function ProductDetailPage() {
   // Design upload removed — users attach design files at checkout via FormData.
   // Legacy order-request submit removed — flow is cart + checkout.
 
-  // Serialize { [group.id]: value } → "group: value, group: value" or null
+  // Resolve combination from selectedVariants → { id, label }
+  function resolveCombo(variants) {
+    if (!product?.combinations?.length) return null;
+    return product.combinations.find(c =>
+      Object.keys(variants).every(k => c.combo?.[k] === variants[k])
+    ) ?? null;
+  }
+
   function resolveVariantName(variants) {
     if (!variants || Object.keys(variants).length === 0) return null;
-    return Object.entries(variants)
-      .map(([k, v]) => `${k}: ${v}`)
-      .join(', ');
+    const combo = resolveCombo(variants);
+    if (combo?.label) return combo.label;
+    return Object.values(variants).join(', ');
+  }
+
+  function resolveCombinationId(variants) {
+    return resolveCombo(variants)?.id ?? null;
   }
 
   // Add to cart — stays on page
@@ -264,20 +252,39 @@ export default function ProductDetailPage() {
       return;
     }
     if (!product) return;
+    setCartDesignError('');
+    if (product.isCustom && !cartDesignFile) {
+      setCartDesignError('This product requires a design file. Please upload one before adding to cart.');
+      return;
+    }
     try {
+      let designData = null;
+      if (product.isCustom && cartDesignFile) {
+        setCartDesignUploading(true);
+        const uploaded = await uploadDesignFile(token, cartDesignFile);
+        designData = { url: uploaded.url, notes: cartDesignNotes.trim() || null };
+      }
+      const comboId = resolveCombinationId(selectedVariants);
       await addToCart(
         {
           ...product,
           flatPrice: unitPrice ?? product.flatPrice ?? product.price ?? 0,
         },
         quantity,
+        comboId,
+        resolveVariantName(selectedVariants),
         null,
-        resolveVariantName(selectedVariants)
+        designData
       );
       setAddedToCart(true);
+      setCartDesignFile(null);
+      setCartDesignNotes('');
       setTimeout(() => setAddedToCart(false), 2500);
     } catch (err) {
       console.error('[handleAddToCart]', err);
+      setCartDesignError(err?.message || 'Failed to add to cart.');
+    } finally {
+      setCartDesignUploading(false);
     }
   }
 
@@ -330,16 +337,30 @@ export default function ProductDetailPage() {
       return;
     }
     if (!product) return;
+    setCartDesignError('');
+    if (product.isCustom && !cartDesignFile) {
+      setCartDesignError('This product requires a design file. Please upload one before checkout.');
+      return;
+    }
     try {
+      let designData = null;
+      if (product.isCustom && cartDesignFile) {
+        setCartDesignUploading(true);
+        const uploaded = await uploadDesignFile(token, cartDesignFile);
+        designData = { url: uploaded.url, notes: cartDesignNotes.trim() || null };
+      }
       const resolvedPrice = unitPrice ?? product.flatPrice ?? product.price ?? 0;
+      const comboId = resolveCombinationId(selectedVariants);
       await addToCart(
         {
           ...product,
           flatPrice: resolvedPrice,
         },
         quantity,
+        comboId,
+        resolveVariantName(selectedVariants),
         null,
-        resolveVariantName(selectedVariants)
+        designData
       );
       // Write checkout_payload so checkout page can read it
       const payload = {
@@ -355,19 +376,23 @@ export default function ProductDetailPage() {
             trackInventory: product.trackInventory ?? false,
             stockStatus:    product.stockStatus ?? null,
           },
-          variantId:   null,
+          variantId:   comboId,
           variantName: resolveVariantName(selectedVariants),
           qty:         quantity,
           unitPrice:   resolvedPrice,
-          designUrl:   null,
+          designUrl:   designData?.url ?? null,
+          designNotes: designData?.notes ?? null,
         }],
-        notes:     '',
-        designUrl: null,
+        notes:     designData?.notes ?? '',
+        designUrl: designData?.url ?? null,
       };
       sessionStorage.setItem('checkout_payload', JSON.stringify(payload));
       router.push('/shop/checkout');
     } catch (err) {
       console.error('[handleAddToCartAndCheckout]', err);
+      setCartDesignError(err?.message || 'Failed to proceed to checkout.');
+    } finally {
+      setCartDesignUploading(false);
     }
   }
 
@@ -384,6 +409,18 @@ export default function ProductDetailPage() {
     : null;
   const priceRange = product ? getPriceRange(product) : null;
   const tiers = product ? getTiers(product) : [];
+
+  // Variant image: use per-variant image if configured, else fall back to main thumbnail
+  const activeComboId = product ? resolveCombinationId(selectedVariants) : null;
+  const variantImage = activeComboId && product?.variantImageUrls?.[activeComboId]
+    ? product.variantImageUrls[activeComboId]
+    : null;
+  const displayImages = product
+    ? [
+        variantImage ?? product.thumbnail,
+        ...(product.images || []).filter(u => u && u !== (variantImage ?? product.thumbnail)),
+      ].filter(Boolean)
+    : [];
 
   return (
     <>
@@ -459,108 +496,55 @@ export default function ProductDetailPage() {
 
       {/* PRODUCT DETAIL */}
       {!loading && !error && product && (
-        <div style={{ display: 'flex', gap: '2.5rem',
-          flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div style={{
+          background: 'var(--dark2)',
+          border: '1px solid var(--border)',
+          borderRadius: '16px',
+          padding: '1.75rem',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
+        }}>
+          <div style={{ display: 'flex', gap: '2.5rem',
+            flexWrap: 'wrap', alignItems: 'flex-start' }}>
 
           {/* LEFT — Images */}
-          <div style={{ flex: '1 1 400px',
-            maxWidth: '520px' }}>
+          <div style={{ flex: '1 1 400px', maxWidth: '540px', display: 'flex', gap: '10px' }}>
+
+            {/* Vertical thumbnail strip */}
+            {displayImages.length > 1 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, width: '72px' }}>
+                {displayImages.map((img, i) => (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <button key={i} onClick={() => setActiveImage(i)}
+                    style={{ width: '72px', height: '72px', borderRadius: '8px', overflow: 'hidden', padding: 0, border: activeImage === i ? '2px solid var(--gold)' : '2px solid var(--border)', cursor: 'pointer', background: 'var(--dark2)', flexShrink: 0, transition: 'border-color 0.15s' }}>
+                    <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Main image */}
             <div
-              onClick={() => {
-                const imgs = [
-                  ...(product.thumbnail ? [product.thumbnail] : []),
-                  ...(product.images || []),
-                ].filter(Boolean);
-                if (imgs.length > 0) { setLightboxIndex(activeImage); setLightboxOpen(true); }
-              }}
-              style={{ position: 'relative',
-                aspectRatio: '1/1',
-                background: 'var(--dark2)',
-                borderRadius: '12px',
-                border: '1px solid var(--border)',
-                overflow: 'hidden',
-                marginBottom: '0.75rem',
-                cursor: 'zoom-in',
-              }}>
+              onClick={() => { if (displayImages.length > 0) { setLightboxIndex(activeImage); setLightboxOpen(true); } }}
+              style={{ flex: 1, position: 'relative', aspectRatio: '1/1', background: 'var(--dark2)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden', cursor: 'zoom-in' }}>
               {flashSale && (
-                <div style={{
-                  position: 'absolute',
-                  top: '0.75rem', left: '0.75rem',
-                  zIndex: 2,
-                  background: flashSale.discountType ===
-                    'percentage' ? '#ef4444' : 'var(--gold)',
-                  color: flashSale.discountType ===
-                    'percentage' ? '#fff' : '#000',
-                  fontWeight: 800, fontSize: '0.8rem',
-                  padding: '0.3rem 0.75rem',
-                  borderRadius: '999px',
-                }}>
-                  {flashSale.discountType === 'percentage'
-                    ? `${flashSale.discountValue}% OFF`
-                    : `₱${flashSale.discountValue} OFF`}
+                <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', zIndex: 2, background: flashSale.discountType === 'percentage' ? '#ef4444' : 'var(--gold)', color: flashSale.discountType === 'percentage' ? '#fff' : '#000', fontWeight: 800, fontSize: '0.8rem', padding: '0.3rem 0.75rem', borderRadius: '999px' }}>
+                  {flashSale.discountType === 'percentage' ? `${flashSale.discountValue}% OFF` : `₱${flashSale.discountValue} OFF`}
                 </div>
               )}
-              {(() => {
-                const imgs = [
-                  ...(product.thumbnail
-                    ? [product.thumbnail] : []),
-                  ...(product.images || []),
-                ].filter(Boolean);
-                const src = imgs[activeImage];
-                return src ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={src} alt={product.subCategoryName}
-                    style={{ width: '100%', height: '100%',
-                      objectFit: 'cover', display: 'block' }} />
-                ) : (
-                  <div style={{
-                    width: '100%', height: '100%',
-                    display: 'flex', alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--gray)', fontSize: '2rem',
-                  }}>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{opacity:0.3}}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* Thumbnail strip */}
-            {(() => {
-              const imgs = [
-                ...(product.thumbnail
-                  ? [product.thumbnail] : []),
-                ...(product.images || []),
-              ].filter(Boolean);
-              return imgs.length > 1 && (
-                <div style={{ display: 'flex',
-                  gap: '0.5rem', flexWrap: 'wrap' }}>
-                  {imgs.map((img, i) => (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <button key={i}
-                      onClick={() => setActiveImage(i)}
-                      style={{
-                        width: '60px', height: '60px',
-                        borderRadius: '8px',
-                        overflow: 'hidden', padding: 0,
-                        position: 'relative',
-                        border: activeImage === i
-                          ? '2px solid var(--gold)'
-                          : '2px solid var(--border)',
-                        cursor: 'pointer', background: 'none',
-                        flexShrink: 0,
-                      }}>
-                      <Image src={img} alt=""
-                        fill
-                        style={{ objectFit: 'cover' }}
-                        unoptimized />
-                    </button>
-                  ))}
+              {product.isCustom && (
+                <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 2, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', fontSize: '0.65rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Customizable
                 </div>
-              );
-            })()}
+              )}
+              {displayImages[activeImage] ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={displayImages[activeImage]} alt={product.subCategoryName} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              ) : (
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)' }}>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* RIGHT — Info + Order Form */}
@@ -568,12 +552,24 @@ export default function ProductDetailPage() {
             display: 'flex', flexDirection: 'column',
             gap: '1.25rem' }}>
 
-            {/* Category breadcrumb */}
-            <div style={{ fontSize: '0.8rem',
-              color: 'var(--gray)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em' }}>
-              {product.category}
+            {/* Category breadcrumb + reviews */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                {product.category}
+              </div>
+              {reviewsAvg !== null && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {[1,2,3,4,5].map(s => (
+                    <svg key={s} width="13" height="13" viewBox="0 0 24 24"
+                      fill={s <= Math.round(reviewsAvg) ? 'var(--gold)' : 'none'}
+                      stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    </svg>
+                  ))}
+                  <span style={{ fontSize: '0.8rem', color: 'var(--gold)', fontWeight: 700, marginLeft: '2px' }}>{reviewsAvg}</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>({reviewsTotalCount})</span>
+                </div>
+              )}
             </div>
 
             {/* Product name */}
@@ -619,6 +615,9 @@ export default function ProductDetailPage() {
                   <div style={{ fontSize: '1.75rem',
                     fontWeight: 800, color: 'var(--gold)' }}>
                     {formatPeso(unitPrice)}
+                    {product.priceType === 'tiered' && (
+                      <span style={{ fontSize: '0.85rem', color: 'var(--gray)', fontWeight: 400 }}> / pc</span>
+                    )}
                   </div>
                   {quantity > 1 && (
                     <div style={{ fontSize: '0.82rem',
@@ -654,43 +653,27 @@ export default function ProductDetailPage() {
             <div style={{ borderTop:
               '1px solid var(--border)' }} />
 
-            {/* Stock badge */}
+            {/* Stock badge + progress bar */}
             <div>
               {product.stockStatus === 'upon-order' ? (
-                <span style={{ fontSize: '0.8rem',
-                  fontWeight: 700,
-                  color: '#60a5fa',
-                  background: 'rgba(96,165,250,0.12)',
-                  border: '1px solid rgba(96,165,250,0.3)',
-                  borderRadius: '999px',
-                  padding: '0.25rem 0.75rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
                   Upon Order
                 </span>
               ) : product.stockStatus === 'out-of-stock' ? (
-                <span style={{ fontSize: '0.8rem',
-                  fontWeight: 700, color: '#ef4444',
-                  background: 'rgba(239,68,68,0.12)',
-                  border: '1px solid rgba(239,68,68,0.3)',
-                  borderRadius: '999px',
-                  padding: '0.25rem 0.75rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
                   Out of Stock
                 </span>
               ) : product.stockStatus === 'low-stock' ? (
-                <span style={{ fontSize: '0.8rem',
-                  fontWeight: 700, color: '#f59e0b',
-                  background: 'rgba(245,158,11,0.12)',
-                  border: '1px solid rgba(245,158,11,0.3)',
-                  borderRadius: '999px',
-                  padding: '0.25rem 0.75rem' }}>
-                  Low Stock — {product.stock} pcs left
-                </span>
+                <div>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
+                    Low Stock — only {product.stock} pcs left
+                  </span>
+                  <div style={{ marginTop: '0.5rem', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.min(100, ((product.stock ?? 0) / 20) * 100)}%`, background: '#f59e0b', borderRadius: '2px', transition: 'width 0.3s' }} />
+                  </div>
+                </div>
               ) : (
-                <span style={{ fontSize: '0.8rem',
-                  fontWeight: 700, color: '#4ade80',
-                  background: 'rgba(74,222,128,0.12)',
-                  border: '1px solid rgba(74,222,128,0.3)',
-                  borderRadius: '999px',
-                  padding: '0.25rem 0.75rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#4ade80', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
                   In Stock
                 </span>
               )}
@@ -712,12 +695,10 @@ export default function ProductDetailPage() {
                     {group.options?.map(opt => (
                       <button
                         key={opt.id}
-                        onClick={() => setSelectedVariants(
-                          prev => ({
-                            ...prev,
-                            [group.id]: opt.value,
-                          })
-                        )}
+                        onClick={() => {
+                          setSelectedVariants(prev => ({ ...prev, [group.id]: opt.value }));
+                          setActiveImage(0);
+                        }}
                         style={{
                           padding: '0.4rem 0.875rem',
                           borderRadius: '8px', cursor: 'pointer',
@@ -742,85 +723,6 @@ export default function ProductDetailPage() {
                   </div>
                 </div>
               ))
-            )}
-
-            {/* Tiered pricing table */}
-            {product.priceType === 'tiered'
-              && tiers.length > 0 && (
-              <div>
-                <div style={{ fontSize: '0.8rem',
-                  fontWeight: 600, color: 'var(--gray)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                  marginBottom: '0.625rem' }}>
-                  Price Tiers
-                </div>
-                <div style={{
-                  border: '1px solid var(--border)',
-                  borderRadius: '8px', overflow: 'hidden' }}>
-                  {tiers.map((tier, i) => {
-                    const isActive = (() => {
-                      const min = parseInt(tier.minQty) || 0;
-                      const max = tier.maxQty !== null
-                        && tier.maxQty !== ''
-                        ? parseInt(tier.maxQty) : Infinity;
-                      return quantity >= min
-                        && quantity <= max;
-                    })();
-                    const prices = tier.prices || {};
-                    const unitP = (() => {
-                      if (Object.keys(selectedVariants).length
-                        && Object.keys(prices).length > 1) {
-                        const sorted = Object.fromEntries(
-                          Object.entries(selectedVariants)
-                            .sort(([a],[b]) =>
-                              a.localeCompare(b))
-                        );
-                        const key = JSON.stringify(sorted);
-                        return parseFloat(
-                          prices[key]
-                          ?? Object.values(prices)[0]
-                        ) || null;
-                      }
-                      return parseFloat(
-                        prices['__base__']
-                        ?? Object.values(prices)[0]
-                      ) || null;
-                    })();
-                    return (
-                      <div key={tier.id} style={{
-                        padding: '0.625rem 1rem',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        borderBottom: i < tiers.length - 1
-                          ? '1px solid var(--border)' : 'none',
-                        background: isActive
-                          ? 'rgba(212,168,67,0.08)' : '',
-                      }}>
-                        <span style={{
-                          fontSize: '0.8rem',
-                          color: isActive
-                            ? 'var(--gold)' : 'var(--gray)',
-                          fontWeight: isActive ? 700 : 400,
-                        }}>
-                          {tier.minQty}–{tier.maxQty || '∞'} pcs
-                          {isActive && ' ← your qty'}
-                        </span>
-                        <span style={{
-                          fontSize: '0.875rem', fontWeight: 700,
-                          color: isActive
-                            ? 'var(--gold)' : 'var(--white)',
-                        }}>
-                          {unitP
-                            ? `${formatPeso(unitP)} / pc`
-                            : '—'}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
             )}
 
             {/* Quantity input */}
@@ -882,9 +784,114 @@ export default function ProductDetailPage() {
               </div>
             </div>
 
+            {/* Design upload (customizable products only) */}
+            {product.isCustom && token && (
+              <div style={{
+                marginBottom: '1rem',
+                padding: '1rem',
+                background: 'rgba(212,168,67,0.06)',
+                border: '1px solid rgba(212,168,67,0.25)',
+                borderRadius: '10px',
+              }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--gold)', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  Customizable — upload your design
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.75rem' }}>
+                  Accepted: PDF, PNG, JPG, AI (max 10MB)
+                </div>
+                <label style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.5rem 0.875rem',
+                  background: cartDesignFile ? 'rgba(74,222,128,0.12)' : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${cartDesignFile ? 'rgba(74,222,128,0.4)' : 'rgba(255,255,255,0.15)'}`,
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.78rem',
+                  color: cartDesignFile ? '#4ade80' : 'var(--white)',
+                  fontWeight: 600,
+                  marginBottom: '0.6rem',
+                }}>
+                  <input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.ai,image/*,application/pdf"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      if (f.size > 10 * 1024 * 1024) {
+                        setCartDesignError('File too large. Max 10MB.');
+                        return;
+                      }
+                      setCartDesignFile(f);
+                      setCartDesignError('');
+                    }}
+                  />
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  {cartDesignFile ? cartDesignFile.name : 'Choose design file'}
+                </label>
+                {cartDesignFile && (
+                  <button type="button" onClick={() => setCartDesignFile(null)}
+                    style={{ marginLeft: '0.5rem', background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
+                    Remove
+                  </button>
+                )}
+                <textarea
+                  value={cartDesignNotes}
+                  onChange={(e) => setCartDesignNotes(e.target.value)}
+                  placeholder="Notes for the designer (optional)"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '8px',
+                    padding: '0.5rem 0.75rem',
+                    color: 'var(--white)',
+                    fontSize: '0.78rem',
+                    resize: 'vertical',
+                    outline: 'none',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                {cartDesignError && (
+                  <div style={{ marginTop: '0.4rem', color: 'var(--red)', fontSize: '0.72rem' }}>{cartDesignError}</div>
+                )}
+              </div>
+            )}
+
             {/* Action buttons */}
             {token ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+
+                {/* CUSTOMIZABLE: Upload & Request for Design (top CTA) */}
+                {product.isCustom && (
+                  <button
+                    onClick={() => setShowRequestModal(true)}
+                    onMouseEnter={() => setHoveredBtn('design')}
+                    onMouseLeave={() => setHoveredBtn(null)}
+                    style={{
+                      background: hoveredBtn === 'design' ? 'linear-gradient(135deg, #7c3aed, #9333ea)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                      color: '#fff',
+                      border: 'none', borderRadius: '10px',
+                      padding: '0.875rem 1.5rem',
+                      fontWeight: 800, fontSize: '1rem',
+                      cursor: 'pointer', width: '100%',
+                      fontFamily: "'Outfit', sans-serif",
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                      transition: 'background 0.15s',
+                    }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    Upload &amp; Request for Design
+                  </button>
+                )}
 
                 {/* Add to Cart */}
                 <button
@@ -901,36 +908,19 @@ export default function ProductDetailPage() {
                       ? 'rgba(212,168,67,0.25)'
                       : 'rgba(212,168,67,0.15)',
                     color: product.stockStatus === 'out-of-stock'
-                      ? 'var(--gray)'
-                      : addedToCart
-                      ? '#4ade80'
-                      : 'var(--gold)',
+                      ? 'var(--gray)' : addedToCart ? '#4ade80' : 'var(--gold)',
                     border: product.stockStatus === 'out-of-stock'
-                      ? '1px solid rgba(107,114,128,0.3)'
-                      : '1px solid var(--gold)',
-                    borderRadius: '10px',
-                    padding: '0.875rem 1.5rem',
+                      ? '1px solid rgba(107,114,128,0.3)' : '1px solid var(--gold)',
+                    borderRadius: '10px', padding: '0.875rem 1.5rem',
                     fontWeight: 800, fontSize: '1rem',
-                    cursor: product.stockStatus === 'out-of-stock'
-                      ? 'not-allowed' : 'pointer',
-                    width: '100%',
-                    fontFamily: "'Outfit', sans-serif",
+                    cursor: product.stockStatus === 'out-of-stock' ? 'not-allowed' : 'pointer',
+                    width: '100%', fontFamily: "'Outfit', sans-serif",
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                   {product.stockStatus === 'out-of-stock' ? 'Out of Stock' : (
                     <>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                        strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
-                        {addedToCart ? (
-                          <polyline points="20 6 9 17 4 12"/>
-                        ) : (
-                          <>
-                            <circle cx="9" cy="21" r="1"/>
-                            <circle cx="20" cy="21" r="1"/>
-                            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-                          </>
-                        )}
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
+                        {addedToCart ? <polyline points="20 6 9 17 4 12"/> : (<><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></>)}
                       </svg>
                       {addedToCart ? 'Added to Cart!' : 'Add to Cart'}
                     </>
@@ -946,32 +936,22 @@ export default function ProductDetailPage() {
                   style={{
                     background: product.stockStatus === 'out-of-stock'
                       ? 'rgba(107,114,128,0.3)'
-                      : hoveredBtn === 'checkout'
-                      ? 'var(--gold-hover, #e6b800)'
-                      : 'var(--gold)',
-                    color: product.stockStatus === 'out-of-stock'
-                      ? 'var(--gray)' : '#000',
-                    border: 'none', borderRadius: '10px',
-                    padding: '0.875rem 1.5rem',
+                      : hoveredBtn === 'checkout' ? '#e6b800' : 'var(--gold)',
+                    color: product.stockStatus === 'out-of-stock' ? 'var(--gray)' : '#000',
+                    border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
                     fontWeight: 800, fontSize: '1rem',
-                    cursor: product.stockStatus === 'out-of-stock'
-                      ? 'not-allowed' : 'pointer',
-                    width: '100%',
-                    fontFamily: "'Outfit', sans-serif",
+                    cursor: product.stockStatus === 'out-of-stock' ? 'not-allowed' : 'pointer',
+                    width: '100%', fontFamily: "'Outfit', sans-serif",
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
-                  {product.stockStatus === 'out-of-stock' ? 'Out of Stock'
-                    : (
-                      <>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                          stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                          strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                          <polyline points="14 2 14 8 20 8"/>
-                        </svg>
-                        Proceed to Checkout
-                      </>
-                    )}
+                  {product.stockStatus === 'out-of-stock' ? 'Out of Stock' : (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                      </svg>
+                      Buy Now
+                    </>
+                  )}
                 </button>
 
               </div>
@@ -980,66 +960,74 @@ export default function ProductDetailPage() {
                 <button
                   onClick={() => window.dispatchEvent(new CustomEvent('pmp_open_auth', { detail: { type: 'login', returnPath: window.location.pathname } }))}
                   style={{
-                    background: 'var(--gold)',
-                    color: '#000',
-                    border: 'none', borderRadius: '10px',
-                    padding: '0.875rem 1.5rem',
-                    fontWeight: 800, fontSize: '1rem',
-                    cursor: 'pointer',
-                    width: '100%',
-                    fontFamily: "'Outfit', sans-serif",
+                    background: 'var(--gold)', color: '#000',
+                    border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
+                    fontWeight: 800, fontSize: '1rem', cursor: 'pointer',
+                    width: '100%', fontFamily: "'Outfit', sans-serif",
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                    strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                   </svg>
                   Login to Order
                 </button>
-                <p style={{ textAlign: 'center', fontSize: '0.8rem',
-                  color: 'var(--gray)', margin: 0 }}>
-                  You need to log in to add items to your cart.
+                <p style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--gray)', margin: 0 }}>
+                  You need to log in to place an order.
                 </p>
               </div>
             )}
-
-            <button
-              onClick={() => {
-                if (!token) {
-                  window.dispatchEvent(new CustomEvent('pmp_open_auth', {
-                    detail: { type: 'login', returnPath: window.location.pathname },
-                  }));
-                  return;
-                }
-                setShowRequestModal(true);
-              }}
-              style={{
-                width: '100%',
-                marginTop: '0.75rem',
-                padding: '0.75rem 1.5rem',
-                background: 'transparent',
-                border: '1px solid var(--gold)',
-                borderRadius: '8px',
-                color: 'var(--gold)',
-                fontSize: '0.9rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-              </svg>
-              Request Custom Order
-            </button>
           </div>
+          </div>
+
+          {/* ── Full-width Pricing accordion (trove-style) ── */}
+          {product.priceType === 'tiered' && tiers.length > 0 && (
+            <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+              <button
+                onClick={() => setShowTiers(p => !p)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'transparent', border: 'none', padding: '0.25rem 0', color: 'var(--white)', cursor: 'pointer', textAlign: 'left' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                  <span style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--white)' }}>Pricing</span>
+                  {unitPrice != null && (
+                    <span style={{ fontSize: '0.78rem', color: 'var(--gold)', fontWeight: 600 }}>
+                      {formatPeso(unitPrice)} / pc · qty {quantity}
+                    </span>
+                  )}
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2" style={{ transform: showTiers ? 'rotate(45deg)' : '', transition: 'transform 0.2s', flexShrink: 0 }}>
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+              {showTiers && (
+                <div style={{ marginTop: '1rem', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--border)', fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <span>Quantity Tier</span>
+                    <span style={{ textAlign: 'right' }}>Unit Price</span>
+                  </div>
+                  {tiers.map((tier, i) => {
+                    const isActive = (() => {
+                      const min = parseInt(tier.minQty) || 0;
+                      const max = tier.maxQty !== null && tier.maxQty !== '' ? parseInt(tier.maxQty) : Infinity;
+                      return quantity >= min && quantity <= max;
+                    })();
+                    const unitP = getPriceFromTier(tier, resolveCombinationId(selectedVariants));
+                    return (
+                      <div key={tier.id ?? i} style={{ padding: '0.875rem 1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', borderBottom: i < tiers.length - 1 ? '1px solid var(--border)' : 'none', background: isActive ? 'rgba(212,168,67,0.08)' : '' }}>
+                        <span style={{ fontSize: '0.875rem', color: isActive ? 'var(--gold)' : 'var(--white)', fontWeight: isActive ? 700 : 500 }}>
+                          {tier.minQty}–{tier.maxQty || '∞'} pcs
+                          {isActive && <span style={{ marginLeft: '0.5rem', fontSize: '0.65rem', background: 'rgba(212,168,67,0.18)', color: 'var(--gold)', padding: '2px 7px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Your qty</span>}
+                        </span>
+                        <span style={{ fontSize: '0.95rem', fontWeight: 700, color: isActive ? 'var(--gold)' : 'var(--white)', textAlign: 'right' }}>
+                          {unitP ? `${formatPeso(unitP)} / pc` : '—'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1365,10 +1353,7 @@ export default function ProductDetailPage() {
 
     {/* ── Image Lightbox ───────────────────────────────────────────── */}
     {lightboxOpen && (() => {
-      const imgs = [
-        ...(product?.thumbnail ? [product.thumbnail] : []),
-        ...(product?.images || []),
-      ].filter(Boolean);
+      const imgs = displayImages;
       if (!imgs.length) return null;
       const prev = () => setLightboxIndex(i => (i - 1 + imgs.length) % imgs.length);
       const next = () => setLightboxIndex(i => (i + 1) % imgs.length);

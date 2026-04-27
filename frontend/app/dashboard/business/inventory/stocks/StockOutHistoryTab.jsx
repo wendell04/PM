@@ -459,7 +459,7 @@ function StockOutHistoryTab({ stockOuts, materials }) {
                   <th style={thStyle}>Material</th>
                   <th style={{ ...thStyle, textAlign: "center" }}>Type</th>
                   <th style={{ ...thStyle, textAlign: "center" }}>Qty</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Loss</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Value</th>
                   <th style={thStyle}>Performed By</th>
                   <th style={thStyle}>Remarks</th>
                 </tr>
@@ -532,7 +532,7 @@ function StockOutHistoryTab({ stockOuts, materials }) {
                         padding: "0.75rem 1rem",
                         textAlign: "right",
                         fontWeight: 700,
-                        color: "#ef4444",
+                        color: (so.issueType === "manual_sale" || so.issueType === "sale") ? "#22c55e" : "#ef4444",
                         fontFamily: "monospace",
                       }}
                     >

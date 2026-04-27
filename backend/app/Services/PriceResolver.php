@@ -26,21 +26,33 @@ class PriceResolver
             if (!empty($tiers)) {
                 usort($tiers, fn($a, $b) => ($a['minQty'] ?? 0) <=> ($b['minQty'] ?? 0));
 
-                $matchedPrice = null;
+                $matchedTier = null;
                 foreach ($tiers as $tier) {
                     $min = (int) ($tier['minQty'] ?? 1);
-                    $max = isset($tier['maxQty']) ? (int) $tier['maxQty'] : PHP_INT_MAX;
+                    $maxRaw = $tier['maxQty'] ?? null;
+                    $max = ($maxRaw !== null && $maxRaw !== '') ? (int) $maxRaw : PHP_INT_MAX;
                     if ($qty >= $min && $qty <= $max) {
-                        $matchedPrice = (float) $tier['price'];
+                        $matchedTier = $tier;
                         break;
                     }
                 }
-
-                if ($matchedPrice === null && !empty($tiers)) {
-                    $matchedPrice = (float) end($tiers)['price'];
+                if ($matchedTier === null && !empty($tiers)) {
+                    $matchedTier = end($tiers);
                 }
 
-                $price = $matchedPrice;
+                if ($matchedTier !== null) {
+                    if (isset($matchedTier['prices']) && is_array($matchedTier['prices'])) {
+                        $prices = $matchedTier['prices'];
+                        if ($variantId && isset($prices[$variantId])) {
+                            $price = (float) $prices[$variantId];
+                        } else {
+                            $vals = array_filter(array_map('floatval', array_values($prices)), fn($v) => $v > 0);
+                            $price = !empty($vals) ? min($vals) : null;
+                        }
+                    } elseif (isset($matchedTier['price'])) {
+                        $price = (float) $matchedTier['price'];
+                    }
+                }
             }
         }
 

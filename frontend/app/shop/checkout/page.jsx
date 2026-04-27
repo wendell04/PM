@@ -115,7 +115,9 @@ export default function CheckoutPage() {
   // ── Computed ──
   const selectedAddress = addresses.find(a => a.id === selectedAddressId) ?? null;
   const subtotal        = items.reduce((sum, i) => sum + (i.unitPrice * i.qty), 0);
-  const hasCustomItem = items.some(i => i.isCustom === true);
+  // Custom item that doesn't yet have a per-item design uploaded.
+  // Items uploaded on the product page already carry designUrl, so they don't need re-upload.
+  const hasCustomItem = items.some(i => i.isCustom === true && !i.designUrl);
   const voucherDiscount = appliedVoucher ? appliedVoucher.discountAmount : 0;
   const total           = Math.max(0, subtotal - voucherDiscount);
   const grandTotal      = total; // Delivery is manually arranged — no fixed fee
@@ -200,6 +202,8 @@ export default function CheckoutPage() {
         variantId: i.variantId ?? null,
         variantName: i.variantName ?? null,
         qty: i.qty,
+        ...(i.designUrl ? { designUrl: i.designUrl } : {}),
+        ...(i.designNotes ? { designNotes: i.designNotes } : {}),
       }));
 
       const deliveryAddress = {

@@ -52,10 +52,28 @@ function getMinPrice(product) {
   return null;
 }
 
+function StarRow({ rating, count }) {
+  if (!rating) return null;
+  const full = Math.floor(rating);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '3px', marginTop: '5px' }}>
+      {[1,2,3,4,5].map(i => (
+        <svg key={i} width="11" height="11" viewBox="0 0 24 24"
+          fill={i <= full ? 'var(--gold)' : 'none'}
+          stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+      ))}
+      {count > 0 && <span style={{ fontSize: '0.65rem', color: 'var(--gray)', marginLeft: '2px' }}>({count})</span>}
+    </div>
+  );
+}
+
 function ProductCard({ product }) {
   const [hovered, setHovered] = useState(false);
   const img = product.thumbnail || product.images?.[0];
   const price = getDisplayPrice(product);
+  const variantCount = product.combinations?.length || (product.variantGroups?.length > 0 ? 2 : 0);
 
   return (
     <Link
@@ -66,36 +84,49 @@ function ProductCard({ product }) {
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          background: 'var(--dark2)',
+          background: hovered
+            ? 'linear-gradient(180deg, rgba(212,168,67,0.06) 0%, var(--dark2) 60%)'
+            : 'var(--dark2)',
           border: `1px solid ${hovered ? 'var(--gold)' : 'var(--border)'}`,
-          borderRadius: '12px',
+          borderRadius: '14px',
           overflow: 'hidden',
-          transition: 'border-color 0.15s, transform 0.15s',
-          transform: hovered ? 'translateY(-2px)' : 'none',
+          transition: 'border-color 0.2s, transform 0.2s, background 0.2s, box-shadow 0.2s',
+          transform: hovered ? 'translateY(-3px)' : 'none',
+          boxShadow: hovered ? '0 8px 24px rgba(212,168,67,0.18)' : '0 2px 8px rgba(0,0,0,0.2)',
           cursor: 'pointer',
         }}
       >
-        <div style={{ position: 'relative', aspectRatio: '1/1', background: 'var(--dark)', overflow: 'hidden' }}>
+        <div style={{ position: 'relative', aspectRatio: '1/1', background: 'linear-gradient(135deg, #191716 0%, #131210 100%)', overflow: 'hidden' }}>
           {img ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={img}
               alt={product.subCategoryName || product.name}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: hovered ? 'scale(1.05)' : 'scale(1)', transition: 'transform 0.3s' }}
             />
           ) : (
             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(212,168,67,0.2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
                 <circle cx="8.5" cy="8.5" r="1.5"/>
                 <polyline points="21 15 16 10 5 21"/>
               </svg>
             </div>
           )}
+          {product.category && (
+            <div style={{ position: 'absolute', bottom: '10px', left: '10px', fontSize: '0.62rem', fontWeight: 700, color: 'rgba(255,255,255,0.85)', background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', padding: '3px 8px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {product.category}
+            </div>
+          )}
+          {product.isCustom && (
+            <div style={{ position: 'absolute', top: '10px', right: '10px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', fontSize: '0.58rem', fontWeight: 700, padding: '3px 8px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px', boxShadow: '0 2px 6px rgba(99,102,241,0.4)' }}>
+              Customizable
+            </div>
+          )}
           {product.stockStatus === 'out-of-stock' && (
             <div style={{
               position: 'absolute', inset: 0,
-              background: 'rgba(0,0,0,0.5)',
+              background: 'rgba(0,0,0,0.55)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               <span style={{
@@ -108,17 +139,20 @@ function ProductCard({ product }) {
             </div>
           )}
         </div>
-        <div style={{ padding: '12px' }}>
-          {product.category && (
-            <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
-              {product.category}
-            </div>
-          )}
-          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)', lineHeight: 1.3, marginBottom: '6px' }}>
+        <div style={{ padding: '14px 14px 16px' }}>
+          <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--white)', lineHeight: 1.35, marginBottom: '4px', minHeight: '2.6em', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
             {product.subCategoryName || product.name}
           </div>
-          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--gold)' }}>
-            {price}
+          <StarRow rating={product.avgRating} count={product.reviewCount ?? product.totalReviews ?? 0} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(212,168,67,0.12)' }}>
+            <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--gold)', letterSpacing: '-0.01em' }}>
+              {price}
+            </div>
+            {variantCount > 1 && (
+              <span style={{ fontSize: '0.68rem', color: 'rgba(229,226,225,0.5)', fontWeight: 500 }}>
+                {variantCount} variants
+              </span>
+            )}
           </div>
         </div>
       </div>

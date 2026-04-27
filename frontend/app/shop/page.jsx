@@ -106,6 +106,26 @@ function ProductCard({ product, onAddToCart, flashSale }) {
             {product.category}
           </div>
 
+          {/* Customizable badge */}
+          {product.isCustom && (
+            <div style={{
+              position: 'absolute',
+              top: '10px',
+              right: '10px',
+              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              color: '#fff',
+              fontSize: '0.6rem',
+              fontWeight: 700,
+              padding: '3px 8px',
+              borderRadius: '6px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              zIndex: 2,
+            }}>
+              Customizable
+            </div>
+          )}
+
           {/* Flash sale badge */}
           {flashSale && (
             <div style={{

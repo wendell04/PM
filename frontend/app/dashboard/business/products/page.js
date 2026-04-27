@@ -25,7 +25,7 @@ import {
   updateProduct,
   uploadImage,
 } from "@/lib/productApi";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import React, {
   useCallback,
   useEffect,
@@ -2640,24 +2640,18 @@ function ProductExpandRow({ product, inv, colSpan }) {
   );
 
   return (
-    <tr>
-      <td
-        colSpan={9}
-        style={{
-          padding: 0,
-          background: "rgba(99,102,241,0.04)",
-          borderBottom: "1px solid var(--border)",
-        }}
-      >
-        <div
-          style={{
-            padding: "1rem 1.25rem 1.25rem",
-            display: "flex",
-            gap: "1rem",
-            width: "100%",
-            justifyContent: "space-between",
-          }}
-        >
+    <div
+      style={{
+        padding: "1rem 1.25rem 1.25rem",
+        background: "rgba(99,102,241,0.04)",
+        borderTop: "1px solid var(--border)",
+        display: "flex",
+        gap: "1rem",
+        width: "100%",
+        justifyContent: "space-between",
+        flexWrap: "wrap",
+      }}
+    >
           {/* Description */}
           <div style={{ flex: "1 200px", minWidth: 0 }}>
             <div
@@ -3004,9 +2998,7 @@ function ProductExpandRow({ product, inv, colSpan }) {
               </div>
             )}
           </div>
-        </div>
-      </td>
-    </tr>
+    </div>
   );
 }
 
@@ -3043,50 +3035,68 @@ function Stepper({ current, steps }) {
 }
 
 // ── Product Card Preview ───────────────────────────────────────────────────────
-function ProductCardPreview({ name, category, priceRange, variantCount, maxProducible, thumbnail }) {
+function ProductCardPreview({ name, category, priceRange, variantCount, maxProducible, thumbnail, isRequestQuote }) {
   return (
     <div style={{ position: "sticky", top: "1rem" }}>
       <div style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.15em", color: "rgba(229,226,225,0.3)", marginBottom: "0.75rem" }}>
         Storefront Preview
       </div>
-      <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden", maxWidth: "220px" }}>
-        <div style={{ width: "100%", aspectRatio: "1", background: "rgba(255,255,255,0.03)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+      <div style={{ background: "#19171580", border: "1px solid rgba(212,168,67,0.18)", borderRadius: "16px", overflow: "hidden", maxWidth: "240px", boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
+        {/* Thumbnail */}
+        <div style={{ width: "100%", aspectRatio: "4/3", position: "relative", overflow: "hidden" }}>
           {thumbnail ? (
             <img src={thumbnail} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5">
+            <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg, rgba(212,168,67,0.06) 0%, rgba(99,102,241,0.04) 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(212,168,67,0.25)" strokeWidth="1.2">
                 <rect x="3" y="3" width="18" height="18" rx="2" />
                 <circle cx="8.5" cy="8.5" r="1.5" />
                 <path d="M21 15l-5-5L5 21" />
               </svg>
-              <span style={{ fontSize: "0.6rem", color: "rgba(229,226,225,0.2)" }}>No image</span>
+              <span style={{ fontSize: "0.6rem", color: "rgba(229,226,225,0.2)", letterSpacing: "0.06em" }}>Upload image in Details</span>
+            </div>
+          )}
+          {category && (
+            <div style={{ position: "absolute", top: "0.5rem", left: "0.5rem", fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#D4A843", background: "rgba(10,9,8,0.82)", borderRadius: "5px", padding: "0.2rem 0.5rem" }}>
+              {category}
             </div>
           )}
         </div>
-        <div style={{ padding: "0.875rem" }}>
-          {category && (
-            <span style={{ display: "inline-block", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#D4A843", background: "rgba(212,168,67,0.1)", borderRadius: "4px", padding: "0.15rem 0.5rem", marginBottom: "0.4rem" }}>
-              {category}
-            </span>
+        {/* Info */}
+        <div style={{ padding: "0.875rem 1rem 1rem" }}>
+          <div style={{ display: "flex", gap: "0.15rem", marginBottom: "0.35rem" }}>
+            {"★★★★★".split("").map((s, i) => (
+              <span key={i} style={{ color: "#D4A843", fontSize: "0.65rem", opacity: 0.35 }}>{s}</span>
+            ))}
+            <span style={{ fontSize: "0.58rem", color: "rgba(229,226,225,0.22)", marginLeft: "0.25rem" }}>New</span>
+          </div>
+          <div style={{ fontSize: "0.875rem", fontWeight: 700, color: "#E5E2E1", marginBottom: "0.4rem", lineHeight: 1.3 }}>
+            {name || <span style={{ color: "rgba(229,226,225,0.22)", fontStyle: "italic", fontWeight: 400 }}>Product name</span>}
+          </div>
+          <div style={{ fontSize: "1rem", fontWeight: 800, color: "#D4A843", marginBottom: "0.25rem" }}>
+            {priceRange || <span style={{ fontSize: "0.72rem", color: "rgba(229,226,225,0.28)", fontWeight: 400 }}>Set price in Step 3</span>}
+          </div>
+          {isRequestQuote && (
+            <div style={{ fontSize: "0.62rem", color: "rgba(139,92,246,0.9)", marginBottom: "0.35rem", fontStyle: "italic" }}>+ Request a custom quote</div>
           )}
-          <div style={{ fontSize: "0.875rem", fontWeight: 700, color: "#E5E2E1", marginBottom: "0.3rem", lineHeight: 1.3 }}>
-            {name || <span style={{ color: "rgba(229,226,225,0.25)", fontStyle: "italic" }}>Product name</span>}
-          </div>
-          <div style={{ fontSize: "0.9rem", fontWeight: 800, color: "#D4A843", marginBottom: "0.4rem" }}>
-            {priceRange || <span style={{ fontSize: "0.72rem", color: "rgba(229,226,225,0.3)", fontWeight: 400 }}>Set price in Step 3</span>}
-          </div>
           {variantCount > 1 && (
-            <div style={{ fontSize: "0.65rem", color: "rgba(229,226,225,0.45)", marginBottom: "0.35rem" }}>
-              {variantCount} size / finish options
+            <div style={{ fontSize: "0.65rem", color: "rgba(229,226,225,0.38)", marginBottom: "0.5rem" }}>
+              {variantCount} options available
             </div>
           )}
-          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.75rem" }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: maxProducible > 0 ? "#22c55e" : "#ef4444", flexShrink: 0 }} />
-            <span style={{ fontSize: "0.65rem", color: "rgba(229,226,225,0.45)" }}>
-              {maxProducible > 0 ? `${maxProducible} can be made` : "Out of stock"}
+            <span style={{ fontSize: "0.62rem", color: "rgba(229,226,225,0.38)" }}>
+              {maxProducible > 0 ? "In stock" : "Out of stock"}
             </span>
           </div>
+          <button
+            type="button"
+            disabled
+            style={{ width: "100%", padding: "0.55rem", background: "#D4A843", border: "none", borderRadius: "8px", color: "#1a1814", fontWeight: 800, fontSize: "0.78rem", cursor: "default", letterSpacing: "0.02em" }}
+          >
+            {isRequestQuote ? "Request Quote" : "Add to Cart"}
+          </button>
         </div>
       </div>
     </div>
@@ -3122,6 +3132,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
 
   // Step 3 — Pricing
   const [priceType, setPriceType] = useState("fixed");
+  const [isRequestQuote, setIsRequestQuote] = useState(false);
   const [variantPrices, setVariantPrices] = useState({});
   const [tiers, setTiers] = useState([{ id: 1, minQty: 1, maxQty: 20, prices: {} }]);
 
@@ -3276,11 +3287,11 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
       if (!storefrontName.trim()) { setStepError("Storefront name is required."); return false; }
       if (!category.trim()) { setStepError("Category is required."); return false; }
     }
-    if (step === 3 && priceType === "fixed") {
+    if (step === 3 && !isRequestQuote && priceType === "fixed") {
       const allSet = selectedBoms.every(({ bom }) => variantPrices[bom.id] !== "" && parseFloat(variantPrices[bom.id]) > 0);
       if (!allSet) { setStepError("Enter a price for every variant."); return false; }
     }
-    if (step === 3 && priceType === "tiered") {
+    if (step === 3 && !isRequestQuote && priceType === "tiered") {
       const allSet = tiers.every((t) => Object.values(t.prices).every((p) => p !== "" && parseFloat(p) > 0));
       if (!allSet) { setStepError("Fill in all tier prices."); return false; }
     }
@@ -3347,6 +3358,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
         images: galleryUrls,
         isPublished,
         isArchived: false,
+        isInquiry: isRequestQuote,
       };
 
       const saved = await createProduct(normalizeProductForApi(productData), token);
@@ -3397,124 +3409,142 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
           {/* ─── STEP 1: Select BOM ─────────────────────────────────── */}
           {step === 1 && (
             <div>
-              <p style={secTitle}>Primary Product</p>
+              <p style={secTitle}>Select a BOM to build this product from</p>
 
-              {/* BOM search */}
-              <div ref={bomSearchRef} style={{ position: "relative", marginBottom: "1rem" }}>
+              {/* Search */}
+              <div style={{ marginBottom: "1.25rem" }}>
                 <input
                   type="text"
-                  style={inputSt}
-                  placeholder="Search product by name or category…"
+                  style={{ ...inputSt, paddingLeft: "2.5rem", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='M21 21l-4.35-4.35'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "0.75rem center" }}
+                  placeholder="Search by name or category…"
                   value={bomSearch}
-                  onChange={(e) => { setBomSearch(e.target.value); setBomOpen(true); }}
-                  onFocus={() => setBomOpen(true)}
+                  onChange={(e) => setBomSearch(e.target.value)}
                 />
-                {bomOpen && filteredBoms.length > 0 && (
-                  <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--dark2,#1a1a1a)", border: "1px solid var(--border)", borderRadius: "10px", zIndex: 100, maxHeight: "220px", overflowY: "auto" }}>
-                    {filteredBoms.slice(0, 20).map((b) => (
-                      <button key={b.id} type="button"
-                        onClick={() => {
-                          setSelectedBoms([{ bom: b, label: "" }]);
-                          setBomSearch("");
-                          setBomOpen(false);
-                        }}
-                        style={{ width: "100%", textAlign: "left", background: "none", border: "none", padding: "0.75rem 1rem", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
-                        onMouseLeave={(e) => e.currentTarget.style.background = "none"}
-                      >
-                        <div>
-                          <div style={{ color: "#E5E2E1", fontWeight: 600, fontSize: "0.875rem" }}>{b.productName}</div>
-                          {b.category && <div style={{ color: "var(--gray)", fontSize: "0.72rem", marginTop: "0.1rem" }}>{b.category}</div>}
-                        </div>
-                        <div style={{ display: "flex", gap: "1rem", flexShrink: 0, fontSize: "0.72rem" }}>
-                          <span style={{ color: "#D4A843", fontWeight: 700 }}>₱{(b.totalCost || 0).toFixed(2)} cost</span>
-                        </div>
-                      </button>
-                    ))}
-                    {filteredBoms.length === 0 && <div style={{ padding: "1rem", color: "var(--gray)", fontSize: "0.85rem", textAlign: "center" }}>No BOMs found</div>}
-                  </div>
-                )}
-                {filteredBoms.length === 0 && !bomSearch && !selectedBoms.length && (
-                  <div style={{ padding: "0.5rem 0.25rem", color: "var(--gray)", fontSize: "0.75rem" }}>
-                    {allBoms.length === 0 ? "No BOMs found. Create a BOM first in Master Data." : "All BOMs already selected."}
-                  </div>
-                )}
               </div>
 
-              {/* Selected BOM info table */}
+              {allBoms.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "3rem 1rem", color: "var(--gray)", fontSize: "0.85rem" }}>
+                  No BOMs found. Create a BOM first in Master Data.
+                </div>
+              ) : filteredBoms.length === 0 && bomSearch ? (
+                <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--gray)", fontSize: "0.85rem" }}>
+                  No BOMs match &ldquo;{bomSearch}&rdquo;
+                </div>
+              ) : (
+                (() => {
+                  const groups = {};
+                  filteredBoms.forEach((b) => {
+                    const g = b.category || b.productGroupName || "Uncategorized";
+                    if (!groups[g]) groups[g] = [];
+                    groups[g].push(b);
+                  });
+                  return Object.entries(groups).map(([groupName, items]) => (
+                    <div key={groupName} style={{ marginBottom: "1.5rem" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                        <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(229,226,225,0.45)" }}>{groupName}</span>
+                        <span style={{ fontSize: "0.6rem", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "20px", padding: "0.1rem 0.4rem", color: "var(--gray)" }}>{items.length}</span>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))", gap: "0.625rem" }}>
+                        {items.map((b) => {
+                          const isPrimary = selectedBoms[0]?.bom.id === b.id;
+                          const isVariant = selectedBoms.slice(1).some((s) => s.bom.id === b.id);
+                          const mp = maxProducible[b.id];
+                          return (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => setSelectedBoms(isPrimary ? [] : [{ bom: b, label: "" }])}
+                              style={{ background: isPrimary ? "rgba(212,168,67,0.09)" : isVariant ? "rgba(99,102,241,0.07)" : "rgba(255,255,255,0.03)", border: `1px solid ${isPrimary ? "#D4A843" : isVariant ? "rgba(99,102,241,0.45)" : "rgba(255,255,255,0.1)"}`, borderRadius: "12px", padding: "0.875rem", textAlign: "left", cursor: "pointer", position: "relative", transition: "border-color 0.15s, background 0.15s" }}
+                            >
+                              {isPrimary && (
+                                <div style={{ position: "absolute", top: "0.5rem", right: "0.5rem", width: 18, height: 18, borderRadius: "50%", background: "#D4A843", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#1a1814" strokeWidth="3.5"><path d="M20 6L9 17l-5-5" /></svg>
+                                </div>
+                              )}
+                              <div style={{ fontSize: "0.78rem", fontWeight: 700, color: isPrimary ? "#D4A843" : "#E5E2E1", lineHeight: 1.3, marginBottom: "0.5rem", paddingRight: isPrimary ? "1.25rem" : 0 }}>
+                                {b.productName}
+                              </div>
+                              <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "#D4A843", marginBottom: "0.25rem" }}>
+                                ₱{(b.totalCost || 0).toFixed(2)}
+                              </div>
+                              <div style={{ fontSize: "0.62rem", color: "rgba(229,226,225,0.4)", marginBottom: "0.3rem" }}>
+                                {b.components?.length || 0} material{b.components?.length !== 1 ? "s" : ""}
+                              </div>
+                              {mp !== undefined && (
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: mp === 0 ? "#ef4444" : "#22c55e", flexShrink: 0 }} />
+                                  <span style={{ fontSize: "0.6rem", color: mp === 0 ? "#f87171" : "rgba(229,226,225,0.38)" }}>
+                                    {mp === 0 ? "No stock" : `${mp} can be made`}
+                                  </span>
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ));
+                })()
+              )}
+
+              {/* Selected BOM stats + variant picker */}
               {selectedBoms.length > 0 && (
-                <div style={{ marginBottom: "1.5rem", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
-                  <div style={{ padding: "0.75rem 1rem", background: "rgba(212,168,67,0.06)", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontWeight: 700, color: "#E5E2E1", fontSize: "0.9rem" }}>
-                      {isStandalone ? selectedBoms[0].bom.productName : `${selectedBoms.length} products selected`}
-                    </span>
+                <div style={{ marginTop: "1rem", background: "rgba(212,168,67,0.05)", border: "1px solid rgba(212,168,67,0.2)", borderRadius: "12px", overflow: "hidden" }}>
+                  <div style={{ padding: "0.875rem 1rem", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(212,168,67,0.12)" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: "#D4A843", fontSize: "0.88rem" }}>{selectedBoms[0].bom.productName}</div>
+                      <div style={{ fontSize: "0.65rem", color: "var(--gray)", marginTop: "0.1rem" }}>Selected as primary BOM</div>
+                    </div>
                     <button type="button" onClick={() => setSelectedBoms([])}
-                      style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer", fontSize: "0.72rem" }}>
+                      style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer", fontSize: "0.72rem", padding: "0.25rem 0.5rem" }}>
                       Clear
                     </button>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: hasVariants ? "1.5fr 1fr 90px 90px 1fr" : "2fr 90px 90px 1fr", padding: "0.4rem 0.75rem", background: "rgba(0,0,0,0.15)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                    {hasVariants && <div style={{ fontSize: "0.6rem", color: "var(--gray)", textTransform: "uppercase", fontWeight: 700 }}>Variant</div>}
-                    <div style={{ fontSize: "0.6rem", color: "var(--gray)", textTransform: "uppercase", fontWeight: 700 }}>Product</div>
-                    <div style={{ fontSize: "0.6rem", color: "var(--gray)", textTransform: "uppercase", fontWeight: 700 }}>BOM Cost</div>
-                    <div style={{ fontSize: "0.6rem", color: "var(--gray)", textTransform: "uppercase", fontWeight: 700 }}>Max Stock</div>
-                    <div style={{ fontSize: "0.6rem", color: "var(--gray)", textTransform: "uppercase", fontWeight: 700 }}>Bottleneck</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1px", background: "rgba(212,168,67,0.1)" }}>
+                    {[
+                      { label: "BOM Cost", value: `₱${(bomCostMap[selectedBoms[0].bom.id] || 0).toFixed(2)}`, color: "#D4A843" },
+                      { label: "Max Producible", value: `${maxProducible[selectedBoms[0].bom.id] ?? "—"} units`, color: maxProducible[selectedBoms[0].bom.id] === 0 ? "#ef4444" : "#E5E2E1" },
+                      { label: "Bottleneck", value: bottleneckMap[selectedBoms[0].bom.id] || "—", color: bottleneckMap[selectedBoms[0].bom.id] ? "#f59e0b" : "var(--gray)" },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} style={{ background: "rgba(0,0,0,0.25)", padding: "0.625rem 0.875rem" }}>
+                        <div style={{ fontSize: "0.58rem", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)", marginBottom: "0.2rem" }}>{label}</div>
+                        <div style={{ fontSize: "0.82rem", fontWeight: 700, color }}>{value}</div>
+                      </div>
+                    ))}
                   </div>
-                  {selectedBoms.map(({ bom }, i) => (
-                    <div key={bom.id} style={{ display: "grid", gridTemplateColumns: hasVariants ? "1.5fr 1fr 90px 90px 1fr" : "2fr 90px 90px 1fr", padding: "0.7rem 0.75rem", borderBottom: i < selectedBoms.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none", alignItems: "center" }}>
-                      {hasVariants && (
-                        <input
-                          type="text"
-                          value={selectedBoms[i].label}
-                          onChange={(e) => setSelectedBoms((p) => p.map((s, j) => j === i ? { ...s, label: e.target.value } : s))}
-                          placeholder="Label (e.g. 11oz)"
-                          style={{ ...inputSt, padding: "0.3rem 0.5rem", fontSize: "0.8rem", width: "90%", borderRadius: "6px" }}
-                        />
-                      )}
-                      <div style={{ fontSize: "0.82rem", color: "#E5E2E1", fontWeight: 600 }}>{bom.productName}</div>
-                      <div style={{ color: "#D4A843", fontWeight: 700, fontSize: "0.85rem" }}>₱{(bom.totalCost || 0).toFixed(2)}</div>
-                      <div style={{ fontWeight: 700, fontSize: "0.85rem", color: maxProducible[bom.id] === 0 ? "#ef4444" : "#E5E2E1" }}>
-                        {maxProducible[bom.id]} units
-                      </div>
-                      <div style={{ fontSize: "0.68rem", color: "#f59e0b" }}>
-                        {bottleneckMap[bom.id] && maxProducible[bom.id] === 0 ? bottleneckMap[bom.id] : "—"}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
 
-              {/* Add size/finish variant */}
-              {selectedBoms.length > 0 && (
-                <div>
-                  <p style={{ ...secTitle, marginBottom: "0.5rem" }}>Size / Finish Variants (optional)</p>
-                  <p style={{ fontSize: "0.72rem", color: "var(--gray)", marginBottom: "0.75rem" }}>
-                    Add another BOM if this product comes in different sizes or finishes (e.g. 11oz + 15oz). Each variant needs a label.
-                  </p>
-                  {selectedBoms.slice(1).map(({ bom }, rawIdx) => {
-                    const idx = rawIdx + 1;
-                    return (
-                      <div key={bom.id} style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.5rem" }}>
-                        <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", borderRadius: "8px", padding: "0.5rem 0.75rem", fontSize: "0.82rem", color: "#E5E2E1" }}>{bom.productName}</div>
-                        <button type="button" onClick={() => setSelectedBoms((p) => p.filter((_, j) => j !== idx))}
-                          style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer", padding: "0.25rem" }}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                        </button>
-                      </div>
-                    );
-                  })}
-                  <div style={{ position: "relative" }} ref={null}>
+                  {/* Added variants */}
+                  {selectedBoms.slice(1).length > 0 && (
+                    <div style={{ padding: "0.75rem 1rem 0" }}>
+                      <div style={{ fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)", marginBottom: "0.5rem" }}>Size / Finish Variants</div>
+                      {selectedBoms.slice(1).map(({ bom }, rawIdx) => {
+                        const idx = rawIdx + 1;
+                        return (
+                          <div key={bom.id} style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.4rem" }}>
+                            <div style={{ flex: 1, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.25)", borderRadius: "8px", padding: "0.4rem 0.75rem", fontSize: "0.8rem", color: "#E5E2E1" }}>{bom.productName}</div>
+                            <button type="button" onClick={() => setSelectedBoms((p) => p.filter((_, j) => j !== idx))}
+                              style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer", padding: "0.25rem" }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Add variant button + dropdown */}
+                  <div style={{ padding: "0.75rem 1rem", position: "relative" }}>
                     <button type="button"
                       onClick={() => setVariantOpens((p) => ({ ...p, new: !p.new }))}
-                      style={{ display: "flex", alignItems: "center", gap: "0.4rem", background: "none", border: "1px dashed rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.5rem 1rem", color: "var(--gray)", fontSize: "0.78rem", cursor: "pointer", width: "100%" }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
+                      style={{ display: "flex", alignItems: "center", gap: "0.4rem", background: "none", border: "1px dashed rgba(255,255,255,0.12)", borderRadius: "8px", padding: "0.45rem 0.875rem", color: "var(--gray)", fontSize: "0.75rem", cursor: "pointer", width: "100%" }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
                       Add size / finish variant
                     </button>
                     {variantOpens.new && (
-                      <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--dark2,#1a1a1a)", border: "1px solid var(--border)", borderRadius: "10px", zIndex: 100, maxHeight: "200px", overflowY: "auto" }}>
+                      <div style={{ position: "absolute", bottom: "calc(100% - 0.75rem)", left: "1rem", right: "1rem", background: "var(--dark2,#1a1a1a)", border: "1px solid var(--border)", borderRadius: "10px", zIndex: 100, maxHeight: "200px", overflowY: "auto" }}>
                         <div style={{ padding: "0.5rem" }}>
                           <input type="text" placeholder="Search BOM…"
-                            style={{ ...inputSt, padding: "0.5rem 0.75rem", fontSize: "0.8rem", marginBottom: "0.25rem" }}
+                            style={{ ...inputSt, padding: "0.5rem 0.75rem", fontSize: "0.8rem" }}
                             value={variantSearches.new || ""}
                             onChange={(e) => setVariantSearches((p) => ({ ...p, new: e.target.value }))}
                           />
@@ -3597,6 +3627,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
                 variantCount={selectedBoms.length}
                 maxProducible={overallMaxProducible}
                 thumbnail={thumbnail?.preview}
+                isRequestQuote={isRequestQuote}
               />
             </div>
           )}
@@ -3606,7 +3637,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
             <div>
               <p style={secTitle}>Pricing</p>
               <div className="price-type-row" style={{ marginBottom: "1.25rem" }}>
-                {[{ val: "fixed", label: "Fixed Price" }, { val: "tiered", label: "Tier Price" }, { val: "inquiry", label: "For Inquiry" }].map(({ val, label }) => (
+                {[{ val: "fixed", label: "Fixed Price" }, { val: "tiered", label: "Tier Price" }].map(({ val, label }) => (
                   <button key={val} type="button" className={`price-type-btn${priceType === val ? " selected" : ""}`} onClick={() => setPriceType(val)}>{label}</button>
                 ))}
               </div>
@@ -3724,11 +3755,21 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
                 </>
               )}
 
-              {priceType === "inquiry" && (
-                <div style={{ padding: "1rem", background: "rgba(212,168,67,0.08)", border: "1px solid rgba(212,168,67,0.3)", borderRadius: "8px", color: "var(--gold)", fontSize: "0.9rem" }}>
-                  This product will be listed as &ldquo;For Inquiry&rdquo; — customers will contact you for pricing.
+              {/* Request Quote toggle */}
+              <div style={{ marginTop: "1.25rem", padding: "0.875rem 1rem", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", borderRadius: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: "#E5E2E1", fontSize: "0.875rem" }}>Request Quote</div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.15rem" }}>
+                    {isRequestQuote
+                      ? "Customers see the price as a reference and submit a quote request. Inquiry goes to Orders."
+                      : "Customer can add directly to cart. Toggle on if pricing needs discussion first."}
+                  </div>
                 </div>
-              )}
+                <button type="button" onClick={() => setIsRequestQuote((p) => !p)}
+                  style={{ position: "relative", display: "inline-flex", alignItems: "center", width: "44px", height: "24px", borderRadius: "12px", border: "none", background: isRequestQuote ? "#D4A843" : "var(--border)", cursor: "pointer", flexShrink: 0, padding: 0 }}>
+                  <span style={{ position: "absolute", left: isRequestQuote ? "22px" : "2px", width: "20px", height: "20px", borderRadius: "50%", background: "#fff", transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.3)" }} />
+                </button>
+              </div>
             </div>
           )}
 
@@ -4499,15 +4540,15 @@ function AddProductModal_OLD_UNUSED({ boms, inventoryList, products, onClose, on
 export default function ProductListPage() {
   const { token } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [products, setProducts] = useState([]);
   const [inventoryList, setInventoryList] = useState([]);
   const [boms, setBoms] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState(""); // Default to ''
+  const [statusFilter, setStatusFilter] = useState("");
   const [editingProduct, setEditingProduct] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
   const [pendingEditData, setPendingEditData] = useState(null);
@@ -4523,6 +4564,15 @@ export default function ProductListPage() {
   const bulkSelectRef = useRef(null);
   const [editModalKey, setEditModalKey] = useState(0); // Force edit modal refresh
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Show success toast when returning from /products/add
+  useEffect(() => {
+    if (searchParams.get("saved") === "1") {
+      setShowSaveSuccess(true);
+      setTimeout(() => setShowSaveSuccess(false), 3000);
+      router.replace("/dashboard/business/products");
+    }
+  }, [searchParams, router]);
 
   // Reset bulk select when status filter changes
   useEffect(() => {
@@ -4661,7 +4711,7 @@ export default function ProductListPage() {
         maxPrice = minPrice;
       }
     } else if (product.priceType === "tiered") {
-      product.tiers?.forEach((tier) => {
+      (product.priceTiers || product.tiers || []).forEach((tier) => {
         Object.values(tier.prices || {}).forEach((price) => {
           const p = parseFloat(price);
           if (p > 0) {
@@ -4692,6 +4742,53 @@ export default function ProductListPage() {
     if (available <= 10)
       return { text: `${available} / ${total}`, class: "stock-low" };
     return { text: `${available} / ${total}`, class: "stock-ok" };
+  };
+
+  // Derive Shopify-style inventory text from the BOMs linked to a product.
+  const getProductInventoryDisplay = (product) => {
+    const byGroupName = () => {
+      const pn = (product.bomGroupName || product.name || product.productName || "").trim().toLowerCase();
+      return boms.filter((b) => {
+        const bn = (b.productGroupName || "").trim().toLowerCase();
+        return bn && pn && bn === pn;
+      });
+    };
+    let productBoms = product.bomId
+      ? boms.filter((b) => String(b.id ?? b._id) === String(product.bomId))
+      : [];
+    if (productBoms.length === 0) productBoms = byGroupName();
+
+    if (productBoms.length === 0) return { text: "No BOM linked", color: "var(--gray)" };
+
+    const units = productBoms.map((b) => {
+      let min = Infinity;
+      (b.components || []).forEach((c) => {
+        const matId = c.materialId ?? c.inventoryId;
+        const invItem = inventoryList.find((i) => String(i.id ?? i._id) === String(matId));
+        const can = Math.floor((invItem?.stockQty || 0) / (c.qty || 1));
+        if (can < min) min = can;
+      });
+      return min === Infinity ? 0 : min;
+    });
+
+    const totalUnits = units.reduce((s, u) => s + u, 0);
+    const variantCount = productBoms.length;
+
+    const extras = new Set();
+    productBoms.forEach((b) => {
+      (b.components || []).slice(1).forEach((c) => {
+        const matId = c.materialId ?? c.inventoryId;
+        const invItem = inventoryList.find((i) => String(i.id ?? i._id) === String(matId));
+        if (invItem?.name) extras.add(invItem.name);
+      });
+    });
+    const extraText = extras.size > 0 ? ` w/ ${[...extras].join(", ")}` : "";
+    const variantText = variantCount > 1 ? ` for ${variantCount} variants${extraText}` : extraText;
+
+    return {
+      text: `${totalUnits} in stock${variantText}`,
+      color: totalUnits > 0 ? "#22c55e" : "#ef4444",
+    };
   };
 
   const getVariantSummary = (product) => {
@@ -4816,14 +4913,18 @@ export default function ProductListPage() {
   };
 
   const handleEdit = (product) => {
+    const id = product._id ?? product.id;
+    if (id) {
+      router.push(`/dashboard/business/products/add?edit=${id}`);
+      return;
+    }
     setEditingProduct(product);
-    setEditModalKey((prev) => prev + 1); // Force modal refresh
+    setEditModalKey((prev) => prev + 1);
     setShowEditModal(true);
   };
 
   const handleAddProduct = () => {
-    setEditingProduct({ ...EMPTY_NEW_PRODUCT });
-    setShowAddModal(true);
+    router.push("/dashboard/business/products/add");
   };
 
   const handleSaveEdit = (updatedProduct) => {
@@ -4862,7 +4963,6 @@ export default function ProductListPage() {
       );
 
       setShowEditModal(false);
-      setShowAddModal(false);
       setEditingProduct(null);
       setShowEditConfirmModal(false);
       setPendingEditData(null);
@@ -4882,8 +4982,26 @@ export default function ProductListPage() {
 
   // ── Delete ─
   const confirmDelete = async (product) => {
+    // If the product has no BOM link (orphaned), allow hard delete —
+    // it can't be manufactured or fulfilled anyway, and historical sales
+    // carry their own snapshot of product data at sale time.
+    let productBoms = product.bomId
+      ? boms.filter((b) => String(b.id ?? b._id) === String(product.bomId))
+      : [];
+    if (productBoms.length === 0) {
+      const pn = (product.bomGroupName || product.name || product.productName || "").trim().toLowerCase();
+      productBoms = boms.filter((b) => {
+        const bn = (b.productGroupName || "").trim().toLowerCase();
+        return bn && pn && bn === pn;
+      });
+    }
+
+    if (productBoms.length === 0) {
+      setDeleteModal(product);
+      return;
+    }
+
     try {
-      // Fetch all orders to check for sales history
       const allOrders = await fetchAllOrders(token, {});
       const hasSales = allOrders.some(
         (o) =>
@@ -4895,9 +5013,7 @@ export default function ProductListPage() {
         return;
       }
       setDeleteModal(product);
-    } catch (error) {
-      console.error("Failed to fetch orders for delete check:", error);
-      // Fail safe: if we can't verify, show archive modal to prevent accidental delete
+    } catch {
       setArchiveModal(product);
     }
   };
@@ -4907,24 +5023,8 @@ export default function ProductListPage() {
     setIsSubmitting(true);
     try {
       const productId = deleteModal._id || deleteModal.id;
-
-      // Call API to delete (deactivate) product
       await deleteProduct(productId, token);
-
-      // Update local state
-      setProducts((prev) =>
-        prev.map((p) =>
-          p.id === productId
-            ? {
-                ...p,
-                isArchived: true,
-                isPublished: false,
-                updatedAt: new Date().toISOString(),
-              }
-            : p,
-        ),
-      );
-
+      setProducts((prev) => prev.filter((p) => p.id !== productId && p._id !== productId));
       setDeleteModal(null);
     } catch (error) {
       console.error("Failed to delete product:", error);
@@ -5154,122 +5254,8 @@ export default function ProductListPage() {
           </div>
         )}
 
-        {/* Page Header */}
-        <div className="page-header">
-          <div className="page-header-content">
-            <div>
-              <h1 className="page-title">Product List</h1>
-              <p className="page-subtitle">
-                Manage your products and control what appears in your
-                storefront.
-              </p>
-            </div>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button
-                className="btn-primary"
-                onClick={() => {}}
-                disabled
-                style={{ opacity: 0.6, cursor: "not-allowed" }}
-              >
-                <span className="btn-icon">+</span> Add Promotions
-              </button>
-              <button className="btn-primary" onClick={handleAddProduct}>
-                <span className="btn-icon">+</span> Add New Product
-              </button>
-            </div>
-          </div>
-
-          <div className="inventory-summary">
-            <div
-              className={`summary-card${statusFilter === "" ? " active" : ""}`}
-              onClick={() => setStatusFilter("")}
-              style={{ cursor: "pointer" }}
-            >
-              <div className="summary-content">
-                <span className="summary-value">
-                  {
-                    products.filter((p) => {
-                      const inv = getInventoryItem(p.inventoryId);
-                      return !p.isArchived && !(inv && inv.isActive === false);
-                    }).length
-                  }
-                </span>
-                <span className="summary-label">Total Products</span>
-              </div>
-            </div>
-            <div
-              className={`summary-card summary-card-success${statusFilter === "published" ? " active" : ""}`}
-              onClick={() =>
-                setStatusFilter(statusFilter === "published" ? "" : "published")
-              }
-              style={{ cursor: "pointer" }}
-            >
-              <div className="summary-content">
-                <span className="summary-value">
-                  {
-                    products.filter((p) => {
-                      const inv = getInventoryItem(p.inventoryId);
-                      return (
-                        p.isPublished === true &&
-                        !(inv && inv.isActive === false)
-                      );
-                    }).length
-                  }
-                </span>
-                <span className="summary-label">Published</span>
-              </div>
-            </div>
-            <div
-              className={`summary-card summary-card-warning${statusFilter === "unpublished" ? " active" : ""}`}
-              onClick={() =>
-                setStatusFilter(
-                  statusFilter === "unpublished" ? "" : "unpublished",
-                )
-              }
-              style={{ cursor: "pointer" }}
-            >
-              <div className="summary-content">
-                <span className="summary-value">
-                  {
-                    products.filter((p) => {
-                      const inv = getInventoryItem(p.inventoryId);
-                      return (
-                        p.isPublished !== true &&
-                        !p.isArchived &&
-                        !(inv && inv.isActive === false)
-                      );
-                    }).length
-                  }
-                </span>
-                <span className="summary-label">Unpublished</span>
-              </div>
-            </div>
-            <div
-              className={`summary-card summary-card-danger${statusFilter === "archived" ? " active" : ""}`}
-              onClick={() =>
-                setStatusFilter(statusFilter === "archived" ? "" : "archived")
-              }
-              style={{ cursor: "pointer" }}
-            >
-              <div className="summary-content">
-                <span className="summary-value">
-                  {
-                    products.filter((p) => {
-                      const inv = getInventoryItem(p.inventoryId);
-                      return (
-                        p.isArchived === true || (inv && inv.isActive === false)
-                      );
-                    }).length
-                  }
-                </span>
-                <span className="summary-label">Archived</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Toolbar */}
-        <div className="inventory-toolbar">
+        <div className="inventory-toolbar" style={{ marginBottom: "1.5rem" }}>
           <div className="search-wrapper">
             <span className="search-icon">
               <svg
@@ -5300,32 +5286,11 @@ export default function ProductListPage() {
               </button>
             )}
           </div>
+          <button className="btn-primary" onClick={handleAddProduct}>
+            <span className="btn-icon">+</span> Add New Product
+          </button>
         </div>
 
-        {/* Info Note */}
-        <div
-          style={{
-            padding: "0.75rem 1rem",
-            marginBottom: "1rem",
-            background: "rgba(212, 168, 67, 0.08)",
-            border: "1px solid var(--primary)",
-            borderRadius: "8px",
-            fontSize: "0.875rem",
-            color: "var(--gray)",
-          }}
-        >
-          <span
-            style={{
-              marginRight: "0.5rem",
-              fontWeight: "bold",
-              color: "var(--primary)",
-            }}
-          >
-            ℹ
-          </span>
-          <strong>Quick Guide:</strong> Click row to select - Use Publish /
-          Unpublish buttons to toggle Storefront visibility
-        </div>
 
         {/* Bulk Action Bar */}
         {showBulkBar && (
@@ -5451,22 +5416,8 @@ export default function ProductListPage() {
           </div>
         )}
 
-        {/* Table */}
-        <div
-          style={{
-            WebkitOverflowScrolling: "touch",
-            border: "1px solid var(--border)",
-            boxSizing: "border-box",
-            scrollbarWidth: "thin",
-            scrollbarColor: "var(--gold) var(--dark2)",
-            borderRadius: "10px",
-            width: "0",
-            minWidth: "100%",
-            marginBottom: "1rem",
-            display: "block",
-            overflowX: "auto",
-          }}
-        >
+        {/* Product list */}
+        <div style={{ marginBottom: "1rem" }}>
           {filteredProducts.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">
@@ -5499,541 +5450,134 @@ export default function ProductListPage() {
               )}
             </div>
           ) : (
-            <table
-              className="inventory-table"
-              style={{
-                width: "max-content",
-                minWidth: "100%",
-              }}
-            >
-              <thead>
-                <tr>
-                  <th
-                    style={{
-                      width: "36px",
-                      paddingLeft: "1rem",
-                      position: "relative",
-                    }}
-                  >
-                    <div style={{ position: "relative" }} ref={bulkSelectRef}>
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        ref={(el) => {
-                          if (el) el.indeterminate = someSelected;
-                        }}
-                        onChange={toggleSelectAll}
-                        style={{
-                          width: "16px",
-                          height: "16px",
-                          cursor: "pointer",
-                          accentColor: "var(--gold)",
-                        }}
-                        title={
-                          statusFilter === ""
-                            ? "Select all (shows options)"
-                            : `Select all ${statusFilter}`
-                        }
-                      />
-                      {showBulkSelectDropdown && statusFilter === "" && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: "100%",
-                            left: "0",
-                            marginTop: "0.5rem",
-                            background: "var(--dark2)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "8px",
-                            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                            zIndex: 100,
-                            minWidth: "160px",
-                            overflow: "hidden",
-                          }}
-                        >
-                          <button
-                            type="button"
-                            onClick={selectAllPublished}
-                            style={{
-                              width: "100%",
-                              padding: "0.5rem 0.75rem",
-                              background: "transparent",
-                              border: "none",
-                              color: "var(--white)",
-                              fontSize: "0.85rem",
-                              textAlign: "left",
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.5rem",
-                            }}
-                          >
-                            Select Published
-                          </button>
-                          <button
-                            type="button"
-                            onClick={selectAllUnpublished}
-                            style={{
-                              width: "100%",
-                              padding: "0.5rem 0.75rem",
-                              background: "transparent",
-                              border: "none",
-                              borderTop: "1px solid var(--border)",
-                              color: "var(--white)",
-                              fontSize: "0.85rem",
-                              textAlign: "left",
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.5rem",
-                            }}
-                          >
-                            Select Unpublished
-                          </button>
-                          {selectedIds.size > 0 && (
-                            <button
-                              type="button"
-                              onClick={unselectAll}
-                              style={{
-                                width: "100%",
-                                padding: "0.5rem 0.75rem",
-                                background: "transparent",
-                                border: "none",
-                                borderTop: "1px solid var(--border)",
-                                color: "#ef4444",
-                                fontSize: "0.85rem",
-                                textAlign: "left",
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "0.5rem",
-                              }}
-                            >
-                              <span
-                                style={{
-                                  color: "#ef4444",
-                                  fontSize: "1rem",
-                                  fontWeight: "bold",
-                                }}
-                              >
-                                -
-                              </span>
-                              Unselect All ({selectedIds.size})
-                            </button>
-                          )}
-                        </div>
+            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+              {/* Table header */}
+              <div style={{ display: "grid", gridTemplateColumns: "40px 52px 1.4fr 90px 1.6fr 100px 110px 100px", alignItems: "center", padding: "0.5rem 1rem", background: "rgba(255,255,255,0.03)", borderBottom: "1px solid var(--border)" }} ref={bulkSelectRef}>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                    onChange={toggleSelectAll}
+                    style={{ width: 15, height: 15, cursor: "pointer", accentColor: "var(--gold)" }}
+                    title={statusFilter === "" ? "Select all" : `Select all ${statusFilter}`}
+                  />
+                  {showBulkSelectDropdown && statusFilter === "" && (
+                    <div style={{ position: "absolute", top: "100%", left: 0, marginTop: "0.25rem", background: "var(--dark2)", border: "1px solid var(--border)", borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)", zIndex: 100, minWidth: "160px", overflow: "hidden" }}>
+                      <button type="button" onClick={selectAllPublished} style={{ width: "100%", padding: "0.5rem 0.75rem", background: "transparent", border: "none", color: "var(--white)", fontSize: "0.82rem", textAlign: "left", cursor: "pointer" }}>Select Published</button>
+                      <button type="button" onClick={selectAllUnpublished} style={{ width: "100%", padding: "0.5rem 0.75rem", background: "transparent", border: "none", borderTop: "1px solid var(--border)", color: "var(--white)", fontSize: "0.82rem", textAlign: "left", cursor: "pointer" }}>Select Unpublished</button>
+                      {selectedIds.size > 0 && (
+                        <button type="button" onClick={unselectAll} style={{ width: "100%", padding: "0.5rem 0.75rem", background: "transparent", border: "none", borderTop: "1px solid var(--border)", color: "#ef4444", fontSize: "0.82rem", textAlign: "left", cursor: "pointer" }}>
+                          Unselect All ({selectedIds.size})
+                        </button>
                       )}
                     </div>
-                  </th>
-                  <th style={{ width: "28px" }}></th>
-                  <th className="table-col-name">Product</th>
-                  <th className="table-col-category">Category</th>
-                  <th className="table-col-stock">Price Range</th>
-                  <th className="table-col-min">Availability</th>
-                  <th className="table-col-min">Inventory Stock</th>
-                  <th style={{ minWidth: "80px" }}>Variants</th>
-                  <th className="table-col-actions">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredProducts.map((product) => {
-                  const inv = getInventoryItem(product.inventoryId);
-                  const stockStatus = getStockStatus(product);
-                  const priceRange = getPriceRange(product);
-                  const variantSummary = getVariantSummary(product);
-                  const isExpanded = expandedRows.has(product.id);
-                  const isSelected = selectedIds.has(product.id);
-                  const isInventoryArchived = inv?.isActive === false;
+                  )}
+                </div>
+                <div />
+                {["Product", "Status", "Inventory", "Price", "Category", ""].map((h) => (
+                  <span key={h} style={{ fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(229,226,225,0.35)" }}>{h}</span>
+                ))}
+              </div>
 
-                  return (
-                    <React.Fragment
-                      key={
-                        (product._id?.toString?.() ?? product._id) || product.id
-                      }
-                    >
-                      <tr
-                        className="inventory-table-row"
-                        style={{
-                          background: isSelected
-                            ? "rgba(99,102,241,0.06)"
-                            : undefined,
-                          opacity: product.isArchived ? 0.55 : 1,
-                          borderLeft: isInventoryArchived
-                            ? "3px solid #f59e0b"
-                            : "none",
-                        }}
-                      >
-                        {/* Checkbox */}
-                        <td style={{ paddingLeft: "1rem", width: "36px" }}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleSelect(product.id)}
-                            style={{
-                              width: "16px",
-                              height: "16px",
-                              cursor: "pointer",
-                              accentColor: "var(--gold)",
-                            }}
-                          />
-                        </td>
+              {/* Table rows */}
+              {filteredProducts.map((product, pi) => {
+                const inv = getInventoryItem(product.inventoryId);
+                const stockStatus = getStockStatus(product);
+                const invDisplay = getProductInventoryDisplay(product);
+                const priceRange = getPriceRange(product);
+                const variantSummary = getVariantSummary(product);
+                const isExpanded = expandedRows.has(product.id);
+                const isSelected = selectedIds.has(product.id);
+                const isInventoryArchived = inv?.isActive === false;
+                const stockColor = invDisplay.color;
+                return (
+                  <div key={(product._id?.toString?.() ?? product._id) || product.id}
+                    style={{ borderTop: pi > 0 ? "1px solid var(--border)" : "none", opacity: product.isArchived ? 0.6 : 1, background: isSelected ? "rgba(212,168,67,0.03)" : "transparent" }}>
+                    {/* Main row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "40px 52px 1.4fr 90px 1.6fr 100px 110px 100px", alignItems: "center", padding: "0.75rem 1rem", gap: 0 }}>
+                      {/* Checkbox */}
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(product.id)}
+                        style={{ width: 15, height: 15, cursor: "pointer", accentColor: "var(--gold)" }} />
 
-                        {/* Expand chevron */}
-                        <td
-                          style={{ width: "28px", cursor: "pointer" }}
-                          onClick={() => toggleExpand(product.id)}
-                        >
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            style={{
-                              color: "var(--gray)",
-                              transition: "transform 0.2s",
-                              transform: isExpanded
-                                ? "rotate(90deg)"
-                                : "rotate(0deg)",
-                              display: "block",
-                            }}
-                          >
-                            <path d="M9 18l6-6-6-6" />
+                      {/* Thumbnail */}
+                      {product.thumbnail ? (
+                        <img src={product.thumbnail} alt="" style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover" }} />
+                      ) : (
+                        <div style={{ width: 40, height: 40, borderRadius: 6, background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--gray)" }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                            <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
                           </svg>
-                        </td>
-
-                        {/* Product name + thumbnail */}
-                        <td className="table-cell-name">
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.75rem",
-                            }}
-                          >
-                            {product.thumbnail ? (
-                              <img
-                                src={product.thumbnail}
-                                alt={
-                                  product.productName || product.subCategoryName
-                                }
-                                style={{
-                                  width: "44px",
-                                  height: "44px",
-                                  borderRadius: "8px",
-                                  objectFit: "cover",
-                                  flexShrink: 0,
-                                }}
-                              />
-                            ) : (
-                              <div
-                                style={{
-                                  width: "44px",
-                                  height: "44px",
-                                  borderRadius: "8px",
-                                  background: "rgba(100,100,100,0.15)",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  color: "var(--gray)",
-                                  flexShrink: 0,
-                                }}
-                              >
-                                <svg
-                                  width="20"
-                                  height="20"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.5"
-                                >
-                                  <rect
-                                    x="3"
-                                    y="3"
-                                    width="18"
-                                    height="18"
-                                    rx="2"
-                                  />
-                                  <path d="M3 9h18M9 21V9" />
-                                </svg>
-                              </div>
-                            )}
-                            <div>
-                              <div
-                                style={{
-                                  fontWeight: 600,
-                                  color: "var(--white)",
-                                  fontSize: "0.9rem",
-                                }}
-                              >
-                                {product.productName ||
-                                  product.subCategoryName ||
-                                  "Unnamed Product"}
-                              </div>
-                              {!product.isArchived && (
-                                <div style={{ marginTop: "0.25rem" }}>
-                                  <span
-                                    style={{
-                                      fontSize: "0.65rem",
-                                      fontWeight: 700,
-                                      background:
-                                        product.isPublished === true
-                                          ? "rgba(34, 197, 94, 0.15)"
-                                          : "rgba(212, 168, 67, 0.15)",
-                                      border: `1px solid ${product.isPublished === true ? "rgba(34, 197, 94, 0.4)" : "rgba(212, 168, 67, 0.4)"}`,
-                                      borderRadius: "4px",
-                                      padding: "0.1rem 0.4rem",
-                                      color:
-                                        product.isPublished === true
-                                          ? "#22c55e"
-                                          : "#facc15",
-                                      textTransform: "uppercase",
-                                      letterSpacing: "0.03em",
-                                    }}
-                                  >
-                                    {product.isPublished === true
-                                      ? "Published"
-                                      : "Unpublished"}
-                                  </span>
-                                </div>
-                              )}
-                              {inv && (
-                                <div
-                                  style={{
-                                    fontSize: "0.73rem",
-                                    color: "var(--gray)",
-                                    marginTop: "0.15rem",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "0.5rem",
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  {product.productName &&
-                                    product.productName !== inv.name && (
-                                      <span>{inv.name}</span>
-                                    )}
-                                  {isInventoryArchived && (
-                                    <span
-                                      style={{
-                                        fontSize: "0.7rem",
-                                        background: "rgba(245, 158, 11, 0.15)",
-                                        border:
-                                          "1px solid rgba(245, 158, 11, 0.3)",
-                                        borderRadius: "4px",
-                                        padding: "0.1rem 0.4rem",
-                                        color: "var(--orange)",
-                                      }}
-                                    >
-                                      Inventory Archived
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Category */}
-                        <td className="table-cell">
-                          <span className="category-badge">
-                            {product.category || "N/A"}
-                          </span>
-                        </td>
-
-                        {/* Price */}
-                        <td className="table-cell-stock">
-                          <span
-                            style={{
-                              fontWeight: 600,
-                              color:
-                                product.priceType === "inquiry"
-                                  ? "var(--primary)"
-                                  : "var(--gold)",
-                              fontSize: "0.875rem",
-                            }}
-                          >
-                            {priceRange}
-                          </span>
-                          {product.priceType === "tiered" && (
-                            <div
-                              style={{
-                                fontSize: "0.7rem",
-                                color: "var(--gray)",
-                                marginTop: "0.1rem",
-                              }}
-                            >
-                              {product.tiers?.length} tier
-                              {product.tiers?.length !== 1 ? "s" : ""}
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Availability (Storefront) */}
-                        <td className="table-cell">
-                          {inv?.isOnDemand ? (
-                            <span
-                              style={{
-                                fontSize: "0.78rem",
-                                color: "var(--gray)",
-                              }}
-                            >
-                              Upon Order
-                            </span>
-                          ) : (
-                            <span
-                              style={{
-                                fontSize: "0.875rem",
-                                fontWeight: 600,
-                                color: "var(--gold)",
-                              }}
-                            >
-                              {product.stock != null && product.stock !== ""
-                                ? product.stock
-                                : 0}{" "}
-                              pcs
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Inventory Stock */}
-                        <td className="table-cell">
-                          {inv?.isOnDemand ? (
-                            <span
-                              style={{
-                                fontSize: "0.78rem",
-                                color: "var(--gray)",
-                              }}
-                            >
-                              Upon Order
-                            </span>
-                          ) : (
-                            <span
-                              style={{
-                                fontSize: "0.875rem",
-                                fontWeight: 600,
-                                color: "var(--white)",
-                              }}
-                            >
-                              {inv?.stockQty || 0} pcs
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Variants */}
-                        <td className="table-cell">
-                          {variantSummary ? (
-                            <span
-                              style={{
-                                fontSize: "0.8rem",
-                                color: "var(--white)",
-                                background: "rgba(255,255,255,0.06)",
-                                border: "1px solid var(--border)",
-                                borderRadius: "5px",
-                                padding: "0.2rem 0.5rem",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                maxWidth: "200px",
-                                display: "block",
-                              }}
-                            >
-                              {variantSummary}
-                            </span>
-                          ) : (
-                            <span
-                              style={{
-                                fontSize: "0.78rem",
-                                color: "var(--gray)",
-                              }}
-                            >
-                              —
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Actions */}
-                        <td className="table-cell-actions">
-                          {product.isArchived && !isInventoryArchived ? (
-                            <button
-                              className="btn-sm btn-secondary"
-                              onClick={() => setRestoreModal(product)}
-                              style={{
-                                background: "var(--dark2)",
-                                borderColor: "var(--border)",
-                                color: "var(--white)",
-                                cursor: "pointer",
-                              }}
-                              title="Restore product"
-                            >
-                              Restore
-                            </button>
-                          ) : product.isArchived && isInventoryArchived ? (
-                            <span
-                              style={{
-                                fontSize: "0.75rem",
-                                color: "var(--gray)",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "0.25rem",
-                              }}
-                              title="Restore inventory first to enable product actions"
-                            >
-                              Restore inventory first
-                            </span>
-                          ) : (
-                            <>
-                              <button
-                                className="btn-sm btn-primary"
-                                onClick={() => handleEdit(product)}
-                                disabled={isInventoryArchived}
-                                style={{
-                                  background: isInventoryArchived
-                                    ? "var(--gray)"
-                                    : "var(--gold)",
-                                  borderColor: isInventoryArchived
-                                    ? "var(--border)"
-                                    : "var(--gold)",
-                                  color: "#000",
-                                  opacity: isInventoryArchived ? 0.5 : 1,
-                                  cursor: isInventoryArchived
-                                    ? "not-allowed"
-                                    : "pointer",
-                                }}
-                                title={
-                                  isInventoryArchived
-                                    ? "Cannot edit - Inventory is archived."
-                                    : "Edit product"
-                                }
-                              >
-                                Edit
-                              </button>
-                              <button
-                                className="btn-sm btn-danger"
-                                onClick={() => confirmDelete(product)}
-                              >
-                                Remove
-                              </button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-
-                      {/* Expand row */}
-                      {isExpanded && (
-                        <ProductExpandRow
-                          key={`${product.id}-expand`}
-                          product={product}
-                          inv={inv}
-                          colSpan={8}
-                        />
+                        </div>
                       )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
+
+                      {/* Product name + badges */}
+                      <div style={{ paddingLeft: "0.75rem", minWidth: 0 }}>
+                        <div onClick={() => !isInventoryArchived && handleEdit(product)}
+                          style={{ fontWeight: 600, color: "#E5E2E1", fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: isInventoryArchived ? "default" : "pointer", textDecoration: "none" }}
+                          onMouseEnter={(e) => { if (!isInventoryArchived) e.currentTarget.style.textDecoration = "underline"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.textDecoration = "none"; }}>
+                          {product.productName || product.subCategoryName || "Unnamed"}
+                        </div>
+                        <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.2rem", flexWrap: "wrap" }}>
+                          {product.isMadeToOrder && <span style={{ fontSize: "0.55rem", fontWeight: 700, background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.28)", borderRadius: "4px", padding: "0.05rem 0.35rem", color: "rgba(139,92,246,0.9)" }}>MTO</span>}
+                          {product.isInquiry && <span style={{ fontSize: "0.55rem", fontWeight: 700, background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.22)", borderRadius: "4px", padding: "0.05rem 0.35rem", color: "rgba(139,92,246,0.85)" }}>Quote</span>}
+                          {isInventoryArchived && <span style={{ fontSize: "0.55rem", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.28)", borderRadius: "4px", padding: "0.05rem 0.35rem", color: "var(--orange)" }}>Inv. Archived</span>}
+                          {variantSummary && <span style={{ fontSize: "0.55rem", color: "var(--gray)" }}>{variantSummary}</span>}
+                        </div>
+                      </div>
+
+                      {/* Status */}
+                      <div>
+                        {product.isArchived ? (
+                          <span style={{ fontSize: "0.68rem", color: "var(--gray)", background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: "20px", padding: "0.15rem 0.6rem" }}>Archived</span>
+                        ) : (
+                          <span style={{ fontSize: "0.68rem", fontWeight: 700, background: product.isPublished ? "rgba(34,197,94,0.1)" : "rgba(212,168,67,0.1)", border: `1px solid ${product.isPublished ? "rgba(34,197,94,0.3)" : "rgba(212,168,67,0.3)"}`, borderRadius: "20px", padding: "0.15rem 0.6rem", color: product.isPublished ? "#22c55e" : "#facc15" }}>
+                            {product.isPublished ? "Active" : "Draft"}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Inventory */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", minWidth: 0 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: stockColor, flexShrink: 0 }} />
+                        <span style={{ fontSize: "0.78rem", color: "var(--gray)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={invDisplay.text}>{invDisplay.text}</span>
+                      </div>
+
+                      {/* Price */}
+                      <div style={{ fontWeight: 700, color: "#D4A843", fontSize: "0.82rem" }}>{priceRange || "—"}</div>
+
+                      {/* Category */}
+                      <div style={{ fontSize: "0.78rem", color: "var(--gray)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.category || "—"}</div>
+
+                      {/* Actions */}
+                      <div style={{ display: "flex", gap: "0.35rem", alignItems: "center", justifyContent: "flex-end" }}>
+                        {product.isArchived && !isInventoryArchived ? (
+                          <button className="btn-sm btn-secondary" onClick={() => setRestoreModal(product)}
+                            style={{ background: "var(--dark2)", borderColor: "var(--border)", color: "var(--white)", cursor: "pointer", fontSize: "0.72rem" }}>
+                            Restore
+                          </button>
+                        ) : product.isArchived && isInventoryArchived ? (
+                          <span style={{ fontSize: "0.68rem", color: "var(--gray)" }}>Restore inv. first</span>
+                        ) : (
+                          <button className="btn-sm btn-danger" onClick={() => confirmDelete(product)} style={{ fontSize: "0.72rem" }}>Remove</button>
+                        )}
+                        <button type="button" onClick={() => toggleExpand(product.id)}
+                          style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.2rem 0.4rem", cursor: "pointer", color: "var(--gray)", display: "flex", alignItems: "center" }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                            style={{ transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>
+                            <path d="M6 9l6 6 6-6" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Expand panel */}
+                    {isExpanded && <ProductExpandRow product={product} inv={inv} />}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
         {deleteModal && (
@@ -6163,26 +5707,6 @@ export default function ProductListPage() {
           />
         )}
 
-        {/* Add Product Modal */}
-        {showAddModal && (
-          <AddProductModal
-            boms={boms}
-            inventoryList={inventoryList}
-            products={products}
-            token={token}
-            onClose={() => setShowAddModal(false)}
-            onSave={(saved) => {
-              const t = { ...saved, id: saved.id ?? saved._id ?? "", tiers: saved.tiers ?? saved.priceTiers ?? [] };
-              setProducts((prev) => [t, ...prev]);
-              setShowSaveSuccess(true);
-              setTimeout(() => setShowSaveSuccess(false), 3000);
-            }}
-            onPriceError={(msg) => {
-              setPriceErrorMessage(msg);
-              setShowPriceErrorModal(true);
-            }}
-          />
-        )}
       </div>
     </ErrorBoundary>
   );

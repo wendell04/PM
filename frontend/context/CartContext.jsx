@@ -92,7 +92,7 @@ export function CartProvider({ children }) {
   /**
    * Add item to cart
    */
-  const addToCart = useCallback(async (product, qty = 1, variantId = null, variantName = null, flashSaleId = null) => {
+  const addToCart = useCallback(async (product, qty = 1, variantId = null, variantName = null, flashSaleId = null, designData = null) => {
     setIsCartLoading(true);
     try {
       const newItem = {
@@ -105,6 +105,8 @@ export function CartProvider({ children }) {
         lineTotal: (product.flatPrice || product.price || 0) * Math.max(1, parseInt(qty) || 1),
         image: product.thumbnail || product.images?.[0] || null,
         isCustom: product.isCustom ?? false,
+        ...(designData?.url ? { designUrl: designData.url } : {}),
+        ...(designData?.notes ? { designNotes: designData.notes } : {}),
         ...(flashSaleId != null ? { flashSaleId: String(flashSaleId) } : {}),
       };
 
