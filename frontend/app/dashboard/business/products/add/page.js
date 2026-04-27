@@ -111,7 +111,7 @@ function ProductCardPreview({ name, category, priceRange, variantCount = 0, thum
             </div>
           )}
           {isCustom && (
-            <div style={{ position: "absolute", top: "10px", right: "10px", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", fontSize: "0.6rem", fontWeight: 700, padding: "3px 8px", borderRadius: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            <div style={{ position: "absolute", top: "10px", right: "10px", background: "#D4A843", color: "#000", fontSize: "0.6rem", fontWeight: 700, padding: "3px 8px", borderRadius: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
               Customizable
             </div>
           )}
@@ -402,6 +402,14 @@ export default function AddProductPage() {
       setMediaItems(urls.map((u, i) => ({ id: `existing-${i}-${u}`, preview: u, url: u, existing: true })));
     }
 
+    if (ep.variantImageUrls && Object.keys(ep.variantImageUrls).length) {
+      const mapped = {};
+      Object.entries(ep.variantImageUrls).forEach(([bomId, url]) => {
+        if (url) mapped[bomId] = { url, preview: url };
+      });
+      setVariantImages(mapped);
+    }
+
     setEditHydrated(true);
   }, [isEditMode, editingProduct, boms, editHydrated]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -508,11 +516,16 @@ export default function AddProductPage() {
       const galleryUrls = uploadedUrls.slice(1);
       const variantImageUrls = {};
       for (const [bomId, img] of Object.entries(variantImages)) {
+        let url = null;
         if (img.file) {
           const up = await uploadImage(img.file, "pmp-products", token);
-          variantImageUrls[bomId] = up.url || up?.data?.url;
+          url = up.url || up?.data?.url;
         } else if (img.url) {
-          variantImageUrls[bomId] = img.url;
+          url = img.url;
+        }
+        if (url) {
+          variantImageUrls[bomId] = url;
+          if (!galleryUrls.includes(url) && url !== thumbFinal) galleryUrls.push(url);
         }
       }
       const syntheticVarGroups = hasVariants

@@ -52,9 +52,9 @@ const DROPDOWN_LIST_STYLE = {
 };
 
 function useFixedDropPos(open, triggerRef, setOpen, listHeight = 240) {
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 200 });
+  const [pos, setPos] = useState(null);
   useEffect(() => {
-    if (!open || !triggerRef.current) return;
+    if (!open || !triggerRef.current) { setPos(null); return; }
     const r = triggerRef.current.getBoundingClientRect();
     const spaceBelow = window.innerHeight - r.bottom;
     const top = spaceBelow >= listHeight + 8
@@ -127,7 +127,7 @@ function GroupNameCombobox({ value, onChange, options }) {
         onFocus={() => setOpen(true)}
         style={{ ...inputStyle, border: "none" }}
       />
-      {open && (filtered.length > 0 || (!exactMatch && query)) && (
+      {open && pos && (filtered.length > 0 || (!exactMatch && query)) && (
         <div ref={listRef} style={{ ...DROPDOWN_LIST_STYLE, top: pos.top, left: pos.left, width: pos.width, maxHeight: 200, overflowY: "auto" }}>
           {filtered.map((opt) => (
             <button key={opt} type="button" onClick={() => { setQuery(opt); onChange(opt); setOpen(false); }}
@@ -150,7 +150,7 @@ function GroupNameCombobox({ value, onChange, options }) {
 }
 
 // ── Combobox: primary material picker (inventory top-level only) ─────────────
-function MaterialCombobox({ value, onChange, materials }) {
+function MaterialCombobox({ value, onChange, materials, excludeIds = [] }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const triggerRef = useRef(null);
@@ -158,8 +158,14 @@ function MaterialCombobox({ value, onChange, materials }) {
   const pos = useFixedDropPos(open, triggerRef, setOpen, 270);
   useClickOutside([triggerRef, listRef], () => { setOpen(false); setQuery(""); });
 
-  const topLevel = useMemo(() => materials.filter((m) => !m.parentId), [materials]);
-  const selected = topLevel.find((m) => m.id === value);
+  const topLevel = useMemo(
+    () => materials.filter((m) => !m.parentId && !excludeIds.includes(String(m.id))),
+    [materials, excludeIds],
+  );
+  const selected = useMemo(
+    () => materials.filter((m) => !m.parentId).find((m) => m.id === value),
+    [materials, value],
+  );
 
   const getLabel = (m) => {
     if (m.hasVariants) {
@@ -185,7 +191,7 @@ function MaterialCombobox({ value, onChange, materials }) {
         </svg>
       </div>
 
-      {open && (
+      {open && pos && (
         <div ref={listRef} style={{ ...DROPDOWN_LIST_STYLE, top: pos.top, left: pos.left, width: pos.width, overflow: "hidden" }}>
           <div style={{ padding: "0.45rem 0.75rem", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
             <input autoFocus type="text" value={query} onChange={(e) => setQuery(e.target.value)}
@@ -379,7 +385,7 @@ function EditExtraRow({ extra, idx, materials, leafOptions, onChange, onRemove }
 }
 
 // ── Main modal ───────────────────────────────────────────────────────────────
-export default function BOMFormModal({ bom, addToGroup = null, materials, units, categories = [], productGroups = [], onClose, onSave }) {
+export default function BOMFormModal({ bom, addToGroup = null, existingGroupBoms = [], materials, units, categories = [], productGroups = [], onClose, onSave }) {
   const { token } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -396,6 +402,17 @@ export default function BOMFormModal({ bom, addToGroup = null, materials, units,
     [materials],
   );
 
+  // Child material IDs already used as primary in existing group BOMs (exclude specific children, not whole parents)
+  const usedChildIds = useMemo(() => {
+    if (!addToGroup || !existingGroupBoms.length) return new Set();
+    return new Set(
+      existingGroupBoms.map((b) => {
+        const comp = (b.components || [])[0];
+        return comp ? String(comp.materialId ?? comp.inventoryId ?? "") : "";
+      }).filter(Boolean)
+    );
+  }, [addToGroup, existingGroupBoms]);
+
   // ── CREATE / ADD-VARIANT state ───────────────────────────────────────────────
   const [groupName, setGroupName] = useState(addToGroup || "");
   const [primaryMaterialId, setPrimaryMaterialId] = useState("");
@@ -407,9 +424,10 @@ export default function BOMFormModal({ bom, addToGroup = null, materials, units,
     const mat = materials.find((m) => m.id === matId);
     if (!mat) { setVariantSlots([]); return; }
     if (mat.hasVariants) {
-      const children = materials.filter((m) => m.parentId === mat.id);
+      const children = materials.filter((m) => m.parentId === mat.id && !usedChildIds.has(String(m.id)));
       setVariantSlots(children.map((c) => ({ matId: c.id, matName: c.name, extras: [] })));
     } else {
+      if (usedChildIds.has(String(mat.id))) { setVariantSlots([]); return; }
       setVariantSlots([{ matId: mat.id, matName: mat.name, extras: [] }]);
     }
   };
@@ -637,11 +655,32 @@ export default function BOMFormModal({ bom, addToGroup = null, materials, units,
                 {errors.groupName && <span style={errorStyle}>{errors.groupName}</span>}
               </div>
 
+              {addToGroup && existingGroupBoms.length > 0 && (
+                <div style={{ marginBottom: "1.5rem" }}>
+                  <label style={labelStyle}>Existing Variants</label>
+                  {existingGroupBoms.map((b) => {
+                    const primComp = (b.components || [])[0];
+                    const primMatId = primComp ? String(primComp.materialId ?? primComp.inventoryId ?? "") : "";
+                    const primMat = materials.find((m) => String(m.id) === primMatId);
+                    return (
+                      <div key={b.id ?? b._id} style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "10px", padding: "0.6rem 0.9rem", marginBottom: "0.4rem" }}>
+                        <span style={{ color: "rgba(229,226,225,0.18)", lineHeight: 0 }}><LockIcon /></span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "rgba(229,226,225,0.55)" }}>{b.productName}</div>
+                          {primMat && <div style={{ fontSize: "0.6rem", color: "rgba(229,226,225,0.25)", marginTop: "0.1rem" }}>{primMat.name}</div>}
+                        </div>
+                        <span style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(229,226,225,0.2)" }}>Already linked</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               <div style={{ marginBottom: "1.75rem" }}>
                 <label style={labelStyle}>Select Material</label>
                 <MaterialCombobox value={primaryMaterialId} onChange={handlePrimaryChange} materials={materials} />
                 <span style={{ fontSize: "0.6rem", color: "rgba(229,226,225,0.35)", marginTop: "0.25rem", display: "block" }}>
-                  If the material has variants, each variant becomes its own BOM entry
+                  {addToGroup ? "Only unlinked variants will be added as new BOM slots" : "If the material has variants, each variant becomes its own BOM entry"}
                 </span>
                 {errors.primary && <span style={errorStyle}>{errors.primary}</span>}
               </div>

@@ -532,7 +532,7 @@ export default function ProductDetailPage() {
                 </div>
               )}
               {product.isCustom && (
-                <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 2, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', fontSize: '0.65rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 2, background: '#D4A843', color: '#000', fontSize: '0.65rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   Customizable
                 </div>
               )}
@@ -867,32 +867,6 @@ export default function ProductDetailPage() {
             {token ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
 
-                {/* CUSTOMIZABLE: Upload & Request for Design (top CTA) */}
-                {product.isCustom && (
-                  <button
-                    onClick={() => setShowRequestModal(true)}
-                    onMouseEnter={() => setHoveredBtn('design')}
-                    onMouseLeave={() => setHoveredBtn(null)}
-                    style={{
-                      background: hoveredBtn === 'design' ? 'linear-gradient(135deg, #7c3aed, #9333ea)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                      color: '#fff',
-                      border: 'none', borderRadius: '10px',
-                      padding: '0.875rem 1.5rem',
-                      fontWeight: 800, fontSize: '1rem',
-                      cursor: 'pointer', width: '100%',
-                      fontFamily: "'Outfit', sans-serif",
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                      transition: 'background 0.15s',
-                    }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                      <polyline points="17 8 12 3 7 8"/>
-                      <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                    Upload &amp; Request for Design
-                  </button>
-                )}
-
                 {/* Add to Cart */}
                 <button
                   onClick={handleAddToCart}
@@ -927,32 +901,57 @@ export default function ProductDetailPage() {
                   )}
                 </button>
 
-                {/* Proceed to Checkout */}
-                <button
-                  onClick={handleAddToCartAndCheckout}
-                  onMouseEnter={() => setHoveredBtn('checkout')}
-                  onMouseLeave={() => setHoveredBtn(null)}
-                  disabled={product.stockStatus === 'out-of-stock'}
-                  style={{
-                    background: product.stockStatus === 'out-of-stock'
-                      ? 'rgba(107,114,128,0.3)'
-                      : hoveredBtn === 'checkout' ? '#e6b800' : 'var(--gold)',
-                    color: product.stockStatus === 'out-of-stock' ? 'var(--gray)' : '#000',
-                    border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
-                    fontWeight: 800, fontSize: '1rem',
-                    cursor: product.stockStatus === 'out-of-stock' ? 'not-allowed' : 'pointer',
-                    width: '100%', fontFamily: "'Outfit', sans-serif",
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                  {product.stockStatus === 'out-of-stock' ? 'Out of Stock' : (
-                    <>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
-                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                      </svg>
-                      Buy Now
-                    </>
-                  )}
-                </button>
+                {/* CUSTOMIZABLE: Upload & Request for Design | FINISHED: Checkout */}
+                {product.isCustom ? (
+                  <button
+                    onClick={() => setShowRequestModal(true)}
+                    onMouseEnter={() => setHoveredBtn('design')}
+                    onMouseLeave={() => setHoveredBtn(null)}
+                    style={{
+                      background: hoveredBtn === 'design' ? 'rgba(212,168,67,0.25)' : 'rgba(212,168,67,0.15)',
+                      color: 'var(--gold)',
+                      border: '1px solid var(--gold)', borderRadius: '10px',
+                      padding: '0.875rem 1.5rem',
+                      fontWeight: 800, fontSize: '1rem',
+                      cursor: 'pointer', width: '100%',
+                      fontFamily: "'Outfit', sans-serif",
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                      transition: 'background 0.15s',
+                    }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    Upload &amp; Request for Design
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleAddToCartAndCheckout}
+                    onMouseEnter={() => setHoveredBtn('checkout')}
+                    onMouseLeave={() => setHoveredBtn(null)}
+                    disabled={product.stockStatus === 'out-of-stock'}
+                    style={{
+                      background: product.stockStatus === 'out-of-stock'
+                        ? 'rgba(107,114,128,0.3)'
+                        : hoveredBtn === 'checkout' ? '#e6b800' : 'var(--gold)',
+                      color: product.stockStatus === 'out-of-stock' ? 'var(--gray)' : '#000',
+                      border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
+                      fontWeight: 800, fontSize: '1rem',
+                      cursor: product.stockStatus === 'out-of-stock' ? 'not-allowed' : 'pointer',
+                      width: '100%', fontFamily: "'Outfit', sans-serif",
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                    {product.stockStatus === 'out-of-stock' ? 'Out of Stock' : (
+                      <>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
+                          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                        </svg>
+                        Checkout
+                      </>
+                    )}
+                  </button>
+                )}
 
               </div>
             ) : (

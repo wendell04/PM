@@ -79,6 +79,17 @@ const sanitizeNumber = (val) => {
   return isNaN(num) || num < 0 ? "0" : val;
 };
 
+function getAvailableQty(inv) {
+  if (!inv) return 0;
+  if (inv.batches && inv.batches.length) {
+    return inv.batches.reduce((sum, b) => {
+      const rem = b.remainingQty != null ? b.remainingQty : (b.goodQty ?? b.qtyGood ?? 0);
+      return sum + Math.max(0, rem);
+    }, 0);
+  }
+  return inv.stockQty || 0;
+}
+
 /** Maps frontend product shape to Laravel API (name, priceTiers, strips id). */
 function normalizeProductForApi(p) {
   const name = p.name || p.productName || p.subCategoryName || "";
@@ -2632,18 +2643,36 @@ function PriceErrorModal({
 }
 
 // ── Product Detail Expand Row ─────────────────────────────────────────────────
-function ProductExpandRow({ product, inv, colSpan }) {
+function ProductExpandRow({ product, inv, boms = [], inventoryList = [] }) {
   const variantGroups = product.variantGroups || [];
   const combinations = product.combinations || [];
-  const allVariantOptions = variantGroups.flatMap(
-    (g) => g.options?.map((o) => o.value) || [],
-  );
+
+  const tiers = product.priceTiers || product.tiers || [];
+
+  // BOM-based materials inventory
+  const productGroupName = (product.bomGroupName || product.name || product.productName || "").trim().toLowerCase();
+  const productBoms = boms.filter((b) => (b.productGroupName || "").trim().toLowerCase() === productGroupName && productGroupName);
+  const matMap = new Map();
+  productBoms.forEach((bom) => {
+    (bom.components || []).forEach((comp) => {
+      const matId = String(comp.inventoryId ?? comp.materialId ?? "");
+      if (matId && !matMap.has(matId)) {
+        const mat = inventoryList.find((m) => String(m.id) === matId);
+        matMap.set(matId, {
+          name: mat?.name || comp.materialName || "?",
+          stockQty: mat?.stockQty ?? 0,
+          uom: mat?.uom || comp.unit || "pcs",
+        });
+      }
+    });
+  });
+  const bomMaterials = [...matMap.values()];
 
   return (
     <div
       style={{
         padding: "1rem 1.25rem 1.25rem",
-        background: "rgba(99,102,241,0.04)",
+        background: "rgba(212,168,67,0.02)",
         borderTop: "1px solid var(--border)",
         display: "flex",
         gap: "1rem",
@@ -2652,46 +2681,6 @@ function ProductExpandRow({ product, inv, colSpan }) {
         flexWrap: "wrap",
       }}
     >
-          {/* Description */}
-          <div style={{ flex: "1 200px", minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: "0.72rem",
-                color: "var(--gray)",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                marginBottom: "0.35rem",
-                fontWeight: 600,
-              }}
-            >
-              Description
-            </div>
-            {product.description ? (
-              <div
-                style={{
-                  fontSize: "0.85rem",
-                  color: "var(--white)",
-                  lineHeight: 1.5,
-                  opacity: 0.85,
-                  overflowWrap: "break-word",
-                }}
-              >
-                {product.description}
-              </div>
-            ) : (
-              <div
-                style={{
-                  fontSize: "0.85rem",
-                  color: "var(--gray)",
-                  fontStyle: "italic",
-                  opacity: 0.6,
-                }}
-              >
-                —
-              </div>
-            )}
-          </div>
-
           {/* Variants */}
           <div style={{ flex: "1 1 150px", minWidth: 0 }}>
             <div
@@ -2787,7 +2776,7 @@ function ProductExpandRow({ product, inv, colSpan }) {
                   opacity: 0.85,
                 }}
               >
-                {product.priceType === "tiered" && (
+                {product.priceType === "tiered" && tiers.length > 0 && (
                   <div
                     style={{
                       display: "flex",
@@ -2795,26 +2784,17 @@ function ProductExpandRow({ product, inv, colSpan }) {
                       gap: "0.2rem",
                     }}
                   >
-                    {product.tiers?.map((t, i) => {
-                      const prices = Object.values(t.prices || {}).filter(
-                        (p) => p > 0,
-                      );
+                    {tiers.map((t, i) => {
+                      const prices = Object.values(t.prices || {}).map(Number).filter((p) => p > 0);
                       const min = prices.length ? Math.min(...prices) : 0;
                       const max = prices.length ? Math.max(...prices) : 0;
                       return (
-                        <div
-                          key={t.id}
-                          style={{
-                            fontSize: "0.78rem",
-                            overflowWrap: "break-word",
-                          }}
-                        >
+                        <div key={t.id ?? i} style={{ fontSize: "0.78rem", overflowWrap: "break-word" }}>
                           <span style={{ color: "var(--gray)" }}>
-                            Tier {i + 1} ({t.minQty}–{t.maxQty || "∞"} pcs):
+                            {t.minQty}–{t.maxQty || "∞"} pcs:
                           </span>{" "}
                           <span style={{ color: "var(--gold)" }}>
-                            ₱{min}
-                            {min !== max ? `–₱${max}` : ""}
+                            ₱{min}{min !== max ? `–₱${max}` : ""}
                           </span>
                         </div>
                       );
@@ -2896,38 +2876,21 @@ function ProductExpandRow({ product, inv, colSpan }) {
             >
               Inventory
             </div>
-            {inv ? (
-              <div
-                style={{
-                  fontSize: "0.82rem",
-                  color: "var(--white)",
-                  opacity: 0.85,
-                }}
-              >
-                <div>{inv.name}</div>
-                <div
-                  style={{
-                    fontSize: "0.75rem",
-                    color: "var(--gray)",
-                    marginTop: "0.2rem",
-                  }}
-                >
-                  {inv.isOnDemand
-                    ? "Upon Order"
-                    : `${inv.stockQty} total pcs in stock`}
-                </div>
+            {bomMaterials.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.18rem" }}>
+                {bomMaterials.map((mat, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", fontSize: "0.78rem" }}>
+                    <span style={{ color: "rgba(229,226,225,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mat.name}</span>
+                    <span style={{ color: mat.stockQty > 0 ? "#22c55e" : "#ef4444", fontWeight: 700, flexShrink: 0 }}>{mat.stockQty} {mat.uom}</span>
+                  </div>
+                ))}
+              </div>
+            ) : inv ? (
+              <div style={{ fontSize: "0.78rem", color: "rgba(229,226,225,0.7)" }}>
+                {inv.isOnDemand ? "Upon Order" : `${inv.stockQty} pcs`}
               </div>
             ) : (
-              <div
-                style={{
-                  fontSize: "0.82rem",
-                  color: "var(--gray)",
-                  fontStyle: "italic",
-                  opacity: 0.6,
-                }}
-              >
-                —
-              </div>
+              <div style={{ fontSize: "0.82rem", color: "var(--gray)", fontStyle: "italic", opacity: 0.6 }}>—</div>
             )}
           </div>
 
@@ -3157,7 +3120,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
       let min = Infinity;
       (bom.components || []).forEach((comp) => {
         const inv = inventoryList.find((i) => String(i.id) === String(comp.inventoryId ?? comp.materialId));
-        const can = Math.floor((inv?.stockQty || 0) / (comp.qty || 1));
+        const can = Math.floor(getAvailableQty(inv) / (comp.qty || 1));
         if (can < min) min = can;
       });
       result[bom.id] = min === Infinity ? 0 : min;
@@ -3984,7 +3947,7 @@ function AddProductModal_OLD_UNUSED({ boms, inventoryList, products, onClose, on
       let min = Infinity;
       (bom.components || []).forEach((comp) => {
         const inv = inventoryList.find((i) => String(i.id) === String(comp.inventoryId));
-        const canMake = Math.floor((inv?.stockQty || 0) / (comp.qty || 1));
+        const canMake = Math.floor(getAvailableQty(inv) / (comp.qty || 1));
         if (canMake < min) min = canMake;
       });
       result[bom.id] = min === Infinity ? 0 : min;
@@ -5520,7 +5483,7 @@ export default function ProductListPage() {
                           {product.productName || product.subCategoryName || "Unnamed"}
                         </div>
                         <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.2rem", flexWrap: "wrap" }}>
-                          {product.isMadeToOrder && <span style={{ fontSize: "0.55rem", fontWeight: 700, background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.28)", borderRadius: "4px", padding: "0.05rem 0.35rem", color: "rgba(139,92,246,0.9)" }}>MTO</span>}
+                          {product.isMadeToOrder && <span style={{ fontSize: "0.55rem", fontWeight: 700, background: "rgba(212,168,67,0.1)", border: "1px solid rgba(212,168,67,0.28)", borderRadius: "4px", padding: "0.05rem 0.35rem", color: "#D4A843" }}>MTO</span>}
                           {product.isInquiry && <span style={{ fontSize: "0.55rem", fontWeight: 700, background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.22)", borderRadius: "4px", padding: "0.05rem 0.35rem", color: "rgba(139,92,246,0.85)" }}>Quote</span>}
                           {isInventoryArchived && <span style={{ fontSize: "0.55rem", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.28)", borderRadius: "4px", padding: "0.05rem 0.35rem", color: "var(--orange)" }}>Inv. Archived</span>}
                           {variantSummary && <span style={{ fontSize: "0.55rem", color: "var(--gray)" }}>{variantSummary}</span>}
@@ -5573,7 +5536,7 @@ export default function ProductListPage() {
                     </div>
 
                     {/* Expand panel */}
-                    {isExpanded && <ProductExpandRow product={product} inv={inv} />}
+                    {isExpanded && <ProductExpandRow product={product} inv={inv} boms={boms} inventoryList={inventoryList} />}
                   </div>
                 );
               })}

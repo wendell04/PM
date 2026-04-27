@@ -1343,9 +1343,10 @@ function MaterialMasterTab({
 
     try {
       if (editMaterial) {
+        const { sku: _ps, ...parentUpdatePayload } = materialToApiPayload(material, supplierName);
         await updateInventory(
           editMaterial.id,
-          materialToApiPayload(material, supplierName),
+          parentUpdatePayload,
           token,
         );
         for (const oid of oldChildIds) {
@@ -1362,7 +1363,8 @@ function MaterialMasterTab({
           };
           const payload = materialToApiPayload(base, supplierName);
           if (isLikelyMongoId(ch.id)) {
-            await updateInventory(ch.id, payload, token);
+            const { sku: _cs, ...childUpdatePayload } = payload;
+            await updateInventory(ch.id, childUpdatePayload, token);
           } else {
             if (!canonicalParentId) {
               console.warn('Skipping child create: parent has no valid MongoDB id');
@@ -5616,6 +5618,7 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
         <BOMFormModal
           bom={editBOM}
           addToGroup={addVariantToGroup}
+          existingGroupBoms={addVariantToGroup ? boms.filter((b) => (b.productGroupName || b.productName) === addVariantToGroup) : []}
           materials={materials}
           units={units}
           categories={[...new Set((boms || []).map((b) => b.category).filter(Boolean))]}

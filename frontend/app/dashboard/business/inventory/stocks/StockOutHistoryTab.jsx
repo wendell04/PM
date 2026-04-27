@@ -5,7 +5,7 @@
 // Safe to delete once the new Movement History tab is fully validated.
 
 import CustomDropdown from "@/app/components/CustomDropdown";
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 
 // ── Shared Styles ──────────────────────────────────────────────────────────────
 const thStyle = {
@@ -95,6 +95,8 @@ function StockOutHistoryTab({ stockOuts, materials }) {
   const [dateFilter, setDateFilter] = useState("all");
   const [customDateFrom, setCustomDateFrom] = useState("");
   const [customDateTo, setCustomDateTo] = useState("");
+  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [page, setPage] = useState(1);
 
   // Calculate date range based on filter
   const dateRange = useMemo(() => {
@@ -147,6 +149,11 @@ function StockOutHistoryTab({ stockOuts, materials }) {
           new Date(a.dateIssued || a.createdAt),
       );
   }, [stockOuts, search, typeFilter, dateRange]);
+
+  useEffect(() => { setPage(1); }, [search, typeFilter, dateFilter, customDateFrom, customDateTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
+  const paginated = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
 
   // Summary stats
   const summaryStats = useMemo(
@@ -383,6 +390,17 @@ function StockOutHistoryTab({ stockOuts, materials }) {
               />
             </>
           )}
+          <CustomDropdown
+            value={String(rowsPerPage)}
+            onChange={(v) => { setRowsPerPage(Number(v)); setPage(1); }}
+            options={[
+              { value: "10", label: "10 / page" },
+              { value: "20", label: "20 / page" },
+              { value: "50", label: "50 / page" },
+              { value: "100", label: "100 / page" },
+            ]}
+            style={{ minWidth: "110px" }}
+          />
           {filtered.length > 0 && (
             <span
               style={{
@@ -436,8 +454,9 @@ function StockOutHistoryTab({ stockOuts, materials }) {
             </p>
           </div>
         ) : (
+          <>
           <div
-            style={{ overflowX: "auto", maxHeight: "60vh", overflowY: "auto" }}
+            style={{ overflowX: "auto" }}
           >
             <table
               style={{
@@ -465,7 +484,7 @@ function StockOutHistoryTab({ stockOuts, materials }) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((so, idx) => (
+                {paginated.map((so, idx) => (
                   <tr
                     key={so.id || idx}
                     style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
@@ -568,6 +587,22 @@ function StockOutHistoryTab({ stockOuts, materials }) {
               </tbody>
             </table>
           </div>
+          {totalPages > 1 && (
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem", padding: "1rem 1.5rem", borderTop: "1px solid var(--border)" }}>
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+                style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.3rem 0.65rem", color: page === 1 ? "rgba(229,226,225,0.2)" : "#E5E2E1", cursor: page === 1 ? "not-allowed" : "pointer", fontSize: "0.78rem" }}>
+                ‹
+              </button>
+              <span style={{ fontSize: "0.78rem", color: "var(--gray)", minWidth: "80px", textAlign: "center" }}>
+                Page {page} of {totalPages}
+              </span>
+              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.3rem 0.65rem", color: page === totalPages ? "rgba(229,226,225,0.2)" : "#E5E2E1", cursor: page === totalPages ? "not-allowed" : "pointer", fontSize: "0.78rem" }}>
+                ›
+              </button>
+            </div>
+          )}
+          </>
         )}
       </div>
     </div>

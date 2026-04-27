@@ -1542,7 +1542,6 @@ export default function StockInPage() {
       setMaterials(normalized);
       setVendors(sups.map((v) => ({ ...v, id: v.id ?? v._id })));
       setStockInLog(buildStockLog(normalized));
-      setToast({ type: "success", message: "Stock-in saved successfully." });
       setPendingStockData(null);
     } catch (e) {
       setInfoModal({
