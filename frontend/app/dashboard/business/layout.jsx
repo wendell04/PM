@@ -489,6 +489,12 @@ export default function BusinessDashboardLayout({ children }) {
       icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z",
     },
     {
+      name: "Messages",
+      href: "/dashboard/business/chat",
+      permKey: "dashboard", // Allow all staff to see chat for now, or create a specific perm
+      icon: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z",
+    },
+    {
       name: "Orders",
       permKey: "orders",
       icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",

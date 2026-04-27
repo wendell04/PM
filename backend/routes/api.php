@@ -33,6 +33,7 @@ use App\Http\Controllers\VoucherController;
 use App\Http\Controllers\WalkInOrderController;
 use App\Http\Controllers\AdminAnalyticsController;
 use App\Http\Controllers\ReviewController;
+use App\Http\Controllers\ChatController;
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::post('/register',        [AuthController::class, 'register'])->middleware('throttle:10,1');
@@ -116,6 +117,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ─── My Permissions (any authenticated staff) ────────────────────────────
     Route::get('/my/permissions',         [RolePermissionController::class, 'myPermissions']);
+
+    // ─── Chat ────────────────────────────────────────────────────────────────
+    Route::get('/chat/conversations',     [ChatController::class, 'index']);
+    Route::get('/chat/conversations/{id}', [ChatController::class, 'show']);
+    Route::post('/chat/messages',         [ChatController::class, 'store']);
+    Route::patch('/chat/conversations/{id}/read', [ChatController::class, 'markAsRead']);
 });
 
 // ─── Owner/Admin only — store config, staff management, role permissions ─────

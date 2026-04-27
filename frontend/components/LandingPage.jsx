@@ -6,6 +6,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStorefrontBanners } from '@/lib/bannerUtils';
+import { useAuth } from '@/contexts/AuthContext';
+import ChatModule from '@/components/chat/ChatModule';
 import '@/components/custom-styles.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -54,6 +56,8 @@ const PasswordStrength = ({password}) => {
 
 const LandingPage = ({onEnterShop}) => {
   const router = useRouter();
+  const { user, token } = useAuth();
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Allow everyone to browse products (no login required)
   const handleEnterShop = () => {
@@ -917,6 +921,75 @@ const handleForgotResetPassword = async () => {
   // ─── JSX ──────────────────────────────────────────────────────────────────────
   return (
     <>
+      <style>{`
+        .chat-floating-btn {
+          position: fixed;
+          bottom: 2rem;
+          right: 2rem;
+          width: 60px;
+          height: 60px;
+          background: var(--gold);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+          z-index: 1000;
+          transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          border: none;
+        }
+        .chat-floating-btn:hover { transform: scale(1.1); }
+        .chat-floating-btn:active { transform: scale(0.9); }
+        .chat-popup {
+          position: fixed;
+          bottom: 6.5rem;
+          right: 2rem;
+          width: 550px;
+          height: 600px;
+          max-width: calc(100vw - 4rem);
+          max-height: calc(100vh - 10rem);
+          background: #1a1a1a;
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          z-index: 1001;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+          overflow: hidden;
+        }
+        .animate-fade-in {
+          animation: fadeIn 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+
+      {/* Floating Chat */}
+      {user && (
+        <>
+          <button 
+            className="chat-floating-btn"
+            onClick={() => setChatOpen(!chatOpen)}
+            aria-label="Toggle chat"
+          >
+            {chatOpen ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--black)" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            ) : (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--black)" strokeWidth="2.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+            )}
+          </button>
+          
+          {chatOpen && (
+            <div className="chat-popup animate-fade-in">
+              <ChatModule user={user} token={token} />
+            </div>
+          )}
+        </>
+      )}
+
       {/* NAVBAR */}
       <nav className={`navbar ${scrolled ? 'scrolled' : ''}`}>
         <div className="container">

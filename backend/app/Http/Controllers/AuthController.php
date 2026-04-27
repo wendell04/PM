@@ -6,6 +6,8 @@ use App\Mail\ContactFormMail;
 use App\Mail\VerificationCodeMail;
 use App\Mail\WelcomeMail;
 use App\Models\User;
+use App\Models\Conversation;
+use App\Models\Message;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
@@ -607,9 +609,55 @@ class AuthController extends Controller
 
             $name    = htmlspecialchars(strip_tags(trim($request->name)),    ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             $subject = str_replace(["\r", "\n", "\0"], '', strip_tags(trim($request->subject)));
-            $message = htmlspecialchars(strip_tags(trim($request->message)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $messageText = htmlspecialchars(strip_tags(trim($request->message)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
-            Mail::to($adminEmail)->send(new ContactFormMail($name, $request->email, $subject, $message));
+            // ── CHAT INTEGRATION ──
+            // Find existing user by email
+            $sender = User::where('email', $request->email)->first();
+            $admin  = User::whereIn('role', ['admin', 'owner'])->first();
+
+            if ($admin) {
+                $participants = [$admin->_id];
+                if ($sender) {
+                    $participants[] = $sender->_id;
+                }
+                sort($participants);
+
+                // Find or create conversation
+                $conversation = Conversation::where('participants', $participants)->first();
+                if (!$conversation) {
+                    $conversation = Conversation::create([
+                        'participants' => $participants,
+                        'subject'      => $subject,
+                        'last_message_at' => now(),
+                        'is_active'    => true
+                    ]);
+                }
+
+                $message = Message::create([
+                    'conversation_id' => $conversation->_id,
+                    'sender_id'       => $sender ? $sender->_id : 'guest',
+                    'sender_name'     => $name,
+                    'sender_email'    => $request->email,
+                    'body'            => "Subject: {$subject}\n\n{$messageText}",
+                    'type'            => 'text',
+                    'is_read'         => false,
+                ]);
+
+                $conversation->update([
+                    'last_message' => $messageText,
+                    'last_message_at' => now()
+                ]);
+
+                // Broadcast if Reverb is running
+                try {
+                    broadcast(new \App\Events\MessageSent($message))->toOthers();
+                } catch (\Exception $e) {
+                    Log::warning('Broadcast failed for contact form chat: ' . $e->getMessage());
+                }
+            }
+
+            Mail::to($adminEmail)->send(new ContactFormMail($name, $request->email, $subject, $messageText));
 
             return $this->successResponse('Message sent successfully! We will get back to you soon.');
         } catch (\Illuminate\Validation\ValidationException $e) {

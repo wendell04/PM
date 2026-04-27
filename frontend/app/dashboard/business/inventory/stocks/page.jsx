@@ -13,6 +13,7 @@
 
 import CustomDropdown from "@/app/components/CustomDropdown";
 import { useAuth } from "@/app/context/AuthContext";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { fetchBadOrders } from "@/lib/badOrdersApi";
 import {
   adjustInventoryStock,
@@ -24,7 +25,6 @@ import dynamic from "next/dynamic";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import ActualStockTab from "./ActualStockTab";
 import StockOutHistoryTab from "./StockOutHistoryTab";
-import ErrorBoundary from "@/components/ErrorBoundary";
 
 const InventoryReports = dynamic(() => import("./InventoryReports"), {
   ssr: false,
@@ -444,7 +444,8 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
       rows.push({ type: "standalone", item: { ...m, stockQty: getStock(m) } });
     });
     groupedMaterials.parents.forEach((parent) => {
-      const children = groupedMaterials.childrenMap.get(String(parent.id ?? parent._id)) || [];
+      const children =
+        groupedMaterials.childrenMap.get(String(parent.id ?? parent._id)) || [];
       const parentMatches = matchesFilters(parent);
       const displayChildren = children.map((c) => ({
         ...c,
@@ -480,19 +481,26 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
       return aCrit - bCrit || mA.name.localeCompare(mB.name);
     });
     return rows;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupedMaterials, search, categoryFilter, statusFilter]);
 
-  useEffect(() => { setCurrentPage(1); }, [search, categoryFilter, statusFilter]);
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, categoryFilter, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / rowsPerPage));
-  const pagedRows = filteredRows.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+  const pagedRows = filteredRows.slice(
+    (currentPage - 1) * rowsPerPage,
+    currentPage * rowsPerPage,
+  );
 
   const totalStock = materials
     .filter((m) => !m.parentId && m.procurementType !== "on-demand")
     .reduce((sum, m) => {
       if (m.hasVariants) {
-        const children = materials.filter((c) => c.parentId === (m.id ?? m._id));
+        const children = materials.filter(
+          (c) => c.parentId === (m.id ?? m._id),
+        );
         return sum + children.reduce((cSum, c) => cSum + getStock(c), 0);
       }
       return sum + getStock(m);
@@ -526,12 +534,13 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
     .filter((m) => !m.parentId && m.procurementType !== "on-demand")
     .reduce((sum, m) => {
       if (m.hasVariants) {
-        const children = materials.filter((c) => c.parentId === (m.id ?? m._id));
+        const children = materials.filter(
+          (c) => c.parentId === (m.id ?? m._id),
+        );
         return (
           sum +
           children.reduce(
-            (cs, c) =>
-              cs + getStock(c) * (c.baseCost || c.averageCost || 0),
+            (cs, c) => cs + getStock(c) * (c.baseCost || c.averageCost || 0),
             0,
           )
         );
@@ -833,11 +842,31 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                             .filter((b) => (b.remainingQty || 0) > 0)
                             .map((b) => b.unitCost || 0)
                             .filter((c) => c > 0);
-                          const costs = batchCosts.length > 0 ? batchCosts : [m.baseCost || m.averageCost || 0].filter((c) => c > 0);
+                          const costs =
+                            batchCosts.length > 0
+                              ? batchCosts
+                              : [m.baseCost || m.averageCost || 0].filter(
+                                  (c) => c > 0,
+                                );
                           if (costs.length === 0) return "₱0.00";
-                          const min = Math.min(...costs), max = Math.max(...costs);
-                          if (min === max) return `₱${min.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
-                          return <span style={{ fontSize: "0.78rem", fontWeight: 600 }}>₱{min.toLocaleString("en-PH", { minimumFractionDigits: 2 })} – ₱{max.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>;
+                          const min = Math.min(...costs),
+                            max = Math.max(...costs);
+                          if (min === max)
+                            return `₱${min.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+                          return (
+                            <span
+                              style={{ fontSize: "0.78rem", fontWeight: 600 }}
+                            >
+                              ₱
+                              {min.toLocaleString("en-PH", {
+                                minimumFractionDigits: 2,
+                              })}{" "}
+                              – ₱
+                              {max.toLocaleString("en-PH", {
+                                minimumFractionDigits: 2,
+                              })}
+                            </span>
+                          );
                         })()}
                       </td>
                       <td
@@ -874,7 +903,9 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                       >
                         {m.stockQty === 0 && onDeleteZeroStock ? (
                           <button
-                            onClick={() => onDeleteZeroStock(m._id ?? m.id, m.name)}
+                            onClick={() =>
+                              onDeleteZeroStock(m._id ?? m.id, m.name)
+                            }
                             style={{
                               background: "rgba(239,68,68,0.1)",
                               border: "1px solid rgba(239,68,68,0.2)",
@@ -919,8 +950,7 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                 );
                 const parentStockVal = children.reduce(
                   (s, c) =>
-                    s +
-                    (c.stockQty || 0) * (c.baseCost || c.averageCost || 0),
+                    s + (c.stockQty || 0) * (c.baseCost || c.averageCost || 0),
                   0,
                 );
                 const totalChildStock = children.reduce(
@@ -1078,20 +1108,36 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                         }}
                       >
                         {(() => {
-                          const batchCosts = children.flatMap((c) =>
-                            (c.batches || [])
-                              .filter((b) => (b.remainingQty || 0) > 0)
-                              .map((b) => b.unitCost || 0)
-                          ).filter((c) => c > 0);
-                          const costs = batchCosts.length > 0
-                            ? batchCosts
-                            : children.map((c) => c.baseCost || c.averageCost || 0).filter((c) => c > 0);
+                          const batchCosts = children
+                            .flatMap((c) =>
+                              (c.batches || [])
+                                .filter((b) => (b.remainingQty || 0) > 0)
+                                .map((b) => b.unitCost || 0),
+                            )
+                            .filter((c) => c > 0);
+                          const costs =
+                            batchCosts.length > 0
+                              ? batchCosts
+                              : children
+                                  .map((c) => c.baseCost || c.averageCost || 0)
+                                  .filter((c) => c > 0);
                           if (costs.length === 0) return "₱0.00";
-                          const min = Math.min(...costs), max = Math.max(...costs);
-                          if (min === max) return `₱${min.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+                          const min = Math.min(...costs),
+                            max = Math.max(...costs);
+                          if (min === max)
+                            return `₱${min.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
                           return (
-                            <span style={{ fontSize: "0.78rem", fontWeight: 600 }}>
-                              ₱{min.toLocaleString("en-PH", { minimumFractionDigits: 2 })} – ₱{max.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                            <span
+                              style={{ fontSize: "0.78rem", fontWeight: 600 }}
+                            >
+                              ₱
+                              {min.toLocaleString("en-PH", {
+                                minimumFractionDigits: 2,
+                              })}{" "}
+                              – ₱
+                              {max.toLocaleString("en-PH", {
+                                minimumFractionDigits: 2,
+                              })}
                             </span>
                           );
                         })()}
@@ -1223,11 +1269,23 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                               }}
                             >
                               {(() => {
-                                const bc = (child.batches || []).filter((b) => (b.remainingQty || 0) > 0).map((b) => b.unitCost || 0).filter((c) => c > 0);
-                                const costs = bc.length > 0 ? bc : [child.baseCost || child.averageCost || 0].filter((c) => c > 0);
+                                const bc = (child.batches || [])
+                                  .filter((b) => (b.remainingQty || 0) > 0)
+                                  .map((b) => b.unitCost || 0)
+                                  .filter((c) => c > 0);
+                                const costs =
+                                  bc.length > 0
+                                    ? bc
+                                    : [
+                                        child.baseCost ||
+                                          child.averageCost ||
+                                          0,
+                                      ].filter((c) => c > 0);
                                 if (!costs.length) return "₱0.00";
-                                const min = Math.min(...costs), max = Math.max(...costs);
-                                if (min === max) return `₱${min.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+                                const min = Math.min(...costs),
+                                  max = Math.max(...costs);
+                                if (min === max)
+                                  return `₱${min.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
                                 return `₱${min.toLocaleString("en-PH", { minimumFractionDigits: 2 })} – ₱${max.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
                               })()}
                             </td>
@@ -1265,7 +1323,12 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
                             >
                               {child.stockQty === 0 && onDeleteZeroStock ? (
                                 <button
-                                  onClick={() => onDeleteZeroStock(child._id ?? child.id, child.name)}
+                                  onClick={() =>
+                                    onDeleteZeroStock(
+                                      child._id ?? child.id,
+                                      child.name,
+                                    )
+                                  }
                                   style={{
                                     background: "rgba(239,68,68,0.1)",
                                     border: "1px solid rgba(239,68,68,0.2)",
@@ -1312,19 +1375,99 @@ function StockOverviewTab({ materials, onIssueStock, onDeleteZeroStock }) {
           </tbody>
         </table>
         {filteredRows.length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.625rem 1rem", borderTop: "1px solid var(--border)", flexWrap: "wrap", gap: "0.5rem", fontSize: "0.8rem", color: "var(--gray)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "0.625rem 1rem",
+              borderTop: "1px solid var(--border)",
+              flexWrap: "wrap",
+              gap: "0.5rem",
+              fontSize: "0.8rem",
+              color: "var(--gray)",
+            }}
+          >
+            <div
+              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+            >
               Rows per page:
-              <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer" }}>
-                {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
+              <select
+                value={rowsPerPage}
+                onChange={(e) => {
+                  setRowsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                style={{
+                  background: "var(--dark)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  color: "var(--white)",
+                  padding: "0.2rem 0.5rem",
+                  fontSize: "0.8rem",
+                  cursor: "pointer",
+                }}
+              >
+                {[10, 25, 50].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
               </select>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-              <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} style={{ padding: "0.25rem 0.625rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: currentPage <= 1 ? "var(--gray)" : "var(--white)", cursor: currentPage <= 1 ? "not-allowed" : "pointer" }}>‹</button>
-              <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} style={{ padding: "0.25rem 0.625rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: currentPage >= totalPages ? "var(--gray)" : "var(--white)", cursor: currentPage >= totalPages ? "not-allowed" : "pointer" }}>›</button>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}
+            >
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                style={{
+                  padding: "0.25rem 0.625rem",
+                  background: "var(--dark)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  color: currentPage <= 1 ? "var(--gray)" : "var(--white)",
+                  cursor: currentPage <= 1 ? "not-allowed" : "pointer",
+                }}
+              >
+                ‹
+              </button>
+              <button
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                disabled={currentPage >= totalPages}
+                style={{
+                  padding: "0.25rem 0.625rem",
+                  background: "var(--dark)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  color:
+                    currentPage >= totalPages ? "var(--gray)" : "var(--white)",
+                  cursor: currentPage >= totalPages ? "not-allowed" : "pointer",
+                }}
+              >
+                ›
+              </button>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-              Page: <span style={{ padding: "0.2rem 0.6rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", minWidth: "28px", textAlign: "center" }}>{currentPage}</span> of {totalPages}
+            <div
+              style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}
+            >
+              Page:{" "}
+              <span
+                style={{
+                  padding: "0.2rem 0.6rem",
+                  background: "var(--dark)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  color: "var(--white)",
+                  minWidth: "28px",
+                  textAlign: "center",
+                }}
+              >
+                {currentPage}
+              </span>{" "}
+              of {totalPages}
             </div>
           </div>
         )}
@@ -1368,9 +1511,7 @@ export default function StocksPage() {
       setBadOrders(
         (Array.isArray(badRaw) ? badRaw : []).map(normalizeStockBadOrder),
       );
-      const ids = data
-        .map((m) => m.id ?? m._id)
-        .filter(Boolean);
+      const ids = data.map((m) => m.id ?? m._id).filter(Boolean);
       const history = await fetchAllStockHistory(ids, token);
       const reasonToIssueType = (r) => {
         if (r === "sales-outside" || r === "sale") return "manual_sale";
@@ -1384,7 +1525,9 @@ export default function StocksPage() {
       const normalizedOuts = history
         .filter((h) => h.type === "deduction")
         .map((h) => {
-          const mat = data.find((m) => String(m.id ?? m._id) === String(h.inventoryId));
+          const mat = data.find(
+            (m) => String(m.id ?? m._id) === String(h.inventoryId),
+          );
           return {
             ...h,
             materialName: mat?.name || h.materialName || "—",
@@ -1443,12 +1586,22 @@ export default function StocksPage() {
             reason: apiReason,
             remarks: remarks || null,
             sellingPrice:
-              apiReason === "sales-outside" ? variant.sellingPrice || null : null,
+              apiReason === "sales-outside"
+                ? variant.sellingPrice || null
+                : null,
             saleDate: apiReason === "sales-outside" ? saleDate || null : null,
             customerName:
               apiReason === "sales-outside" ? customer || null : null,
             unitCost,
-            performedBy: user?.username || user?.name || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.email || null,
+            performedBy:
+              user?.username ||
+              user?.name ||
+              [user?.firstName, user?.lastName]
+                .filter(Boolean)
+                .join(" ")
+                .trim() ||
+              user?.email ||
+              null,
           },
           token,
         );
@@ -1461,10 +1614,16 @@ export default function StocksPage() {
       setReductionItem(null);
       setReductionItems([]);
       await refresh();
-      setAlertModal({ type: 'success', message: `Stock updated successfully. ${calls.length} adjustment(s) completed.` });
+      setAlertModal({
+        type: "success",
+        message: `Stock updated successfully. ${calls.length} adjustment(s) completed.`,
+      });
     } catch (err) {
       console.error("Stock reduction failed:", err);
-      setAlertModal({ type: 'error', message: err?.message || 'Stock update failed.' });
+      setAlertModal({
+        type: "error",
+        message: err?.message || "Stock update failed.",
+      });
       setError(err?.message || "Failed to adjust stock.");
     }
   };
@@ -1479,7 +1638,10 @@ export default function StocksPage() {
           await refresh();
         } catch (err) {
           console.error(err);
-          setAlertModal({ type: 'error', message: err?.message || 'Failed to delete item.' });
+          setAlertModal({
+            type: "error",
+            message: err?.message || "Failed to delete item.",
+          });
         }
       },
     });
@@ -1499,589 +1661,776 @@ export default function StocksPage() {
 
   return (
     <ErrorBoundary>
-    <div className="page-content-wrapper">
-      {/* Page Header */}
-      <div className="page-header">
-
-        {/* Tab Switcher */}
-        <div
-          style={{
-            display: "flex",
-            gap: "0.25rem",
-            background: "rgba(255,255,255,0.04)",
-            borderRadius: "10px",
-            padding: "0.25rem",
-            width: "fit-content",
-          }}
-        >
-          <button
-            style={tabStyle("goods")}
-            onClick={() => setActiveTab("goods")}
-          >
-            Goods Stock
-          </button>
-          <button
-            style={tabStyle("actual")}
-            onClick={() => setActiveTab("actual")}
-          >
-            Actual Stock
-          </button>
-          <button
-            style={tabStyle("history")}
-            onClick={() => setActiveTab("history")}
-          >
-            Stock-Out History
-          </button>
-          <button
-            style={tabStyle("reports")}
-            onClick={() => setActiveTab("reports")}
-          >
-            Reports
-          </button>
-        </div>
-      </div>
-
-      {loading && (
-        <p style={{ padding: "2rem", color: "var(--gray)", fontSize: "0.875rem" }}>
-          Loading inventory...
-        </p>
-      )}
-      {error && (
-        <p style={{ padding: "2rem", color: "var(--red)", fontSize: "0.875rem" }}>
-          {error}
-        </p>
-      )}
-
-      {/* Tab Content */}
-      {!loading && !error && activeTab === "goods" && (
-        <StockOverviewTab
-          materials={materials}
-          onIssueStock={() => {
-            setShowSelectMaterial(true);
-          }}
-          onDeleteZeroStock={handleDeleteZeroStock}
-        />
-      )}
-      {!loading && !error && activeTab === "actual" && (
-        <ActualStockTab
-          materials={materials}
-          badOrders={badOrders}
-          onDeleteZeroStock={handleDeleteZeroStock}
-        />
-      )}
-      {!loading && !error && activeTab === "history" && (
-        <StockOutHistoryTab stockOuts={stockOuts} materials={materials} />
-      )}
-      {!loading && !error && activeTab === "reports" && (
-        <InventoryReports materials={materials} stockOuts={stockOuts} />
-      )}
-
-      {/* Select Material Modal */}
-      {showSelectMaterial && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.78)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
+      <div className="page-content-wrapper">
+        {/* Page Header */}
+        <div className="page-header">
+          {/* Tab Switcher */}
           <div
             style={{
-              background: "#0E0E0E",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "14px",
-              width: "480px",
-              maxWidth: "95%",
-              maxHeight: "80vh",
               display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
+              gap: "0.25rem",
+              background: "rgba(255,255,255,0.04)",
+              borderRadius: "10px",
+              padding: "0.25rem",
+              width: "fit-content",
+            }}
+          >
+            <button
+              style={tabStyle("goods")}
+              onClick={() => setActiveTab("goods")}
+            >
+              Goods Stock
+            </button>
+            <button
+              style={tabStyle("actual")}
+              onClick={() => setActiveTab("actual")}
+            >
+              Actual Stock
+            </button>
+            <button
+              style={tabStyle("history")}
+              onClick={() => setActiveTab("history")}
+            >
+              Stock-Out History
+            </button>
+            <button
+              style={tabStyle("reports")}
+              onClick={() => setActiveTab("reports")}
+            >
+              Reports
+            </button>
+          </div>
+        </div>
+
+        {loading && (
+          <p
+            style={{
+              padding: "2rem",
+              color: "var(--gray)",
+              fontSize: "0.875rem",
+            }}
+          >
+            Loading inventory...
+          </p>
+        )}
+        {error && (
+          <p
+            style={{
+              padding: "2rem",
+              color: "var(--red)",
+              fontSize: "0.875rem",
+            }}
+          >
+            {error}
+          </p>
+        )}
+
+        {/* Tab Content */}
+        {!loading && !error && activeTab === "goods" && (
+          <StockOverviewTab
+            materials={materials}
+            onIssueStock={() => {
+              setShowSelectMaterial(true);
+            }}
+            onDeleteZeroStock={handleDeleteZeroStock}
+          />
+        )}
+        {!loading && !error && activeTab === "actual" && (
+          <ActualStockTab
+            materials={materials}
+            badOrders={badOrders}
+            onDeleteZeroStock={handleDeleteZeroStock}
+          />
+        )}
+        {!loading && !error && activeTab === "history" && (
+          <StockOutHistoryTab stockOuts={stockOuts} materials={materials} />
+        )}
+        {!loading && !error && activeTab === "reports" && (
+          <InventoryReports materials={materials} stockOuts={stockOuts} />
+        )}
+
+        {/* Select Material Modal */}
+        {showSelectMaterial && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.78)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
             <div
               style={{
-                padding: "1.5rem 1.75rem",
-                borderBottom: "1px solid rgba(255,255,255,0.08)",
-                background: "#131313",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div>
-                <div
-                  style={{
-                    fontSize: "0.6rem",
-                    color: "#D4A843",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.2em",
-                    fontWeight: 700,
-                    marginBottom: "0.3rem",
-                  }}
-                >
-                  Stock Adjustment
-                </div>
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: "1.2rem",
-                    fontWeight: 700,
-                    color: "#E5E2E1",
-                  }}
-                >
-                  Select Material
-                </h2>
-              </div>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-              >
-                <button
-                  onClick={() => {
-                    setMultiSelectMode((prev) => !prev);
-                    setSelectedMaterials([]);
-                  }}
-                  style={{
-                    background: multiSelectMode
-                      ? "rgba(212,168,67,0.15)"
-                      : "rgba(255,255,255,0.05)",
-                    border: multiSelectMode
-                      ? "1px solid rgba(212,168,67,0.4)"
-                      : "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: "7px",
-                    padding: "0.35rem 0.75rem",
-                    fontSize: "0.7rem",
-                    fontWeight: 700,
-                    color: multiSelectMode ? "#D4A843" : "var(--gray)",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {multiSelectMode ? "Multi-Select ON" : "Select Multiple"}
-                </button>
-                {/* FIXED: Moved style inside button tag */}
-                <button
-                  onClick={() => {
-                    setShowSelectMaterial(false);
-                    setSelectSearch("");
-                    setMultiSelectMode(false);
-                    setSelectedMaterials([]);
-                  }}
-                  style={{
-                    background: "rgba(255,255,255,0.05)",
-                    border: "none",
-                    borderRadius: "50%",
-                    width: "36px",
-                    height: "36px",
-                    cursor: "pointer",
-                    color: "var(--gray)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                  >
-                    <path d="M18 6L6 18M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Search */}
-            <div
-              style={{
-                padding: "1rem 1.75rem",
-                borderBottom: "1px solid rgba(255,255,255,0.06)",
-              }}
-            >
-              <div style={{ position: "relative" }}>
-                <svg
-                  style={{
-                    position: "absolute",
-                    left: "0.75rem",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "var(--gray)",
-                  }}
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="M21 21l-4.35-4.35" />
-                </svg>
-                <input
-                  autoFocus
-                  placeholder="Search materials..."
-                  value={selectSearch}
-                  onChange={(e) => setSelectSearch(e.target.value)}
-                  style={{
-                    width: "100%",
-                    background: "rgba(255,255,255,0.06)",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: "8px",
-                    color: "#E5E2E1",
-                    padding: "0.55rem 0.75rem 0.55rem 2.25rem",
-                    fontSize: "0.85rem",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* List */}
-            <div
-              style={{
-                overflowY: "auto",
-                flex: 1,
+                background: "#0E0E0E",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: "14px",
+                width: "480px",
+                maxWidth: "95%",
+                maxHeight: "80vh",
                 display: "flex",
                 flexDirection: "column",
-                minHeight: 0,
+                overflow: "hidden",
               }}
+              onClick={(e) => e.stopPropagation()}
             >
-              {materials
-                .filter((m) => {
-                  if (m.parentId) return false;
-                  const hasBatches = m.batches && m.batches.length > 0;
-                  const hasStock = (m.stockQty || 0) > 0;
-                  if (!hasBatches && !hasStock) {
-                    if (m.hasVariants) {
-                      const children = materials.filter(
-                        (c) => String(c.parentId) === String(m.id ?? m._id),
-                      );
-                      const childStock = children.reduce(
-                        (s, c) => s + (c.stockQty || 0),
-                        0,
-                      );
-                      const childBatches = children.some(
-                        (c) => c.batches && c.batches.length > 0,
-                      );
-                      if (!childStock && !childBatches) return false;
-                    } else {
-                      return false;
-                    }
-                  }
-                  if (selectSearch) {
-                    const q = selectSearch.toLowerCase();
-                    return (
-                      m.name.toLowerCase().includes(q) ||
-                      (m.sku || "").toLowerCase().includes(q)
-                    );
-                  }
-                  return true;
-                })
-                .map((m) => {
-                  // Compute accurate stock from batches
-                  const computeAccurateStock = (mat) => {
-                    if (Array.isArray(mat.batches) && mat.batches.length > 0) {
-                      return mat.batches.reduce(
-                        (s, b) =>
-                          s +
-                          (b.remainingQty != null
-                            ? b.remainingQty
-                            : (b.goodQty ?? b.qtyGood ?? 0)),
-                        0,
-                      );
-                    }
-                    return mat.stockQty || 0;
-                  };
-                  let displayStock = computeAccurateStock(m);
-                  let variantCount = 0;
-                  if (m.hasVariants) {
-                    const children = materials.filter(
-                      (c) => String(c.parentId) === String(m.id ?? m._id),
-                    );
-                    // Only count children with actual batch data
-                    const stockedChildren = children.filter(
-                      (c) =>
-                        Array.isArray(c.batches) &&
-                        c.batches.length > 0 &&
-                        c.batches.some(
-                          (b) =>
-                            (b.originalQty ||
-                              b.qtyReceived ||
-                              b.goodQty ||
-                              b.qtyGood ||
-                              0) > 0,
-                        ),
-                    );
-                    variantCount = stockedChildren.length;
-                    displayStock = stockedChildren.reduce(
-                      (s, c) => s + computeAccurateStock(c),
-                      0,
-                    );
-                  }
-                  return (
-                    <div
-                      key={String(m.id ?? m._id)}
-                      onClick={() => {
-                        if (multiSelectMode) {
-                          const mId = m.id ?? m._id;
-                          setSelectedMaterials((prev) =>
-                            prev.some((x) => (x.id ?? x._id) === mId)
-                              ? prev.filter((x) => (x.id ?? x._id) !== mId)
-                              : [...prev, m],
-                          );
-                        } else {
-                          setReductionItem(m);
-                          setShowSelectMaterial(false);
-                          setSelectSearch("");
-                          setShowReductionModal(true);
-                        }
-                      }}
-                      style={{
-                        padding: "0.875rem 1.75rem",
-                        borderBottom: "1px solid rgba(255,255,255,0.04)",
-                        cursor: "pointer",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        background:
-                          multiSelectMode &&
-                          selectedMaterials.some((x) => (x.id ?? x._id) === (m.id ?? m._id))
-                            ? "rgba(212,168,67,0.08)"
-                            : "transparent",
-                        borderLeft:
-                          multiSelectMode &&
-                          selectedMaterials.some((x) => (x.id ?? x._id) === (m.id ?? m._id))
-                            ? "3px solid #D4A843"
-                            : "3px solid transparent",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (
-                          !multiSelectMode ||
-                          !selectedMaterials.some((x) => (x.id ?? x._id) === (m.id ?? m._id))
-                        )
-                          e.currentTarget.style.background =
-                            "rgba(212,168,67,0.06)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background =
-                          multiSelectMode &&
-                          selectedMaterials.some((x) => (x.id ?? x._id) === (m.id ?? m._id))
-                            ? "rgba(212,168,67,0.08)"
-                            : "transparent";
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.75rem",
-                        }}
-                      >
-                        {multiSelectMode && (
-                          <input
-                            type="checkbox"
-                            readOnly
-                            checked={selectedMaterials.some(
-                              (x) => (x.id ?? x._id) === (m.id ?? m._id),
-                            )}
-                            style={{
-                              width: "16px",
-                              height: "16px",
-                              accentColor: "#D4A843",
-                              cursor: "pointer",
-                              flexShrink: 0,
-                            }}
-                          />
-                        )}
-                        <div>
-                          <div
-                            style={{
-                              fontWeight: 700,
-                              color: "#E5E2E1",
-                              fontSize: "0.875rem",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.5rem",
-                            }}
-                          >
-                            {m.name}
-                            {variantCount > 0 && (
-                              <span
-                                style={{
-                                  fontSize: "0.6rem",
-                                  fontWeight: 700,
-                                  background: "rgba(212,168,67,0.15)",
-                                  color: "#D4A843",
-                                  padding: "0.1rem 0.4rem",
-                                  borderRadius: "4px",
-                                }}
-                              >
-                                {variantCount} variants
-                              </span>
-                            )}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "0.68rem",
-                              color: "var(--gray)",
-                              marginTop: "0.15rem",
-                            }}
-                          >
-                            {m.category || "—"}
-                          </div>
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          textAlign: "right",
-                          flexShrink: 0,
-                          marginLeft: "1rem",
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontWeight: 700,
-                            color: displayStock === 0 ? "#ef4444" : "#D4A843",
-                            fontSize: "0.9rem",
-                          }}
-                        >
-                          {displayStock}
-                        </div>
-                        <div
-                          style={{ fontSize: "0.65rem", color: "var(--gray)" }}
-                        >
-                          {m.uom || "pcs"}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-
-            {/* Multi-Select Footer — inside modal */}
-            {multiSelectMode && (
+              {/* Header */}
               <div
                 style={{
-                  padding: "1rem 1.75rem",
-                  borderTop: "1px solid rgba(255,255,255,0.08)",
+                  padding: "1.5rem 1.75rem",
+                  borderBottom: "1px solid rgba(255,255,255,0.08)",
                   background: "#131313",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  flexShrink: 0,
-                  borderBottomLeftRadius: "14px",
-                  borderBottomRightRadius: "14px",
                 }}
               >
-                <span style={{ fontSize: "0.78rem", color: "var(--gray)" }}>
-                  {selectedMaterials.length > 0
-                    ? `${selectedMaterials.length} material${selectedMaterials.length !== 1 ? "s" : ""} selected`
-                    : "Check items to select"}
-                </span>
-                {/* FIXED: Moved style inside button tag */}
-                <button
-                  disabled={selectedMaterials.length === 0}
-                  onClick={() => {
-                    if (selectedMaterials.length === 0) return;
-                    setReductionItems([...selectedMaterials]);
-                    setReductionItem(null); // multi-select uses reductionItems
-                    setSelectedMaterials([]);
-                    setMultiSelectMode(false);
-                    setShowSelectMaterial(false);
-                    setSelectSearch("");
-                    setShowReductionModal(true);
-                  }}
+                <div>
+                  <div
+                    style={{
+                      fontSize: "0.6rem",
+                      color: "#D4A843",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.2em",
+                      fontWeight: 700,
+                      marginBottom: "0.3rem",
+                    }}
+                  >
+                    Stock Adjustment
+                  </div>
+                  <h2
+                    style={{
+                      margin: 0,
+                      fontSize: "1.2rem",
+                      fontWeight: 700,
+                      color: "#E5E2E1",
+                    }}
+                  >
+                    Select Material
+                  </h2>
+                </div>
+                <div
                   style={{
-                    background:
-                      selectedMaterials.length === 0
-                        ? "rgba(255,255,255,0.06)"
-                        : "#D4A843",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "0.55rem 1.25rem",
-                    color:
-                      selectedMaterials.length === 0 ? "var(--gray)" : "#000",
-                    fontWeight: 700,
-                    fontSize: "0.82rem",
-                    cursor:
-                      selectedMaterials.length === 0
-                        ? "not-allowed"
-                        : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
                   }}
                 >
-                  Reduce selected
-                </button>
+                  <button
+                    onClick={() => {
+                      setMultiSelectMode((prev) => !prev);
+                      setSelectedMaterials([]);
+                    }}
+                    style={{
+                      background: multiSelectMode
+                        ? "rgba(212,168,67,0.15)"
+                        : "rgba(255,255,255,0.05)",
+                      border: multiSelectMode
+                        ? "1px solid rgba(212,168,67,0.4)"
+                        : "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: "7px",
+                      padding: "0.35rem 0.75rem",
+                      fontSize: "0.7rem",
+                      fontWeight: 700,
+                      color: multiSelectMode ? "#D4A843" : "var(--gray)",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {multiSelectMode ? "Multi-Select ON" : "Select Multiple"}
+                  </button>
+                  {/* FIXED: Moved style inside button tag */}
+                  <button
+                    onClick={() => {
+                      setShowSelectMaterial(false);
+                      setSelectSearch("");
+                      setMultiSelectMode(false);
+                      setSelectedMaterials([]);
+                    }}
+                    style={{
+                      background: "rgba(255,255,255,0.05)",
+                      border: "none",
+                      borderRadius: "50%",
+                      width: "36px",
+                      height: "36px",
+                      cursor: "pointer",
+                      color: "var(--gray)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    >
+                      <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
-        </div>
-      )}
-      {/* Stock Adjustment Modal */}
-      {showReductionModal && (
-        <StockReductionModal
-          isOpen={showReductionModal}
-          onClose={() => {
-            setShowReductionModal(false);
-            setReductionItem(null);
-            setReductionItems([]);
-          }}
-          onConfirm={handleStockReduction}
-          item={reductionItem}
-          items={reductionItems}
-          inventory={materials}
-          masterlist={null}
-        />
-      )}
 
-      {/* Alert Modal */}
-      {alertModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ background: 'var(--dark2)', border: `1px solid ${alertModal.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, borderRadius: '14px', padding: '2rem', maxWidth: '420px', width: '100%', textAlign: 'center' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: alertModal.type === 'success' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
-              {alertModal.type === 'success' ? (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" /></svg>
-              ) : (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+              {/* Search */}
+              <div
+                style={{
+                  padding: "1rem 1.75rem",
+                  borderBottom: "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                <div style={{ position: "relative" }}>
+                  <svg
+                    style={{
+                      position: "absolute",
+                      left: "0.75rem",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "var(--gray)",
+                    }}
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="M21 21l-4.35-4.35" />
+                  </svg>
+                  <input
+                    autoFocus
+                    placeholder="Search materials..."
+                    value={selectSearch}
+                    onChange={(e) => setSelectSearch(e.target.value)}
+                    style={{
+                      width: "100%",
+                      background: "rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: "8px",
+                      color: "#E5E2E1",
+                      padding: "0.55rem 0.75rem 0.55rem 2.25rem",
+                      fontSize: "0.85rem",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* List */}
+              <div
+                style={{
+                  overflowY: "auto",
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: 0,
+                }}
+              >
+                {materials
+                  .filter((m) => {
+                    if (m.parentId) return false;
+                    const hasBatches = m.batches && m.batches.length > 0;
+                    const hasStock = (m.stockQty || 0) > 0;
+                    if (!hasBatches && !hasStock) {
+                      if (m.hasVariants) {
+                        const children = materials.filter(
+                          (c) => String(c.parentId) === String(m.id ?? m._id),
+                        );
+                        const childStock = children.reduce(
+                          (s, c) => s + (c.stockQty || 0),
+                          0,
+                        );
+                        const childBatches = children.some(
+                          (c) => c.batches && c.batches.length > 0,
+                        );
+                        if (!childStock && !childBatches) return false;
+                      } else {
+                        return false;
+                      }
+                    }
+                    if (selectSearch) {
+                      const q = selectSearch.toLowerCase();
+                      return (
+                        m.name.toLowerCase().includes(q) ||
+                        (m.sku || "").toLowerCase().includes(q)
+                      );
+                    }
+                    return true;
+                  })
+                  .map((m) => {
+                    // Compute accurate stock from batches
+                    const computeAccurateStock = (mat) => {
+                      if (
+                        Array.isArray(mat.batches) &&
+                        mat.batches.length > 0
+                      ) {
+                        return mat.batches.reduce(
+                          (s, b) =>
+                            s +
+                            (b.remainingQty != null
+                              ? b.remainingQty
+                              : (b.goodQty ?? b.qtyGood ?? 0)),
+                          0,
+                        );
+                      }
+                      return mat.stockQty || 0;
+                    };
+                    let displayStock = computeAccurateStock(m);
+                    let variantCount = 0;
+                    if (m.hasVariants) {
+                      const children = materials.filter(
+                        (c) => String(c.parentId) === String(m.id ?? m._id),
+                      );
+                      // Only count children with actual batch data
+                      const stockedChildren = children.filter(
+                        (c) =>
+                          Array.isArray(c.batches) &&
+                          c.batches.length > 0 &&
+                          c.batches.some(
+                            (b) =>
+                              (b.originalQty ||
+                                b.qtyReceived ||
+                                b.goodQty ||
+                                b.qtyGood ||
+                                0) > 0,
+                          ),
+                      );
+                      variantCount = stockedChildren.length;
+                      displayStock = stockedChildren.reduce(
+                        (s, c) => s + computeAccurateStock(c),
+                        0,
+                      );
+                    }
+                    return (
+                      <div
+                        key={String(m.id ?? m._id)}
+                        onClick={() => {
+                          if (multiSelectMode) {
+                            const mId = m.id ?? m._id;
+                            setSelectedMaterials((prev) =>
+                              prev.some((x) => (x.id ?? x._id) === mId)
+                                ? prev.filter((x) => (x.id ?? x._id) !== mId)
+                                : [...prev, m],
+                            );
+                          } else {
+                            setReductionItem(m);
+                            setShowSelectMaterial(false);
+                            setSelectSearch("");
+                            setShowReductionModal(true);
+                          }
+                        }}
+                        style={{
+                          padding: "0.875rem 1.75rem",
+                          borderBottom: "1px solid rgba(255,255,255,0.04)",
+                          cursor: "pointer",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          background:
+                            multiSelectMode &&
+                            selectedMaterials.some(
+                              (x) => (x.id ?? x._id) === (m.id ?? m._id),
+                            )
+                              ? "rgba(212,168,67,0.08)"
+                              : "transparent",
+                          borderLeft:
+                            multiSelectMode &&
+                            selectedMaterials.some(
+                              (x) => (x.id ?? x._id) === (m.id ?? m._id),
+                            )
+                              ? "3px solid #D4A843"
+                              : "3px solid transparent",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (
+                            !multiSelectMode ||
+                            !selectedMaterials.some(
+                              (x) => (x.id ?? x._id) === (m.id ?? m._id),
+                            )
+                          )
+                            e.currentTarget.style.background =
+                              "rgba(212,168,67,0.06)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background =
+                            multiSelectMode &&
+                            selectedMaterials.some(
+                              (x) => (x.id ?? x._id) === (m.id ?? m._id),
+                            )
+                              ? "rgba(212,168,67,0.08)"
+                              : "transparent";
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.75rem",
+                          }}
+                        >
+                          {multiSelectMode && (
+                            <input
+                              type="checkbox"
+                              readOnly
+                              checked={selectedMaterials.some(
+                                (x) => (x.id ?? x._id) === (m.id ?? m._id),
+                              )}
+                              style={{
+                                width: "16px",
+                                height: "16px",
+                                accentColor: "#D4A843",
+                                cursor: "pointer",
+                                flexShrink: 0,
+                              }}
+                            />
+                          )}
+                          <div>
+                            <div
+                              style={{
+                                fontWeight: 700,
+                                color: "#E5E2E1",
+                                fontSize: "0.875rem",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.5rem",
+                              }}
+                            >
+                              {m.name}
+                              {variantCount > 0 && (
+                                <span
+                                  style={{
+                                    fontSize: "0.6rem",
+                                    fontWeight: 700,
+                                    background: "rgba(212,168,67,0.15)",
+                                    color: "#D4A843",
+                                    padding: "0.1rem 0.4rem",
+                                    borderRadius: "4px",
+                                  }}
+                                >
+                                  {variantCount} variants
+                                </span>
+                              )}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: "0.68rem",
+                                color: "var(--gray)",
+                                marginTop: "0.15rem",
+                              }}
+                            >
+                              {m.category || "—"}
+                            </div>
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            textAlign: "right",
+                            flexShrink: 0,
+                            marginLeft: "1rem",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontWeight: 700,
+                              color: displayStock === 0 ? "#ef4444" : "#D4A843",
+                              fontSize: "0.9rem",
+                            }}
+                          >
+                            {displayStock}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "0.65rem",
+                              color: "var(--gray)",
+                            }}
+                          >
+                            {m.uom || "pcs"}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              {/* Multi-Select Footer — inside modal */}
+              {multiSelectMode && (
+                <div
+                  style={{
+                    padding: "1rem 1.75rem",
+                    borderTop: "1px solid rgba(255,255,255,0.08)",
+                    background: "#131313",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexShrink: 0,
+                    borderBottomLeftRadius: "14px",
+                    borderBottomRightRadius: "14px",
+                  }}
+                >
+                  <span style={{ fontSize: "0.78rem", color: "var(--gray)" }}>
+                    {selectedMaterials.length > 0
+                      ? `${selectedMaterials.length} material${selectedMaterials.length !== 1 ? "s" : ""} selected`
+                      : "Check items to select"}
+                  </span>
+                  {/* FIXED: Moved style inside button tag */}
+                  <button
+                    disabled={selectedMaterials.length === 0}
+                    onClick={() => {
+                      if (selectedMaterials.length === 0) return;
+                      setReductionItems([...selectedMaterials]);
+                      setReductionItem(null); // multi-select uses reductionItems
+                      setSelectedMaterials([]);
+                      setMultiSelectMode(false);
+                      setShowSelectMaterial(false);
+                      setSelectSearch("");
+                      setShowReductionModal(true);
+                    }}
+                    style={{
+                      background:
+                        selectedMaterials.length === 0
+                          ? "rgba(255,255,255,0.06)"
+                          : "#D4A843",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "0.55rem 1.25rem",
+                      color:
+                        selectedMaterials.length === 0 ? "var(--gray)" : "#000",
+                      fontWeight: 700,
+                      fontSize: "0.82rem",
+                      cursor:
+                        selectedMaterials.length === 0
+                          ? "not-allowed"
+                          : "pointer",
+                    }}
+                  >
+                    Reduce selected
+                  </button>
+                </div>
               )}
             </div>
-            <p style={{ color: '#E5E2E1', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>{alertModal.message}</p>
-            <button onClick={() => setAlertModal(null)} style={{ background: alertModal.type === 'success' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', border: `1px solid ${alertModal.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, color: alertModal.type === 'success' ? '#22c55e' : '#ef4444', borderRadius: '8px', padding: '0.5rem 1.5rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
-              OK
-            </button>
           </div>
-        </div>
-      )}
+        )}
+        {/* Stock Adjustment Modal */}
+        {showReductionModal && (
+          <StockReductionModal
+            isOpen={showReductionModal}
+            onClose={() => {
+              setShowReductionModal(false);
+              setReductionItem(null);
+              setReductionItems([]);
+            }}
+            onConfirm={handleStockReduction}
+            item={reductionItem}
+            items={reductionItems}
+            inventory={materials}
+            masterlist={null}
+          />
+        )}
 
-      {/* Confirm Modal */}
-      {confirmModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ background: 'var(--dark2)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '14px', padding: '2rem', maxWidth: '420px', width: '100%', textAlign: 'center' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
-            </div>
-            <p style={{ color: '#E5E2E1', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>{confirmModal.message}</p>
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
-              <button onClick={() => setConfirmModal(null)} style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--gray)', borderRadius: '8px', padding: '0.5rem 1.5rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
-                Cancel
-              </button>
-              <button onClick={confirmModal.onConfirm} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', borderRadius: '8px', padding: '0.5rem 1.5rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
-                Delete
+        {/* Alert Modal */}
+        {alertModal && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9999,
+              background: "rgba(0,0,0,0.6)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "1rem",
+            }}
+          >
+            <div
+              style={{
+                background: "var(--dark2)",
+                border: `1px solid ${alertModal.type === "success" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
+                borderRadius: "14px",
+                padding: "2rem",
+                maxWidth: "420px",
+                width: "100%",
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "50%",
+                  background:
+                    alertModal.type === "success"
+                      ? "rgba(34,197,94,0.12)"
+                      : "rgba(239,68,68,0.12)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 1rem",
+                }}
+              >
+                {alertModal.type === "success" ? (
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#22c55e"
+                    strokeWidth="2.5"
+                  >
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                ) : (
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth="2.5"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v4M12 16h.01" />
+                  </svg>
+                )}
+              </div>
+              <p
+                style={{
+                  color: "#E5E2E1",
+                  fontSize: "0.9rem",
+                  marginBottom: "1.5rem",
+                  lineHeight: 1.5,
+                }}
+              >
+                {alertModal.message}
+              </p>
+              <button
+                onClick={() => setAlertModal(null)}
+                style={{
+                  background:
+                    alertModal.type === "success"
+                      ? "rgba(34,197,94,0.15)"
+                      : "rgba(239,68,68,0.15)",
+                  border: `1px solid ${alertModal.type === "success" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
+                  color: alertModal.type === "success" ? "#22c55e" : "#ef4444",
+                  borderRadius: "8px",
+                  padding: "0.5rem 1.5rem",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: "0.875rem",
+                }}
+              >
+                OK
               </button>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+
+        {/* Confirm Modal */}
+        {confirmModal && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9999,
+              background: "rgba(0,0,0,0.6)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "1rem",
+            }}
+          >
+            <div
+              style={{
+                background: "var(--dark2)",
+                border: "1px solid rgba(239,68,68,0.3)",
+                borderRadius: "14px",
+                padding: "2rem",
+                maxWidth: "420px",
+                width: "100%",
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "50%",
+                  background: "rgba(239,68,68,0.12)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 1rem",
+                }}
+              >
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#ef4444"
+                  strokeWidth="2.5"
+                >
+                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                </svg>
+              </div>
+              <p
+                style={{
+                  color: "#E5E2E1",
+                  fontSize: "0.9rem",
+                  marginBottom: "1.5rem",
+                  lineHeight: 1.5,
+                }}
+              >
+                {confirmModal.message}
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.75rem",
+                  justifyContent: "center",
+                }}
+              >
+                <button
+                  onClick={() => setConfirmModal(null)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid var(--border)",
+                    color: "var(--gray)",
+                    borderRadius: "8px",
+                    padding: "0.5rem 1.5rem",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    fontSize: "0.875rem",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmModal.onConfirm}
+                  style={{
+                    background: "rgba(239,68,68,0.15)",
+                    border: "1px solid rgba(239,68,68,0.3)",
+                    color: "#ef4444",
+                    borderRadius: "8px",
+                    padding: "0.5rem 1.5rem",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    fontSize: "0.875rem",
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </ErrorBoundary>
   );
 }
