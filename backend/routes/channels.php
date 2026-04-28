@@ -18,10 +18,16 @@ Broadcast::channel('user.{userId}', function ($user, $userId) {
     return (string) ($user->_id ?? $user->id) === (string) $userId;
 });
 
-// Private channel for individual order tracking
-Broadcast::channel('order.{orderId}', function ($user, $orderId) {
-    $order = \App\Models\Order::find($orderId);
-    if (!$order) return false;
-    return (string) ($order->userId ?? '') === (string) $user->_id
+// Private channel for a specific conversation
+Broadcast::channel('conversation.{conversationId}', function ($user, $conversationId) {
+    $conversation = \App\Models\Conversation::find($conversationId);
+    if (!$conversation) return false;
+    
+    return in_array($user->_id, $conversation->participants) 
         || in_array($user->role ?? null, ['admin', 'owner']);
+});
+
+// Private admin chat channel (for global message broadcasts to all admins)
+Broadcast::channel('admin.chat', function ($user) {
+    return in_array($user->role ?? null, ['admin', 'owner']);
 });
