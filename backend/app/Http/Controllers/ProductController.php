@@ -526,6 +526,65 @@ class ProductController extends Controller
     }
 
     /**
+     * POST /api/admin/upload-file
+     * Upload a design format file (AI, PSD, PDF, SVG, PNG) to Cloudinary raw
+     */
+    public function uploadFile(Request $request)
+    {
+        try {
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
+
+            $request->validate([
+                'file'   => 'required|file|max:20480', // 20MB
+                'folder' => 'nullable|string|max:100',
+            ]);
+
+            $cloudName    = config('services.cloudinary.cloud_name');
+            $uploadPreset = config('services.cloudinary.upload_preset');
+
+            if (!$cloudName || !$uploadPreset) {
+                return $this->errorResponse('Cloudinary configuration missing.', 500);
+            }
+
+            $file   = $request->file('file');
+            $folder = $request->input('folder', 'pmp-design-formats');
+            $ext    = strtolower($file->getClientOriginalExtension());
+
+            // Cloudinary raw upload for non-image types
+            $resourceType = in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'svg']) ? 'image' : 'raw';
+            $endpoint     = "https://api.cloudinary.com/v1_1/{$cloudName}/{$resourceType}/upload";
+
+            $response = Http::timeout(60)->attach(
+                'file',
+                fopen($file->getRealPath(), 'r'),
+                $file->getClientOriginalName(),
+                ['Content-Type' => $file->getMimeType()]
+            )->post($endpoint, [
+                'upload_preset' => $uploadPreset,
+                'folder'        => $folder,
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                return $this->successResponse('File uploaded successfully.', [
+                    'url'      => $data['secure_url'],
+                    'public_id'=> $data['public_id'],
+                    'name'     => $file->getClientOriginalName(),
+                    'ext'      => $ext,
+                ]);
+            }
+
+            return $this->errorResponse('Failed to upload file.', 500);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while uploading the file.');
+        }
+    }
+
+    /**
      * GET /api/products/search
      * Search products by query string (public endpoint)
      */

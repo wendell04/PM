@@ -2644,323 +2644,145 @@ function PriceErrorModal({
 
 // ── Product Detail Expand Row ─────────────────────────────────────────────────
 function ProductExpandRow({ product, inv, boms = [], inventoryList = [] }) {
-  const variantGroups = product.variantGroups || [];
   const combinations = product.combinations || [];
 
-  const tiers = product.priceTiers || product.tiers || [];
-
-  // BOM-based materials inventory
   const productGroupName = (product.bomGroupName || product.name || product.productName || "").trim().toLowerCase();
   const productBoms = boms.filter((b) => (b.productGroupName || "").trim().toLowerCase() === productGroupName && productGroupName);
+
+  // Build material map tracking how many BOMs use each material
   const matMap = new Map();
   productBoms.forEach((bom) => {
     (bom.components || []).forEach((comp) => {
       const matId = String(comp.inventoryId ?? comp.materialId ?? "");
-      if (matId && !matMap.has(matId)) {
-        const mat = inventoryList.find((m) => String(m.id) === matId);
+      if (!matId) return;
+      const mat = inventoryList.find((m) => String(m.id) === matId);
+      if (matMap.has(matId)) {
+        matMap.get(matId).bomCount++;
+      } else {
         matMap.set(matId, {
           name: mat?.name || comp.materialName || "?",
           stockQty: mat?.stockQty ?? 0,
           uom: mat?.uom || comp.unit || "pcs",
+          bomCount: 1,
         });
       }
     });
   });
-  const bomMaterials = [...matMap.values()];
+
+  // Per-BOM: compute available qty and which material constrains it
+  const variantAvailability = productBoms.map((bom) => {
+    let minCan = Infinity;
+    let constraintName = null;
+    (bom.components || []).forEach((comp) => {
+      const matId = String(comp.inventoryId ?? comp.materialId ?? "");
+      const mat = matMap.get(matId);
+      if (!mat) return;
+      const can = Math.floor(mat.stockQty / (comp.qty || 1));
+      if (can < minCan) { minCan = can; constraintName = mat.name; }
+    });
+    const available = minCan === Infinity ? 0 : minCan;
+    const label = combinations.find((c) => c.id === bom.id)?.label || bom.productName || bom.name || "—";
+    return { label, available, constraintName, isSharedConstrained: matMap.get(
+      (bom.components || []).reduce((worst, comp) => {
+        const matId = String(comp.inventoryId ?? comp.materialId ?? "");
+        const mat = matMap.get(matId);
+        const can = mat ? Math.floor(mat.stockQty / (comp.qty || 1)) : Infinity;
+        return can < (worst.can ?? Infinity) ? { matId, can } : worst;
+      }, {}).matId
+    )?.bomCount > 1 };
+  });
+
+  const allMaterials = [...matMap.values()];
+
+  const hasVariantData = variantAvailability.length > 0;
 
   return (
-    <div
-      style={{
-        padding: "1rem 1.25rem 1.25rem",
-        background: "rgba(212,168,67,0.02)",
-        borderTop: "1px solid var(--border)",
-        display: "flex",
-        gap: "1rem",
-        width: "100%",
-        justifyContent: "space-between",
-        flexWrap: "wrap",
-      }}
-    >
-          {/* Variants */}
-          <div style={{ flex: "1 1 150px", minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: "0.72rem",
-                color: "var(--gray)",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                marginBottom: "0.35rem",
-                fontWeight: 600,
-              }}
-            >
-              Variants
-            </div>
-            {variantGroups.length > 0 ? (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.4rem",
-                }}
-              >
-                {variantGroups.map((g) => (
-                  <div
-                    key={g.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: "0.75rem",
-                        color: "var(--gray)",
-                        minWidth: "fit-content",
-                      }}
-                    >
-                      {g.name}:
-                    </span>
-                    {g.options?.map((o) => (
-                      <span
-                        key={o.id}
-                        style={{
-                          fontSize: "0.75rem",
-                          background: "rgba(255,255,255,0.07)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "4px",
-                          padding: "0.1rem 0.45rem",
-                          color: "var(--white)",
-                        }}
-                      >
-                        {o.value}
+    <div style={{ padding: "1rem 1.25rem 1.25rem", background: "rgba(212,168,67,0.02)", borderTop: "1px solid var(--border)", display: "flex", gap: "2rem", flexWrap: "wrap" }}>
+
+      {/* LEFT — Per-variant availability */}
+      <div style={{ flex: "2 1 260px", minWidth: 0 }}>
+        <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "0.5rem" }}>
+          Availability
+        </div>
+        {hasVariantData ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+            {variantAvailability.map((v, i) => {
+              const bom = productBoms[i];
+              const storefrontStock = bom ? (product.variantStock?.[bom.id] ?? null) : null;
+              const backorderOn = bom ? (product.variantBackorder?.[bom.id] ?? false) : false;
+              const stockOverMax = backorderOn && storefrontStock != null && storefrontStock > v.available;
+              return (
+                <div key={i} style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "0.8rem", color: "#E5E2E1", fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "200px" }}>{v.label}</span>
+                    {storefrontStock != null && !product.isMadeToOrder && (
+                      <span style={{ fontSize: "0.75rem", fontWeight: 700, color: storefrontStock === 0 ? "#ef4444" : storefrontStock <= 10 ? "#f59e0b" : "#22c55e", flexShrink: 0 }}>
+                        {storefrontStock === 0 ? "Out of stock" : `${storefrontStock} in stock`}
                       </span>
-                    ))}
+                    )}
+                    {backorderOn && (
+                      <span style={{ fontSize: "0.6rem", fontWeight: 700, background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: "4px", padding: "0.05rem 0.35rem", color: "#818cf8", flexShrink: 0 }}>
+                        BACKORDER
+                      </span>
+                    )}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div
-                style={{
-                  fontSize: "0.85rem",
-                  color: "var(--gray)",
-                  fontStyle: "italic",
-                  opacity: 0.6,
-                }}
-              >
-                —
-              </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "0.68rem", color: "var(--gray)" }}>
+                      {v.available === 0 ? "Can produce: 0" : `Can produce: ${v.available}`}
+                    </span>
+                    {v.constraintName && v.available > 0 && (
+                      <span style={{ fontSize: "0.68rem", color: "var(--gray)" }}>
+                        {v.isSharedConstrained ? `⚠ limited by ${v.constraintName}` : `w/ ${v.constraintName}`}
+                      </span>
+                    )}
+                    {stockOverMax && (
+                      <span style={{ fontSize: "0.68rem", color: "#f59e0b" }}>
+                        ⚠ needs restock ({storefrontStock - v.available} above capacity)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : inv ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
+            <div style={{ fontSize: "0.8rem", color: (product.stock ?? 0) > 0 ? "#22c55e" : "#ef4444", fontWeight: 700 }}>
+              {inv.isOnDemand ? "Upon Order" : (product.stock ?? 0) > 0 ? `${product.stock} in stock` : "Out of stock"}
+            </div>
+            {!product.isMadeToOrder && inv.stockQty > 0 && (
+              <div style={{ fontSize: "0.68rem", color: "var(--gray)" }}>Can produce: {inv.stockQty}</div>
             )}
           </div>
+        ) : (
+          <div style={{ fontSize: "0.8rem", color: "var(--gray)", fontStyle: "italic", opacity: 0.6 }}>—</div>
+        )}
+      </div>
 
-          {/* Pricing summary */}
-          <div style={{ flex: "1 1 150px", minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: "0.72rem",
-                color: "var(--gray)",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                marginBottom: "0.35rem",
-                fontWeight: 600,
-              }}
-            >
-              Pricing
-            </div>
-            {product.priceType ? (
-              <div
-                style={{
-                  fontSize: "0.82rem",
-                  color: "var(--white)",
-                  opacity: 0.85,
-                }}
-              >
-                {product.priceType === "tiered" && tiers.length > 0 && (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "0.2rem",
-                    }}
-                  >
-                    {tiers.map((t, i) => {
-                      const prices = Object.values(t.prices || {}).map(Number).filter((p) => p > 0);
-                      const min = prices.length ? Math.min(...prices) : 0;
-                      const max = prices.length ? Math.max(...prices) : 0;
-                      return (
-                        <div key={t.id ?? i} style={{ fontSize: "0.78rem", overflowWrap: "break-word" }}>
-                          <span style={{ color: "var(--gray)" }}>
-                            {t.minQty}–{t.maxQty || "∞"} pcs:
-                          </span>{" "}
-                          <span style={{ color: "var(--gold)" }}>
-                            ₱{min}{min !== max ? `–₱${max}` : ""}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {product.priceType === "fixed" &&
-                  product.variantPrices &&
-                  Object.keys(product.variantPrices).length > 0 && (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "0.2rem",
-                      }}
-                    >
-                      {combinations.slice(0, 6).map((c) => (
-                        <div
-                          key={c.id}
-                          style={{
-                            fontSize: "0.78rem",
-                            overflowWrap: "break-word",
-                          }}
-                        >
-                          <span style={{ color: "var(--gray)" }}>
-                            {c.label}:
-                          </span>{" "}
-                          <span style={{ color: "var(--gold)" }}>
-                            ₱
-                            {parseFloat(
-                              product.variantPrices[c.id] || 0,
-                            ).toFixed(2)}
-                          </span>
-                        </div>
-                      ))}
-                      {combinations.length > 6 && (
-                        <div
-                          style={{ fontSize: "0.75rem", color: "var(--gray)" }}
-                        >
-                          +{combinations.length - 6} more...
-                        </div>
-                      )}
-                    </div>
-                  )}
-                {product.priceType === "fixed" && !product.variantPrices && (
-                  <span style={{ color: "var(--gold)" }}>
-                    ₱{parseFloat(product.price || 0).toFixed(2)}
+      {/* RIGHT — Materials breakdown */}
+      {allMaterials.length > 0 && (
+        <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+          <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "0.5rem" }}>
+            Materials
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.22rem" }}>
+            {allMaterials.map((mat, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.76rem" }}>
+                <span style={{ flex: 1, color: "rgba(229,226,225,0.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mat.name}</span>
+                <span style={{ fontWeight: 700, flexShrink: 0, color: mat.stockQty === 0 ? "#ef4444" : mat.stockQty <= 10 ? "#f59e0b" : "#22c55e" }}>
+                  {mat.stockQty} {mat.uom}
+                </span>
+                {mat.bomCount > 1 && (
+                  <span style={{ fontSize: "0.6rem", fontWeight: 700, background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "4px", padding: "0.05rem 0.35rem", color: "#f59e0b", flexShrink: 0 }}>
+                    SHARED
                   </span>
                 )}
-                {product.priceType === "inquiry" && (
-                  <span style={{ color: "var(--primary)" }}>For Inquiry</span>
-                )}
               </div>
-            ) : (
-              <div
-                style={{
-                  fontSize: "0.82rem",
-                  color: "var(--gray)",
-                  fontStyle: "italic",
-                  opacity: 0.6,
-                }}
-              >
-                —
-              </div>
-            )}
+            ))}
           </div>
+        </div>
+      )}
 
-          {/* Inventory */}
-          <div style={{ flex: "1 1 150px", minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: "0.72rem",
-                color: "var(--gray)",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                marginBottom: "0.35rem",
-                fontWeight: 600,
-              }}
-            >
-              Inventory
-            </div>
-            {bomMaterials.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.18rem" }}>
-                {bomMaterials.map((mat, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", fontSize: "0.78rem" }}>
-                    <span style={{ color: "rgba(229,226,225,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mat.name}</span>
-                    <span style={{ color: mat.stockQty > 0 ? "#22c55e" : "#ef4444", fontWeight: 700, flexShrink: 0 }}>{mat.stockQty} {mat.uom}</span>
-                  </div>
-                ))}
-              </div>
-            ) : inv ? (
-              <div style={{ fontSize: "0.78rem", color: "rgba(229,226,225,0.7)" }}>
-                {inv.isOnDemand ? "Upon Order" : `${inv.stockQty} pcs`}
-              </div>
-            ) : (
-              <div style={{ fontSize: "0.82rem", color: "var(--gray)", fontStyle: "italic", opacity: 0.6 }}>—</div>
-            )}
-          </div>
-
-          {/* Gallery */}
-          <div style={{ flex: "1 1 180px", minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: "0.72rem",
-                color: "var(--gray)",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                marginBottom: "0.35rem",
-                fontWeight: 600,
-              }}
-            >
-              Gallery{" "}
-              {product.images?.length > 0 ? `(${product.images.length})` : ""}
-            </div>
-            {product.images?.length > 0 ? (
-              <div
-                style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}
-              >
-                {product.images.slice(0, 5).map((img, i) => (
-                  <img
-                    key={i}
-                    src={img}
-                    alt=""
-                    style={{
-                      width: "40px",
-                      height: "40px",
-                      borderRadius: "6px",
-                      objectFit: "cover",
-                      border: "1px solid var(--border)",
-                      flexShrink: 0,
-                    }}
-                  />
-                ))}
-                {product.images.length > 5 && (
-                  <div
-                    style={{
-                      width: "40px",
-                      height: "40px",
-                      borderRadius: "6px",
-                      background: "var(--dark2)",
-                      border: "1px solid var(--border)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "0.65rem",
-                      color: "var(--gray)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    +{product.images.length - 5}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div
-                style={{
-                  fontSize: "0.85rem",
-                  color: "var(--gray)",
-                  fontStyle: "italic",
-                  opacity: 0.6,
-                }}
-              >
-                —
-              </div>
-            )}
-          </div>
     </div>
   );
 }
@@ -4711,6 +4533,26 @@ export default function ProductListPage() {
 
   // Derive Shopify-style inventory text from the BOMs linked to a product.
   const getProductInventoryDisplay = (product) => {
+    if (product.isMadeToOrder) return { text: "Made to Order", color: "#D4A843" };
+
+    // Prefer saved storefront stock over BOM max producible
+    if (product.variantStock && Object.keys(product.variantStock).length) {
+      const total = Object.values(product.variantStock).reduce((s, v) => s + (Number(v) || 0), 0);
+      const variantCount = Object.keys(product.variantStock).length;
+      const allZero = Object.values(product.variantStock).every((v) => Number(v) === 0);
+      return {
+        text: allZero ? "Out of stock" : `${total} in stock (${variantCount} variant${variantCount !== 1 ? "s" : ""})`,
+        color: allZero ? "#ef4444" : total <= 10 ? "#f59e0b" : "#22c55e",
+      };
+    }
+    if (product.stock != null && product.trackInventory) {
+      const s = Number(product.stock) || 0;
+      return {
+        text: s === 0 ? "Out of stock" : `${s} in stock`,
+        color: s === 0 ? "#ef4444" : s <= 10 ? "#f59e0b" : "#22c55e",
+      };
+    }
+
     const byGroupName = () => {
       const pn = (product.bomGroupName || product.name || product.productName || "").trim().toLowerCase();
       return boms.filter((b) => {

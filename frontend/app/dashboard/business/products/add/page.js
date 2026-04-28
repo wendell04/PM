@@ -4,7 +4,7 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchInventory, fetchBoms } from "@/lib/inventoryApi";
-import { fetchProducts, fetchProductById, createProduct, updateProduct, uploadImage } from "@/lib/productApi";
+import { fetchProducts, fetchProductById, createProduct, updateProduct, uploadImage, uploadDesignFormatFile } from "@/lib/productApi";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
@@ -246,8 +246,11 @@ export default function AddProductPage() {
 
   // Availability + Media
   const [stockMap, setStockMap] = useState({});
+  const [backorderMap, setBackorderMap] = useState({});
   const [isMadeToOrder, setIsMadeToOrder] = useState(false);
   const [isCustomizable, setIsCustomizable] = useState(false);
+  const [designFormats, setDesignFormats] = useState([]); // [{id, name, url, ext, bomId}]
+  const [formatUploading, setFormatUploading] = useState(false);
   const [mediaItems, setMediaItems] = useState([]);
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [showSelectModal, setShowSelectModal] = useState(false);
@@ -260,6 +263,8 @@ export default function AddProductPage() {
   const [variantImgSearch, setVariantImgSearch] = useState("");
   const [variantImgPicked, setVariantImgPicked] = useState(null); // url
   const [variantImgDropdown, setVariantImgDropdown] = useState(null); // bomId of open picker | null
+  const [fmtVariantOpen, setFmtVariantOpen] = useState(false);
+  const [fmtVariantId, setFmtVariantId] = useState("");
 
   // Save state
   const [saving, setSaving] = useState(false);
@@ -423,18 +428,55 @@ export default function AddProductPage() {
       setVariantImages(mapped);
     }
 
+    // Hydrate design formats
+    if (Array.isArray(ep.designFormats)) setDesignFormats(ep.designFormats);
+
+    // Hydrate backorder map
+    const bo = ep.variantBackorder || {};
+    const initBo = {};
+    (boms || []).filter(b => b.productGroupName === groupName).forEach(b => {
+      initBo[b.id] = bo[b.id] ?? false;
+    });
+    if (Object.keys(initBo).length) setBackorderMap(initBo);
+
+    // Hydrate storefront stock
+    if (ep.variantStock && Object.keys(ep.variantStock).length) {
+      const initSt = {};
+      Object.entries(ep.variantStock).forEach(([k, v]) => { initSt[k] = String(v); });
+      setStockMap(initSt);
+    }
+
     setEditHydrated(true);
   }, [isEditMode, editingProduct, boms, editHydrated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (editHydrated) return; // skip resets while hydrating from existing product
-    const initPrices = {}, initStock = {}, initTierPrices = {};
-    selectedBoms.forEach(({ bom }) => { initPrices[bom.id] = ""; initStock[bom.id] = ""; initTierPrices[bom.id] = ""; });
+    const initPrices = {}, initStock = {}, initTierPrices = {}, initBo = {};
+    selectedBoms.forEach(({ bom }) => { initPrices[bom.id] = ""; initStock[bom.id] = String(maxProducible[bom.id] ?? 0); initTierPrices[bom.id] = ""; initBo[bom.id] = false; });
     setVariantPrices(initPrices);
     setStockMap(initStock);
+    setBackorderMap(initBo);
     const priceKey = isStandalone ? { __base__: "" } : initTierPrices;
     setTiers([{ id: 1, minQty: 1, maxQty: 20, prices: priceKey }]);
   }, [selectedBoms.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync stockMap from maxProducible when inventory loads or boms change.
+  // Also applies in edit mode when the saved value is 0 (never intentionally set).
+  useEffect(() => {
+    setStockMap((prev) => {
+      const updated = { ...prev };
+      let changed = false;
+      selectedBoms.forEach(({ bom }) => {
+        const cur = prev[bom.id];
+        const isUnset = cur === "" || cur === undefined || cur === "0" || cur === 0;
+        if (isUnset) {
+          const mp = String(maxProducible[bom.id] ?? 0);
+          if (updated[bom.id] !== mp) { updated[bom.id] = mp; changed = true; }
+        }
+      });
+      return changed ? updated : prev;
+    });
+  }, [maxProducible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (primaryBom && !storefrontName) setStorefrontName(primaryBom.productName || "");
@@ -467,6 +509,17 @@ export default function AddProductPage() {
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [variantImgDropdown]);
+
+  const fmtVariantRef = useRef(null);
+  useEffect(() => {
+    if (!fmtVariantOpen) return;
+    const h = (e) => {
+      if (fmtVariantRef.current && fmtVariantRef.current.contains(e.target)) return;
+      setFmtVariantOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [fmtVariantOpen]);
 
   // ── Tier helpers ──────────────────────────────────────────────────────────
 
@@ -572,6 +625,9 @@ export default function AddProductPage() {
         combinations: syntheticCombos,
         stock: stockVal,
         variantStock,
+        variantBackorder: hasVariants
+          ? selectedBoms.reduce((acc, { bom }) => ({ ...acc, [bom.id]: backorderMap[bom.id] ?? false }), {})
+          : undefined,
         trackInventory: true,
         isMadeToOrder,
         bomId: isStandalone ? primaryId : undefined,
@@ -582,6 +638,7 @@ export default function AddProductPage() {
         isArchived: false,
         isCustom: isCustomizable,
         variantImageUrls,
+        designFormats: isCustomizable ? designFormats : [],
       };
 
       if (isEditMode && editingProduct) {
@@ -1006,26 +1063,71 @@ export default function AddProductPage() {
                   <label style={{ fontSize: "0.78rem", fontWeight: 600, color: "rgba(229,226,225,0.7)", display: "block", marginBottom: "0.4rem" }}>Storefront Stock</label>
                   <NumberInput className="form-input"
                     value={stockMap[primaryBom?.id] ?? String(maxProducible[primaryBom?.id] ?? 0)}
-                    onChange={(e) => { const val = e.target.value; if (parseInt(val) > (maxProducible[primaryBom?.id] ?? 0)) return; setStockMap((p) => ({ ...p, [primaryBom.id]: val })); }}
-                    placeholder="0" min={0} max={maxProducible[primaryBom?.id] ?? 0} />
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const boOn = backorderMap[primaryBom?.id] ?? false;
+                      const hard = boOn ? 99999 : (maxProducible[primaryBom?.id] ?? 0);
+                      if (val !== "" && parseInt(val) > hard) return;
+                      setStockMap((p) => ({ ...p, [primaryBom.id]: val }));
+                    }}
+                    placeholder="0" min={0} max={(backorderMap[primaryBom?.id] ?? false) ? 99999 : (maxProducible[primaryBom?.id] ?? 0)} />
                 </div>
               ) : (
                 <div className="tier-table-wrap">
                   <table className="tier-table">
-                    <thead><tr><th>Variant</th><th>Max Producible</th><th>Storefront Stock</th></tr></thead>
+                    <thead>
+                      <tr>
+                        <th>Variant</th>
+                        <th>Max Producible</th>
+                        <th>Storefront Stock</th>
+                        <th style={{ whiteSpace: "nowrap" }}>Allow Backorder</th>
+                      </tr>
+                    </thead>
                     <tbody>
-                      {selectedBoms.map(({ bom, label }) => (
-                        <tr key={bom.id}>
-                          <td style={{ fontWeight: 600, color: "#E5E2E1" }}>{label || bom.productName}</td>
-                          <td style={{ color: maxProducible[bom.id] === 0 ? "#ef4444" : "#E5E2E1", fontWeight: 600 }}>{maxProducible[bom.id]} units</td>
-                          <td>
-                            <NumberInput className="tier-input"
-                              value={stockMap[bom.id] ?? ""}
-                              onChange={(e) => { const val = e.target.value; if (parseInt(val) > (maxProducible[bom.id] ?? 0)) return; setStockMap((p) => ({ ...p, [bom.id]: val })); }}
-                              placeholder="0" min={0} max={maxProducible[bom.id] ?? 0} />
-                          </td>
-                        </tr>
-                      ))}
+                      {selectedBoms.map(({ bom, label }) => {
+                        const boOn = backorderMap[bom.id] ?? false;
+                        const mp = maxProducible[bom.id] ?? 0;
+                        const curStock = parseInt(stockMap[bom.id]) || 0;
+                        return (
+                          <tr key={bom.id}>
+                            <td style={{ fontWeight: 600, color: "#E5E2E1" }}>{label || bom.productName}</td>
+                            <td style={{ color: mp === 0 ? "#ef4444" : "#E5E2E1", fontWeight: 600 }}>{mp} units</td>
+                            <td>
+                              <NumberInput className="tier-input"
+                                value={stockMap[bom.id] ?? ""}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  const hard = boOn ? 99999 : mp;
+                                  if (val !== "" && parseInt(val) > hard) return;
+                                  setStockMap((p) => ({ ...p, [bom.id]: val }));
+                                }}
+                                placeholder="0" min={0} max={boOn ? 99999 : mp} />
+                              {boOn && curStock > mp && (
+                                <div style={{ fontSize: "0.65rem", color: "#f59e0b", marginTop: "0.2rem" }}>
+                                  ⚠ {curStock - mp} above current stock — needs restock
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ textAlign: "center" }}>
+                              <button type="button"
+                                onClick={() => {
+                                  const turningOff = boOn;
+                                  if (turningOff) {
+                                    setStockMap((prev) => {
+                                      const cur = parseInt(prev[bom.id]) || 0;
+                                      const cap = maxProducible[bom.id] ?? 0;
+                                      return cur > cap ? { ...prev, [bom.id]: String(cap) } : prev;
+                                    });
+                                  }
+                                  setBackorderMap((p) => ({ ...p, [bom.id]: !p[bom.id] }));
+                                }}
+                                style={{ position: "relative", display: "inline-flex", alignItems: "center", width: "36px", height: "20px", borderRadius: "10px", border: "none", background: boOn ? "#D4A843" : "rgba(255,255,255,0.12)", cursor: "pointer", flexShrink: 0, padding: 0 }}>
+                                <span style={{ position: "absolute", left: boOn ? "18px" : "2px", width: "16px", height: "16px", borderRadius: "50%", background: "#fff", transition: "left 0.18s", boxShadow: "0 1px 4px rgba(0,0,0,0.35)" }} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1120,6 +1222,101 @@ export default function AddProductPage() {
               />
             </div>
           </Card>}
+
+          {/* Design Formats — only when customizable */}
+          {selectedBoms.length > 0 && isCustomizable && (
+            <Card>
+              <SectionTitle>Design Formats</SectionTitle>
+              <div style={{ fontSize: "0.75rem", color: "rgba(229,226,225,0.45)", marginBottom: "1rem", lineHeight: 1.5 }}>
+                Upload template files (AI, PSD, PDF, SVG, PNG) that customers can download before submitting their design. You can attach one per variant.
+              </div>
+
+              {/* Existing formats */}
+              {designFormats.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1rem" }}>
+                  {designFormats.map((fmt) => {
+                    const variantLabel = fmt.bomId ? (selectedBoms.find(s => s.bom.id === fmt.bomId)?.label || fmt.bomId) : "All Variants";
+                    const extColor = { ai: "#FF7C1E", psd: "#31A8FF", pdf: "#ef4444", svg: "#22c55e", png: "#a78bfa" }[fmt.ext] || "var(--gray)";
+                    return (
+                      <div key={fmt.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", borderRadius: "8px", padding: "0.5rem 0.75rem" }}>
+                        <span style={{ fontSize: "0.6rem", fontWeight: 800, background: extColor, color: "#000", borderRadius: "4px", padding: "2px 6px", flexShrink: 0, textTransform: "uppercase" }}>{fmt.ext || "file"}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: "0.8rem", color: "#E5E2E1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmt.name}</div>
+                          <div style={{ fontSize: "0.65rem", color: "var(--gray)" }}>{variantLabel}</div>
+                        </div>
+                        <a href={fmt.url} target="_blank" rel="noreferrer" style={{ fontSize: "0.65rem", color: "#D4A843", textDecoration: "none", flexShrink: 0 }}>View</a>
+                        <button type="button" onClick={() => setDesignFormats(p => p.filter(f => f.id !== fmt.id))}
+                          style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer", fontSize: "1rem", padding: "0 0.25rem", lineHeight: 1, flexShrink: 0 }}>×</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Upload row */}
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end" }}>
+                {hasVariants && (
+                  <div style={{ flex: "1 1 160px" }}>
+                    <label style={{ fontSize: "0.72rem", color: "var(--gray)", display: "block", marginBottom: "0.25rem" }}>Variant</label>
+                    <div ref={fmtVariantRef} style={{ position: "relative" }}>
+                      <button type="button" onClick={() => setFmtVariantOpen(o => !o)}
+                        style={{ ...inputSt, display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", fontSize: "0.82rem", cursor: "pointer", textAlign: "left" }}>
+                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {fmtVariantId ? (selectedBoms.find(s => s.bom.id === fmtVariantId)?.label || fmtVariantId) : "All Variants"}
+                        </span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: "var(--gray)", transform: fmtVariantOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}><path d="M6 9l6 6 6-6"/></svg>
+                      </button>
+                      {fmtVariantOpen && (
+                        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden", zIndex: 1000, boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>
+                          {[{ id: "", label: "All Variants" }, ...selectedBoms.map(({ bom, label }) => ({ id: bom.id, label: label || bom.productName }))].map((opt) => (
+                            <button key={opt.id} type="button"
+                              onClick={() => { setFmtVariantId(opt.id); setFmtVariantOpen(false); }}
+                              style={{ display: "block", width: "100%", padding: "0.55rem 0.875rem", background: fmtVariantId === opt.id ? "rgba(212,168,67,0.12)" : "transparent", border: "none", borderBottom: "1px solid rgba(255,255,255,0.05)", color: fmtVariantId === opt.id ? "#D4A843" : "#E5E2E1", fontSize: "0.82rem", textAlign: "left", cursor: "pointer" }}>
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div style={{ flex: "2 1 200px" }}>
+                  <label style={{ fontSize: "0.72rem", color: "var(--gray)", display: "block", marginBottom: "0.25rem" }}>
+                    File <span style={{ opacity: 0.6 }}>(AI, PSD, PDF, SVG, PNG · max 20MB)</span>
+                  </label>
+                  <input id="fmt-file-input" type="file" accept=".ai,.psd,.pdf,.svg,.png,.jpg,.jpeg"
+                    style={{ width: "100%", padding: "0.45rem 0.6rem", background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", borderRadius: "8px", color: "#E5E2E1", fontSize: "0.8rem", cursor: "pointer", boxSizing: "border-box" }} />
+                </div>
+                <button type="button" disabled={formatUploading}
+                  onClick={async () => {
+                    const input = document.getElementById("fmt-file-input");
+                    const file = input?.files?.[0];
+                    if (!file) return;
+                    setFormatUploading(true);
+                    try {
+                      const result = await uploadDesignFormatFile(file, token);
+                      const newFmt = {
+                        id: `fmt_${Date.now()}`,
+                        name: file.name,
+                        url: result.url,
+                        ext: file.name.split(".").pop().toLowerCase(),
+                        bomId: fmtVariantId || null,
+                      };
+                      setDesignFormats(p => [...p, newFmt]);
+                      input.value = "";
+                      setFmtVariantId("");
+                    } catch (err) {
+                      alert(err.message || "Upload failed");
+                    } finally {
+                      setFormatUploading(false);
+                    }
+                  }}
+                  style={{ padding: "0.5rem 1rem", background: formatUploading ? "rgba(255,255,255,0.06)" : "#D4A843", color: formatUploading ? "var(--gray)" : "#000", border: "none", borderRadius: "8px", fontWeight: 700, fontSize: "0.82rem", cursor: formatUploading ? "not-allowed" : "pointer", flexShrink: 0, alignSelf: "flex-end" }}>
+                  {formatUploading ? "Uploading…" : "+ Add"}
+                </button>
+              </div>
+            </Card>
+          )}
         </div>
       </div>
 

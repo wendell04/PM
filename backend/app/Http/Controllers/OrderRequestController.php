@@ -37,6 +37,8 @@ class OrderRequestController extends Controller
             'designUrl'        => 'nullable|string|url',
             'selectedVariants' => 'nullable|array',
             'isCustom'         => 'nullable|boolean',
+            'designType'       => 'nullable|string|in:upload,request',
+            'designFee'        => 'nullable|numeric|min:0',
         ])->validate();
 
         // Fetch product
@@ -120,6 +122,8 @@ class OrderRequestController extends Controller
             'designNotes'      => isset($validated['designNotes'])
                 ? htmlspecialchars(strip_tags(trim($validated['designNotes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
                 : null,
+            'designType'       => $validated['designType'] ?? 'upload',
+            'designFee'        => isset($validated['designFee']) ? (float) $validated['designFee'] : 0,
             'isCustom'         => $validated['isCustom'] ?? false,
             'suggestedPrice'   => $suggestedPrice,
             'finalPrice'       => null,

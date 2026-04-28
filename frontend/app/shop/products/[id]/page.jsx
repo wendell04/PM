@@ -28,6 +28,7 @@ export default function ProductDetailPage() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [showTiers, setShowTiers] = useState(false);
+  const [showFormats, setShowFormats] = useState(false);
 
   // ── Reviews state ─────────────────────────────────
   const [reviews, setReviews]               = useState([]);
@@ -37,14 +38,17 @@ export default function ProductDetailPage() {
   const [reviewsAvg, setReviewsAvg]         = useState(null);
   const [reviewsTotalCount, setReviewsTotalCount] = useState(0);
 
-  // ── Custom order request modal state ──
-  const [showRequestModal, setShowRequestModal] = useState(false);
+  // ── Design modals state ──
+  const [showRequestModal, setShowRequestModal] = useState(false);  // legacy / request-design modal
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [reqDesignFile, setReqDesignFile] = useState(null);
   const [reqFileKey, setReqFileKey] = useState(0);
   const [reqDesignNotes, setReqDesignNotes] = useState('');
   const [reqSubmitting, setReqSubmitting] = useState(false);
   const [reqError, setReqError] = useState('');
   const [reqSuccess, setReqSuccess] = useState(false);
+  const [reqType, setReqType] = useState('upload'); // 'upload' | 'request'
+  const [designRequestFee, setDesignRequestFee] = useState(100);
 
 
   const id = params?.id;
@@ -79,6 +83,17 @@ export default function ProductDetailPage() {
     };
     fetchProduct();
   }, [id]);
+
+  // Fetch design request fee from public settings
+  useEffect(() => {
+    fetchWithTimeout(`${API_URL}/api/public/settings`, {}, 10000)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        const fee = data?.data?.designRequestFee ?? data?.designRequestFee;
+        if (fee != null) setDesignRequestFee(Number(fee));
+      })
+      .catch(() => {});
+  }, []);
 
   // Reset review state when product changes
   useEffect(() => {
@@ -265,8 +280,8 @@ export default function ProductDetailPage() {
     }
   }
 
-  // ── Custom order request submit ──────────────────────────────────
-  async function handleRequestSubmit() {
+  // ── Design submit (shared by upload + request flows) ──────────────
+  async function handleDesignSubmit(type) {
     if (!token) {
       window.dispatchEvent(new CustomEvent('pmp_open_auth', {
         detail: { type: 'login', returnPath: window.location.pathname },
@@ -274,6 +289,10 @@ export default function ProductDetailPage() {
       return;
     }
     if (!product) return;
+    if (type === 'upload' && !reqDesignFile) {
+      setReqError('Please select a design file to upload.');
+      return;
+    }
     setReqSubmitting(true);
     setReqError('');
     try {
@@ -289,17 +308,18 @@ export default function ProductDetailPage() {
         designUrl,
         designNotes:      reqDesignNotes.trim() || null,
         isCustom:         true,
+        designType:       type,
+        designFee:        type === 'request' ? designRequestFee : 0,
       });
       setReqSuccess(true);
     } catch (err) {
-      setReqError(err.message || 'Failed to submit request. Please try again.');
+      setReqError(err.message || 'Failed to submit. Please try again.');
     } finally {
       setReqSubmitting(false);
     }
   }
 
-  function closeRequestModal() {
-    setShowRequestModal(false);
+  function resetDesignState() {
     setReqDesignFile(null);
     setReqFileKey(k => k + 1);
     setReqDesignNotes('');
@@ -307,6 +327,10 @@ export default function ProductDetailPage() {
     setReqSuccess(false);
     setReqSubmitting(false);
   }
+
+  function closeUploadModal() { setShowUploadModal(false); resetDesignState(); }
+  function closeRequestModal() { setShowRequestModal(false); resetDesignState(); }
+
 
   // Add to cart then redirect to checkout
   async function handleAddToCartAndCheckout() {
@@ -356,9 +380,16 @@ export default function ProductDetailPage() {
     }
   }
 
-  const effectiveMaxQty = product?.trackInventory && !product?.isCustom && product?.stockStatus !== 'upon-order'
-    ? Math.max(product.stock ?? 1, 1)
-    : 9999;
+  const effectiveMaxQty = (() => {
+    if (!product?.trackInventory || product?.stockStatus === 'upon-order') return 9999;
+    const comboId = resolveCombinationId(selectedVariants);
+    if (comboId != null && product?.variantStock?.[comboId] != null) {
+      return Math.max(Number(product.variantStock[comboId]), 0);
+    }
+    return Math.max(product?.stock ?? 0, 0);
+  })();
+
+  const isOutOfStock = effectiveMaxQty === 0 || product?.stockStatus === 'out-of-stock';
 
   // Computed values
   const totalPrice = product
@@ -597,6 +628,21 @@ export default function ProductDetailPage() {
                 )}
               </div>
             )}
+            {product.priceType === 'tiered' && tiers.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setShowTiers(p => !p)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', padding: '0 0 0.75rem 0', color: 'var(--white)', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Reviews</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
+                    {showTiers
+                      ? <line x1="5" y1="12" x2="19" y2="12"/>
+                      : <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>}
+                  </svg>
+                </button>
+                
+              </div>
+            )}
           </div>
 
           {/* RIGHT — Info + Order Form */}
@@ -672,10 +718,8 @@ export default function ProductDetailPage() {
                     )}
                   </div>
                   {quantity > 1 && (
-                    <div style={{ fontSize: '0.82rem',
-                      color: 'var(--gray)',
-                      marginTop: '0.25rem' }}>
-                      Total: {formatPeso(unitPrice * quantity)}
+                    <div style={{ fontSize: '0.82rem', color: 'rgba(229,226,225,0.55)', marginTop: '0.25rem' }}>
+                      Total: <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{formatPeso(unitPrice * quantity)}</span>
                     </div>
                   )}
                 </div>
@@ -705,31 +749,55 @@ export default function ProductDetailPage() {
             <div style={{ borderTop:
               '1px solid var(--border)' }} />
 
-            {/* Stock badge + progress bar */}
-            <div>
-              {product.stockStatus === 'upon-order' ? (
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                  Upon Order
-                </span>
-              ) : product.stockStatus === 'out-of-stock' ? (
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                  Out of Stock
-                </span>
-              ) : product.stockStatus === 'low-stock' ? (
-                <div>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                    Low Stock — only {product.stock} pcs left
-                  </span>
-                  <div style={{ marginTop: '0.5rem', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${Math.min(100, ((product.stock ?? 0) / 20) * 100)}%`, background: '#f59e0b', borderRadius: '2px', transition: 'width 0.3s' }} />
+            {/* Stock badge — hidden for Made to Order */}
+            {!product.isMadeToOrder && (() => {
+              const LOW = 10;
+              const comboId = resolveCombinationId(selectedVariants);
+              const variantQty = comboId != null && product?.variantStock?.[comboId] != null
+                ? Number(product.variantStock[comboId])
+                : null;
+              const displayQty = variantQty ?? product.stock ?? null;
+
+              if (product.stockStatus === 'upon-order') {
+                return (
+                  <div style={{ display: 'flex' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
+                      Upon Order
+                    </span>
                   </div>
+                );
+              }
+              if (isOutOfStock) {
+                return (
+                  <div style={{ display: 'flex' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
+                      Out of Stock
+                    </span>
+                  </div>
+                );
+              }
+              if (displayQty != null && displayQty > 0 && displayQty <= LOW) {
+                return (
+                  <div>
+                    <div style={{ display: 'flex' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
+                        Only {displayQty} left!
+                      </span>
+                    </div>
+                    <div style={{ marginTop: '0.5rem', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${Math.min(100, (displayQty / LOW) * 100)}%`, background: '#f59e0b', borderRadius: '2px', transition: 'width 0.3s' }} />
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div style={{ display: 'flex' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#4ade80', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
+                    {displayQty != null ? `${displayQty} in stock` : 'In Stock'}
+                  </span>
                 </div>
-              ) : (
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#4ade80', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                  In Stock
-                </span>
-              )}
-            </div>
+              );
+            })()}
 
             {/* Variants */}
             {product.variantGroups?.length > 0 && (
@@ -768,8 +836,8 @@ export default function ProductDetailPage() {
               ))
             )}
 
-            {/* Quantity input */}
-            <div>
+            {/* Quantity input — hidden when out of stock */}
+            {!isOutOfStock && <div>
               <div style={{ fontSize: '0.8rem',
                 fontWeight: 600, color: 'var(--gray)',
                 textTransform: 'uppercase',
@@ -846,7 +914,7 @@ export default function ProductDetailPage() {
                     justifyContent: 'center',
                   }}>+</button>
               </div>
-            </div>
+            </div>}
 
             {/* Action buttons */}
             {token ? (
@@ -855,16 +923,16 @@ export default function ProductDetailPage() {
                 {/* Add to Cart */}
                 <button
                   onClick={handleAddToCart}
-                  disabled={product.stockStatus === 'out-of-stock'}
+                  disabled={isOutOfStock}
                   style={{
-                    background: product.stockStatus === 'out-of-stock'
+                    background: isOutOfStock
                       ? 'rgba(107,114,128,0.3)'
                       : addedToCart ? 'rgba(74,222,128,0.85)' : 'var(--gold)',
-                    color: product.stockStatus === 'out-of-stock' ? 'var(--gray)' : addedToCart ? '#fff' : '#000',
+                    color: isOutOfStock ? 'var(--gray)' : addedToCart ? '#fff' : '#000',
                     border: 'none',
                     borderRadius: '10px', padding: '0.875rem 1.5rem',
                     fontWeight: 800, fontSize: '1rem',
-                    cursor: product.stockStatus === 'out-of-stock' ? 'not-allowed' : 'pointer',
+                    cursor: isOutOfStock ? 'not-allowed' : 'pointer',
                     width: '100%', fontFamily: "'Outfit', sans-serif",
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                     transition: 'opacity 0.15s',
@@ -872,41 +940,67 @@ export default function ProductDetailPage() {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     {addedToCart ? <polyline points="20 6 9 17 4 12"/> : (<><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></>)}
                   </svg>
-                  {product.stockStatus === 'out-of-stock' ? 'Out of Stock' : addedToCart ? 'Added to Cart!' : 'Add to Cart'}
+                  {isOutOfStock ? 'Out of Stock' : addedToCart ? 'Added to Cart!' : 'Add to Cart'}
                 </button>
 
-                {/* CUSTOMIZABLE: Upload & Request for Design | FINISHED: Checkout */}
+                {/* CUSTOMIZABLE: two buttons — Upload Design | Request Design */}
                 {product.isCustom ? (
-                  <button
-                    onClick={() => setShowRequestModal(true)}
-                    style={{
-                      background: 'var(--gold)', color: '#000',
-                      border: 'none', borderRadius: '10px',
-                      padding: '0.875rem 1.5rem',
-                      fontWeight: 800, fontSize: '1rem',
-                      cursor: 'pointer', width: '100%',
-                      fontFamily: "'Outfit', sans-serif",
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                      opacity: 0.85,
-                    }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                      <polyline points="17 8 12 3 7 8"/>
-                      <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                    Upload &amp; Request for Design
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {/* Upload Design */}
+                    <button
+                      onClick={() => !isOutOfStock && setShowUploadModal(true)}
+                      disabled={isOutOfStock}
+                      style={{
+                        flex: 1,
+                        background: isOutOfStock ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)',
+                        color: isOutOfStock ? 'rgba(229,226,225,0.35)' : '#E5E2E1',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: '10px', padding: '0.875rem 0.75rem',
+                        fontWeight: 700, fontSize: '0.9rem',
+                        cursor: isOutOfStock ? 'not-allowed' : 'pointer',
+                        fontFamily: "'Outfit', sans-serif",
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                        opacity: isOutOfStock ? 0.4 : 1,
+                      }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                      </svg>
+                      Upload Design
+                    </button>
+                    {/* Request Design */}
+                    <button
+                      onClick={() => !isOutOfStock && setShowRequestModal(true)}
+                      disabled={isOutOfStock}
+                      style={{
+                        flex: 1,
+                        background: isOutOfStock ? 'rgba(255,255,255,0.06)' : 'var(--gold)',
+                        color: isOutOfStock ? 'rgba(229,226,225,0.35)' : '#000',
+                        border: 'none', borderRadius: '10px',
+                        padding: '0.875rem 0.75rem',
+                        fontWeight: 800, fontSize: '0.9rem',
+                        cursor: isOutOfStock ? 'not-allowed' : 'pointer',
+                        fontFamily: "'Outfit', sans-serif",
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                        opacity: isOutOfStock ? 0.4 : 0.9,
+                      }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                      </svg>
+                      Req. Design {!isOutOfStock && <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>(+₱{designRequestFee})</span>}
+                    </button>
+                  </div>
                 ) : (
                   <button
                     onClick={handleAddToCartAndCheckout}
-                    disabled={product.stockStatus === 'out-of-stock'}
+                    disabled={isOutOfStock}
                     style={{
-                      background: product.stockStatus === 'out-of-stock'
-                        ? 'rgba(107,114,128,0.3)' : 'var(--gold)',
-                      color: product.stockStatus === 'out-of-stock' ? 'var(--gray)' : '#000',
+                      background: isOutOfStock ? 'rgba(107,114,128,0.3)' : 'var(--gold)',
+                      color: isOutOfStock ? 'var(--gray)' : '#000',
                       border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
                       fontWeight: 800, fontSize: '1rem',
-                      cursor: product.stockStatus === 'out-of-stock' ? 'not-allowed' : 'pointer',
+                      cursor: isOutOfStock ? 'not-allowed' : 'pointer',
                       width: '100%', fontFamily: "'Outfit', sans-serif",
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                       opacity: 0.85,
@@ -914,7 +1008,7 @@ export default function ProductDetailPage() {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                       <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
                     </svg>
-                    {product.stockStatus === 'out-of-stock' ? 'Out of Stock' : 'Checkout'}
+                    {isOutOfStock ? 'Out of Stock' : 'Checkout'}
                   </button>
                 )}
 
@@ -1054,6 +1148,69 @@ export default function ProductDetailPage() {
         </div>
       )}
 
+      {/* ── Design Formats ────────────────────────────── */}
+      {product?.isCustom && product?.designFormats?.length > 0 && (
+        <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border)' }}>
+          <button
+            onClick={() => setShowFormats(p => !p)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', padding: '0 0 0.75rem 0', color: 'var(--white)', cursor: 'pointer', textAlign: 'left' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Design Formats</span>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#000', background: 'var(--gold)', padding: '1px 7px', borderRadius: '999px' }}>
+                {product.designFormats.length}
+              </span>
+            </div>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
+              {showFormats
+                ? <line x1="5" y1="12" x2="19" y2="12"/>
+                : <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>}
+            </svg>
+          </button>
+          {showFormats && (
+            <>
+              <p style={{ margin: '0.6rem 0 0.875rem', fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+                Download the template files below before uploading your design. Use these as a guide for sizing, bleed areas, and placement.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {product.designFormats.map((fmt, i) => {
+                  const ext = (fmt.ext || fmt.name?.split('.').pop() || '').toLowerCase();
+                  const extColor = { ai: '#f97316', psd: '#3b82f6', pdf: '#ef4444', svg: '#22c55e', png: '#a855f7', jpg: '#60a5fa', jpeg: '#60a5fa' }[ext] || '#9ca3af';
+                  const variantLabel = fmt.bomId == null ? null
+                    : (product.combinations?.find(c => String(c.id) === String(fmt.bomId))?.label ?? null);
+                  return (
+                    <div key={fmt.id ?? i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px' }}>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 800, color: '#000', background: extColor, padding: '2px 7px', borderRadius: '4px', textTransform: 'uppercase', flexShrink: 0, letterSpacing: '0.04em' }}>
+                        {ext.toUpperCase() || 'FILE'}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {fmt.name}
+                        </div>
+                        {variantLabel && (
+                          <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '2px' }}>{variantLabel}</div>
+                        )}
+                      </div>
+                      <a
+                        href={fmt.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold)', textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                          <polyline points="7 10 12 15 17 10"/>
+                          <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }
@@ -1061,6 +1218,73 @@ export default function ProductDetailPage() {
         }
       `}</style>
 
+      {/* ── Upload Design Modal ─────────────────────────────────────────── */}
+      {showUploadModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+          onClick={closeUploadModal}>
+          <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '16px', maxWidth: '460px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--white)' }}>Upload Your Design</h2>
+              <button onClick={closeUploadModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', padding: '0.25rem' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            {reqSuccess ? (
+              <div style={{ padding: '2rem 1.5rem', textAlign: 'center' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(34,197,94,0.1)', border: '2px solid var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <h3 style={{ margin: '0 0 0.5rem', color: 'var(--white)', fontSize: '1.1rem' }}>Design Uploaded!</h3>
+                <p style={{ margin: '0 0 1.5rem', color: 'var(--gray)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                  Your design file has been sent to us. We&apos;ll review it and reach out via chat if we need any clarifications.
+                </p>
+                <button onClick={() => { closeUploadModal(); router.push('/shop/orders'); }}
+                  style={{ background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '8px', padding: '0.75rem 1.5rem', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer' }}>
+                  Track My Orders
+                </button>
+              </div>
+            ) : (
+              <div style={{ padding: '1.5rem' }}>
+                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.875rem 1rem', marginBottom: '1.25rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Order Summary</div>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 600 }}>{product?.subCategoryName || product?.name} &bull; Qty {quantity}</div>
+                  {totalPrice != null && <div style={{ fontSize: '0.85rem', color: 'var(--gold)', marginTop: '0.2rem', fontWeight: 600 }}>₱{Number(totalPrice).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>}
+                </div>
+                <div style={{ background: 'rgba(96,165,250,0.07)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: '0.8rem', color: 'rgba(147,197,253,0.9)', lineHeight: 1.5 }}>
+                  No design fee — your file goes directly to our team. We&apos;ll print it as-is and message you if there are any issues.
+                </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.375rem', fontWeight: 600 }}>
+                    Design File <span style={{ color: '#ef4444' }}>*</span> <span style={{ fontWeight: 400 }}>(jpg, png, pdf, svg · max 10MB)</span>
+                  </label>
+                  <input key={reqFileKey} type="file" accept=".jpg,.jpeg,.png,.pdf,.svg,.ai,.psd"
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (!f) { setReqDesignFile(null); return; }
+                      if (f.size > 10 * 1024 * 1024) { setReqError('File must be under 10MB.'); e.target.value = ''; return; }
+                      setReqError(''); setReqDesignFile(f);
+                    }}
+                    style={{ width: '100%', padding: '0.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.85rem', cursor: 'pointer' }} />
+                </div>
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.375rem', fontWeight: 600 }}>Notes <span style={{ fontWeight: 400 }}>(optional)</span></label>
+                  <textarea value={reqDesignNotes} onChange={e => setReqDesignNotes(e.target.value)} rows={3} maxLength={500}
+                    placeholder="Colors, placement, size notes..."
+                    style={{ width: '100%', padding: '0.625rem 0.75rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.85rem', resize: 'vertical', fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box' }} />
+                </div>
+                {reqError && <div style={{ color: '#ef4444', fontSize: '0.82rem', marginBottom: '0.75rem' }}>{reqError}</div>}
+                <button onClick={() => handleDesignSubmit('upload')} disabled={reqSubmitting || !reqDesignFile}
+                  style={{ width: '100%', background: reqSubmitting || !reqDesignFile ? 'rgba(255,255,255,0.08)' : 'var(--gold)', color: reqSubmitting || !reqDesignFile ? 'var(--gray)' : '#000', border: 'none', borderRadius: '10px', padding: '0.875rem', fontWeight: 800, fontSize: '0.95rem', cursor: reqSubmitting || !reqDesignFile ? 'not-allowed' : 'pointer', fontFamily: "'Outfit', sans-serif" }}>
+                  {reqSubmitting ? 'Uploading…' : 'Submit Design'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Request Design Modal ─────────────────────────────────────────── */}
       {showRequestModal && (
         <div
           style={{
@@ -1156,9 +1380,17 @@ export default function ProductDetailPage() {
                   )}
                 </div>
 
+                {/* Design fee callout */}
+                <div style={{ background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1.25rem' }}>
+                  <div style={{ fontSize: '0.78rem', color: '#D4A843', fontWeight: 700, marginBottom: '0.2rem' }}>Design Service Fee: ₱{designRequestFee.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(212,168,67,0.75)', lineHeight: 1.5 }}>
+                    Our team will create a design for you. We&apos;ll send a proof via chat — you approve before anything gets printed.
+                  </div>
+                </div>
+
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.375rem', fontWeight: 600 }}>
-                    Design File <span style={{ fontWeight: 400 }}>(optional — jpg, png, pdf, ai, psd, svg · max 10MB)</span>
+                    Reference / Inspiration <span style={{ fontWeight: 400 }}>(optional — jpg, png, pdf · max 10MB)</span>
                   </label>
                   <input
                     key={reqFileKey}
@@ -1259,7 +1491,7 @@ export default function ProductDetailPage() {
                     Cancel
                   </button>
                   <button
-                    onClick={handleRequestSubmit}
+                    onClick={() => handleDesignSubmit('request')}
                     disabled={reqSubmitting}
                     style={{
                       flex: 2, padding: '0.75rem',
@@ -1270,7 +1502,7 @@ export default function ProductDetailPage() {
                       cursor: reqSubmitting ? 'not-allowed' : 'pointer',
                     }}
                   >
-                    {reqSubmitting ? 'Submitting...' : 'Submit Request'}
+                    {reqSubmitting ? 'Submitting…' : `Request Design (+₱${designRequestFee})`}
                   </button>
                 </div>
               </div>

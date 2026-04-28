@@ -271,6 +271,23 @@ export async function uploadImage(file, folder = 'pmp-products', token) {
   }
 }
 
+export async function uploadDesignFormatFile(file, token) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('folder', 'pmp-design-formats');
+  const response = await fetchWithTimeout(`${API_URL}/api/admin/upload-file`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formData,
+  }, 60000);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || 'Failed to upload file');
+  }
+  const data = await response.json();
+  return data.data ?? data;
+}
+
 /**
  * Bulk update products (publish/unpublish/archive)
  * @param {Array<string>} productIds - List of product IDs to update

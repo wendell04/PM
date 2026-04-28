@@ -60,6 +60,9 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+// ─── Public Store Settings ───────────────────────────────────────────────────
+Route::get('/public/settings', [SettingsController::class, 'public']);
+
 // ─── Products (Public — no auth required) ────────────────────────────────────
 Route::middleware('throttle:60,1')->group(function () {
     Route::get('/products/search',        [ProductController::class, 'search']);
@@ -134,8 +137,7 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
 
     Route::get('/admin/role-permissions',            [RolePermissionController::class, 'index']);
     Route::put('/admin/role-permissions/{role}',     [RolePermissionController::class, 'update']);
-
-    Route::get('/admin/staff',                            [StaffController::class, 'index']);
+Route::get('/admin/staff',                            [StaffController::class, 'index']);
     Route::post('/admin/staff',                           [StaffController::class, 'store']);
     Route::put('/admin/staff/{id}',                       [StaffController::class, 'update']);
     Route::delete('/admin/staff/{id}',                    [StaffController::class, 'destroy']);
@@ -172,6 +174,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::delete('/admin/products/{id}',        [ProductController::class, 'destroy']);
     Route::post('/admin/products/{id}/toggle-publish', [ProductController::class, 'togglePublish']);
     Route::post('/admin/upload-image',           [ProductController::class, 'uploadImage']);
+    Route::post('/admin/upload-file',            [ProductController::class, 'uploadFile']);
 
     // ─── Inventory ───────────────────────────────────────────────────────────
     Route::get('/admin/inventory/recent-movements',   [InventoryController::class, 'recentMovements']);

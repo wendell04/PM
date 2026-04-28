@@ -175,17 +175,17 @@ function ProductCard({ product, onAddToCart, flashSale }) {
             {product.description || ''}
           </p>
 
-          {/* Stock indicator */}
-          {product.stockStatus && product.stockStatus !== 'upon-order' && (
+          {/* Stock indicator — hidden for Made to Order / upon-order */}
+          {!product.isMadeToOrder && product.stockStatus && product.stockStatus !== 'upon-order' && (
             <div className="shop-product-stock">
               {product.stockStatus === 'out-of-stock' ? (
-                <span className="shop-stock-badge out-of-stock">Out of stock</span>
-              ) : product.stockStatus === 'low-stock' ? (
+                <span className="shop-stock-badge out-of-stock">Out of Stock</span>
+              ) : (product.stock > 0 && product.stock <= 10) || product.stockStatus === 'low-stock' ? (
                 <span className="shop-stock-badge low-stock">
-                  Low stock{product.stock > 0 ? ` — ${product.stock} left` : ''}
+                  Only {product.stock} left!
                 </span>
               ) : (
-                <span className="shop-stock-badge in-stock">In stock</span>
+                <span className="shop-stock-badge in-stock">In Stock</span>
               )}
             </div>
           )}

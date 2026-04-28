@@ -197,10 +197,10 @@ export default function CheckoutPage() {
 
     try {
       const orderItems = items.map(i => ({
-        productId: i.product.id ?? i.product._id,
+        productId: String(i.product?.id ?? i.product?._id ?? i.productId ?? ''),
         variantId: i.variantId ?? null,
         variantName: i.variantName ?? null,
-        qty: i.qty,
+        qty: Math.max(1, parseInt(i.qty) || 1),
         ...(i.designUrl ? { designUrl: i.designUrl } : {}),
         ...(i.designNotes ? { designNotes: i.designNotes } : {}),
       }));
@@ -257,7 +257,10 @@ export default function CheckoutPage() {
         }, 20000);
 
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Failed to place order.');
+        if (!res.ok) {
+          const fieldErrors = data.errors ? Object.values(data.errors).flat().join(' ') : null;
+          throw new Error(fieldErrors || data.message || 'Failed to place order.');
+        }
         const orderId = (data.data?._id ?? data.data?.id ?? data._id ?? data.id);
         if (!orderId) throw new Error('Order created but no ID returned. Please check your orders.');
         sessionStorage.removeItem('checkout_payload');
@@ -272,7 +275,10 @@ export default function CheckoutPage() {
         }, 20000);
 
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Failed to create payment link.');
+        if (!res.ok) {
+          const fieldErrors = data.errors ? Object.values(data.errors).flat().join(' ') : null;
+          throw new Error(fieldErrors || data.message || 'Failed to create payment link.');
+        }
         const { checkoutUrl } = data.data ?? data;
         if (!checkoutUrl) throw new Error('No payment URL returned. Please try again.');
         // Do NOT remove checkout_payload here — PayMongo redirect may be abandoned.
