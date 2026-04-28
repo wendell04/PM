@@ -152,6 +152,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     // ─── Products ─────────────────────────────────────────────────────────────
     Route::get('/admin/products',                [ProductController::class, 'adminIndex']);
     Route::get('/admin/products/available-inventory', [ProductController::class, 'availableInventory']);
+    Route::get('/admin/products/{id}',           [ProductController::class, 'adminShow']);
     Route::post('/admin/products',               [ProductController::class, 'store']);
     Route::put('/admin/products/{id}',           [ProductController::class, 'update']);
     Route::delete('/admin/products/{id}',        [ProductController::class, 'destroy']);

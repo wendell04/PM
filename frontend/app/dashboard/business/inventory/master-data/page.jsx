@@ -14,6 +14,7 @@ import {
   deleteInventory,
 } from "@/lib/inventoryApi";
 import { fetchBOMs, createBOM, updateBOM, deleteBOM } from "@/lib/bomApi";
+import { fetchProducts } from "@/lib/productApi";
 import { fetchUnits, saveUnit } from "@/lib/unitsApi";
 import VendorsApiTab from "./VendorsApiTab";
 import BOMFormModal from "./BOMFormModal";
@@ -1034,7 +1035,6 @@ function MaterialMasterTab({
   const [showAddModal, setShowAddModal] = useState(false);
   const [editMaterial, setEditMaterial] = useState(null);
   const [viewMaterial, setViewMaterial] = useState(null);
-  const [toast, setToast] = useState(null);
   const [saveConfirm, setSaveConfirm] = useState({ open: false, args: null });
   const [infoModal, setInfoModal] = useState({
     isOpen: false,
@@ -1058,11 +1058,6 @@ function MaterialMasterTab({
     return () => window.removeEventListener("focus", handleFocus);
   }, [refreshMaterials]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   // ── Batch Helper: Compute stock from batches ──────────────────────────────
   const getStockQty = (material) => {
@@ -1316,7 +1311,6 @@ function MaterialMasterTab({
           }
           if (isLikelyMongoId(id)) await deleteInventory(id, token);
           await refreshMaterials();
-          setToast({ type: "success", message: `"${mat?.name}" deleted.` });
         } catch (e) {
           setInfoModal({
             isOpen: true,
@@ -1397,9 +1391,9 @@ function MaterialMasterTab({
         }
       }
       await refreshMaterials();
+      try { sessionStorage.removeItem('pmp_mat_draft'); } catch {}
       setShowAddModal(false);
       setEditMaterial(null);
-      // no toast on save
     } catch (e) {
       setInfoModal({
         isOpen: true,
@@ -2149,6 +2143,7 @@ function MaterialMasterTab({
           editMaterial={editMaterial}
           editMaterialStock={editMaterial ? getStockQty(editMaterial) : 0}
           onClose={() => {
+            try { sessionStorage.removeItem('pmp_mat_draft'); } catch {}
             setShowAddModal(false);
             setEditMaterial(null);
           }}
@@ -2208,31 +2203,6 @@ function MaterialMasterTab({
         message={infoModal.message}
       />
 
-      {/* Toast */}
-      {toast && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: "1.5rem",
-            right: "1.5rem",
-            zIndex: 99999,
-            background: toast.type === "success" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
-            border: `1px solid ${toast.type === "success" ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)"}`,
-            color: toast.type === "success" ? "#4ade80" : "#f87171",
-            padding: "0.75rem 1.25rem",
-            borderRadius: "10px",
-            fontSize: "0.85rem",
-            fontWeight: 600,
-            backdropFilter: "blur(8px)",
-            boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-          }}
-        >
-          {toast.type === "success" ? "✓" : "✕"} {toast.message}
-        </div>
-      )}
 
       {/* Category Input Modal */}
       {showCategoryInput && (
@@ -2346,7 +2316,9 @@ function MaterialFormModal({
   onAddCategory,
   onAddVendor,
 }) {
-  const [form, setForm] = useState({
+  const DRAFT_KEY = 'pmp_mat_draft';
+  const savedDraft = !editMaterial ? (() => { try { const d = sessionStorage.getItem(DRAFT_KEY); return d ? JSON.parse(d) : null; } catch { return null; } })() : null;
+  const [form, setForm] = useState(savedDraft ?? {
     name: "",
     category: itemCategories[0] || "",
     uom: "pcs",
@@ -2365,6 +2337,12 @@ function MaterialFormModal({
   const [variantTypeRemoveModal, setVariantTypeRemoveModal] = useState(false);
   const [variantTutorialOpen, setVariantTutorialOpen] = useState(false);
   const [errors, setErrors] = useState({});
+
+  // Persist add-mode draft to sessionStorage so tab switches don't wipe the form
+  useEffect(() => {
+    if (editMaterial) return;
+    try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(form)); } catch {}
+  }, [form, editMaterial]);
 
   const uomOptions = useMemo(() => {
     const base = (units || []).map((u) => ({ value: u.code, label: u.name }));
@@ -2441,20 +2419,23 @@ function MaterialFormModal({
         setVariantCosts({});
       }
     } else {
-      // Reset for add mode
-      setForm({
-        name: "",
-        category: itemCategories[0] || "",
-        uom: "pcs",
-        minStock: "",
-        baseCost: "",
-        procurementType: "stock",
-        allowBackorder: false,
-        preferredVendorId: "",
-        hasVariants: false,
-        variantTypes: [],
-      });
-      setVariantCosts({});
+      // In add mode: restore from draft if available, otherwise reset
+      const hasDraft = (() => { try { return !!sessionStorage.getItem('pmp_mat_draft'); } catch { return false; } })();
+      if (!hasDraft) {
+        setForm({
+          name: "",
+          category: itemCategories[0] || "",
+          uom: "pcs",
+          minStock: "",
+          baseCost: "",
+          procurementType: "stock",
+          allowBackorder: false,
+          preferredVendorId: "",
+          hasVariants: false,
+          variantTypes: [],
+        });
+        setVariantCosts({});
+      }
     }
   }, [editMaterial, itemCategories, materials]);
 
@@ -2862,11 +2843,11 @@ function MaterialFormModal({
                     }
                   }}
                   options={[
-                    { value: "", label: "Select a vendor" },
+                    { value: "", label: vendors.length === 0 ? "Loading vendors..." : "Select a vendor" },
                     ...vendors.map((v) => ({ value: v.id, label: v.name })),
                     { value: "__add__", label: "+ Add New Vendor..." },
                   ]}
-                  placeholder="Select a vendor..."
+                  placeholder={vendors.length === 0 ? "Loading vendors..." : "Select a vendor..."}
                 />
               </div>
               {errors.vendor && (
@@ -5296,43 +5277,45 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boms, search, materials]);
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
+    const bom = boms.find((b) => (b.id ?? b._id) === id);
+    const groupName = (bom?.productGroupName || bom?.productName || "").trim().toLowerCase();
+
+    if (groupName && token) {
+      try {
+        const prods = await fetchProducts(token);
+        const prodList = Array.isArray(prods) ? prods : (prods?.data ?? []);
+        const linked = prodList.find((p) =>
+          (p.bomGroupName || p.name || "").trim().toLowerCase() === groupName
+        );
+        if (linked) {
+          setInfoModal({
+            isOpen: true,
+            title: "Cannot Delete BOM",
+            message: `This BOM is linked to the product "${linked.subCategoryName || linked.name || "a product"}". Remove or unlink the product first.`,
+          });
+          return;
+        }
+      } catch { /* skip guard if fetch fails */ }
+    }
+
     setConfirmModal({
       isOpen: true,
       title: "Delete BOM",
-      message:
-        "Are you sure you want to delete this BOM? This action cannot be undone.",
+      message: "Are you sure you want to delete this BOM? This action cannot be undone.",
       onConfirm: async () => {
         if (!token) {
-          setInfoModal({
-            isOpen: true,
-            title: "Sign in required",
-            message: "Sign in as admin to delete BOMs.",
-          });
-          setConfirmModal({
-            isOpen: false,
-            title: "",
-            message: "",
-            onConfirm: null,
-          });
+          setInfoModal({ isOpen: true, title: "Sign in required", message: "Sign in as admin to delete BOMs." });
+          setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null });
           return;
         }
         try {
           await deleteBOM(id, token);
           await refreshBoms();
         } catch (e) {
-          setInfoModal({
-            isOpen: true,
-            title: "Delete failed",
-            message: e?.message || "Could not delete BOM.",
-          });
+          setInfoModal({ isOpen: true, title: "Delete failed", message: e?.message || "Could not delete BOM." });
         }
-        setConfirmModal({
-          isOpen: false,
-          title: "",
-          message: "",
-          onConfirm: null,
-        });
+        setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null });
       },
     });
   };
@@ -5452,7 +5435,7 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
           <>
             <div style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
               {/* Table header */}
-              <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 160px 120px 130px", gap: 0, background: "rgba(255,255,255,0.03)", borderBottom: "1px solid var(--border)", padding: "0.75rem 1rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 160px 120px 165px", gap: 0, background: "rgba(255,255,255,0.03)", borderBottom: "1px solid var(--border)", padding: "0.75rem 1rem" }}>
                 {["", "Product / Variant", "BOM Cost", "Producible", "Actions"].map((h, i) => (
                   <span key={i} style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(229,226,225,0.4)", textAlign: i >= 2 ? "right" : "left", paddingRight: i === 4 ? "0.25rem" : 0 }}>{h}</span>
                 ))}
@@ -5463,20 +5446,28 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
                 const costs = groupBoms.map((b) => b.totalCost || 0);
                 const minCost = Math.min(...costs);
                 const maxCost = Math.max(...costs);
-                const maxProd = groupBoms.reduce((sum, b) => {
-                  let mn = Infinity;
+                const getBatchQty = (inv) => {
+                  if (!inv) return 0;
+                  if (inv.batches && inv.batches.length) {
+                    return inv.batches.reduce((s, b) => s + Math.max(0, b.remainingQty != null ? b.remainingQty : (b.goodQty ?? b.qtyGood ?? 0)), 0);
+                  }
+                  return inv.stockQty || 0;
+                };
+                const maxProd = groupBoms.reduce((mn, b) => {
+                  let perBom = Infinity;
                   (b.components || []).forEach((c) => {
                     const inv = materials.find((m) => String(m.id) === String(c.inventoryId ?? c.materialId));
-                    const can = Math.floor((inv?.stockQty || 0) / (c.qty || 1));
-                    if (can < mn) mn = can;
+                    const can = Math.floor(getBatchQty(inv) / (c.qty || 1));
+                    if (can < perBom) perBom = can;
                   });
-                  return sum + (mn === Infinity ? 0 : mn);
-                }, 0);
+                  const v = perBom === Infinity ? 0 : perBom;
+                  return mn === null ? v : Math.min(mn, v);
+                }, null) ?? 0;
                 return (
                   <div key={groupName} style={{ borderBottom: gi < pagedEntries.length - 1 ? "1px solid var(--border)" : "none" }}>
                     {/* Group row */}
                     <div
-                      style={{ display: "grid", gridTemplateColumns: "40px 1fr 160px 120px 130px", gap: 0, padding: "0.875rem 1rem", alignItems: "center", cursor: isMulti ? "pointer" : "default", background: "transparent" }}
+                      style={{ display: "grid", gridTemplateColumns: "40px 1fr 160px 120px 165px", gap: 0, padding: "0.875rem 1rem", alignItems: "center", cursor: isMulti ? "pointer" : "default", background: "transparent" }}
                       onClick={() => isMulti && setExpandedGroupsState((p) => { const n = new Set(p); n.has(groupName) ? n.delete(groupName) : n.add(groupName); return n; })}
                       onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
@@ -5510,6 +5501,10 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
                       <div style={{ display: "flex", gap: "0.35rem", justifyContent: "flex-end" }}>
                         {!isMulti && (
                           <>
+                            <button type="button" title="Add variant" onClick={(e) => { e.stopPropagation(); setEditBOM(null); setAddVariantToGroup(groupName); setShowAddModal(true); }}
+                              style={{ background: "rgba(212,168,67,0.08)", border: "1px solid rgba(212,168,67,0.2)", borderRadius: "6px", padding: "0.3rem 0.6rem", color: "#D4A843", cursor: "pointer", fontSize: "0.65rem", fontWeight: 700 }}>
+                              + Variant
+                            </button>
                             <button type="button" title="Edit" onClick={(e) => { e.stopPropagation(); setEditBOM(groupBoms[0]); setShowAddModal(true); }}
                               style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.3rem 0.5rem", color: "var(--gray)", cursor: "pointer" }}>
                               <EditIcon />
@@ -5542,10 +5537,10 @@ function BOMTab({ materials, boms, token, units, refreshBoms }) {
                           });
                           const minCost = compRanges.reduce((s, r) => s + r.min, 0) || b.totalCost || 0;
                           const maxCost = compRanges.reduce((s, r) => s + r.max, 0) || b.totalCost || 0;
-                          const mp = (() => { let mn = Infinity; (b.components || []).forEach((c) => { const inv = materials.find((m) => String(m.id) === String(c.inventoryId ?? c.materialId)); const can = Math.floor((inv?.stockQty || 0) / (c.qty || 1)); if (can < mn) mn = can; }); return mn === Infinity ? 0 : mn; })();
+                          const mp = (() => { let mn = Infinity; (b.components || []).forEach((c) => { const inv = materials.find((m) => String(m.id) === String(c.inventoryId ?? c.materialId)); const avail = inv?.batches?.length ? inv.batches.reduce((s, bt) => s + Math.max(0, bt.remainingQty != null ? bt.remainingQty : (bt.goodQty ?? bt.qtyGood ?? 0)), 0) : (inv?.stockQty || 0); const can = Math.floor(avail / (c.qty || 1)); if (can < mn) mn = can; }); return mn === Infinity ? 0 : mn; })();
                           return (
                             <div key={b.id ?? bi}
-                              style={{ display: "grid", gridTemplateColumns: "40px 1fr 160px 120px 130px", gap: 0, padding: "0.875rem 1rem", alignItems: "center", borderTop: "1px solid var(--border)", background: "transparent" }}
+                              style={{ display: "grid", gridTemplateColumns: "40px 1fr 160px 120px 165px", gap: 0, padding: "0.875rem 1rem", alignItems: "center", borderTop: "1px solid var(--border)", background: "transparent" }}
                               onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(229,226,225,0.25)", fontSize: "1rem", fontWeight: 300 }}>—</div>

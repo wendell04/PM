@@ -16,7 +16,6 @@ class Cart extends Model
     ];
 
     protected $casts = [
-        'items' => 'array',
         'updatedAt' => 'datetime',
     ];
 

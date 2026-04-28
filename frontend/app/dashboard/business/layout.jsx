@@ -769,36 +769,37 @@ export default function BusinessDashboardLayout({ children }) {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: 'hsl(var(--card))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: '12px',
+              background: 'var(--dark2)',
+              border: '1px solid var(--border)',
+              borderRadius: '16px',
               padding: '2rem',
               width: '100%',
               maxWidth: '400px',
               display: 'flex',
               flexDirection: 'column',
               gap: '1.5rem',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
             }}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <h2 style={{ fontSize: '1.125rem', fontWeight: 600, color: 'hsl(var(--foreground))' }}>
+              <h2 style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--white)', margin: 0 }}>
                 Log Out
               </h2>
-              <p style={{ fontSize: '0.875rem', color: 'hsl(var(--muted-foreground))' }}>
+              <p style={{ fontSize: '0.875rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
                 Are you sure you want to log out of your account?
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.25rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setLogoutConfirmOpen(false)}
                 style={{
                   padding: '0.5rem 1.25rem',
                   borderRadius: '8px',
-                  border: '1px solid hsl(var(--border))',
+                  border: '1px solid var(--border)',
                   background: 'transparent',
-                  color: 'hsl(var(--foreground))',
+                  color: 'var(--gray)',
                   fontSize: '0.875rem',
-                  fontWeight: 500,
+                  fontWeight: 600,
                   cursor: 'pointer',
                 }}
               >
@@ -810,10 +811,10 @@ export default function BusinessDashboardLayout({ children }) {
                   padding: '0.5rem 1.25rem',
                   borderRadius: '8px',
                   border: 'none',
-                  background: 'hsl(var(--destructive))',
-                  color: 'hsl(var(--destructive-foreground))',
+                  background: '#ef4444',
+                  color: '#fff',
                   fontSize: '0.875rem',
-                  fontWeight: 600,
+                  fontWeight: 700,
                   cursor: 'pointer',
                 }}
               >

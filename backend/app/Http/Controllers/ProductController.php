@@ -94,6 +94,29 @@ class ProductController extends Controller
     }
 
     /**
+     * GET /api/admin/products/{id}
+     * Returns a single product by ID (admin view — includes variantImageUrls and all fields)
+     */
+    public function adminShow(Request $request, $id)
+    {
+        try {
+            if (!$this->isAdmin($request)) {
+                return $this->unauthorizedResponse();
+            }
+
+            $product = Product::find($id);
+
+            if (!$product) {
+                return $this->notFoundResponse('Product');
+            }
+
+            return $this->successResponse('Product fetched successfully.', $product);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching the product.');
+        }
+    }
+
+    /**
      * GET /api/admin/products/available-inventory
      * Returns inventory items NOT yet linked to products
      */
@@ -177,6 +200,7 @@ class ProductController extends Controller
                 'bomId'             => 'nullable|string|max:24',
                 'bomGroupName'      => 'nullable|string|max:200',
                 'variantStock'      => 'nullable|array',
+                'variantImageUrls'  => 'nullable|array',
             ]);
 
             // Check for duplicate (same category + subCategoryName)
@@ -303,8 +327,12 @@ class ProductController extends Controller
                 'tags'              => 'nullable|array',
                 'tags.*'            => 'string',
                 'isPublished'       => 'boolean',
+                'isCustom'          => 'boolean',
                 'isActive'          => 'boolean',
                 'bomId'             => 'nullable|string|max:24',
+                'bomGroupName'      => 'nullable|string|max:200',
+                'variantStock'      => 'nullable|array',
+                'variantImageUrls'  => 'nullable|array',
             ]);
 
             // Check for duplicate if category/subCategory changed

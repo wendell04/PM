@@ -17,13 +17,13 @@ export default function ProductDetailPage() {
   const [activeImage, setActiveImage] = useState(0);
   const [selectedVariants, setSelectedVariants] = useState({});
   const [quantity, setQuantity] = useState(1);
+  const [quantityInput, setQuantityInput] = useState('1');
   const [flashSale, setFlashSale] = useState(null);
 
   const params = useParams();
   const router = useRouter();
   const { token, currentUser } = useAuth();
   const { addToCart } = useCart();
-  const [hoveredBtn, setHoveredBtn] = useState(null);
   const [addedToCart, setAddedToCart] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
@@ -40,16 +40,12 @@ export default function ProductDetailPage() {
   // ── Custom order request modal state ──
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [reqDesignFile, setReqDesignFile] = useState(null);
+  const [reqFileKey, setReqFileKey] = useState(0);
   const [reqDesignNotes, setReqDesignNotes] = useState('');
   const [reqSubmitting, setReqSubmitting] = useState(false);
   const [reqError, setReqError] = useState('');
   const [reqSuccess, setReqSuccess] = useState(false);
 
-  // ── Per-item design upload state (for isCustom products in cart flow) ──
-  const [cartDesignFile, setCartDesignFile] = useState(null);
-  const [cartDesignNotes, setCartDesignNotes] = useState('');
-  const [cartDesignUploading, setCartDesignUploading] = useState(false);
-  const [cartDesignError, setCartDesignError] = useState('');
 
   const id = params?.id;
 
@@ -252,39 +248,20 @@ export default function ProductDetailPage() {
       return;
     }
     if (!product) return;
-    setCartDesignError('');
-    if (product.isCustom && !cartDesignFile) {
-      setCartDesignError('This product requires a design file. Please upload one before adding to cart.');
-      return;
-    }
     try {
-      let designData = null;
-      if (product.isCustom && cartDesignFile) {
-        setCartDesignUploading(true);
-        const uploaded = await uploadDesignFile(token, cartDesignFile);
-        designData = { url: uploaded.url, notes: cartDesignNotes.trim() || null };
-      }
       const comboId = resolveCombinationId(selectedVariants);
       await addToCart(
-        {
-          ...product,
-          flatPrice: unitPrice ?? product.flatPrice ?? product.price ?? 0,
-        },
+        { ...product, flatPrice: unitPrice ?? product.flatPrice ?? product.price ?? 0, thumbnail: variantImage ?? product.thumbnail },
         quantity,
         comboId,
         resolveVariantName(selectedVariants),
         null,
-        designData
+        null
       );
       setAddedToCart(true);
-      setCartDesignFile(null);
-      setCartDesignNotes('');
       setTimeout(() => setAddedToCart(false), 2500);
     } catch (err) {
       console.error('[handleAddToCart]', err);
-      setCartDesignError(err?.message || 'Failed to add to cart.');
-    } finally {
-      setCartDesignUploading(false);
     }
   }
 
@@ -324,6 +301,7 @@ export default function ProductDetailPage() {
   function closeRequestModal() {
     setShowRequestModal(false);
     setReqDesignFile(null);
+    setReqFileKey(k => k + 1);
     setReqDesignNotes('');
     setReqError('');
     setReqSuccess(false);
@@ -337,32 +315,17 @@ export default function ProductDetailPage() {
       return;
     }
     if (!product) return;
-    setCartDesignError('');
-    if (product.isCustom && !cartDesignFile) {
-      setCartDesignError('This product requires a design file. Please upload one before checkout.');
-      return;
-    }
     try {
-      let designData = null;
-      if (product.isCustom && cartDesignFile) {
-        setCartDesignUploading(true);
-        const uploaded = await uploadDesignFile(token, cartDesignFile);
-        designData = { url: uploaded.url, notes: cartDesignNotes.trim() || null };
-      }
       const resolvedPrice = unitPrice ?? product.flatPrice ?? product.price ?? 0;
       const comboId = resolveCombinationId(selectedVariants);
       await addToCart(
-        {
-          ...product,
-          flatPrice: resolvedPrice,
-        },
+        { ...product, flatPrice: resolvedPrice },
         quantity,
         comboId,
         resolveVariantName(selectedVariants),
         null,
-        designData
+        null
       );
-      // Write checkout_payload so checkout page can read it
       const payload = {
         items: [{
           product: {
@@ -380,25 +343,22 @@ export default function ProductDetailPage() {
           variantName: resolveVariantName(selectedVariants),
           qty:         quantity,
           unitPrice:   resolvedPrice,
-          designUrl:   designData?.url ?? null,
-          designNotes: designData?.notes ?? null,
+          designUrl:   null,
+          designNotes: null,
         }],
-        notes:     designData?.notes ?? '',
-        designUrl: designData?.url ?? null,
+        notes:     '',
+        designUrl: null,
       };
       sessionStorage.setItem('checkout_payload', JSON.stringify(payload));
       router.push('/shop/checkout');
     } catch (err) {
       console.error('[handleAddToCartAndCheckout]', err);
-      setCartDesignError(err?.message || 'Failed to proceed to checkout.');
-    } finally {
-      setCartDesignUploading(false);
     }
   }
 
-  const effectiveMaxQty = product?.trackInventory && product?.stockStatus !== 'upon-order'
-    ? Math.max(product.stock ?? 99, 1)
-    : 99;
+  const effectiveMaxQty = product?.trackInventory && !product?.isCustom && product?.stockStatus !== 'upon-order'
+    ? Math.max(product.stock ?? 1, 1)
+    : 9999;
 
   // Computed values
   const totalPrice = product
@@ -409,12 +369,16 @@ export default function ProductDetailPage() {
     : null;
   const priceRange = product ? getPriceRange(product) : null;
   const tiers = product ? getTiers(product) : [];
+  const sortedTiers = [...tiers].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0));
 
   // Variant image: use per-variant image if configured, else fall back to main thumbnail
   const activeComboId = product ? resolveCombinationId(selectedVariants) : null;
-  const variantImage = activeComboId && product?.variantImageUrls?.[activeComboId]
-    ? product.variantImageUrls[activeComboId]
-    : null;
+  const variantImage = (() => {
+    if (!activeComboId || !product?.variantImageUrls) return null;
+    return product.variantImageUrls[activeComboId]
+      ?? product.variantImageUrls[String(activeComboId)]
+      ?? null;
+  })();
   const displayImages = product
     ? [
         variantImage ?? product.thumbnail,
@@ -500,51 +464,139 @@ export default function ProductDetailPage() {
           background: 'var(--dark2)',
           border: '1px solid var(--border)',
           borderRadius: '16px',
-          padding: '1.75rem',
+          padding: '1.25rem',
           boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
         }}>
-          <div style={{ display: 'flex', gap: '2.5rem',
+          <div style={{ display: 'flex', gap: '1.75rem',
             flexWrap: 'wrap', alignItems: 'flex-start' }}>
 
-          {/* LEFT — Images */}
-          <div style={{ flex: '1 1 400px', maxWidth: '540px', display: 'flex', gap: '10px' }}>
+          {/* LEFT — Images + Pricing below */}
+          <div style={{ flex: '1 1 320px', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
-            {/* Vertical thumbnail strip */}
-            {displayImages.length > 1 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, width: '72px' }}>
-                {displayImages.map((img, i) => (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <button key={i} onClick={() => setActiveImage(i)}
-                    style={{ width: '72px', height: '72px', borderRadius: '8px', overflow: 'hidden', padding: 0, border: activeImage === i ? '2px solid var(--gold)' : '2px solid var(--border)', cursor: 'pointer', background: 'var(--dark2)', flexShrink: 0, transition: 'border-color 0.15s' }}>
-                    <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            {/* Image row: thumbnails + main */}
+            <div style={{ display: 'flex', gap: '10px' }}>
+              {/* Vertical thumbnail strip — max 5, 5th shows +N if more */}
+              {displayImages.length > 1 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, width: '64px' }}>
+                  {displayImages.slice(0, 5).map((img, i) => {
+                    const isOverflowSlot = i === 4 && displayImages.length > 5;
+                    const remaining = displayImages.length - 5;
+                    const isActive = activeImage === i || (i === 4 && activeImage >= 4);
+                    return (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <button key={i} onClick={() => setActiveImage(i)}
+                        style={{ position: 'relative', width: '64px', height: '64px', borderRadius: '8px', overflow: 'hidden', padding: 0, border: isActive ? '2px solid var(--gold)' : '2px solid var(--border)', cursor: 'pointer', background: 'var(--dark2)', flexShrink: 0, transition: 'border-color 0.15s' }}>
+                        <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        {isOverflowSlot && (
+                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.95rem', fontWeight: 800, color: '#fff' }}>
+                            +{remaining}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {/* Main image with carousel arrows */}
+              <div style={{ flex: 1, position: 'relative', aspectRatio: '1/1', background: 'var(--dark2)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+                {/* Prev arrow */}
+                {activeImage > 0 && (
+                  <button onClick={() => setActiveImage(p => p - 1)}
+                    style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', zIndex: 4, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
                   </button>
-                ))}
+                )}
+                {/* Next arrow */}
+                {activeImage < displayImages.length - 1 && (
+                  <button onClick={() => setActiveImage(p => p + 1)}
+                    style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', zIndex: 4, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </button>
+                )}
+                {/* Click to open lightbox */}
+                <div onClick={() => { if (displayImages.length > 0) { setLightboxIndex(activeImage); setLightboxOpen(true); } }}
+                  style={{ position: 'absolute', inset: 0, cursor: 'zoom-in', zIndex: 1 }} />
+                {flashSale && (
+                  <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', zIndex: 3, background: flashSale.discountType === 'percentage' ? '#ef4444' : 'var(--gold)', color: flashSale.discountType === 'percentage' ? '#fff' : '#000', fontWeight: 800, fontSize: '0.8rem', padding: '0.3rem 0.75rem', borderRadius: '999px' }}>
+                    {flashSale.discountType === 'percentage' ? `${flashSale.discountValue}% OFF` : `₱${flashSale.discountValue} OFF`}
+                  </div>
+                )}
+                {product.isCustom && (
+                  <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 3, background: '#D4A843', color: '#000', fontSize: '0.65rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Customizable
+                  </div>
+                )}
+                {displayImages[activeImage] ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={displayImages[activeImage]} alt={product.subCategoryName} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', zIndex: 0 }} />
+                ) : (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)', zIndex: 0 }}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Pricing — Trove style: header with borderBottom, table in own container */}
+            {product.priceType === 'tiered' && tiers.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setShowTiers(p => !p)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', padding: '0 0 0.75rem 0', color: 'var(--white)', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Pricing</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
+                    {showTiers
+                      ? <line x1="5" y1="12" x2="19" y2="12"/>
+                      : <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>}
+                  </svg>
+                </button>
+                {showTiers && (
+                  <>
+                    <p style={{ margin: '0.6rem 0 0.75rem', fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.55 }}>
+                      Price per piece depends on how many you order. The more you buy, the lower the unit price. If your quantity exceeds the last tier, the last tier price still applies.
+                    </p>
+                    <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.025)', fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        <span>Quantity</span>
+                        <span style={{ textAlign: 'right' }}>Unit Price</span>
+                      </div>
+                      {sortedTiers.map((tier, i) => {
+                        const isLastTier = i === sortedTiers.length - 1;
+                        const isActive = (() => {
+                          const min = parseInt(tier.minQty) || 0;
+                          if (isLastTier) return quantity >= min;
+                          const max = tier.maxQty !== null && tier.maxQty !== '' ? parseInt(tier.maxQty) : Infinity;
+                          return quantity >= min && quantity <= max;
+                        })();
+                        const unitP = getPriceFromTier(tier, resolveCombinationId(selectedVariants));
+                        return (
+                          <div key={tier.id ?? i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '0.625rem 1rem', borderTop: '1px solid var(--border)', background: isActive ? 'rgba(212,168,67,0.07)' : '' }}>
+                            <span style={{ fontSize: '0.825rem', color: isActive ? 'var(--gold)' : 'var(--white)', fontWeight: isActive ? 700 : 500, display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              {`${tier.minQty}${tier.maxQty ? `–${tier.maxQty}` : '+'} pcs`}
+                              {isActive && <span style={{ fontSize: '0.58rem', background: 'rgba(212,168,67,0.18)', color: 'var(--gold)', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Your qty</span>}
+                            </span>
+                            <span style={{ fontSize: '0.875rem', fontWeight: 700, color: isActive ? 'var(--gold)' : 'var(--white)', textAlign: 'right' }}>
+                              {unitP ? `${formatPeso(unitP)} / pc` : '—'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {(() => {
+                        const lastTier = sortedTiers[sortedTiers.length - 1];
+                        const lastUnitP = lastTier ? getPriceFromTier(lastTier, resolveCombinationId(selectedVariants)) : null;
+                        if (!lastUnitP) return null;
+                        const overflowThreshold = lastTier.maxQty ? parseInt(lastTier.maxQty) : parseInt(lastTier.minQty);
+                        return (
+                          <div style={{ padding: '0.5rem 1rem', borderTop: '1px solid var(--border)', fontSize: '0.7rem', color: 'var(--gray)', fontStyle: 'italic' }}>
+                            Any qty above {overflowThreshold} gets the same price of {formatPeso(lastUnitP)} / pc.
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </>
+                )}
               </div>
             )}
-
-            {/* Main image */}
-            <div
-              onClick={() => { if (displayImages.length > 0) { setLightboxIndex(activeImage); setLightboxOpen(true); } }}
-              style={{ flex: 1, position: 'relative', aspectRatio: '1/1', background: 'var(--dark2)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden', cursor: 'zoom-in' }}>
-              {flashSale && (
-                <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', zIndex: 2, background: flashSale.discountType === 'percentage' ? '#ef4444' : 'var(--gold)', color: flashSale.discountType === 'percentage' ? '#fff' : '#000', fontWeight: 800, fontSize: '0.8rem', padding: '0.3rem 0.75rem', borderRadius: '999px' }}>
-                  {flashSale.discountType === 'percentage' ? `${flashSale.discountValue}% OFF` : `₱${flashSale.discountValue} OFF`}
-                </div>
-              )}
-              {product.isCustom && (
-                <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 2, background: '#D4A843', color: '#000', fontSize: '0.65rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Customizable
-                </div>
-              )}
-              {displayImages[activeImage] ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={displayImages[activeImage]} alt={product.subCategoryName} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-              ) : (
-                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)' }}>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                </div>
-              )}
-            </div>
           </div>
 
           {/* RIGHT — Info + Order Form */}
@@ -703,18 +755,9 @@ export default function ProductDetailPage() {
                           padding: '0.4rem 0.875rem',
                           borderRadius: '8px', cursor: 'pointer',
                           fontSize: '0.875rem', fontWeight: 600,
-                          border: selectedVariants[group.id]
-                            === opt.value
-                            ? '2px solid var(--gold)'
-                            : '1px solid var(--border)',
-                          background: selectedVariants[group.id]
-                            === opt.value
-                            ? 'rgba(212,168,67,0.12)'
-                            : 'var(--dark2)',
-                          color: selectedVariants[group.id]
-                            === opt.value
-                            ? 'var(--gold)'
-                            : 'var(--white)',
+                          border: selectedVariants[group.id] === opt.value ? '2px solid var(--gold)' : '1px solid var(--border)',
+                          background: selectedVariants[group.id] === opt.value ? 'var(--gold)' : 'var(--dark2)',
+                          color: selectedVariants[group.id] === opt.value ? '#000' : 'var(--white)',
                           transition: 'all 0.15s',
                         }}>
                         {opt.value}
@@ -737,8 +780,11 @@ export default function ProductDetailPage() {
               <div style={{ display: 'flex',
                 alignItems: 'center', gap: '0.5rem' }}>
                 <button
-                  onClick={() => setQuantity(
-                    q => Math.max(1, q - 1))}
+                  onClick={() => {
+                    const next = Math.max(1, quantity - 1);
+                    setQuantity(next);
+                    setQuantityInput(String(next));
+                  }}
                   style={{
                     width: '36px', height: '36px',
                     borderRadius: '8px', border:
@@ -753,10 +799,24 @@ export default function ProductDetailPage() {
                   type="text"
                   inputMode="numeric"
                   pattern="[0-9]*"
-                  value={quantity}
+                  value={quantityInput}
+                  onFocus={e => e.target.select()}
                   onChange={e => {
-                    const v = parseInt(e.target.value.replace(/\D/g, '')) || 1;
-                    setQuantity(Math.min(Math.max(1, v), effectiveMaxQty));
+                    const raw = e.target.value.replace(/\D/g, '');
+                    setQuantityInput(raw);
+                    if (raw === '') return;
+                    const v = parseInt(raw, 10);
+                    if (!isNaN(v) && v >= 1) {
+                      const clamped = Math.min(v, effectiveMaxQty);
+                      setQuantity(clamped);
+                      if (String(clamped) !== raw) setQuantityInput(String(clamped));
+                    }
+                  }}
+                  onBlur={() => {
+                    const v = parseInt(quantityInput, 10);
+                    const clamped = isNaN(v) || v < 1 ? 1 : Math.min(v, effectiveMaxQty);
+                    setQuantity(clamped);
+                    setQuantityInput(String(clamped));
                   }}
                   style={{
                     width: '64px', textAlign: 'center',
@@ -769,7 +829,11 @@ export default function ProductDetailPage() {
                   }}
                 />
                 <button
-                  onClick={() => setQuantity(q => Math.min(q + 1, effectiveMaxQty))}
+                  onClick={() => {
+                    const next = Math.min(quantity + 1, effectiveMaxQty);
+                    setQuantity(next);
+                    setQuantityInput(String(next));
+                  }}
                   disabled={quantity >= effectiveMaxQty}
                   style={{
                     width: '36px', height: '36px',
@@ -784,85 +848,6 @@ export default function ProductDetailPage() {
               </div>
             </div>
 
-            {/* Design upload (customizable products only) */}
-            {product.isCustom && token && (
-              <div style={{
-                marginBottom: '1rem',
-                padding: '1rem',
-                background: 'rgba(212,168,67,0.06)',
-                border: '1px solid rgba(212,168,67,0.25)',
-                borderRadius: '10px',
-              }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--gold)', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  Customizable — upload your design
-                </div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.75rem' }}>
-                  Accepted: PDF, PNG, JPG, AI (max 10MB)
-                </div>
-                <label style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.5rem 0.875rem',
-                  background: cartDesignFile ? 'rgba(74,222,128,0.12)' : 'rgba(255,255,255,0.06)',
-                  border: `1px solid ${cartDesignFile ? 'rgba(74,222,128,0.4)' : 'rgba(255,255,255,0.15)'}`,
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '0.78rem',
-                  color: cartDesignFile ? '#4ade80' : 'var(--white)',
-                  fontWeight: 600,
-                  marginBottom: '0.6rem',
-                }}>
-                  <input
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg,.ai,image/*,application/pdf"
-                    style={{ display: 'none' }}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      if (f.size > 10 * 1024 * 1024) {
-                        setCartDesignError('File too large. Max 10MB.');
-                        return;
-                      }
-                      setCartDesignFile(f);
-                      setCartDesignError('');
-                    }}
-                  />
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                  {cartDesignFile ? cartDesignFile.name : 'Choose design file'}
-                </label>
-                {cartDesignFile && (
-                  <button type="button" onClick={() => setCartDesignFile(null)}
-                    style={{ marginLeft: '0.5rem', background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
-                    Remove
-                  </button>
-                )}
-                <textarea
-                  value={cartDesignNotes}
-                  onChange={(e) => setCartDesignNotes(e.target.value)}
-                  placeholder="Notes for the designer (optional)"
-                  rows={2}
-                  style={{
-                    width: '100%',
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '8px',
-                    padding: '0.5rem 0.75rem',
-                    color: 'var(--white)',
-                    fontSize: '0.78rem',
-                    resize: 'vertical',
-                    outline: 'none',
-                    fontFamily: 'inherit',
-                    boxSizing: 'border-box',
-                  }}
-                />
-                {cartDesignError && (
-                  <div style={{ marginTop: '0.4rem', color: 'var(--red)', fontSize: '0.72rem' }}>{cartDesignError}</div>
-                )}
-              </div>
-            )}
-
             {/* Action buttons */}
             {token ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -870,53 +855,39 @@ export default function ProductDetailPage() {
                 {/* Add to Cart */}
                 <button
                   onClick={handleAddToCart}
-                  onMouseEnter={() => setHoveredBtn('cart')}
-                  onMouseLeave={() => setHoveredBtn(null)}
                   disabled={product.stockStatus === 'out-of-stock'}
                   style={{
                     background: product.stockStatus === 'out-of-stock'
                       ? 'rgba(107,114,128,0.3)'
-                      : addedToCart
-                      ? 'rgba(74,222,128,0.2)'
-                      : hoveredBtn === 'cart'
-                      ? 'rgba(212,168,67,0.25)'
-                      : 'rgba(212,168,67,0.15)',
-                    color: product.stockStatus === 'out-of-stock'
-                      ? 'var(--gray)' : addedToCart ? '#4ade80' : 'var(--gold)',
-                    border: product.stockStatus === 'out-of-stock'
-                      ? '1px solid rgba(107,114,128,0.3)' : '1px solid var(--gold)',
+                      : addedToCart ? 'rgba(74,222,128,0.85)' : 'var(--gold)',
+                    color: product.stockStatus === 'out-of-stock' ? 'var(--gray)' : addedToCart ? '#fff' : '#000',
+                    border: 'none',
                     borderRadius: '10px', padding: '0.875rem 1.5rem',
                     fontWeight: 800, fontSize: '1rem',
                     cursor: product.stockStatus === 'out-of-stock' ? 'not-allowed' : 'pointer',
                     width: '100%', fontFamily: "'Outfit', sans-serif",
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                    transition: 'opacity 0.15s',
                   }}>
-                  {product.stockStatus === 'out-of-stock' ? 'Out of Stock' : (
-                    <>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
-                        {addedToCart ? <polyline points="20 6 9 17 4 12"/> : (<><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></>)}
-                      </svg>
-                      {addedToCart ? 'Added to Cart!' : 'Add to Cart'}
-                    </>
-                  )}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    {addedToCart ? <polyline points="20 6 9 17 4 12"/> : (<><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></>)}
+                  </svg>
+                  {product.stockStatus === 'out-of-stock' ? 'Out of Stock' : addedToCart ? 'Added to Cart!' : 'Add to Cart'}
                 </button>
 
                 {/* CUSTOMIZABLE: Upload & Request for Design | FINISHED: Checkout */}
                 {product.isCustom ? (
                   <button
                     onClick={() => setShowRequestModal(true)}
-                    onMouseEnter={() => setHoveredBtn('design')}
-                    onMouseLeave={() => setHoveredBtn(null)}
                     style={{
-                      background: hoveredBtn === 'design' ? 'rgba(212,168,67,0.25)' : 'rgba(212,168,67,0.15)',
-                      color: 'var(--gold)',
-                      border: '1px solid var(--gold)', borderRadius: '10px',
+                      background: 'var(--gold)', color: '#000',
+                      border: 'none', borderRadius: '10px',
                       padding: '0.875rem 1.5rem',
                       fontWeight: 800, fontSize: '1rem',
                       cursor: 'pointer', width: '100%',
                       fontFamily: "'Outfit', sans-serif",
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                      transition: 'background 0.15s',
+                      opacity: 0.85,
                     }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -928,28 +899,22 @@ export default function ProductDetailPage() {
                 ) : (
                   <button
                     onClick={handleAddToCartAndCheckout}
-                    onMouseEnter={() => setHoveredBtn('checkout')}
-                    onMouseLeave={() => setHoveredBtn(null)}
                     disabled={product.stockStatus === 'out-of-stock'}
                     style={{
                       background: product.stockStatus === 'out-of-stock'
-                        ? 'rgba(107,114,128,0.3)'
-                        : hoveredBtn === 'checkout' ? '#e6b800' : 'var(--gold)',
+                        ? 'rgba(107,114,128,0.3)' : 'var(--gold)',
                       color: product.stockStatus === 'out-of-stock' ? 'var(--gray)' : '#000',
                       border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
                       fontWeight: 800, fontSize: '1rem',
                       cursor: product.stockStatus === 'out-of-stock' ? 'not-allowed' : 'pointer',
                       width: '100%', fontFamily: "'Outfit', sans-serif",
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                      opacity: 0.85,
                     }}>
-                    {product.stockStatus === 'out-of-stock' ? 'Out of Stock' : (
-                      <>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
-                          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                        </svg>
-                        Checkout
-                      </>
-                    )}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                    </svg>
+                    {product.stockStatus === 'out-of-stock' ? 'Out of Stock' : 'Checkout'}
                   </button>
                 )}
 
@@ -979,54 +944,6 @@ export default function ProductDetailPage() {
           </div>
           </div>
 
-          {/* ── Full-width Pricing accordion (trove-style) ── */}
-          {product.priceType === 'tiered' && tiers.length > 0 && (
-            <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
-              <button
-                onClick={() => setShowTiers(p => !p)}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'transparent', border: 'none', padding: '0.25rem 0', color: 'var(--white)', cursor: 'pointer', textAlign: 'left' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                  <span style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--white)' }}>Pricing</span>
-                  {unitPrice != null && (
-                    <span style={{ fontSize: '0.78rem', color: 'var(--gold)', fontWeight: 600 }}>
-                      {formatPeso(unitPrice)} / pc · qty {quantity}
-                    </span>
-                  )}
-                </div>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2" style={{ transform: showTiers ? 'rotate(45deg)' : '', transition: 'transform 0.2s', flexShrink: 0 }}>
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-              </button>
-              {showTiers && (
-                <div style={{ marginTop: '1rem', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--border)', fontSize: '0.7rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    <span>Quantity Tier</span>
-                    <span style={{ textAlign: 'right' }}>Unit Price</span>
-                  </div>
-                  {tiers.map((tier, i) => {
-                    const isActive = (() => {
-                      const min = parseInt(tier.minQty) || 0;
-                      const max = tier.maxQty !== null && tier.maxQty !== '' ? parseInt(tier.maxQty) : Infinity;
-                      return quantity >= min && quantity <= max;
-                    })();
-                    const unitP = getPriceFromTier(tier, resolveCombinationId(selectedVariants));
-                    return (
-                      <div key={tier.id ?? i} style={{ padding: '0.875rem 1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', borderBottom: i < tiers.length - 1 ? '1px solid var(--border)' : 'none', background: isActive ? 'rgba(212,168,67,0.08)' : '' }}>
-                        <span style={{ fontSize: '0.875rem', color: isActive ? 'var(--gold)' : 'var(--white)', fontWeight: isActive ? 700 : 500 }}>
-                          {tier.minQty}–{tier.maxQty || '∞'} pcs
-                          {isActive && <span style={{ marginLeft: '0.5rem', fontSize: '0.65rem', background: 'rgba(212,168,67,0.18)', color: 'var(--gold)', padding: '2px 7px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Your qty</span>}
-                        </span>
-                        <span style={{ fontSize: '0.95rem', fontWeight: 700, color: isActive ? 'var(--gold)' : 'var(--white)', textAlign: 'right' }}>
-                          {unitP ? `${formatPeso(unitP)} / pc` : '—'}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -1229,7 +1146,7 @@ export default function ProductDetailPage() {
                   <div style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>
                     Qty: {quantity}
                     {selectedVariants && Object.keys(selectedVariants).length > 0 && (
-                      <span> &bull; {Object.entries(selectedVariants).map(([k,v]) => `${k}: ${v}`).join(', ')}</span>
+                      <span> &bull; {resolveVariantName(selectedVariants)}</span>
                     )}
                   </div>
                   {totalPrice != null && (
@@ -1244,6 +1161,7 @@ export default function ProductDetailPage() {
                     Design File <span style={{ fontWeight: 400 }}>(optional — jpg, png, pdf, ai, psd, svg · max 10MB)</span>
                   </label>
                   <input
+                    key={reqFileKey}
                     type="file"
                     accept=".jpg,.jpeg,.png,.pdf,.ai,.psd,.svg"
                     onChange={e => {
@@ -1275,8 +1193,20 @@ export default function ProductDetailPage() {
                     }}
                   />
                   {reqDesignFile && (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--gold)', marginTop: '0.25rem' }}>
-                      {reqDesignFile.name} ({(reqDesignFile.size / 1024 / 1024).toFixed(2)} MB)
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--gold)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {reqDesignFile.name} ({(reqDesignFile.size / 1024 / 1024).toFixed(2)} MB)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setReqDesignFile(null); setReqFileKey(k => k + 1); }}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: 'var(--gray)', fontSize: '1rem', lineHeight: 1,
+                          padding: '0 0.25rem', flexShrink: 0,
+                        }}
+                        title="Remove file"
+                      >×</button>
                     </div>
                   )}
                 </div>
@@ -1367,7 +1297,7 @@ export default function ProductDetailPage() {
           onKeyDown={handleKey}
           tabIndex={-1}
           style={{
-            position: 'fixed', inset: 0, zIndex: 99999,
+            position: 'fixed', inset: 0, zIndex: 9999,
             background: 'rgba(0,0,0,0.92)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}

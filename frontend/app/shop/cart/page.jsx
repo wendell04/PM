@@ -146,12 +146,11 @@ export default function CartPage() {
   const selectedCartItems = enrichedCart.filter((_, i) => selectedItems.has(i));
   const selectedTotal = selectedCartItems.reduce((sum, i) => sum + i.lineTotal, 0);
 
-  const handleRemoveItem = (productId, variantId, index) => {
-    const key = `${productId}_${variantId ?? 'none'}`;
-    setRemovingId(key);
+  const handleRemoveItem = (lineId, index) => {
+    setRemovingId(lineId);
     if (removeTimerRef.current) clearTimeout(removeTimerRef.current);
     removeTimerRef.current = setTimeout(() => {
-      removeFromCart(productId, variantId ?? null);
+      removeFromCart(lineId);
       setSelectedItems(prev => {
         const newSet = new Set(prev);
         newSet.delete(index);
@@ -163,11 +162,8 @@ export default function CartPage() {
 
   const handleDeleteSelected = async () => {
     if (selectedItems.size === 0) return;
-    const toRemove = Array.from(selectedItems).map(i => ({
-      productId: enrichedCart[i].productId,
-      variantId: enrichedCart[i].variantId ?? null,
-    }));
-    await bulkRemove(toRemove);
+    const lineIds = Array.from(selectedItems).map(i => enrichedCart[i].lineId);
+    await bulkRemove(lineIds);
     setSelectedItems(new Set());
   };
 
@@ -206,9 +202,10 @@ export default function CartPage() {
     const payload = {
       items: selectedCartItems.map(i => ({
         product: {
-          _id:    i.product._id,
-          name:   i.product.name,
-          images: i.product.images ?? [],
+          _id:       i.product._id,
+          name:      i.product.name,
+          thumbnail: i.thumbnail ?? i.product.thumbnail ?? i.product.images?.[0] ?? null,
+          images:    i.product.images ?? [],
         },
         variantId:   i.variantId   ?? null,
         variantName: i.variantName ?? null,
@@ -325,8 +322,7 @@ export default function CartPage() {
           {/* Items List - Shopee Style */}
           <div className="cart-items-list">
             {enrichedCart.map((item, idx) => {
-              const key = `${item.productId}_${item.variantId ?? 'none'}`;
-              const isRemoving = removingId === key;
+              const isRemoving = removingId === item.lineId;
               const isSelected = selectedItems.has(idx);
 
               return (
@@ -368,6 +364,36 @@ export default function CartPage() {
                         <span className="cart-variant-label">Variant:</span> {item.variantName}
                       </div>
                     )}
+                    {item.isCustom && !item.designUrl && (
+                      <div style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                        marginTop: '0.25rem',
+                        background: 'rgba(212,168,67,0.12)',
+                        border: '1px solid rgba(212,168,67,0.4)',
+                        borderRadius: '4px',
+                        padding: '0.15rem 0.5rem',
+                        fontSize: '0.7rem', fontWeight: 700,
+                        color: 'var(--gold)',
+                      }}>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Design needed at checkout
+                      </div>
+                    )}
+                    {item.isCustom && item.designUrl && (
+                      <div style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                        marginTop: '0.25rem',
+                        background: 'rgba(34,197,94,0.08)',
+                        border: '1px solid rgba(34,197,94,0.3)',
+                        borderRadius: '4px',
+                        padding: '0.15rem 0.5rem',
+                        fontSize: '0.7rem', fontWeight: 700,
+                        color: 'var(--green)',
+                      }}>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                        Design attached
+                      </div>
+                    )}
                     <div className="cart-item-price">
                       ₱{Number(item.unitPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / pc
                     </div>
@@ -377,7 +403,7 @@ export default function CartPage() {
                   <div className="cart-item-qty">
                     <div className="cart-qty-stepper">
                       <button
-                        onClick={() => updateQty(item.productId, item.variantId ?? null, item.qty - 1)}
+                        onClick={() => updateQty(item.lineId, item.qty - 1)}
                         className="cart-qty-btn"
                         disabled={item.qty <= 1}
                       >
@@ -392,7 +418,7 @@ export default function CartPage() {
                         {item.qty}
                       </span>
                       <button
-                        onClick={() => updateQty(item.productId, item.variantId ?? null, Math.min(item.qty + 1, item.stockCap))}
+                        onClick={() => updateQty(item.lineId, Math.min(item.qty + 1, item.stockCap))}
                         className="cart-qty-btn"
                         disabled={item.qty >= item.stockCap}
                       >
@@ -408,7 +434,7 @@ export default function CartPage() {
 
                   {/* Remove Button */}
                   <button
-                    onClick={() => handleRemoveItem(item.productId, item.variantId ?? null, idx)}
+                    onClick={() => handleRemoveItem(item.lineId, idx)}
                     className="cart-remove-btn"
                     title="Remove item"
                   >

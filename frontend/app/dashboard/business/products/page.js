@@ -4510,6 +4510,8 @@ export default function ProductListPage() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [prodRowsPerPage, setProdRowsPerPage] = useState(20);
+  const [prodPage, setProdPage] = useState(1);
   const [editingProduct, setEditingProduct] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
@@ -4723,29 +4725,62 @@ export default function ProductListPage() {
 
     if (productBoms.length === 0) return { text: "No BOM linked", color: "var(--gray)" };
 
-    const units = productBoms.map((b) => {
+    // Build material usage map to detect shared vs exclusive components
+    const matMap = new Map();
+    productBoms.forEach((b) => {
+      const seen = new Set();
+      (b.components || []).forEach((c) => {
+        const matId = String(c.materialId ?? c.inventoryId);
+        if (seen.has(matId)) return;
+        seen.add(matId);
+        if (!matMap.has(matId)) {
+          const inv = inventoryList.find((i) => String(i.id ?? i._id) === matId);
+          matMap.set(matId, { name: inv?.name, stock: inv?.stockQty || 0, qty: c.qty || 1, bomCount: 0 });
+        }
+        matMap.get(matId).bomCount += 1;
+      });
+    });
+
+    // Shared material pool cap (materials used by more than one variant BOM)
+    let sharedCap = Infinity;
+    const sharedNames = new Set();
+    matMap.forEach((v) => {
+      if (v.bomCount > 1) {
+        if (v.name) sharedNames.add(v.name);
+        const cap = Math.floor(v.stock / v.qty);
+        if (cap < sharedCap) sharedCap = cap;
+      }
+    });
+
+    // Per-variant cap from exclusive (non-shared) materials
+    const perVariantUnits = productBoms.map((b) => {
       let min = Infinity;
       (b.components || []).forEach((c) => {
-        const matId = c.materialId ?? c.inventoryId;
-        const invItem = inventoryList.find((i) => String(i.id ?? i._id) === String(matId));
-        const can = Math.floor((invItem?.stockQty || 0) / (c.qty || 1));
-        if (can < min) min = can;
+        const matId = String(c.materialId ?? c.inventoryId);
+        const entry = matMap.get(matId);
+        if (entry && entry.bomCount === 1) {
+          const can = Math.floor(entry.stock / (c.qty || 1));
+          if (can < min) min = can;
+        }
       });
-      return min === Infinity ? 0 : min;
+      return min === Infinity ? (sharedCap === Infinity ? 0 : sharedCap) : min;
     });
 
-    const totalUnits = units.reduce((s, u) => s + u, 0);
+    const sumExclusive = perVariantUnits.reduce((s, u) => s + u, 0);
+    const totalUnits = sharedCap === Infinity ? sumExclusive : Math.min(sumExclusive, sharedCap);
     const variantCount = productBoms.length;
 
-    const extras = new Set();
-    productBoms.forEach((b) => {
-      (b.components || []).slice(1).forEach((c) => {
-        const matId = c.materialId ?? c.inventoryId;
-        const invItem = inventoryList.find((i) => String(i.id ?? i._id) === String(matId));
-        if (invItem?.name) extras.add(invItem.name);
+    const extraNames = sharedNames.size > 0 ? sharedNames : (() => {
+      const s = new Set();
+      productBoms.forEach((b) => {
+        (b.components || []).slice(1).forEach((c) => {
+          const entry = matMap.get(String(c.materialId ?? c.inventoryId));
+          if (entry?.name) s.add(entry.name);
+        });
       });
-    });
-    const extraText = extras.size > 0 ? ` w/ ${[...extras].join(", ")}` : "";
+      return s;
+    })();
+    const extraText = extraNames.size > 0 ? ` w/ ${[...extraNames].join(", ")}` : "";
     const variantText = variantCount > 1 ? ` for ${variantCount} variants${extraText}` : extraText;
 
     return {
@@ -5175,6 +5210,9 @@ export default function ProductListPage() {
     );
   }
 
+  const prodTotalPages = Math.max(1, Math.ceil(filteredProducts.length / prodRowsPerPage));
+  const pagedProducts = filteredProducts.slice((prodPage - 1) * prodRowsPerPage, prodPage * prodRowsPerPage);
+
   const allSelected =
     filteredProducts.length > 0 && selectedIds.size === filteredProducts.length;
   const someSelected = selectedIds.size > 0 && !allSelected;
@@ -5415,7 +5453,7 @@ export default function ProductListPage() {
           ) : (
             <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
               {/* Table header */}
-              <div style={{ display: "grid", gridTemplateColumns: "40px 52px 1.4fr 90px 1.6fr 100px 110px 100px", alignItems: "center", padding: "0.5rem 1rem", background: "rgba(255,255,255,0.03)", borderBottom: "1px solid var(--border)" }} ref={bulkSelectRef}>
+              <div style={{ display: "grid", gridTemplateColumns: "40px 52px 1.4fr 90px 1.6fr 100px minmax(0,130px) 100px", alignItems: "center", padding: "0.5rem 1rem", background: "rgba(255,255,255,0.03)", borderBottom: "1px solid var(--border)" }} ref={bulkSelectRef}>
                 <div style={{ position: "relative" }}>
                   <input
                     type="checkbox"
@@ -5444,7 +5482,7 @@ export default function ProductListPage() {
               </div>
 
               {/* Table rows */}
-              {filteredProducts.map((product, pi) => {
+              {pagedProducts.map((product, pi) => {
                 const inv = getInventoryItem(product.inventoryId);
                 const stockStatus = getStockStatus(product);
                 const invDisplay = getProductInventoryDisplay(product);
@@ -5458,7 +5496,7 @@ export default function ProductListPage() {
                   <div key={(product._id?.toString?.() ?? product._id) || product.id}
                     style={{ borderTop: pi > 0 ? "1px solid var(--border)" : "none", opacity: product.isArchived ? 0.6 : 1, background: isSelected ? "rgba(212,168,67,0.03)" : "transparent" }}>
                     {/* Main row */}
-                    <div style={{ display: "grid", gridTemplateColumns: "40px 52px 1.4fr 90px 1.6fr 100px 110px 100px", alignItems: "center", padding: "0.75rem 1rem", gap: 0 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "40px 52px 1.4fr 90px 1.6fr 100px minmax(0,130px) 100px", alignItems: "center", padding: "0.75rem 1rem", gap: 0 }}>
                       {/* Checkbox */}
                       <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(product.id)}
                         style={{ width: 15, height: 15, cursor: "pointer", accentColor: "var(--gold)" }} />
@@ -5511,7 +5549,7 @@ export default function ProductListPage() {
                       <div style={{ fontWeight: 700, color: "#D4A843", fontSize: "0.82rem" }}>{priceRange || "—"}</div>
 
                       {/* Category */}
-                      <div style={{ fontSize: "0.78rem", color: "var(--gray)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.category || "—"}</div>
+                      <div style={{ fontSize: "0.78rem", color: "var(--gray)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }} title={product.category || ""}>{product.category || "—"}</div>
 
                       {/* Actions */}
                       <div style={{ display: "flex", gap: "0.35rem", alignItems: "center", justifyContent: "flex-end" }}>
@@ -5540,6 +5578,25 @@ export default function ProductListPage() {
                   </div>
                 );
               })}
+              {/* Rows per page + pagination */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.625rem 1rem", borderTop: "1px solid var(--border)", flexWrap: "wrap", gap: "0.5rem", fontSize: "0.8rem", color: "var(--gray)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  Rows per page:
+                  <select value={prodRowsPerPage} onChange={(e) => { setProdRowsPerPage(Number(e.target.value)); setProdPage(1); }} style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer" }}>
+                    {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <span style={{ color: "var(--gray)", fontSize: "0.75rem" }}>{filteredProducts.length} total</span>
+                </div>
+                {prodTotalPages > 1 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <button onClick={() => setProdPage((p) => Math.max(1, p - 1))} disabled={prodPage === 1}
+                      style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.3rem 0.65rem", color: prodPage === 1 ? "rgba(229,226,225,0.2)" : "#E5E2E1", cursor: prodPage === 1 ? "not-allowed" : "pointer", fontSize: "0.78rem" }}>‹</button>
+                    <span style={{ minWidth: "80px", textAlign: "center" }}>Page {prodPage} of {prodTotalPages}</span>
+                    <button onClick={() => setProdPage((p) => Math.min(prodTotalPages, p + 1))} disabled={prodPage === prodTotalPages}
+                      style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.3rem 0.65rem", color: prodPage === prodTotalPages ? "rgba(229,226,225,0.2)" : "#E5E2E1", cursor: prodPage === prodTotalPages ? "not-allowed" : "pointer", fontSize: "0.78rem" }}>›</button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

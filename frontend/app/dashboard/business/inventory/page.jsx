@@ -254,6 +254,40 @@ export default function InventoryDashboardPage() {
             </div>
           </div>
 
+          {(() => {
+            const active = items.filter(i => i.isActive !== false && !i.isOnDemand);
+            const lowItems = active.filter(i => (i.stockQty ?? 0) <= (i.minStock ?? i.minStockLevel ?? 0));
+            if (lowItems.length === 0) return null;
+            return (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
+                  Restock Alerts
+                  <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', fontWeight: 700, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '0.1rem 0.5rem', color: '#ef4444', verticalAlign: 'middle' }}>{lowItems.length}</span>
+                </h2>
+                <div style={{ ...inputCard, overflow: 'hidden' }}>
+                  {lowItems.map((item, idx) => {
+                    const isOut = (item.stockQty ?? 0) === 0;
+                    return (
+                      <div key={item.id ?? item._id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', borderBottom: idx < lowItems.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--white)' }}>{item.name}</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.15rem' }}>{item.category || 'Uncategorized'}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: isOut ? '#ef4444' : '#f59e0b' }}>{item.stockQty ?? 0} {item.uom || 'pcs'}</div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--gray)' }}>min: {item.minStock ?? item.minStockLevel ?? 0}</div>
+                        </div>
+                        <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '6px', background: isOut ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)', border: `1px solid ${isOut ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'}`, color: isOut ? '#ef4444' : '#f59e0b', whiteSpace: 'nowrap' }}>
+                          {isOut ? 'Out of stock' : 'Low stock'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           <div style={{ marginBottom: '1.5rem' }}>
             <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Recent movements</h2>
             {movementsError && (

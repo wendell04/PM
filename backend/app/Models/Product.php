@@ -31,6 +31,7 @@ class Product extends Model
         'priceTiers',
         'variantPrices',
         'variantStock',
+        'variantImageUrls',
         'trackInventory',
         'stock',
         'stockStatus',

@@ -19,6 +19,9 @@ export function CartProvider({ children }) {
     return !!token;
   }, [token]);
 
+  const ensureLineIds = (items) =>
+    items.map((item, i) => item.lineId ? item : { ...item, lineId: `legacy_${item.productId}_${item.variantId || 'none'}_${i}` });
+
   /**
    * Load cart on mount or when login status changes
    */
@@ -40,7 +43,7 @@ export function CartProvider({ children }) {
               const guestItems = JSON.parse(guestCart);
               if (guestItems?.length > 0) {
                 const merged = await mergeCart(guestItems, token);
-                setCartItems(((merged?.data ?? merged)?.items || []).filter(Boolean));
+                setCartItems(ensureLineIds(((merged?.data ?? merged)?.items || []).filter(Boolean)));
                 localStorage.removeItem(GUEST_CART_KEY);
                 return;
               }
@@ -49,11 +52,11 @@ export function CartProvider({ children }) {
             }
           }
           const cart = await fetchCart(token);
-          setCartItems(((cart?.data ?? cart)?.items || []).filter(Boolean));
+          setCartItems(ensureLineIds(((cart?.data ?? cart)?.items || []).filter(Boolean)));
         } else {
           // Guest user - load from localStorage
           const stored = localStorage.getItem(GUEST_CART_KEY);
-          setCartItems(stored ? JSON.parse(stored) : []);
+          setCartItems(ensureLineIds(stored ? JSON.parse(stored) : []));
         }
       } catch (error) {
         console.error('Failed to load cart:', error);
@@ -96,6 +99,7 @@ export function CartProvider({ children }) {
     setIsCartLoading(true);
     try {
       const newItem = {
+        lineId: `line_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         productId: product._id || product.id,
         productName: product.name,
         ...(variantId != null ? { variantId: String(variantId) } : {}),
@@ -112,18 +116,17 @@ export function CartProvider({ children }) {
 
       let updatedItems = [...cartItems];
 
-      // Check if item already exists (same productId + variantId)
-      const existingIndex = updatedItems.findIndex(
-        item => item.productId === newItem.productId && 
+      // Custom products always get a new line item — each can have a different design.
+      // Finished goods merge when same product + same variant already in cart.
+      const existingIndex = newItem.isCustom ? -1 : updatedItems.findIndex(
+        item => item.productId === newItem.productId &&
                 (item.variantId || null) === (variantId || null)
       );
 
       if (existingIndex !== -1) {
-        // Update existing item quantity
         updatedItems[existingIndex].qty += newItem.qty;
         updatedItems[existingIndex].lineTotal = updatedItems[existingIndex].qty * updatedItems[existingIndex].unitPrice;
       } else {
-        // Add new item
         updatedItems.push(newItem);
       }
 
@@ -137,14 +140,12 @@ export function CartProvider({ children }) {
   }, [cartItems, saveCart]);
 
   /**
-   * Remove item from cart
+   * Remove item from cart by lineId
    */
-  const removeFromCart = useCallback(async (productId, variantId = null) => {
+  const removeFromCart = useCallback(async (lineId) => {
     setIsCartLoading(true);
     try {
-      const updatedItems = cartItems.filter(item => 
-        !(item.productId === productId && (item.variantId || null) === (variantId || null))
-      );
+      const updatedItems = cartItems.filter(item => item.lineId !== lineId);
       await saveCart(updatedItems);
     } catch (error) {
       console.error('Failed to remove from cart:', error);
@@ -154,16 +155,10 @@ export function CartProvider({ children }) {
     }
   }, [cartItems, saveCart]);
 
-  const bulkRemove = useCallback(async (toRemove) => {
-    // toRemove: array of { productId, variantId }
+  const bulkRemove = useCallback(async (lineIds) => {
     setIsCartLoading(true);
     try {
-      const updatedItems = cartItems.filter(item =>
-        !toRemove.some(r =>
-          r.productId === item.productId &&
-          (r.variantId || null) === (item.variantId || null)
-        )
-      );
+      const updatedItems = cartItems.filter(item => !lineIds.includes(item.lineId));
       await saveCart(updatedItems);
     } catch (error) {
       console.error('[bulkRemove]', error);
@@ -176,13 +171,11 @@ export function CartProvider({ children }) {
   /**
    * Update item quantity
    */
-  const updateQty = useCallback((productId, variantId, newQty) => {
+  const updateQty = useCallback((lineId, newQty) => {
     const updatedItems = cartItems.map(item => {
-      if (item.productId === productId && (item.variantId || null) === (variantId || null)) {
-        const qty = Math.max(1, parseInt(newQty) || 1);
-        return { ...item, qty, lineTotal: qty * item.unitPrice };
-      }
-      return item;
+      if (item.lineId !== lineId) return item;
+      const qty = Math.max(1, parseInt(newQty) || 1);
+      return { ...item, qty, lineTotal: qty * item.unitPrice };
     });
 
     // Optimistic update — reflects immediately in UI

@@ -101,19 +101,14 @@ function ProductCard({ product, onAddToCart, flashSale }) {
             </div>
           )}
 
-          {/* Category badge */}
-          <div className="shop-product-category-badge">
-            {product.category}
-          </div>
-
           {/* Customizable badge */}
           {product.isCustom && (
             <div style={{
               position: 'absolute',
               top: '10px',
               right: '10px',
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              color: '#fff',
+              background: '#D4A843',
+              color: '#000',
               fontSize: '0.6rem',
               fontWeight: 700,
               padding: '3px 8px',

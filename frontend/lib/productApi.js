@@ -9,6 +9,26 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 import { fetchWithTimeout } from './fetchWithTimeout';
 
 /**
+ * Fetch a single product by ID (admin view — includes variantImageUrls and full data)
+ */
+export async function fetchProductById(productId, token) {
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/api/admin/products/${productId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    }, 15000);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.data ?? data;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Fetch all products from MongoDB (admin view - includes unpublished/inactive)
  * @param {string} token - Authentication token
  * @returns {Promise<Array>} List of products

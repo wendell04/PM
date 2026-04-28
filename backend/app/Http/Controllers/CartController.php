@@ -74,6 +74,11 @@ class CartController extends Controller
                 'items.*.variantId' => 'nullable|string',
                 'items.*.variantName' => 'nullable|string',
                 'items.*.image' => 'nullable|string',
+                'items.*.lineId' => 'nullable|string',
+                'items.*.isCustom' => 'nullable|boolean',
+                'items.*.designUrl' => 'nullable|string',
+                'items.*.designNotes' => 'nullable|string',
+                'items.*.flashSaleId' => 'nullable|string',
             ]);
 
             $cart = Cart::getByUserId((string) $user->_id);
@@ -126,6 +131,11 @@ class CartController extends Controller
                 'items.*.variantId' => 'nullable|string',
                 'items.*.variantName' => 'nullable|string',
                 'items.*.image' => 'nullable|string',
+                'items.*.lineId' => 'nullable|string',
+                'items.*.isCustom' => 'nullable|boolean',
+                'items.*.designUrl' => 'nullable|string',
+                'items.*.designNotes' => 'nullable|string',
+                'items.*.flashSaleId' => 'nullable|string',
             ]);
 
             $guestItems = $validated['items'];

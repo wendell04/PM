@@ -119,7 +119,7 @@ function ProductCard({ product }) {
             </div>
           )}
           {product.isCustom && (
-            <div style={{ position: 'absolute', top: '10px', right: '10px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', fontSize: '0.58rem', fontWeight: 700, padding: '3px 8px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px', boxShadow: '0 2px 6px rgba(99,102,241,0.4)' }}>
+            <div style={{ position: 'absolute', top: '10px', right: '10px', background: '#D4A843', color: '#000', fontSize: '0.58rem', fontWeight: 700, padding: '3px 8px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Customizable
             </div>
           )}

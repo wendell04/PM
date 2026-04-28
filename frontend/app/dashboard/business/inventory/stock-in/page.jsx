@@ -512,14 +512,15 @@ function ConfirmSaveModal({
   if (!isOpen || !entries || entries.length === 0) return null;
 
   const entriesByMaterial = entries.reduce((acc, entry) => {
-    if (!acc[entry.materialName])
-      acc[entry.materialName] = {
-        name: entry.materialName,
+    const key = entry.groupName || entry.materialName;
+    if (!acc[key])
+      acc[key] = {
+        name: key,
         category: entry.category,
         sku: entry.sku,
         entries: [],
       };
-    acc[entry.materialName].entries.push(entry);
+    acc[key].entries.push(entry);
     return acc;
   }, {});
 
@@ -1337,7 +1338,6 @@ export default function StockInPage() {
   const [stockInLog, setStockInLog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
-  const [toast, setToast] = useState(null);
   const [infoModal, setInfoModal] = useState(null);
   const [showAddVendor, setShowAddVendor] = useState(false);
   const [vendorPreFillCategories, setVendorPreFillCategories] = useState([]);
@@ -1413,11 +1413,6 @@ export default function StockInPage() {
     loadData();
   }, [loadData]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3500);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   const selectableMaterials = useMemo(
     () => materials.filter((m) => !m.parentId),
@@ -1463,6 +1458,7 @@ export default function StockInPage() {
       entries.push({
         id: genDocNumber("SI"),
         materialId: entry.materialId,
+        groupName: entry.groupName || entry.materialName,
         materialName: entry.materialName,
         sku: entry.sku || "",
         category: "",
@@ -1798,33 +1794,6 @@ export default function StockInPage() {
         </div>
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div
-          style={{
-            position: "fixed",
-            top: "1.5rem",
-            right: "1.5rem",
-            zIndex: 9999,
-            padding: "0.875rem 1.25rem",
-            borderRadius: "10px",
-            background:
-              toast.type === "success"
-                ? "rgba(34,197,94,0.15)"
-                : "rgba(239,68,68,0.15)",
-            border: `1px solid ${toast.type === "success" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
-            color: toast.type === "success" ? "#4ade80" : "#f87171",
-            fontSize: "0.85rem",
-            fontWeight: 600,
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
-          }}
-        >
-          {toast.message}
-        </div>
-      )}
 
       {/* Tabs + Add Stock */}
       <div className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem" }}>

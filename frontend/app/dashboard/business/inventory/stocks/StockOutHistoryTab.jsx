@@ -194,78 +194,26 @@ function StockOutHistoryTab({ stockOuts, materials }) {
             <span className="summary-label">Total Records</span>
           </div>
         </div>
-        <div
-          className={
-            summaryStats.totalQty === 0
-              ? "summary-card"
-              : "summary-card summary-card-danger"
-          }
-        >
+        <div className="summary-card" style={{ background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.1)" }}>
           <div className="summary-content">
-            <span
-              className="summary-value"
-              style={summaryStats.totalQty === 0 ? { color: "var(--gray)" } : {}}
-            >
+            <span className="summary-value" style={{ color: "var(--gray)" }}>
               {summaryStats.totalQty} pcs
             </span>
             <span className="summary-label">Total Qty Deducted</span>
           </div>
         </div>
-        <div
-          className="summary-card"
-          style={
-            salesRevenue === 0
-              ? {
-                  background: "rgba(255,255,255,0.04)",
-                  borderColor: "rgba(255,255,255,0.1)",
-                }
-              : {
-                  background: "rgba(34,197,94,0.08)",
-                  borderColor: "rgba(34,197,94,0.3)",
-                }
-          }
-        >
+        <div className="summary-card" style={{ background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.1)" }}>
           <div className="summary-content">
-            <span
-              className="summary-value"
-              style={{ color: salesRevenue === 0 ? "var(--gray)" : "#22c55e" }}
-            >
-              ₱
-              {salesRevenue.toLocaleString("en-PH", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+            <span className="summary-value" style={{ color: salesRevenue === 0 ? "var(--gray)" : "#D4A843" }}>
+              ₱{salesRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             <span className="summary-label">Total Revenue (Sales)</span>
           </div>
         </div>
-        <div
-          className="summary-card"
-          style={
-            summaryStats.totalLoss === 0
-              ? {
-                  background: "rgba(255,255,255,0.04)",
-                  borderColor: "rgba(255,255,255,0.1)",
-                }
-              : {
-                  background: "rgba(212,168,67,0.08)",
-                  borderColor: "rgba(212,168,67,0.3)",
-                }
-          }
-        >
+        <div className="summary-card" style={{ background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.1)" }}>
           <div className="summary-content">
-            <span
-              className="summary-value"
-              style={{
-                color:
-                  summaryStats.totalLoss === 0 ? "var(--gray)" : "#D4A843",
-              }}
-            >
-              ₱
-              {summaryStats.totalLoss.toLocaleString("en-PH", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+            <span className="summary-value" style={{ color: summaryStats.totalLoss === 0 ? "var(--gray)" : "#D4A843" }}>
+              ₱{summaryStats.totalLoss.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             <span className="summary-label">Total Loss Value</span>
           </div>
@@ -587,21 +535,21 @@ function StockOutHistoryTab({ stockOuts, materials }) {
               </tbody>
             </table>
           </div>
-          {totalPages > 1 && (
-            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem", padding: "1rem 1.5rem", borderTop: "1px solid var(--border)" }}>
-              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-                style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.3rem 0.65rem", color: page === 1 ? "rgba(229,226,225,0.2)" : "#E5E2E1", cursor: page === 1 ? "not-allowed" : "pointer", fontSize: "0.78rem" }}>
-                ‹
-              </button>
-              <span style={{ fontSize: "0.78rem", color: "var(--gray)", minWidth: "80px", textAlign: "center" }}>
-                Page {page} of {totalPages}
-              </span>
-              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.3rem 0.65rem", color: page === totalPages ? "rgba(229,226,225,0.2)" : "#E5E2E1", cursor: page === totalPages ? "not-allowed" : "pointer", fontSize: "0.78rem" }}>
-                ›
-              </button>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.625rem 1rem", borderTop: "1px solid var(--border)", flexWrap: "wrap", gap: "0.5rem", fontSize: "0.8rem", color: "var(--gray)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              Rows per page:
+              <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }} style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", padding: "0.2rem 0.5rem", fontSize: "0.8rem", cursor: "pointer" }}>
+                {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
             </div>
-          )}
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+                style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.3rem 0.65rem", color: page === 1 ? "rgba(229,226,225,0.2)" : "#E5E2E1", cursor: page === 1 ? "not-allowed" : "pointer", fontSize: "0.78rem" }}>‹</button>
+              <span style={{ minWidth: "80px", textAlign: "center" }}>Page {page} of {totalPages}</span>
+              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "0.3rem 0.65rem", color: page === totalPages ? "rgba(229,226,225,0.2)" : "#E5E2E1", cursor: page === totalPages ? "not-allowed" : "pointer", fontSize: "0.78rem" }}>›</button>
+            </div>
+          </div>
           </>
         )}
       </div>

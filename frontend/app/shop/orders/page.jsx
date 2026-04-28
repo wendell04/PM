@@ -182,8 +182,8 @@ export default function ShopOrdersPage() {
       // Remove cancelled order items from cart if they still exist
       const cancelledItems = cancelTarget.items ?? [];
       cancelledItems.forEach(item => {
-        const inCart = cartItems.find(c => c.productId === item.productId);
-        if (inCart) removeFromCart(item.productId, item.variantId ?? null);
+        const inCart = cartItems.find(c => c.productId === item.productId && (c.variantId ?? null) === (item.variantId ?? null));
+        if (inCart?.lineId) removeFromCart(inCart.lineId);
       });
       setCancelTarget(null);
       loadOrders();

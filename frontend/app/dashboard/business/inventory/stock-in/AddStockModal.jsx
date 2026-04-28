@@ -896,6 +896,7 @@ export default function AddStockModal({
       return [
         {
           materialId: mat.id,
+          groupName: mat.name,
           variantLabel: mat.name,
           sku: mat.sku || "",
           uom: mat.uom || "pcs",
@@ -919,6 +920,7 @@ export default function AddStockModal({
       return [
         {
           materialId: mat.id,
+          groupName: mat.name,
           variantLabel: mat.name + " (Parent)",
           sku: mat.sku || "",
           uom: mat.uom || "pcs",
@@ -939,6 +941,7 @@ export default function AddStockModal({
     }
     return children.map((c) => ({
       materialId: c.id,
+      groupName: mat.name,
       variantLabel: c.name,
       sku: c.sku || "",
       uom: c.uom || mat.uom || "pcs",
@@ -1205,6 +1208,7 @@ export default function AddStockModal({
 
         return {
           materialId: r.materialId,
+          groupName: r.groupName || r.variantLabel,
           materialName: r.variantLabel,
           sku: r.sku || "",
           uom: r.uom || "pcs",

@@ -537,6 +537,7 @@ class InventoryController extends Controller
                 $newAdditionCost  = $unitCost * $absQty;
                 $inventory->averageCost  = $newStock > 0 ? ($currentTotalCost + $newAdditionCost) / $newStock : $unitCost;
                 $inventory->lastUnitCost = $unitCost;
+                $inventory->baseCost     = $unitCost;
             }
 
             $inventory->batches  = $batches;

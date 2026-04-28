@@ -257,7 +257,7 @@ function ExtraRow({ extra, idx, materials, leafOptions, onChange, onRemove }) {
         </svg>
       </div>
 
-      {open && (
+      {open && pos && (
         <div ref={listRef} style={{ ...DROPDOWN_LIST_STYLE, top: pos.top, left: pos.left, width: Math.max(pos.width, 240), overflow: "hidden" }}>
           <div style={{ padding: "0.4rem 0.65rem", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
             <input autoFocus type="text" value={query} onChange={(e) => setQuery(e.target.value)}
@@ -314,7 +314,7 @@ const EXTRA_HEADERS = ["Extra Material", "Qty", "Unit", "Cost", ""];
 const EXTRA_GRID = "1fr 60px 40px 80px 28px";
 
 // ── Slot card: one per material variant (or standalone) ──────────────────────
-function SlotCard({ slot, idx, isOnly, materials, leafOptions, onAddExtra, onRemoveExtra, onUpdateExtra }) {
+function SlotCard({ slot, idx, isOnly, materials, leafOptions, onAddExtra, onRemoveExtra, onUpdateExtra, onRemoveSlot }) {
   const primaryMat = materials.find((m) => m.id === slot.matId);
   const primaryRange = primaryMat ? batchCostRange(primaryMat, 1) : { min: 0, max: 0 };
   const extrasRange = slot.extras.reduce((s, e) => {
@@ -336,6 +336,15 @@ function SlotCard({ slot, idx, isOnly, materials, leafOptions, onAddExtra, onRem
         </span>
         <span style={{ color: "#E5E2E1", fontWeight: 700, fontSize: "0.875rem", flex: 1 }}>{slot.matName}</span>
         <span style={{ color: "rgba(229,226,225,0.18)", lineHeight: 0 }} title="From inventory — locked"><LockIcon /></span>
+        {onRemoveSlot && (
+          <button type="button" onClick={() => onRemoveSlot(slot.matId)}
+            title="Remove this variant from BOM"
+            style={{ background: "none", border: "none", color: "rgba(229,226,225,0.2)", cursor: "pointer", padding: "0.1rem", lineHeight: 0, marginLeft: "0.25rem" }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(229,226,225,0.2)"; }}>
+            <CloseIcon size={14} />
+          </button>
+        )}
       </div>
 
       <div style={{ padding: "0.75rem 1rem" }}>
@@ -438,6 +447,8 @@ export default function BOMFormModal({ bom, addToGroup = null, existingGroupBoms
     setVariantSlots((p) => p.map((s) => s.matId === slotMatId ? { ...s, extras: s.extras.filter((_, i) => i !== idx) } : s));
   const updateExtra = (slotMatId, idx, field, val) =>
     setVariantSlots((p) => p.map((s) => s.matId === slotMatId ? { ...s, extras: s.extras.map((e, i) => i === idx ? { ...e, [field]: val } : e) } : s));
+  const removeSlot = (matId) =>
+    setVariantSlots((p) => p.filter((s) => s.matId !== matId));
 
   // ── EDIT state ──────────────────────────────────────────────────────────────
   const [editGroupName, setEditGroupName] = useState("");
@@ -700,6 +711,7 @@ export default function BOMFormModal({ bom, addToGroup = null, existingGroupBoms
                     <SlotCard key={slot.matId} slot={slot} idx={i} isOnly={variantSlots.length === 1}
                       materials={materials} leafOptions={leafMaterialOptions}
                       onAddExtra={addExtra} onRemoveExtra={removeExtra} onUpdateExtra={updateExtra}
+                      onRemoveSlot={variantSlots.length > 1 ? removeSlot : undefined}
                     />
                   ))}
                 </div>

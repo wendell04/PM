@@ -689,9 +689,9 @@ export default function VendorsApiTab({ onVendorsChange, materials = [], units =
     if (!token) return;
     setLoading(true);
     setError(null);
-    const [suppliersResult, inventoryResult, unitsResult] = await Promise.allSettled([
+    // Phase 1: load suppliers + units fast (shows cards immediately)
+    const [suppliersResult, unitsResult] = await Promise.allSettled([
       fetchSuppliers(token),
-      fetchInventory(token),
       fetchUnits(token),
     ]);
     if (suppliersResult.status === 'fulfilled') {
@@ -700,7 +700,6 @@ export default function VendorsApiTab({ onVendorsChange, materials = [], units =
     } else {
       setError(suppliersResult.reason?.message || 'Failed to load suppliers.');
     }
-    setInventory(inventoryResult.status === 'fulfilled' && Array.isArray(inventoryResult.value) ? inventoryResult.value : []);
     if (unitsResult.status === 'fulfilled' && Array.isArray(unitsResult.value)) {
       setLocalUnits(unitsResult.value.map((u) => ({
         id: u._id || u.id,
@@ -709,6 +708,10 @@ export default function VendorsApiTab({ onVendorsChange, materials = [], units =
       })));
     }
     setLoading(false);
+    // Phase 2: load inventory in background (only needed for catalog modal)
+    fetchInventory(token).then((d) => {
+      if (Array.isArray(d)) setInventory(d);
+    }).catch(() => {});
   }, [token]);
 
   useEffect(() => { loadSuppliers(); }, [loadSuppliers]);

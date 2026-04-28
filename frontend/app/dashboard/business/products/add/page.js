@@ -4,7 +4,7 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchInventory, fetchBoms } from "@/lib/inventoryApi";
-import { fetchProducts, createProduct, updateProduct, uploadImage } from "@/lib/productApi";
+import { fetchProducts, fetchProductById, createProduct, updateProduct, uploadImage } from "@/lib/productApi";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
@@ -104,12 +104,6 @@ function ProductCardPreview({ name, category, priceRange, variantCount = 0, thum
               <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.3)" }}>No image</div>
             </div>
           )}
-          {/* Category badge */}
-          {category && (
-            <div style={{ position: "absolute", bottom: "0.625rem", left: "0.625rem", fontSize: "0.65rem", fontWeight: 600, color: "rgba(255,255,255,0.7)", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)", padding: "0.2rem 0.5rem", borderRadius: "4px", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              {category}
-            </div>
-          )}
           {isCustom && (
             <div style={{ position: "absolute", top: "10px", right: "10px", background: "#D4A843", color: "#000", fontSize: "0.6rem", fontWeight: 700, padding: "3px 8px", borderRadius: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
               Customizable
@@ -152,6 +146,7 @@ export default function AddProductPage() {
 
   // ── Data loading ──────────────────────────────────────────────────────────
   const [boms, setBoms] = useState([]);
+  const [catalogProducts, setCatalogProducts] = useState([]);
   const [inventoryList, setInventoryList] = useState([]);
   const [existingCategories, setExistingCategories] = useState([]);
 
@@ -169,6 +164,7 @@ export default function AddProductPage() {
         setBoms(Array.isArray(bomRes.value) ? bomRes.value : []);
       if (prodRes.status === "fulfilled") {
         const prods = Array.isArray(prodRes.value) ? prodRes.value : [];
+        setCatalogProducts(prods);
         const cats = [...new Set(prods.map((p) => p.category).filter(Boolean))].sort();
         setExistingCategories(cats);
         const imgMap = new Map();
@@ -181,7 +177,11 @@ export default function AddProductPage() {
 
         if (isEditMode && editProductId) {
           const found = prods.find((p) => String(p._id ?? p.id) === String(editProductId));
-          if (found) setEditingProduct(found);
+          if (found) {
+            // Fetch full product data separately to get variantImageUrls (list endpoint may omit it)
+            const full = await fetchProductById(editProductId, token);
+            setEditingProduct(full && full.variantImageUrls ? { ...found, variantImageUrls: full.variantImageUrls } : found);
+          }
         }
       }
     };
@@ -201,10 +201,23 @@ export default function AddProductPage() {
     return map;
   }, [allBoms]);
 
-  const productGroupNames = useMemo(() =>
-    Object.keys(productGroupMap).sort(),
-    [productGroupMap]
-  );
+  const usedBomGroups = useMemo(() => {
+    const set = new Set();
+    catalogProducts.forEach((p) => {
+      const g = p.bomGroupName || p.productGroupName;
+      if (g) set.add(g);
+    });
+    return set;
+  }, [catalogProducts]);
+
+  const productGroupNames = useMemo(() => {
+    const editGroup = isEditMode && editingProduct
+      ? (editingProduct.bomGroupName || editingProduct.productGroupName)
+      : null;
+    return Object.keys(productGroupMap)
+      .filter((g) => !usedBomGroups.has(g) || g === editGroup)
+      .sort();
+  }, [productGroupMap, usedBomGroups, isEditMode, editingProduct]);
 
   // ── Form state ────────────────────────────────────────────────────────────
 
@@ -444,10 +457,15 @@ export default function AddProductPage() {
     if (allZeroStock) setIsMadeToOrder(true);
   }, [allZeroStock]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const variantDropdownRef = useRef(null);
   useEffect(() => {
-    const h = () => setVariantImgDropdown(null);
-    if (variantImgDropdown) document.addEventListener("click", h, true);
-    return () => document.removeEventListener("click", h, true);
+    if (!variantImgDropdown) return;
+    const h = (e) => {
+      if (variantDropdownRef.current && variantDropdownRef.current.contains(e.target)) return;
+      setVariantImgDropdown(null);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
   }, [variantImgDropdown]);
 
   // ── Tier helpers ──────────────────────────────────────────────────────────
@@ -683,6 +701,7 @@ export default function AddProductPage() {
                                 setSelectedBoms(bomsInGroup);
                                 setStorefrontName(g);
                                 setCategory(productGroupMap[g].category || "");
+                                if (/custom/i.test(g)) setIsCustomizable(true);
                                 setProductGroupOpen(false);
                                 setProductGroupSearch("");
                                 setErrors((p) => ({ ...p, bom: undefined }));
@@ -839,7 +858,7 @@ export default function AddProductPage() {
                           </button>
                         )}
                         {variantImgDropdown === bom.id && (
-                          <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: "100%", left: 0, zIndex: 300, background: "#1c1b18", border: "1px solid var(--border)", borderRadius: "10px", padding: "0.5rem", width: "200px", maxHeight: "180px", overflowY: "auto", boxShadow: "0 8px 24px rgba(0,0,0,0.6)" }}>
+                          <div ref={variantDropdownRef} onMouseDown={(e) => e.stopPropagation()} style={{ position: "absolute", top: "100%", left: 0, zIndex: 300, background: "#1c1b18", border: "1px solid var(--border)", borderRadius: "10px", padding: "0.5rem", width: "200px", maxHeight: "180px", overflowY: "auto", boxShadow: "0 8px 24px rgba(0,0,0,0.6)" }}>
                             <div style={{ fontSize: "0.65rem", color: "var(--gray)", marginBottom: "0.4rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Existing images</div>
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "4px" }}>
                               {existingImages.map((img) => (
