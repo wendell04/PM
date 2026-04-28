@@ -176,10 +176,15 @@ class ChatController extends Controller
                 $participants = [(string)$user->_id, (string)$recipientId];
                 sort($participants);
 
-                // Find existing conversation with these exact participants
-                $conversation = Conversation::where('participants', 'all', $participants)
-                    ->where('participants', 'size', 2)
-                    ->first();
+                // Find existing 1-to-1 conversation using PHP-level filter
+                // (avoids MongoDB $all/$size operator compatibility issues)
+                $existing = Conversation::where('participants', (string)$user->_id)->get();
+                $conversation = $existing->first(function ($c) use ($recipientId, $user) {
+                    $parts = array_map('strval', $c->participants ?? []);
+                    return count($parts) === 2
+                        && in_array((string)$recipientId, $parts, true)
+                        && in_array((string)$user->_id, $parts, true);
+                });
 
                 if (!$conversation) {
                     $conversation = Conversation::create([

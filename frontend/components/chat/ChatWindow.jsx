@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 
-const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, onStartChat, isSending, isLoadingMessages, isLoadingConversations, addToCart }) => {
+const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, onStartChat, isSending, isLoadingMessages, isLoadingConversations, addToCart, onlineUsers = new Set() }) => {
   const scrollRef = useRef(null);
   const [lightboxUrl, setLightboxUrl] = useState('');
   const [addedToCart, setAddedToCart] = useState({});
@@ -63,13 +63,13 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
             ? "This customer hasn't received any messages yet. Be the first to reach out!"
             : 'How can we help you today? Our team is here to assist with your custom orders.'}
         </p>
-        {!isSending && (
+        {!isAdmin && !isSending && (
           <button
             className="start-btn"
             style={{ cursor: 'pointer' }}
             onClick={(e) => {
               e.preventDefault();
-              onStartChat(isAdmin ? `Hello! How can I help you today?` : 'Hello! I would like to inquire about my order.');
+              onStartChat('Hello! I would like to inquire about my order.');
             }}
           >
             Start Conversation
@@ -86,16 +86,25 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
     <>
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, width: '100%' }}>
       <div className="chat-header">
-        <div className="chat-avatar" style={{ width: '36px', height: '36px' }}>
+        <div className="chat-avatar" style={{ width: '36px', height: '36px', position: 'relative' }}>
           {activeConversation.other_user?.avatar ? (
             <img src={activeConversation.other_user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
             <span style={{ fontSize: '0.8rem', fontWeight: 800 }}>{(activeConversation.other_user?.name || 'U').charAt(0)}</span>
           )}
+          {onlineUsers.has(activeConversation.other_user?.id) && (
+            <span style={{
+              position: 'absolute', bottom: '1px', right: '1px',
+              width: '9px', height: '9px', borderRadius: '50%',
+              background: '#22c55e', border: '2px solid var(--dark2)',
+            }} />
+          )}
         </div>
         <div>
           <div style={{ fontSize: '0.85rem', fontWeight: 800 }}>{activeConversation.other_user?.name || 'Chat'}</div>
-          <div style={{ fontSize: '0.7rem', color: '#888', fontWeight: 600, textTransform: 'uppercase' }}>Online</div>
+          <div style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', color: onlineUsers.has(activeConversation.other_user?.id) ? '#22c55e' : '#888' }}>
+            {onlineUsers.has(activeConversation.other_user?.id) ? 'Online' : 'Offline'}
+          </div>
         </div>
       </div>
 

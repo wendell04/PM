@@ -8,6 +8,7 @@ import { getConversations, getMessages, sendMessage, markAsRead } from '../../li
 import { getEcho } from '../../lib/echo';
 import './chat.css';
 
+
 const ChatModule = ({ user, token, addToCart }) => {
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
@@ -15,6 +16,7 @@ const ChatModule = ({ user, token, addToCart }) => {
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState(new Set());
 
   const isAdmin = useMemo(() => user?.role === 'admin' || user?.role === 'owner', [user]);
 
@@ -74,6 +76,21 @@ const ChatModule = ({ user, token, addToCart }) => {
 
     loadMessages();
   }, [activeConversation?._id, token]);
+
+  // Presence channel — track who is online
+  useEffect(() => {
+    if (!user || !token) return;
+    const echo = getEcho(token);
+    if (!echo) return;
+
+    const presence = echo.join('presence-online');
+    presence
+      .here((members) => setOnlineUsers(new Set(members.map((m) => m.id))))
+      .joining((member) => setOnlineUsers((prev) => new Set([...prev, member.id])))
+      .leaving((member) => setOnlineUsers((prev) => { const s = new Set(prev); s.delete(member.id); return s; }));
+
+    return () => { echo.leave('presence-online'); };
+  }, [user, token]);
 
   useEffect(() => {
     if (!user || !token) return;
@@ -155,7 +172,10 @@ const ChatModule = ({ user, token, addToCart }) => {
     }
   };
 
+  // Hide input on the "start conversation" welcome screen — customers only.
+  // Admins always have the input visible (they initiate without the button).
   const isVirtualEmpty =
+    !isAdmin &&
     (activeConversation?._id === 'support_auto' || activeConversation?._id?.startsWith('new_')) &&
     messages.length === 0 &&
     !isLoadingMessages;
@@ -167,6 +187,7 @@ const ChatModule = ({ user, token, addToCart }) => {
         activeConversation={activeConversation}
         onSelectConversation={handleSelectConversation}
         isLoading={isLoadingConversations}
+        onlineUsers={onlineUsers}
       />
 
       <div className="chat-main">
@@ -181,6 +202,7 @@ const ChatModule = ({ user, token, addToCart }) => {
           isSending={isSending}
           onStartChat={(text) => handleSendMessage({ type: 'text', body: text })}
           addToCart={addToCart}
+          onlineUsers={onlineUsers}
         />
 
         {activeConversation && !isVirtualEmpty && (

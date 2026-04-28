@@ -19,7 +19,6 @@ class Conversation extends Model
     ];
 
     protected $casts = [
-        'participants'    => 'array',
         'last_message_at' => 'datetime',
         'is_active'       => 'boolean',
     ];
