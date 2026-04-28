@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ChatSidebar from './ChatSidebar';
 import ChatWindow from './ChatWindow';
 import ChatInput from './ChatInput';
-import { getConversations, getMessages, sendMessage, markAsRead } from '../../lib/chatApi';
+import { getConversations, getMessages, sendMessage, markAsRead, sendHeartbeat } from '../../lib/chatApi';
 import { getEcho } from '../../lib/echo';
 import './chat.css';
 
@@ -20,34 +20,55 @@ const ChatModule = ({ user, token, addToCart }) => {
 
   const isAdmin = useMemo(() => user?.role === 'admin' || user?.role === 'owner', [user]);
 
+  // Core fetch logic shared by initial load and background polls
+  const applyConversations = useCallback(async () => {
+    const data = await getConversations(token);
+    setConversations(data);
+    setActiveConversation(prev => {
+      if (!prev) {
+        return !isAdmin && data.length > 0 ? data[0] : null;
+      }
+      const realMatch = data.find(
+        c => !c._id.startsWith('new_') && c._id !== 'support_auto' && c.other_user?.id === prev.other_user?.id
+      );
+      if (realMatch) return realMatch;
+      const stillExists = data.find(c => c._id === prev._id);
+      return stillExists ?? prev;
+    });
+  }, [token, isAdmin]);
+
   const loadConversations = useCallback(async () => {
     try {
       setIsLoadingConversations(true);
-      const data = await getConversations(token);
-      setConversations(data);
-
-      setActiveConversation(prev => {
-        if (!prev) {
-          return !isAdmin && data.length > 0 ? data[0] : null;
-        }
-        // Prefer a real conversation over a new_/virtual one for the same user
-        const realMatch = data.find(
-          c => !c._id.startsWith('new_') && c._id !== 'support_auto' && c.other_user?.id === prev.other_user?.id
-        );
-        if (realMatch) return realMatch;
-        const stillExists = data.find(c => c._id === prev._id);
-        return stillExists ?? prev;
-      });
+      await applyConversations();
     } catch (error) {
       console.error('Failed to load conversations:', error);
     } finally {
       setIsLoadingConversations(false);
     }
-  }, [token, isAdmin]);
+  }, [applyConversations]);
 
+  // Initial load
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  // Conversation list polling — refreshes last_seen_at for online status
+  useEffect(() => {
+    if (!token) return;
+    const id = setInterval(async () => {
+      try { await applyConversations(); } catch { /* ignore */ }
+    }, 20000);
+    return () => clearInterval(id);
+  }, [token, applyConversations]);
+
+  // Heartbeat — keeps current user marked online
+  useEffect(() => {
+    if (!token) return;
+    sendHeartbeat(token);
+    const id = setInterval(() => sendHeartbeat(token), 30000);
+    return () => clearInterval(id);
+  }, [token]);
 
   useEffect(() => {
     const loadMessages = async () => {
@@ -75,6 +96,29 @@ const ChatModule = ({ user, token, addToCart }) => {
     };
 
     loadMessages();
+  }, [activeConversation?._id, token]);
+
+  // Message polling — 5s fallback for real-time delivery
+  useEffect(() => {
+    if (!activeConversation ||
+        activeConversation._id === 'support_auto' ||
+        activeConversation._id.startsWith('new_') ||
+        !token) return;
+
+    const convId = activeConversation._id;
+    const poll = async () => {
+      try {
+        const data = await getMessages(token, convId);
+        setMessages(prev => {
+          const existingIds = new Set(prev.map(m => m._id));
+          const newOnes = data.filter(m => !existingIds.has(m._id));
+          return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+        });
+      } catch { /* ignore */ }
+    };
+
+    const id = setInterval(poll, 5000);
+    return () => clearInterval(id);
   }, [activeConversation?._id, token]);
 
   // Presence channel — track who is online

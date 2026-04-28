@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 
+const isRecentlySeen = (ts) => ts && Date.now() - new Date(ts).getTime() < 120_000;
+
 const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, onStartChat, isSending, isLoadingMessages, isLoadingConversations, addToCart, onlineUsers = new Set() }) => {
   const scrollRef = useRef(null);
   const [lightboxUrl, setLightboxUrl] = useState('');
@@ -86,26 +88,33 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
     <>
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, width: '100%' }}>
       <div className="chat-header">
-        <div className="chat-avatar" style={{ width: '36px', height: '36px', position: 'relative' }}>
-          {activeConversation.other_user?.avatar ? (
-            <img src={activeConversation.other_user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            <span style={{ fontSize: '0.8rem', fontWeight: 800 }}>{(activeConversation.other_user?.name || 'U').charAt(0)}</span>
-          )}
-          {onlineUsers.has(activeConversation.other_user?.id) && (
-            <span style={{
-              position: 'absolute', bottom: '1px', right: '1px',
-              width: '9px', height: '9px', borderRadius: '50%',
-              background: '#22c55e', border: '2px solid var(--dark2)',
-            }} />
-          )}
-        </div>
-        <div>
-          <div style={{ fontSize: '0.85rem', fontWeight: 800 }}>{activeConversation.other_user?.name || 'Chat'}</div>
-          <div style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', color: onlineUsers.has(activeConversation.other_user?.id) ? '#22c55e' : '#888' }}>
-            {onlineUsers.has(activeConversation.other_user?.id) ? 'Online' : 'Offline'}
-          </div>
-        </div>
+        {(() => {
+          const isOnline = onlineUsers.has(activeConversation.other_user?.id) || isRecentlySeen(activeConversation.other_user?.last_seen_at);
+          return (
+            <>
+              <div className="chat-avatar" style={{ width: '36px', height: '36px', position: 'relative' }}>
+                {activeConversation.other_user?.avatar ? (
+                  <img src={activeConversation.other_user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <span style={{ fontSize: '0.8rem', fontWeight: 800 }}>{(activeConversation.other_user?.name || 'U').charAt(0)}</span>
+                )}
+                {isOnline && (
+                  <span style={{
+                    position: 'absolute', bottom: '1px', right: '1px',
+                    width: '9px', height: '9px', borderRadius: '50%',
+                    background: '#22c55e', border: '2px solid var(--dark2)',
+                  }} />
+                )}
+              </div>
+              <div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 800 }}>{activeConversation.other_user?.name || 'Chat'}</div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', color: isOnline ? '#22c55e' : '#888' }}>
+                  {isOnline ? 'Online' : 'Offline'}
+                </div>
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       <div className="chat-messages custom-scrollbar" ref={scrollRef}>

@@ -47,10 +47,11 @@ class ChatController extends Controller
                                             ->where('is_read', false)
                                             ->count(),
                     'other_user'      => $other ? [
-                        'id'     => (string)$other->_id,
-                        'name'   => $other->firstName . ' ' . $other->lastName,
-                        'avatar' => $other->avatar,
-                        'role'   => $other->role,
+                        'id'          => (string)$other->_id,
+                        'name'        => $other->firstName . ' ' . $other->lastName,
+                        'avatar'      => $other->avatar,
+                        'role'        => $other->role,
+                        'last_seen_at' => $other->last_seen_at ? $other->last_seen_at->toIso8601String() : null,
                     ] : ['name' => 'Unknown User']
                 ];
             }
@@ -67,10 +68,11 @@ class ChatController extends Controller
                         'last_message_at' => null,
                         'unread_count'    => 0,
                         'other_user'      => [
-                            'id'     => (string)$admin->_id,
-                            'name'   => 'PersonalizeMe Support',
-                            'avatar' => null,
-                            'role'   => 'admin'
+                            'id'          => (string)$admin->_id,
+                            'name'        => 'PersonalizeMe Support',
+                            'avatar'      => null,
+                            'role'        => 'admin',
+                            'last_seen_at' => $admin->last_seen_at ? $admin->last_seen_at->toIso8601String() : null,
                         ]
                     ]);
                 }
@@ -94,10 +96,11 @@ class ChatController extends Controller
                         'last_message_at' => null,
                         'unread_count'    => 0,
                         'other_user'      => [
-                            'id'     => (string)$c->_id,
-                            'name'   => $c->firstName . ' ' . $c->lastName,
-                            'avatar' => $c->avatar,
-                            'role'   => 'customer'
+                            'id'          => (string)$c->_id,
+                            'name'        => $c->firstName . ' ' . $c->lastName,
+                            'avatar'      => $c->avatar,
+                            'role'        => 'customer',
+                            'last_seen_at' => $c->last_seen_at ? $c->last_seen_at->toIso8601String() : null,
                         ]
                     ];
                 }
@@ -293,6 +296,19 @@ class ChatController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to upload image.');
+        }
+    }
+
+    /**
+     * Heartbeat — keeps last_seen_at fresh while the user has chat open.
+     */
+    public function heartbeat(Request $request)
+    {
+        try {
+            $request->user()->update(['last_seen_at' => now()]);
+            return $this->successResponse('OK');
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Heartbeat failed.');
         }
     }
 

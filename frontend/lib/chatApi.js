@@ -79,6 +79,20 @@ export async function sendMessage(token, payload) {
 }
 
 /**
+ * Ping the heartbeat endpoint to keep last_seen_at fresh
+ */
+export async function sendHeartbeat(token) {
+  try {
+    await fetchWithTimeout(`${API_URL}/api/chat/heartbeat`, {
+      method: 'PATCH',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+  } catch {
+    // best-effort — silently ignore
+  }
+}
+
+/**
  * Mark messages in a conversation as read
  */
 export async function markAsRead(token, conversationId) {

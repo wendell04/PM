@@ -44,6 +44,7 @@ class User extends Authenticatable
         'verification_attempts',
         'two_factor_enabled',
         'unlock_requested_at',
+        'last_seen_at',
     ];
 
     protected $casts = [
@@ -54,6 +55,7 @@ class User extends Authenticatable
         'login_locked_until'     => 'datetime',
         'two_factor_enabled'     => 'boolean',
         'unlock_requested_at'    => 'datetime',
+        'last_seen_at'           => 'datetime',
     ];
 
     protected $hidden = [

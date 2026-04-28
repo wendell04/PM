@@ -2,6 +2,8 @@
 
 import React from 'react';
 
+const isRecentlySeen = (ts) => ts && Date.now() - new Date(ts).getTime() < 120_000;
+
 const ChatSidebar = ({ conversations, activeConversation, onSelectConversation, isLoading, onlineUsers = new Set() }) => {
   if (isLoading) {
     return (
@@ -36,7 +38,7 @@ const ChatSidebar = ({ conversations, activeConversation, onSelectConversation, 
 
             const isSupport = conv.other_user?.role === 'admin' || conv.other_user?.role === 'owner';
             const avatarSrc = conv.other_user?.avatar || (isSupport ? '/logos/PersonalizeMe logo.png' : null);
-            const isOnline = onlineUsers.has(conv.other_user?.id);
+            const isOnline = onlineUsers.has(conv.other_user?.id) || isRecentlySeen(conv.other_user?.last_seen_at);
 
             return (
               <div

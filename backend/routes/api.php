@@ -128,6 +128,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chat/messages',                 [ChatController::class, 'store']);
     Route::post('/chat/upload-image',             [ChatController::class, 'uploadImage']);
     Route::patch('/chat/conversations/{id}/read', [ChatController::class, 'markAsRead']);
+    Route::patch('/chat/heartbeat',              [ChatController::class, 'heartbeat']);
 });
 
 // ─── Owner/Admin only — store config, staff management, role permissions ─────
