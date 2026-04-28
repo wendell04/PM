@@ -8,7 +8,7 @@ import { getConversations, getMessages, sendMessage, markAsRead } from '../../li
 import { getEcho } from '../../lib/echo';
 import './chat.css';
 
-const ChatModule = ({ user, token }) => {
+const ChatModule = ({ user, token, addToCart }) => {
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -83,6 +83,17 @@ const ChatModule = ({ user, token }) => {
     const handleNewMessage = (data) => {
       const newMessage = data.message;
       if (activeConversation && newMessage.conversation_id === activeConversation._id) {
+        // Real conversation — append directly
+        setMessages(prev => {
+          if (prev.find(m => m._id === newMessage._id)) return prev;
+          return [...prev, newMessage];
+        });
+      } else if (
+        activeConversation &&
+        (activeConversation._id.startsWith('new_') || activeConversation._id === 'support_auto')
+      ) {
+        // Virtual conversation: the first real message just created a conversation.
+        // Append message optimistically; loadConversations below will resolve the real ID.
         setMessages(prev => {
           if (prev.find(m => m._id === newMessage._id)) return prev;
           return [...prev, newMessage];
@@ -144,6 +155,11 @@ const ChatModule = ({ user, token }) => {
     }
   };
 
+  const isVirtualEmpty =
+    (activeConversation?._id === 'support_auto' || activeConversation?._id?.startsWith('new_')) &&
+    messages.length === 0 &&
+    !isLoadingMessages;
+
   return (
     <div className="chat-container">
       <ChatSidebar
@@ -160,17 +176,20 @@ const ChatModule = ({ user, token }) => {
           user={user}
           isLoading={isLoadingMessages}
           isLoadingMessages={isLoadingMessages}
+          isLoadingConversations={isLoadingConversations}
           isAdmin={isAdmin}
           isSending={isSending}
           onStartChat={(text) => handleSendMessage({ type: 'text', body: text })}
+          addToCart={addToCart}
         />
 
-        {activeConversation && (
+        {activeConversation && !isVirtualEmpty && (
           <ChatInput
             onSendMessage={handleSendMessage}
             isSending={isSending}
             activeConversation={activeConversation}
             token={token}
+            isAdmin={isAdmin}
           />
         )}
       </div>

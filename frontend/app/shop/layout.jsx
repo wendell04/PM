@@ -718,7 +718,7 @@ export default function ShopLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
-  const { setCartItems, cartCount: globalCartCount } = useGlobalCart();
+  const { setCartItems, cartCount: globalCartCount, addToCart: globalAddToCart } = useGlobalCart();
   const [user, setUser]       = useState(null);
   const [cart, setCart]       = useState([]);
   const [cartInitialized, setCartInitialized] = useState(false);
@@ -2228,7 +2228,7 @@ export default function ShopLayout({ children }) {
 
           {chatOpen && (
             <div className="chat-popup animate-fade-in">
-              <ChatModule user={user} token={getToken()} />
+              <ChatModule user={user} token={getToken()} addToCart={globalAddToCart} />
             </div>
           )}
         </>

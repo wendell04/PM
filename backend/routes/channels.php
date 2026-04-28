@@ -22,8 +22,11 @@ Broadcast::channel('user.{userId}', function ($user, $userId) {
 Broadcast::channel('conversation.{conversationId}', function ($user, $conversationId) {
     $conversation = \App\Models\Conversation::find($conversationId);
     if (!$conversation) return false;
-    
-    return in_array($user->_id, $conversation->participants) 
+
+    $userId = (string)($user->_id ?? $user->id ?? '');
+    $participants = array_map('strval', $conversation->participants ?? []);
+
+    return in_array($userId, $participants, true)
         || in_array($user->role ?? null, ['admin', 'owner']);
 });
 

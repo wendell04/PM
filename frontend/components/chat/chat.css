@@ -237,6 +237,10 @@
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 10px;

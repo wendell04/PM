@@ -151,11 +151,12 @@ class ChatController extends Controller
             $user = $request->user();
             $request->validate([
                 'conversation_id' => 'nullable|string',
-                'recipient_id'    => 'nullable|string', // Required if no conversation_id
-                'body'            => 'required_without:file_url|string|max:2000',
-                'type'            => 'required|in:text,image,order_reference',
+                'recipient_id'    => 'nullable|string',
+                'body'            => 'nullable|string|max:2000',
+                'type'            => 'required|in:text,image,order_reference,quotation',
                 'file_url'        => 'nullable|string',
                 'order_id'        => 'nullable|string',
+                'metadata'        => 'nullable|array',
             ]);
 
             $conversationId = $request->conversation_id;
@@ -206,13 +207,30 @@ class ChatController extends Controller
                         'total' => $order->totalAmount,
                     ];
                 }
+            } elseif ($request->type === 'quotation' && $request->metadata) {
+                $m = $request->metadata;
+                $metadata = [
+                    'productName' => $m['productName'] ?? '',
+                    'qty'         => intval($m['qty'] ?? 1),
+                    'unitPrice'   => floatval($m['unitPrice'] ?? 0),
+                    'designFee'   => floatval($m['designFee'] ?? 0),
+                    'deliveryFee' => floatval($m['deliveryFee'] ?? 0),
+                    'note'        => $m['note'] ?? '',
+                    'total'       => floatval($m['total'] ?? 0),
+                ];
             }
+
+            $lastMessageText = match($request->type) {
+                'image'     => 'Sent an image',
+                'quotation' => 'Sent a quotation',
+                default     => $request->body ?? '',
+            };
 
             $message = Message::create([
                 'conversation_id' => $conversationId,
                 'sender_id'       => $user->_id,
                 'sender_name'     => $user->firstName . ' ' . $user->lastName,
-                'body'            => $request->body,
+                'body'            => $request->body ?? '',
                 'type'            => $request->type,
                 'file_url'        => $request->file_url,
                 'metadata'        => $metadata,
@@ -221,7 +239,7 @@ class ChatController extends Controller
 
             // Update conversation last message
             $conversation->update([
-                'last_message' => $request->type === 'image' ? 'Sent an image' : $request->body,
+                'last_message'    => $lastMessageText,
                 'last_message_at' => now(),
             ]);
 
