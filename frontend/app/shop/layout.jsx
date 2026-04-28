@@ -16,6 +16,7 @@ import {
   markAllNotificationsRead,
 } from '@/lib/notificationApi';
 import { getEcho, disconnectEcho } from '@/lib/echo';
+import { useTheme } from '../../contexts/ThemeContext';
 import ChatModule from '@/components/chat/ChatModule';
 import './shop.css';
 
@@ -82,13 +83,13 @@ function toMongoItem(item) {
 function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState({
-    email: '',
-    password: '',
-  });
+  const [errors, setErrors] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
+  const [unlockRequesting, setUnlockRequesting] = useState(false);
+  const [unlockMsg, setUnlockMsg] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -100,6 +101,8 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
       newErrors.password = 'Password is required.';
     if (newErrors.email || newErrors.password) { setErrors(newErrors); return; }
     setErrors({ email: '', password: '' });
+    setIsLocked(false);
+    setUnlockMsg('');
     setLoading(true);
 
     try {
@@ -110,8 +113,13 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
       }, 15000);
 
       const data = await res.json();
+      if (res.status === 429) {
+        setIsLocked(true);
+        setErrors({ email: '', password: data.message || 'Account temporarily locked.' });
+        return;
+      }
       if (!res.ok) {
-        const authError = new Error('Incorrect email or password.');
+        const authError = new Error(data.message || 'Incorrect email or password.');
         authError.isAuthError = true;
         throw authError;
       }
@@ -125,6 +133,28 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUnlockRequest = async () => {
+    if (!email.trim()) {
+      setErrors(prev => ({ ...prev, email: 'Enter your email to request unlock.' }));
+      return;
+    }
+    setUnlockRequesting(true);
+    setUnlockMsg('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/unlock-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      }, 10000);
+      const data = await res.json();
+      setUnlockMsg(data.message || 'Request submitted. An admin will review it shortly.');
+    } catch {
+      setUnlockMsg('Failed to submit request. Please try again.');
+    } finally {
+      setUnlockRequesting(false);
     }
   };
 
@@ -160,6 +190,21 @@ function LoginForm({ onSuccess, onSwitchToRegister, onForgotPassword }) {
           </button>
         </div>
         {errors.password && <span className="error-message">{errors.password}</span>}
+        {isLocked && !unlockMsg && (
+          <button
+            type="button"
+            onClick={handleUnlockRequest}
+            disabled={unlockRequesting}
+            style={{ marginTop: '8px', background: 'none', border: 'none', color: 'var(--gold)', cursor: unlockRequesting ? 'not-allowed' : 'pointer', fontSize: '0.84rem', textDecoration: 'underline', padding: 0 }}
+          >
+            {unlockRequesting ? 'Submitting...' : 'Request account unlock'}
+          </button>
+        )}
+        {unlockMsg && (
+          <div style={{ marginTop: '8px', fontSize: '0.82rem', color: '#4ade80', background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)', borderRadius: '6px', padding: '8px 10px' }}>
+            {unlockMsg}
+          </div>
+        )}
       </div>
 
       <div className="auth-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -240,7 +285,7 @@ function PasswordStrength({ password }) {
           )}
         </div>
       )}
-      <div style={{ height: '4px', borderRadius: '999px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+      <div style={{ height: '4px', borderRadius: '999px', background: 'var(--dark3)', overflow: 'hidden' }}>
         <div style={{ height: '100%', borderRadius: '999px',
           width: isTooLong ? '100%' : current.width,
           background: isTooLong ? 'var(--red)' : current.color,
@@ -257,7 +302,7 @@ function PasswordStrength({ password }) {
 function StepIndicator({ step }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', padding: '0.6rem 1.5rem',
-      background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--border)', gap: '0.5rem' }}>
+      background: 'var(--dark2)', borderBottom: '1px solid var(--border)', gap: '0.5rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem',
         color: step === 1 ? 'var(--gold)' : 'var(--gray)', fontWeight: '600' }}>
         <div style={{ width: '20px', height: '20px', borderRadius: '50%', fontWeight: '700',
@@ -527,7 +572,7 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
                 </button>
               </div>
               {(passwordTouched || formData.password.length > 0) && (
-                <div style={{ marginTop: '0.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem' }}>
+                <div style={{ marginTop: '0.5rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     {[
                       { label: 'At least 8 characters', pass: formData.password.length >= 8 },
@@ -672,6 +717,7 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
 export default function ShopLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { theme, toggleTheme } = useTheme();
   const { setCartItems, cartCount: globalCartCount } = useGlobalCart();
   const [user, setUser]       = useState(null);
   const [cart, setCart]       = useState([]);
@@ -1340,8 +1386,8 @@ export default function ShopLayout({ children }) {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: '#1a1a1a',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--dark2)',
+              border: '1px solid var(--border)',
               borderRadius: '14px',
               width: '100%', maxWidth: '440px',
               padding: '1.75rem',
@@ -1349,19 +1395,19 @@ export default function ShopLayout({ children }) {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#fff', lineHeight: 1.4 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--white)', lineHeight: 1.4 }}>
                 {selectedNotif.title}
               </h3>
               <button
                 onClick={() => setSelectedNotif(null)}
-                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: 0, flexShrink: 0 }}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 6L6 18M6 6l12 12"/>
                 </svg>
               </button>
             </div>
-            <p style={{ margin: 0, fontSize: '0.9rem', color: 'rgba(255,255,255,0.75)', lineHeight: 1.6 }}>
+            <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--gray-light)', lineHeight: 1.6 }}>
               {selectedNotif.message}
             </p>
             {selectedNotif.data?.orderId && (
@@ -1373,7 +1419,7 @@ export default function ShopLayout({ children }) {
                 View Order →
               </a>
             )}
-            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', marginTop: '0.25rem' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
               {new Date(selectedNotif.created_at).toLocaleString('en-PH', {
                 year: 'numeric', month: 'short', day: 'numeric',
                 hour: '2-digit', minute: '2-digit',
@@ -1383,9 +1429,9 @@ export default function ShopLayout({ children }) {
               onClick={() => setSelectedNotif(null)}
               style={{
                 marginTop: '0.25rem', padding: '0.6rem',
-                background: 'rgba(255,255,255,0.07)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '8px', color: '#fff',
+                background: 'var(--dark3)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px', color: 'var(--white)',
                 fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
               }}
             >
@@ -1412,8 +1458,8 @@ export default function ShopLayout({ children }) {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: '#1a1a1a',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--dark2)',
+              border: '1px solid var(--border)',
               borderRadius: '12px',
               padding: '2rem',
               width: '100%',
@@ -1424,10 +1470,10 @@ export default function ShopLayout({ children }) {
             }}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <h2 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#ffffff' }}>
+              <h2 style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--white)' }}>
                 Log Out
               </h2>
-              <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)' }}>
+              <p style={{ fontSize: '0.875rem', color: 'var(--gray-light)' }}>
                 Are you sure you want to log out of your account?
               </p>
             </div>
@@ -1437,9 +1483,9 @@ export default function ShopLayout({ children }) {
                 style={{
                   padding: '0.5rem 1.25rem',
                   borderRadius: '8px',
-                  border: '1px solid rgba(255,255,255,0.15)',
+                  border: '1px solid var(--border)',
                   background: 'transparent',
-                  color: '#ffffff',
+                  color: 'var(--white)',
                   fontSize: '0.875rem',
                   fontWeight: 500,
                   cursor: 'pointer',
@@ -1559,6 +1605,28 @@ export default function ShopLayout({ children }) {
 
             {/* Right side */}
             <div className="shop-navbar-right">
+              {/* Theme toggle */}
+              <button
+                type="button"
+                onClick={toggleTheme}
+                aria-label="Toggle light/dark mode"
+                style={{
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: 'var(--gray)', padding: '6px', borderRadius: '8px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                {theme === 'dark' ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                  </svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                  </svg>
+                )}
+              </button>
+
               {/* Cart button */}
               <Link href="/shop/cart" className="shop-navbar-cart">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -2068,7 +2136,7 @@ export default function ShopLayout({ children }) {
           className="shop-fab-cart"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-            stroke="#0f0f0f" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            style={{ stroke: 'var(--black)' }} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="9" cy="21" r="1"/>
             <circle cx="20" cy="21" r="1"/>
             <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
@@ -2077,7 +2145,7 @@ export default function ShopLayout({ children }) {
             position: 'absolute',
             top: '-4px',
             right: '-4px',
-            background: '#0f0f0f',
+            background: 'var(--black)',
             color: 'var(--gold)',
             borderRadius: '50%',
             width: '20px',
@@ -2125,7 +2193,7 @@ export default function ShopLayout({ children }) {
           height: 600px;
           max-width: calc(100vw - 4rem);
           max-height: calc(100vh - 10rem);
-          background: #1a1a1a;
+          background: var(--dark2);
           border: 1px solid var(--border);
           border-radius: 16px;
           z-index: 1001;

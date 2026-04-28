@@ -117,6 +117,9 @@ export default function UserManagementPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [unlockRequests, setUnlockRequests] = useState([]);
+  const [unlockLoading, setUnlockLoading] = useState(false);
+  const [unlockActing, setUnlockActing] = useState({});
 
   const isPrivilegedRole = (role) => role === 'admin' || role === 'owner';
 
@@ -136,11 +139,8 @@ export default function UserManagementPage() {
         headers: HEADERS(token),
       }, 15000);
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || 'Failed to load staff.');
-      }
-      const list = data.data;
-      setStaff(Array.isArray(list) ? list : []);
+      if (!res.ok) throw new Error(data.message || 'Failed to load staff.');
+      setStaff(Array.isArray(data.data) ? data.data : []);
     } catch (err) {
       setError(err.message || 'Failed to load staff.');
       setStaff([]);
@@ -148,6 +148,28 @@ export default function UserManagementPage() {
       setLoading(false);
     }
   }, [token]);
+
+  const fetchUnlockRequests = useCallback(async () => {
+    if (!token) return;
+    setUnlockLoading(true);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/unlock-requests`, { headers: HEADERS(token) }, 15000);
+      const data = await res.json();
+      setUnlockRequests(res.ok ? (data.data || []) : []);
+    } catch { setUnlockRequests([]); }
+    finally { setUnlockLoading(false); }
+  }, [token]);
+
+  const handleUnlockAction = async (id, action) => {
+    setUnlockActing(prev => ({ ...prev, [id]: action }));
+    try {
+      await fetchWithTimeout(`${API_URL}/api/admin/unlock-requests/${id}/${action}`, {
+        method: 'POST', headers: HEADERS(token),
+      }, 10000);
+      await fetchUnlockRequests();
+    } catch { /* silent */ }
+    finally { setUnlockActing(prev => { const n = { ...prev }; delete n[id]; return n; }); }
+  };
 
   useEffect(() => {
     if (!currentUser) return;
@@ -158,7 +180,8 @@ export default function UserManagementPage() {
       return;
     }
     fetchStaff();
-  }, [token, currentUser, fetchStaff]);
+    fetchUnlockRequests();
+  }, [token, currentUser, fetchStaff, fetchUnlockRequests]);
 
   const openCreate = () => {
     setSelectedStaff(null);
@@ -367,6 +390,52 @@ export default function UserManagementPage() {
           Add Staff
         </button>
       </div>
+
+      {/* Unlock Requests Panel */}
+      {(unlockRequests.length > 0 || unlockLoading) && (
+        <div style={{ marginBottom: '24px', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '12px', overflow: 'hidden', background: 'rgba(251,191,36,0.04)' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(251,191,36,0.15)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--gold)' }}>Unlock Requests</span>
+            <span style={{ fontSize: '0.75rem', background: '#D4A843', color: '#000', borderRadius: '999px', padding: '1px 8px', fontWeight: 700 }}>{unlockRequests.length}</span>
+          </div>
+          {unlockLoading ? (
+            <div style={{ padding: '16px 20px', color: 'var(--gray)', fontSize: '0.85rem' }}>Loading...</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+              {unlockRequests.map(u => (
+                <div key={u.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.88rem' }}>{u.name || '—'}</div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--gray)', marginTop: '2px' }}>{u.email}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '2px' }}>
+                      Requested: {u.unlock_requested_at ? new Date(u.unlock_requested_at).toLocaleString() : '—'}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      disabled={!!unlockActing[u.id]}
+                      onClick={() => handleUnlockAction(u.id, 'approve')}
+                      style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', background: '#16a34a', color: '#fff', fontWeight: 600, fontSize: '0.8rem', cursor: unlockActing[u.id] ? 'not-allowed' : 'pointer', opacity: unlockActing[u.id] ? 0.6 : 1 }}
+                    >
+                      {unlockActing[u.id] === 'approve' ? 'Unlocking...' : 'Approve'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!!unlockActing[u.id]}
+                      onClick={() => handleUnlockAction(u.id, 'deny')}
+                      style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontWeight: 600, fontSize: '0.8rem', cursor: unlockActing[u.id] ? 'not-allowed' : 'pointer', opacity: unlockActing[u.id] ? 0.6 : 1 }}
+                    >
+                      {unlockActing[u.id] === 'deny' ? 'Denying...' : 'Deny'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {loading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

@@ -5,7 +5,7 @@ import ChatModule from '@/components/chat/ChatModule';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AdminChatPage() {
-  const { user, token, loading } = useAuth();
+  const { currentUser: user, token, isLoading: loading } = useAuth();
 
   if (loading) {
     return (
@@ -27,8 +27,8 @@ export default function AdminChatPage() {
     <div className="h-[calc(100vh-140px)] p-4 lg:p-6">
       <div className="mb-6 flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-white">Customer Support Chat</h1>
-          <p className="text-[#888] text-sm">Manage inquiries and order specifications in real-time.</p>
+          <h1 className="text-2xl font-bold text-white">Messages</h1>
+          <p className="text-[#888] text-sm">Manage customer inquiries and order specifications in real-time.</p>
         </div>
       </div>
       

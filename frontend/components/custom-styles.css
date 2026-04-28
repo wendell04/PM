@@ -43,6 +43,101 @@
     --color-border-success: rgba(34, 197, 94, 0.4);
   }
 
+  /* ── Light mode overrides ── */
+  html.light {
+    --black:       #f0f2f5;
+    --dark:        #ffffff;
+    --dark2:       #f5f7fa;
+    --dark3:       #eaecf0;
+    --gray:        #6b7280;
+    --gray-light:  #374151;
+    --white:       #111827;
+    --border:      rgba(0,0,0,0.1);
+    --gold-subtle: rgba(212,168,67,0.15);
+    --color-background-warning: rgba(234, 179, 8, 0.12);
+    --color-text-warning: #92620a;
+    --color-border-warning: rgba(234, 179, 8, 0.35);
+    --color-background-success: rgba(34, 197, 94, 0.1);
+    --color-text-success: #15803d;
+    --color-border-success: rgba(34, 197, 94, 0.3);
+  }
+  html.light body {
+    background: var(--black);
+    color: var(--white);
+  }
+  /* Inputs & selects in light mode */
+  html.light input,
+  html.light textarea,
+  html.light select {
+    color-scheme: light;
+  }
+
+  /* ── Light mode: navbar ── */
+  html.light .navbar.scrolled {
+    background: rgba(240,242,245,0.96);
+    box-shadow: 0 2px 20px rgba(0,0,0,.12);
+  }
+  html.light .nav-links a { color: rgba(17,24,39,0.75); }
+  html.light .nav-links a:hover { color: var(--white); }
+  html.light .btn-nav-login {
+    border-color: rgba(0,0,0,0.2);
+    color: var(--white);
+  }
+  html.light .btn-secondary {
+    border-color: rgba(0,0,0,0.2);
+    color: var(--white);
+  }
+  html.light .mobile-menu {
+    background: rgba(240,242,245,0.98);
+  }
+  html.light .hamburger span { background: var(--white); }
+
+  /* ── Light mode: form inputs ── */
+  html.light .auth-field input,
+  html.light .auth-field textarea {
+    background: rgba(0,0,0,0.04);
+    border-color: rgba(0,0,0,0.15);
+    color: var(--white);
+  }
+  html.light .auth-field input:focus,
+  html.light .auth-field textarea:focus {
+    background: rgba(212,168,67,0.07);
+    border-color: var(--gold);
+  }
+  html.light .contact-textarea {
+    background: rgba(0,0,0,0.04);
+    border-color: rgba(0,0,0,0.15);
+    color: var(--white);
+  }
+  html.light .contact-textarea:focus {
+    background: rgba(212,168,67,0.07);
+    border-color: var(--gold);
+  }
+  html.light .verify-code-input {
+    background: rgba(0,0,0,0.04);
+    border-color: rgba(0,0,0,0.15);
+    color: var(--white);
+  }
+  html.light .verify-code-input:focus {
+    background: rgba(212,168,67,0.07);
+    border-color: var(--gold);
+  }
+  html.light .auth-close,
+  html.light .tnc-close {
+    background: rgba(0,0,0,0.05);
+    border-color: rgba(0,0,0,0.1);
+  }
+
+  /* ── Light mode: cards & surfaces ── */
+  html.light .fcard-bar { background: rgba(0,0,0,0.08); }
+  html.light .social-btn { background: rgba(0,0,0,0.06); }
+  html.light .contact-social-btn { background: rgba(0,0,0,0.04); }
+  html.light .pl-item,
+  html.light .pl-tier-row { background: rgba(0,0,0,0.04); }
+  html.light .service-slide:hover {
+    box-shadow: 0 8px 28px rgba(0,0,0,.12);
+  }
+
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body {

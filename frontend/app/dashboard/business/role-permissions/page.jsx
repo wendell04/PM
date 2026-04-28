@@ -112,6 +112,7 @@ export default function RolePermissionsPage() {
   const { token, currentUser } = useAuth();
 
   const [permissionsData, setPermissionsData] = useState({});
+  const [staffByRole, setStaffByRole] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState({});
@@ -134,19 +135,28 @@ export default function RolePermissionsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/role-permissions`, {
-        headers: HEADERS(token),
-      }, 30000);
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || 'Failed to load role permissions.');
-      }
-      const raw = data.data || {};
+      const [permRes, staffRes] = await Promise.all([
+        fetchWithTimeout(`${API_URL}/api/admin/role-permissions`, { headers: HEADERS(token) }, 30000),
+        fetchWithTimeout(`${API_URL}/api/admin/staff`, { headers: HEADERS(token) }, 30000),
+      ]);
+      const permData = await permRes.json();
+      const staffData = await staffRes.json();
+      if (!permRes.ok) throw new Error(permData.message || 'Failed to load role permissions.');
+      const raw = permData.data || {};
       const next = {};
       STAFF_ROLES.forEach(({ value }) => {
         next[value] = mergeRolePermissions(raw[value]);
       });
       setPermissionsData(next);
+      if (staffRes.ok) {
+        const grouped = {};
+        (staffData.data || []).forEach((s) => {
+          const r = s.role;
+          if (!grouped[r]) grouped[r] = [];
+          grouped[r].push(s);
+        });
+        setStaffByRole(grouped);
+      }
     } catch (err) {
       setError(err.message || 'Failed to load role permissions.');
       setPermissionsData({});
@@ -320,22 +330,49 @@ export default function RolePermissionsPage() {
                   padding: '1rem 1.25rem',
                   borderBottom: '1px solid var(--border)',
                   background: 'rgba(255,255,255,0.02)',
+                  flexWrap: 'wrap', gap: '0.75rem',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', flex: 1, minWidth: 0 }}>
                     <div style={{
                       width: '36px', height: '36px', borderRadius: '8px',
                       background: 'rgba(212,168,67,0.12)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                     }}>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
                       </svg>
                     </div>
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--white)' }}>{label}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '1px' }}>
                         {enabledCount} of {totalCount} sections enabled
                       </div>
+                      {(staffByRole[role] || []).length > 0 && (
+                        <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {(staffByRole[role] || []).map((s) => (
+                            <div key={s._id || s.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <div style={{
+                                width: '22px', height: '22px', borderRadius: '50%',
+                                background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.25)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.6rem', fontWeight: 700, color: '#D4A843', flexShrink: 0,
+                              }}>
+                                {((s.firstName || '').charAt(0) + (s.lastName || '').charAt(0)).toUpperCase() || '?'}
+                              </div>
+                              <span style={{ fontSize: '0.78rem', color: 'var(--white)', fontWeight: 600 }}>
+                                {`${s.firstName || ''} ${s.lastName || ''}`.trim() || '—'}
+                              </span>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>·</span>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--gray)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {s.email || '—'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {(staffByRole[role] || []).length === 0 && (
+                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '4px', fontStyle: 'italic' }}>No staff assigned</div>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>

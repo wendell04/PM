@@ -149,6 +149,12 @@ export default function SettingsPage() {
   const [revokingId, setRevokingId]     = useState(null);
   const [revokeAllBusy, setRevokeAllBusy] = useState(false);
 
+  // ── 2FA toggle ────────────────────────────────────────────
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [twoFaToggling, setTwoFaToggling]       = useState(false);
+  const [twoFaError, setTwoFaError]             = useState('');
+  const [twoFaSuccess, setTwoFaSuccess]         = useState('');
+
   // ── Populate form from currentUser ────────────────────────
   useEffect(() => {
     if (currentUser) {
@@ -165,6 +171,7 @@ export default function SettingsPage() {
         operatingHours: '',
         contactEmail: currentUser.email || '',
       });
+      setTwoFactorEnabled(!!currentUser.two_factor_enabled);
       setIsLoading(false);
     }
   }, [currentUser]);
@@ -266,6 +273,45 @@ export default function SettingsPage() {
       setSessionsError(err.message);
     }
   }, [token, currentUser, setCurrentUser]);
+
+  // ── 2FA toggle ────────────────────────────────────────────
+  const handleToggle2FA = async () => {
+    if (twoFaToggling) return;
+    setTwoFaToggling(true);
+    setTwoFaError('');
+    setTwoFaSuccess('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/2fa/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      }, 10000);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to update 2FA setting.');
+      const next = !!data.two_factor_enabled;
+      setTwoFactorEnabled(next);
+      setTwoFaSuccess(data.message || (next ? 'Two-factor authentication enabled.' : 'Two-factor authentication disabled.'));
+      setTimeout(() => setTwoFaSuccess(''), 3000);
+      // Persist into stored user so it survives a page refresh
+      if (typeof setCurrentUser === 'function') {
+        setCurrentUser(prev => ({ ...prev, two_factor_enabled: next }));
+      }
+      try {
+        const ss = sessionStorage.getItem('auth_user');
+        const ls = localStorage.getItem('auth_user');
+        const storage = ss ? sessionStorage : localStorage;
+        const raw = ss || ls;
+        if (raw) {
+          const u = JSON.parse(raw);
+          u.two_factor_enabled = next;
+          storage.setItem('auth_user', JSON.stringify(u));
+        }
+      } catch {}
+    } catch (err) {
+      setTwoFaError(err.message || 'Failed to update 2FA setting.');
+    } finally {
+      setTwoFaToggling(false);
+    }
+  };
 
   // ── Avatar upload ─────────────────────────────────────────
   const handleAvatarUpload = async (e) => {
@@ -1019,28 +1065,67 @@ export default function SettingsPage() {
                     borderRadius: '10px',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '0.5rem',
+                    gap: '0.75rem',
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        padding: '0.2rem 0.6rem',
-                        borderRadius: '20px',
-                        fontSize: '0.7rem',
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.06em',
-                        background: 'rgba(74,222,128,0.12)',
-                        color: 'var(--green)',
-                      }}>
-                        Active
-                      </span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '0.2rem 0.6rem',
+                          borderRadius: '20px',
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.06em',
+                          background: twoFactorEnabled ? 'rgba(74,222,128,0.12)' : 'rgba(156,163,175,0.12)',
+                          color: twoFactorEnabled ? 'var(--green)' : 'var(--gray)',
+                        }}>
+                          {twoFactorEnabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                      </div>
+                      <button
+                        onClick={handleToggle2FA}
+                        disabled={twoFaToggling}
+                        aria-pressed={twoFactorEnabled}
+                        aria-label="Toggle two-factor authentication"
+                        style={{
+                          position: 'relative',
+                          width: '44px',
+                          height: '24px',
+                          borderRadius: '12px',
+                          border: 'none',
+                          cursor: twoFaToggling ? 'not-allowed' : 'pointer',
+                          background: twoFactorEnabled ? 'var(--gold)' : 'var(--border)',
+                          transition: 'background 0.2s',
+                          padding: 0,
+                          opacity: twoFaToggling ? 0.6 : 1,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span style={{
+                          position: 'absolute',
+                          top: '3px',
+                          left: twoFactorEnabled ? '23px' : '3px',
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '50%',
+                          background: '#fff',
+                          transition: 'left 0.2s',
+                        }} />
+                      </button>
                     </div>
                     <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray-light)' }}>
-                      Email verification is required at every login. A one-time
-                      code is sent to your registered email address.
+                      {twoFactorEnabled
+                        ? 'A one-time code is sent to your email at every login. Trusted devices can skip this step.'
+                        : 'Enable to require email verification on each login for extra account security.'}
                     </p>
+                    {twoFaError && (
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--red)' }}>{twoFaError}</p>
+                    )}
+                    {twoFaSuccess && (
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--green)' }}>{twoFaSuccess}</p>
+                    )}
                   </div>
                 </div>
 

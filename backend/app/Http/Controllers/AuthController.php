@@ -137,7 +137,7 @@ class AuthController extends Controller
         }
     }
 
-    private const LOGIN_MAX_ATTEMPTS = 5;
+    private const LOGIN_MAX_ATTEMPTS = 3;
     private const LOGIN_LOCKOUT_MINUTES = 15;
     private const DEVICE_TOKEN_MAX_AGE_DAYS = 90;
 
@@ -238,6 +238,7 @@ class AuthController extends Controller
                     'token'        => $sanctumToken,
                     'requires_2fa' => $requires2fa,
                     'user' => [
+                        'id'                 => (string)$user->_id,
                         'firstName'          => $user->firstName,
                         'lastName'           => $user->lastName,
                         'email'              => $user->email,
@@ -696,5 +697,36 @@ class AuthController extends Controller
         elseif (str_contains($userAgent, 'Linux'))    $os = 'Linux';
 
         return "{$browser} on {$os}";
+    }
+
+    /**
+     * POST /api/unlock-request
+     * Customer submits an unlock request (public, email-only).
+     */
+    public function unlockRequest(Request $request)
+    {
+        try {
+            $request->validate(['email' => 'required|email']);
+
+            $user = User::where('email', $request->email)->where('role', 'customer')->first();
+
+            if (!$user) {
+                // Return success to avoid user enumeration
+                return $this->successResponse('If your account exists and is locked, your request has been submitted.');
+            }
+
+            if (!$user->login_locked_until || now()->gte($user->login_locked_until)) {
+                return $this->errorResponse('Your account is not currently locked.', 400);
+            }
+
+            $user->unlock_requested_at = now();
+            $user->save();
+
+            return $this->successResponse('Unlock request submitted. An administrator will review it shortly.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to submit unlock request.');
+        }
     }
 }

@@ -14,6 +14,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../../contexts/AuthContext";
+import { useTheme } from "../../../contexts/ThemeContext";
 import "./admin-dashboard.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -480,6 +481,7 @@ export default function BusinessDashboardLayout({ children }) {
     return permissions[key] === true;
   };
   const isAdminOwner = ["admin", "owner"].includes(currentUser?.role);
+  const { theme, toggleTheme } = useTheme();
 
   const navItems = [
     {
@@ -488,12 +490,7 @@ export default function BusinessDashboardLayout({ children }) {
       permKey: "dashboard",
       icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z",
     },
-    {
-      name: "Messages",
-      href: "/dashboard/business/chat",
-      permKey: "dashboard", // Allow all staff to see chat for now, or create a specific perm
-      icon: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z",
-    },
+    { type: "divider", label: "Operations" },
     {
       name: "Orders",
       permKey: "orders",
@@ -510,6 +507,7 @@ export default function BusinessDashboardLayout({ children }) {
       permKey: "pos",
       icon: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z",
     },
+    { type: "divider", label: "Store" },
     {
       name: "Inventory",
       permKey: "inventory",
@@ -558,9 +556,17 @@ export default function BusinessDashboardLayout({ children }) {
       icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
       children: [
         { name: "Sales", href: "/dashboard/business/sales" },
+        { name: "Payments", href: "/dashboard/business/payments", adminOnly: true },
         { name: "Reports", href: "/dashboard/business/reports" },
         { name: "Forecast", href: "/dashboard/business/ssa-forecast" },
       ],
+    },
+    { type: "divider", label: "Admin" },
+    {
+      name: "Messages",
+      href: "/dashboard/business/chat",
+      permKey: "dashboard",
+      icon: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z",
     },
     {
       name: "Audit Logs",
@@ -569,22 +575,23 @@ export default function BusinessDashboardLayout({ children }) {
       icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
     },
     {
-      name: "Settings",
-      href: "/dashboard/business/settings",
-      permKey: "dashboard",
-      icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
-    },
-    {
       name: "Users & Roles",
       permKey: "userManagement",
       icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 7a4 4 0 100 8 4 4 0 000-8z",
       children: [
-        { name: "Users", href: "/dashboard/business/users" },
+        { name: "Staff", href: "/dashboard/business/users" },
+        { name: "Customers", href: "/dashboard/business/customers" },
         {
           name: "Permissions",
           href: "/dashboard/business/role-permissions",
         },
       ],
+    },
+    {
+      name: "Settings",
+      href: "/dashboard/business/settings",
+      permKey: "dashboard",
+      icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
     },
   ];
 
@@ -746,7 +753,7 @@ export default function BusinessDashboardLayout({ children }) {
               onClick={() => setSelectedNotif(null)}
               style={{
                 marginTop: '0.25rem', padding: '0.6rem',
-                background: 'rgba(255,255,255,0.05)',
+                background: 'var(--dark3)',
                 border: '1px solid var(--border)',
                 borderRadius: '8px', color: 'var(--white)',
                 fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
@@ -917,6 +924,7 @@ export default function BusinessDashboardLayout({ children }) {
           <nav className="sidebar-nav">
             {navItems
               .filter((item) => {
+                if (item.type === "divider") return true;
                 if (item.adminOnly && !isAdminOwner) return false;
                 if (item.marketingGroup) {
                   return can("flashSales") || can("vouchers");
@@ -924,9 +932,16 @@ export default function BusinessDashboardLayout({ children }) {
                 return can(item.permKey ?? "dashboard");
               })
               .map((item) => {
+                if (item.type === "divider") {
+                  return (
+                    <div key={`divider-${item.label}`} className="nav-text" style={{ padding: "16px 16px 4px", fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)", userSelect: "none" }}>
+                      {item.label}
+                    </div>
+                  );
+                }
                 if (item.children) {
                   const visibleChildren = item.children.filter(
-                    (c) => !c.permKey || can(c.permKey),
+                    (c) => (!c.permKey || can(c.permKey)) && (!c.adminOnly || isAdminOwner),
                   );
                   const isExpanded = expandedItems.includes(item.name);
                   const hasActiveChild = isChildActive(visibleChildren);
@@ -1080,6 +1095,24 @@ export default function BusinessDashboardLayout({ children }) {
             </div>
           </div>
           <div className="top-bar-right">
+            {/* Theme toggle */}
+            <button
+              type="button"
+              className="top-bar-icon-btn"
+              onClick={toggleTheme}
+              aria-label="Toggle light/dark mode"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+              )}
+            </button>
             <div ref={notifRef} style={{ position: "relative" }}>
               <button
                 type="button"
@@ -1244,7 +1277,7 @@ export default function BusinessDashboardLayout({ children }) {
                             }}
                             style={{
                               padding: "0.875rem 1.25rem",
-                              borderBottom: "1px solid rgba(255,255,255,0.05)",
+                              borderBottom: "1px solid var(--border)",
                               background: n.is_read
                                 ? "transparent"
                                 : "rgba(212,168,67,0.06)",
@@ -1734,7 +1767,7 @@ export default function BusinessDashboardLayout({ children }) {
                   padding: "0.5rem 0.75rem",
                   borderRadius: "8px",
                   border: "1px solid var(--border)",
-                  background: "rgba(255,255,255,0.06)",
+                  background: "var(--dark3)",
                   color: "var(--white)",
                   fontSize: "0.8125rem",
                   fontWeight: 600,
@@ -2643,7 +2676,7 @@ export default function BusinessDashboardLayout({ children }) {
                       <div
                         style={{
                           marginTop: "0.5rem",
-                          background: "rgba(255,255,255,0.04)",
+                          background: "var(--dark2)",
                           border: "1px solid var(--border)",
                           borderRadius: "10px",
                           padding: "0.75rem",

@@ -3,6 +3,7 @@ import '../components/custom-styles.css'
 import { AuthProvider } from '../contexts/AuthContext';
 import { CartProvider } from '../context/CartContext';
 import { ToastProvider } from '../components/Toast';
+import { ThemeProvider } from '../contexts/ThemeContext';
 import OfflineBanner from '../components/OfflineBanner';
 
 export const metadata = {
@@ -13,18 +14,25 @@ export const metadata = {
   },
 }
 
+const themeScript = `(function(){var t=localStorage.getItem('pmp-theme')||'dark';if(t==='light')document.documentElement.classList.add('light');})();`;
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body suppressHydrationWarning={true}>
-        <AuthProvider>
-          <CartProvider>
-            <ToastProvider>
-              <OfflineBanner />
-              {children}
-            </ToastProvider>
-          </CartProvider>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <CartProvider>
+              <ToastProvider>
+                <OfflineBanner />
+                {children}
+              </ToastProvider>
+            </CartProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

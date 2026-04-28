@@ -2822,3 +2822,93 @@
   color: var(--gray);
   margin: 4px 0 0;
 }
+
+/* ══════════════════════════════════════
+   LIGHT MODE OVERRIDES
+══════════════════════════════════════ */
+html.light .shop-navbar {
+  background: rgba(240,242,245,0.96);
+}
+html.light .shop-navbar-search-input {
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.15);
+}
+html.light .shop-navbar-search-input:focus {
+  background: rgba(212,168,67,0.06);
+}
+html.light .shop-notif-item {
+  border-bottom-color: var(--border);
+}
+html.light .shop-product-card {
+  border-color: var(--border);
+}
+html.light .shop-carousel-arrow {
+  border-color: var(--border);
+}
+html.light .shop-search-input {
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.15);
+  color: var(--white);
+}
+html.light .cart-item-card,
+html.light .cart-items-section,
+html.light .cart-summary-panel,
+html.light .cart-qty-stepper {
+  border-color: var(--border);
+}
+html.light .cart-item-card:hover {
+  border-color: rgba(0,0,0,0.15);
+}
+html.light .cart-items-header,
+html.light .cart-summary-divider,
+html.light .cart-notes-input,
+html.light .cart-qty-input,
+html.light .cart-item-no-image,
+html.light .cart-continue-shopping {
+  border-color: var(--border);
+}
+html.light .checkout-card,
+html.light .checkout-summary-card,
+html.light .checkout-modal-content,
+html.light .checkout-modal-header,
+html.light .checkout-modal-footer,
+html.light .checkout-addr-card,
+html.light .checkout-divider,
+html.light .checkout-item-row,
+html.light .checkout-item-thumb,
+html.light .checkout-item-thumb-placeholder,
+html.light .checkout-notes-input {
+  border-color: var(--border);
+}
+html.light .checkout-addr-card:hover {
+  border-color: rgba(0,0,0,0.2);
+}
+html.light .checkout-notes-input,
+html.light .cart-notes-input {
+  background: rgba(0,0,0,0.04);
+  color: var(--white);
+}
+html.light .cart-qty-input {
+  background: transparent;
+  color: var(--white);
+}
+html.light .cart-continue-shopping {
+  background: transparent;
+  color: var(--white);
+}
+html.light .shop-quick-add-btn {
+  background: rgba(0,0,0,0.06);
+  border-color: var(--border);
+}
+html.light .shop-carousel-dot {
+  border-color: var(--border);
+}
+html.light .shop-carousel-description {
+  color: var(--gray-light);
+}
+html.light .shop-social-tiktok {
+  border-color: var(--border);
+}
+html.light .shop-product-no-image div {
+  border-color: var(--border);
+}

@@ -23,24 +23,29 @@ const ChatModule = ({ user, token }) => {
       setIsLoadingConversations(true);
       const data = await getConversations(token);
       setConversations(data);
-      
-      if (activeConversation) {
-        const stillExists = data.find(c => c._id === activeConversation._id || (c.other_user?.id === activeConversation.other_user?.id));
-        if (stillExists) setActiveConversation(stillExists);
-      } else if (!isAdmin && data.length > 0) {
-          // Auto-select Support for customers
-          setActiveConversation(data[0]);
-      }
+
+      setActiveConversation(prev => {
+        if (!prev) {
+          return !isAdmin && data.length > 0 ? data[0] : null;
+        }
+        // Prefer a real conversation over a new_/virtual one for the same user
+        const realMatch = data.find(
+          c => !c._id.startsWith('new_') && c._id !== 'support_auto' && c.other_user?.id === prev.other_user?.id
+        );
+        if (realMatch) return realMatch;
+        const stillExists = data.find(c => c._id === prev._id);
+        return stillExists ?? prev;
+      });
     } catch (error) {
       console.error('Failed to load conversations:', error);
     } finally {
       setIsLoadingConversations(false);
     }
-  }, [token, activeConversation, isAdmin]);
+  }, [token, isAdmin]);
 
   useEffect(() => {
     loadConversations();
-  }, []);
+  }, [loadConversations]);
 
   useEffect(() => {
     const loadMessages = async () => {
@@ -86,8 +91,9 @@ const ChatModule = ({ user, token }) => {
       loadConversations();
     };
 
-    const adminChannel = echo.private('admin.chat');
+    let adminChannel = null;
     if (isAdmin) {
+      adminChannel = echo.private('admin.chat');
       adminChannel.listen('.message.sent', handleNewMessage);
     }
 
@@ -102,6 +108,19 @@ const ChatModule = ({ user, token }) => {
       if (adminChannel) adminChannel.stopListening('.message.sent');
     };
   }, [activeConversation?._id, user, token, isAdmin, loadConversations]);
+
+  const handleSelectConversation = useCallback((conv) => {
+    if (conv._id?.startsWith('new_')) {
+      const realConv = conversations.find(
+        c => !c._id.startsWith('new_') && c._id !== 'support_auto' && c.other_user?.id === conv.other_user?.id
+      );
+      if (realConv) {
+        setActiveConversation(realConv);
+        return;
+      }
+    }
+    setActiveConversation(conv);
+  }, [conversations]);
 
   const handleSendMessage = async (payload) => {
     try {
@@ -127,28 +146,31 @@ const ChatModule = ({ user, token }) => {
 
   return (
     <div className="chat-container">
-      <ChatSidebar 
-        conversations={conversations} 
+      <ChatSidebar
+        conversations={conversations}
         activeConversation={activeConversation}
-        onSelectConversation={setActiveConversation}
+        onSelectConversation={handleSelectConversation}
         isLoading={isLoadingConversations}
       />
 
       <div className="chat-main">
-        <ChatWindow 
+        <ChatWindow
           activeConversation={activeConversation}
           messages={messages}
           user={user}
           isLoading={isLoadingMessages}
+          isLoadingMessages={isLoadingMessages}
           isAdmin={isAdmin}
+          isSending={isSending}
           onStartChat={(text) => handleSendMessage({ type: 'text', body: text })}
         />
-        
-        {activeConversation && activeConversation._id !== 'support_auto' && !activeConversation._id.startsWith('new_') && (
-          <ChatInput 
-            onSendMessage={handleSendMessage} 
+
+        {activeConversation && (
+          <ChatInput
+            onSendMessage={handleSendMessage}
             isSending={isSending}
             activeConversation={activeConversation}
+            token={token}
           />
         )}
       </div>

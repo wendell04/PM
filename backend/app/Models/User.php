@@ -43,6 +43,7 @@ class User extends Authenticatable
         'login_locked_until',
         'verification_attempts',
         'two_factor_enabled',
+        'unlock_requested_at',
     ];
 
     protected $casts = [
@@ -52,6 +53,7 @@ class User extends Authenticatable
         'failed_login_attempts'  => 'integer',
         'login_locked_until'     => 'datetime',
         'two_factor_enabled'     => 'boolean',
+        'unlock_requested_at'    => 'datetime',
     ];
 
     protected $hidden = [

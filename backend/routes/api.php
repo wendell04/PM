@@ -53,6 +53,7 @@ Route::post('/send-reset-code', [AuthController::class, 'sendResetCode'])->middl
 Route::post('/verify-reset-code', [AuthController::class, 'verifyResetCode'])->middleware('throttle:10,1');
 Route::post('/reset-password',  [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
 Route::post('/contact',         [AuthController::class, 'contact'])->middleware('throttle:5,1');
+Route::post('/unlock-request',  [AuthController::class, 'unlockRequest'])->middleware('throttle:3,1');
 
 // ─── Auth (Protected — any logged-in user) ───────────────────────────────────
 Route::get('/user', function (Request $request) {
@@ -119,9 +120,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/my/permissions',         [RolePermissionController::class, 'myPermissions']);
 
     // ─── Chat ────────────────────────────────────────────────────────────────
-    Route::get('/chat/conversations',     [ChatController::class, 'index']);
-    Route::get('/chat/conversations/{id}', [ChatController::class, 'show']);
-    Route::post('/chat/messages',         [ChatController::class, 'store']);
+    Route::get('/chat/conversations',             [ChatController::class, 'index']);
+    Route::get('/chat/conversations/{id}',        [ChatController::class, 'show']);
+    Route::post('/chat/messages',                 [ChatController::class, 'store']);
+    Route::post('/chat/upload-image',             [ChatController::class, 'uploadImage']);
     Route::patch('/chat/conversations/{id}/read', [ChatController::class, 'markAsRead']);
 });
 
@@ -133,10 +135,15 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::get('/admin/role-permissions',            [RolePermissionController::class, 'index']);
     Route::put('/admin/role-permissions/{role}',     [RolePermissionController::class, 'update']);
 
-    Route::get('/admin/staff',                       [StaffController::class, 'index']);
-    Route::post('/admin/staff',                      [StaffController::class, 'store']);
-    Route::put('/admin/staff/{id}',                  [StaffController::class, 'update']);
-    Route::delete('/admin/staff/{id}',               [StaffController::class, 'destroy']);
+    Route::get('/admin/staff',                            [StaffController::class, 'index']);
+    Route::post('/admin/staff',                           [StaffController::class, 'store']);
+    Route::put('/admin/staff/{id}',                       [StaffController::class, 'update']);
+    Route::delete('/admin/staff/{id}',                    [StaffController::class, 'destroy']);
+    Route::get('/admin/customers',                        [StaffController::class, 'customers']);
+    Route::post('/admin/customers/{id}/unlock',           [StaffController::class, 'unlockCustomer']);
+    Route::get('/admin/unlock-requests',                  [StaffController::class, 'unlockRequests']);
+    Route::post('/admin/unlock-requests/{id}/approve',    [StaffController::class, 'approveUnlock']);
+    Route::post('/admin/unlock-requests/{id}/deny',       [StaffController::class, 'denyUnlock']);
 });
 
 // ─── Admin (authenticated + any staff role) ───────────────────────────────────

@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class ChatController extends Controller
@@ -74,11 +75,16 @@ class ChatController extends Controller
                     ]);
                 }
             } else {
-                // Admin side: Show customers even without a conversation
+                // Admin side: Show customers who do NOT yet have a conversation.
+                // Use PHP-level filter as safety net in case MongoDB ObjectId/string
+                // type mismatch causes whereNotIn to miss some IDs.
+                $existingSet = array_flip($existingParticipantIds);
                 $customers = User::where('role', 'customer')
                     ->whereNotIn('_id', $existingParticipantIds)
-                    ->limit(20)
-                    ->get();
+                    ->limit(50)
+                    ->get()
+                    ->filter(fn($c) => !isset($existingSet[(string)$c->_id]))
+                    ->take(20);
 
                 foreach ($customers as $c) {
                     $standardized[] = [
@@ -225,6 +231,45 @@ class ChatController extends Controller
             return $this->successResponse('Message sent successfully', $message);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to send message.');
+        }
+    }
+
+    /**
+     * POST /api/chat/upload-image
+     * Upload a chat image to Cloudinary.
+     */
+    public function uploadImage(Request $request)
+    {
+        try {
+            $request->validate(['image' => 'required|image|max:5120']);
+
+            $cloudName    = config('services.cloudinary.cloud_name');
+            $uploadPreset = config('services.cloudinary.upload_preset');
+
+            if (!$cloudName || !$uploadPreset) {
+                return $this->errorResponse('Image uploads are not configured.', 500);
+            }
+
+            $file     = $request->file('image');
+            $response = Http::timeout(55)->attach(
+                'file',
+                fopen($file->getRealPath(), 'r'),
+                $file->getClientOriginalName(),
+                ['Content-Type' => $file->getMimeType()]
+            )->post("https://api.cloudinary.com/v1_1/{$cloudName}/image/upload", [
+                'upload_preset' => $uploadPreset,
+                'folder'        => 'pmp-chat',
+            ]);
+
+            if ($response->successful()) {
+                return $this->successResponse('Image uploaded.', ['url' => $response->json('secure_url')]);
+            }
+
+            return $this->errorResponse('Failed to upload image.', 500);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to upload image.');
         }
     }
 
