@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ChatSidebar from './ChatSidebar';
 import ChatWindow from './ChatWindow';
 import ChatInput from './ChatInput';
@@ -17,8 +17,30 @@ const ChatModule = ({ user, token, addToCart }) => {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
+  const [typingUsers, setTypingUsers] = useState({});
+  const typingTimeoutRefs = useRef({});
+  const conversationChannelRef = useRef(null);
 
   const isAdmin = useMemo(() => user?.role === 'admin' || user?.role === 'owner', [user]);
+
+  const handleTyping = useCallback(() => {
+    if (!conversationChannelRef.current) return;
+    try {
+      conversationChannelRef.current.whisper('typing', {
+        userId: String(user?.id || user?._id || ''),
+        name: user?.name || 'Someone',
+      });
+    } catch { /* ignore */ }
+  }, [user]);
+
+  // Normalize MongoDB ObjectId to plain string — WebSocket events may deliver {$oid:"..."} objects
+  const nid = (id) => {
+    if (!id) return '';
+    if (typeof id === 'string') return id;
+    if (typeof id === 'object') return id.$oid ?? String(id);
+    return String(id);
+  };
+  const normalizeMsg = (m) => m ? { ...m, _id: nid(m._id), conversation_id: nid(m.conversation_id), sender_id: nid(m.sender_id) } : m;
 
   // Core fetch logic shared by initial load and background polls
   const applyConversations = useCallback(async () => {
@@ -70,6 +92,13 @@ const ChatModule = ({ user, token, addToCart }) => {
     return () => clearInterval(id);
   }, [token]);
 
+  // Clear typing indicator when conversation switches
+  useEffect(() => {
+    Object.values(typingTimeoutRefs.current).forEach(clearTimeout);
+    typingTimeoutRefs.current = {};
+    setTypingUsers({});
+  }, [activeConversation?._id]);
+
   useEffect(() => {
     const loadMessages = async () => {
       if (!activeConversation || activeConversation._id === 'support_auto' || activeConversation._id.startsWith('new_')) {
@@ -80,7 +109,7 @@ const ChatModule = ({ user, token, addToCart }) => {
       try {
         setIsLoadingMessages(true);
         const data = await getMessages(token, activeConversation._id);
-        setMessages(data);
+        setMessages(data.map(normalizeMsg));
         
         if (activeConversation.unread_count > 0) {
           await markAsRead(token, activeConversation._id);
@@ -98,7 +127,7 @@ const ChatModule = ({ user, token, addToCart }) => {
     loadMessages();
   }, [activeConversation?._id, token]);
 
-  // Message polling — 5s fallback for real-time delivery
+  // Message polling — 2s fallback for real-time delivery
   useEffect(() => {
     if (!activeConversation ||
         activeConversation._id === 'support_auto' ||
@@ -111,13 +140,14 @@ const ChatModule = ({ user, token, addToCart }) => {
         const data = await getMessages(token, convId);
         setMessages(prev => {
           const existingIds = new Set(prev.map(m => m._id));
-          const newOnes = data.filter(m => !existingIds.has(m._id));
+          const newOnes = data.map(normalizeMsg).filter(m => !existingIds.has(m._id));
           return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
         });
       } catch { /* ignore */ }
     };
 
-    const id = setInterval(poll, 5000);
+    poll(); // immediate check so messages appear without waiting for first interval
+    const id = setInterval(poll, 2000);
     return () => clearInterval(id);
   }, [activeConversation?._id, token]);
 
@@ -142,9 +172,8 @@ const ChatModule = ({ user, token, addToCart }) => {
     if (!echo) return;
 
     const handleNewMessage = (data) => {
-      const newMessage = data.message;
+      const newMessage = normalizeMsg(data.message);
       if (activeConversation && newMessage.conversation_id === activeConversation._id) {
-        // Real conversation — append directly
         setMessages(prev => {
           if (prev.find(m => m._id === newMessage._id)) return prev;
           return [...prev, newMessage];
@@ -153,8 +182,6 @@ const ChatModule = ({ user, token, addToCart }) => {
         activeConversation &&
         (activeConversation._id.startsWith('new_') || activeConversation._id === 'support_auto')
       ) {
-        // Virtual conversation: the first real message just created a conversation.
-        // Append message optimistically; loadConversations below will resolve the real ID.
         setMessages(prev => {
           if (prev.find(m => m._id === newMessage._id)) return prev;
           return [...prev, newMessage];
@@ -173,10 +200,25 @@ const ChatModule = ({ user, token, addToCart }) => {
     if (activeConversation && !activeConversation._id.startsWith('new_') && activeConversation._id !== 'support_auto') {
       conversationChannel = echo.private(`conversation.${activeConversation._id}`);
       conversationChannel.listen('.message.sent', handleNewMessage);
+      conversationChannel.listenForWhisper('typing', (data) => {
+        const uid = String(data.userId || '');
+        if (!uid) return;
+        setTypingUsers(prev => ({ ...prev, [uid]: data.name || 'Someone' }));
+        if (typingTimeoutRefs.current[uid]) clearTimeout(typingTimeoutRefs.current[uid]);
+        typingTimeoutRefs.current[uid] = setTimeout(() => {
+          setTypingUsers(prev => { const u = { ...prev }; delete u[uid]; return u; });
+          delete typingTimeoutRefs.current[uid];
+        }, 3000);
+      });
+      conversationChannelRef.current = conversationChannel;
     }
 
     return () => {
-      if (conversationChannel) conversationChannel.stopListening('.message.sent');
+      conversationChannelRef.current = null;
+      if (conversationChannel) {
+        conversationChannel.stopListening('.message.sent');
+        conversationChannel.stopListeningForWhisper('typing');
+      }
       if (adminChannel) adminChannel.stopListening('.message.sent');
     };
   }, [activeConversation?._id, user, token, isAdmin, loadConversations]);
@@ -203,7 +245,7 @@ const ChatModule = ({ user, token, addToCart }) => {
         delete actualPayload.conversation_id;
       }
 
-      const newMessage = await sendMessage(token, actualPayload);
+      const newMessage = normalizeMsg(await sendMessage(token, actualPayload));
       setMessages(prev => [...prev, newMessage]);
       const updatedConvs = await getConversations(token);
       setConversations(updatedConvs);
@@ -247,6 +289,7 @@ const ChatModule = ({ user, token, addToCart }) => {
           onStartChat={(text) => handleSendMessage({ type: 'text', body: text })}
           addToCart={addToCart}
           onlineUsers={onlineUsers}
+          typingUsers={typingUsers}
         />
 
         {activeConversation && !isVirtualEmpty && (
@@ -256,6 +299,7 @@ const ChatModule = ({ user, token, addToCart }) => {
             activeConversation={activeConversation}
             token={token}
             isAdmin={isAdmin}
+            onTyping={handleTyping}
           />
         )}
       </div>

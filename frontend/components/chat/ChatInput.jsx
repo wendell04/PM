@@ -5,7 +5,7 @@ import QuotationModal from './QuotationModal';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-const ChatInput = ({ onSendMessage, isSending, activeConversation, token, isAdmin }) => {
+const ChatInput = ({ onSendMessage, isSending, activeConversation, token, isAdmin, onTyping }) => {
   const [text, setText] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -13,6 +13,7 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, isAdmi
   const [previewUrl, setPreviewUrl] = useState('');
   const [showQuotation, setShowQuotation] = useState(false);
   const fileInputRef = useRef(null);
+  const typingThrottleRef = useRef(null);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -206,7 +207,13 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, isAdmi
 
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (onTyping && e.target.value && !typingThrottleRef.current) {
+              onTyping();
+              typingThrottleRef.current = setTimeout(() => { typingThrottleRef.current = null; }, 2000);
+            }
+          }}
           placeholder="Type a message..."
           className="text-input custom-scrollbar"
           rows={1}

@@ -4,16 +4,20 @@ import React, { useEffect, useRef, useState } from 'react';
 
 const isRecentlySeen = (ts) => ts && Date.now() - new Date(ts).getTime() < 120_000;
 
-const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, onStartChat, isSending, isLoadingMessages, isLoadingConversations, addToCart, onlineUsers = new Set() }) => {
+const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, onStartChat, isSending, isLoadingMessages, isLoadingConversations, addToCart, onlineUsers = new Set(), typingUsers = {} }) => {
   const scrollRef = useRef(null);
   const [lightboxUrl, setLightboxUrl] = useState('');
   const [addedToCart, setAddedToCart] = useState({});
+
+  const typingNames = Object.entries(typingUsers)
+    .filter(([uid]) => uid !== String(user?.id || user?._id || ''))
+    .map(([, name]) => name);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, typingNames.length]);
 
   if (!activeConversation) {
     if (isLoadingConversations) {
@@ -123,7 +127,8 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
         </div>
         
         {messages.map((msg, idx) => {
-          const isMe = msg.sender_id === (user.id || user._id);
+          const myId = String(user?.id || user?._id || '');
+          const isMe = msg.sender_id === myId;
           const msgKey = msg._id || msg.id || `msg-${idx}`;
 
           if (msg.type === 'quotation' && msg.metadata) {
@@ -239,21 +244,33 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
 
           return (
             <div key={msgKey} className={`bubble ${isMe ? 'me' : 'them'}`}>
-              {msg.type === 'image' && msg.file_url && (
-                <img
-                  src={msg.file_url}
-                  alt=""
-                  onClick={() => setLightboxUrl(msg.file_url)}
-                  style={{ maxWidth: '220px', maxHeight: '180px', objectFit: 'contain', borderRadius: '10px', marginBottom: '8px', display: 'block', cursor: 'zoom-in' }}
-                />
-              )}
-              <div style={{ wordBreak: 'break-word' }}>{msg.body}</div>
+              {msg.type === 'image' && msg.file_url ? (
+                <div style={{ display: 'block', overflow: 'hidden', borderRadius: '10px', marginBottom: '8px', lineHeight: 0 }}>
+                  <img
+                    src={msg.file_url}
+                    alt=""
+                    onClick={() => setLightboxUrl(msg.file_url)}
+                    style={{ display: 'block', width: '100%', maxWidth: '260px', height: 'auto', cursor: 'zoom-in', borderRadius: '10px' }}
+                  />
+                </div>
+              ) : msg.body ? (
+                <div style={{ wordBreak: 'break-word' }}>{msg.body}</div>
+              ) : null}
               <div style={{ fontSize: '0.65rem', marginTop: '4px', opacity: 0.5, textAlign: 'right', fontWeight: 700 }}>
                 {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
           );
         })}
+
+        {typingNames.length > 0 && (
+          <div className="typing-indicator">
+            <span className="typing-dots"><span /><span /><span /></span>
+            <span className="typing-label">
+              {typingNames.join(', ')} {typingNames.length === 1 ? 'is' : 'are'} typing
+            </span>
+          </div>
+        )}
       </div>
     </div>
 

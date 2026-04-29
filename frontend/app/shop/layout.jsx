@@ -18,6 +18,7 @@ import {
 import { getEcho, disconnectEcho } from '@/lib/echo';
 import { useTheme } from '../../contexts/ThemeContext';
 import ChatModule from '@/components/chat/ChatModule';
+import { getConversations } from '@/lib/chatApi';
 import './shop.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -801,6 +802,7 @@ export default function ShopLayout({ children }) {
   const [logoutBanner, setLogoutBanner] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
 
   // Load user info (public access - no login required to browse)
   useEffect(() => {
@@ -1231,6 +1233,22 @@ export default function ShopLayout({ children }) {
     return () => clearTimeout(t);
   }, [forgotResendCooldown]);
 
+  // Poll chat unread count every 10s when chat popup is closed
+  useEffect(() => {
+    const token = getToken();
+    if (!token || !user || chatOpen) return;
+    const poll = async () => {
+      try {
+        const convs = await getConversations(token);
+        const total = convs.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+        setChatUnreadCount(total);
+      } catch { /* silent */ }
+    };
+    poll();
+    const id = setInterval(poll, 10000);
+    return () => clearInterval(id);
+  }, [user, chatOpen]);
+
   // Poll unread count every 60 seconds (logged-in only)
   // Stops polling after 3 consecutive failures to prevent console spam
   useEffect(() => {
@@ -1271,8 +1289,15 @@ export default function ShopLayout({ children }) {
     } catch {
       // Reverb not reachable — polling covers it
     }
-    return () => { disconnectEcho(); };
+    // Only stop listening to this channel — do NOT disconnect the shared Echo
+    // singleton here, as ChatModule and other components rely on the same instance.
+    return () => {
+      try { getEcho(getToken())?.private(`user.${userId}`).stopListening('.notification.created'); } catch { }
+    };
   }, [user]);
+
+  // Disconnect Echo only when the shop layout fully unmounts (e.g., user navigates away)
+  useEffect(() => () => { disconnectEcho(); }, []);
 
   // Suppress DOM-Event unhandled rejections (Pusher/WebSocket internals)
   useEffect(() => {
@@ -2214,15 +2239,29 @@ export default function ShopLayout({ children }) {
       {/* Floating Chat */}
       {user && (
         <>
-          <button 
+          <button
             className="chat-floating-btn"
-            onClick={() => setChatOpen(!chatOpen)}
+            onClick={() => { setChatOpen(o => !o); setChatUnreadCount(0); }}
             aria-label="Toggle chat"
           >
             {chatOpen ? (
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--black)" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
             ) : (
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--black)" strokeWidth="2.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+            )}
+            {!chatOpen && chatUnreadCount > 0 && (
+              <span style={{
+                position: 'absolute', top: '-4px', right: '-4px',
+                minWidth: '20px', height: '20px', borderRadius: '10px',
+                background: '#ef4444', color: '#fff',
+                fontSize: '0.65rem', fontWeight: 900,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '0 5px', lineHeight: 1,
+                border: '2px solid var(--dark)',
+                pointerEvents: 'none',
+              }}>
+                {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+              </span>
             )}
           </button>
 

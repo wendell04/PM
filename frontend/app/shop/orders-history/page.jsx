@@ -382,12 +382,13 @@ export default function OrdersHistoryPage() {
     };
   }, [token, orders, loadOrders]);
 
+  // Stop listening to order channels on unmount (Echo singleton stays alive for chat)
   useEffect(() => {
     return () => {
       echoChannelsRef.current.forEach(ch => {
         try { ch.stopListening('.order.status.updated'); } catch {}
       });
-      disconnectEcho();
+      echoChannelsRef.current = [];
     };
   }, []);
 

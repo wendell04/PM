@@ -130,8 +130,10 @@ class ChatController extends Controller
                 return $this->notFoundResponse('Conversation');
             }
 
-            // Check if user is participant or admin
-            if (!in_array($user->_id, $conversation->participants) && !in_array($user->role, ['admin', 'owner'])) {
+            // Check if user is participant or admin (explicit string cast to avoid ObjectId/string mismatch)
+            $userId       = (string)($user->_id ?? $user->id ?? '');
+            $participants = array_map('strval', $conversation->participants ?? []);
+            if (!in_array($userId, $participants, true) && !in_array($user->role ?? null, ['admin', 'owner'])) {
                 return $this->unauthorizedResponse();
             }
 
