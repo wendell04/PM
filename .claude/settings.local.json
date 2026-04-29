@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(npm install *)",
-      "Bash(Find \"D:\\\\PM\\\\backend\\\\vendor\" -name \"*Reverb*Broadcast*\" -o -name \"*Broadcast*Reverb*\")"
+      "Bash(Find \"D:\\\\PM\\\\backend\\\\vendor\" -name \"*Reverb*Broadcast*\" -o -name \"*Broadcast*Reverb*\")",
+      "Bash(node --input-type=module)",
+      "Bash(npx --no next lint --file app/dashboard/business/ssa-forecast/page.jsx)",
+      "Bash(node -e \"require\\('./package.json'\\).dependencies\")",
+      "Bash(npx next *)"
     ]
   }
 }

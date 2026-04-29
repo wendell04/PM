@@ -38,7 +38,7 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-export default function OrderTimeline({ events }) {
+function OrderTimeline({ events }) {
   if (!events || events.length === 0) {
     return <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--gray)', fontSize: '0.8rem' }}>No timeline events yet.</div>;
   }

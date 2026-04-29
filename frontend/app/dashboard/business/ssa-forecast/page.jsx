@@ -18,6 +18,8 @@ const FORECAST_PERIODS = [
   { label: 'Annually', type: 'annually', unit: 'years',  tableHeader: 'Year',  maxCount: 10 },
 ];
 
+const DEFAULT_COUNTS = { weekly: 4, monthly: 3, annually: 2 };
+
 const DATA_SOURCES = [
   { key: 'sales_revenue',   label: 'Sales Revenue'         },
   { key: 'sales_qty',       label: 'Sales Quantity'        },
@@ -197,16 +199,19 @@ export default function SSAForecastPage() {
   const [dataPointCount, setDataPointCount] = useState(0);
   const [backtestData, setBacktestData]     = useState([]);
 
+  const autoRunTimerRef   = useRef(null);
+  const handleSubmitRef   = useRef(null);
+  const forecastCountRef  = useRef(forecastCount);
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem('ssa_config');
       if (saved) {
-        const { source, periodType, count } = JSON.parse(saved);
+        const { source, periodType } = JSON.parse(saved);
         const src = DATA_SOURCES.find(s => s.key === source);
         const per = FORECAST_PERIODS.find(p => p.type === periodType);
         if (src) setDataSource(src.key);
         if (per) setForecastPeriod(per);
-        if (count) setForecastCount(count);
       }
     } catch (_) {}
   }, []);
@@ -226,10 +231,10 @@ export default function SSAForecastPage() {
       .catch(() => setInventoryList([]));
   }, [token]);
 
-  const handleSubmit = async () => {
-    const count = parseInt(forecastCount, 10);
+  const handleSubmit = async (countOverride = null) => {
+    const count = parseInt(countOverride ?? forecastCount, 10);
     if (!count || count < 1) {
-      setError(`Please enter how many ${forecastPeriod.unit} ahead to forecast.`);
+      if (!countOverride) setError(`Please enter how many ${forecastPeriod.unit} ahead to forecast.`);
       return;
     }
     if (!token) return;
@@ -241,13 +246,10 @@ export default function SSAForecastPage() {
       localStorage.setItem('ssa_config', JSON.stringify({
         source: dataSource,
         periodType: forecastPeriod.type,
-        count: forecastCount,
       }));
     } catch (_) {}
     setError('');
     setIsLoading(true);
-    setResult(null);
-    setSubmittedConfig(null);
 
     try {
       let rows = [];
@@ -340,6 +342,29 @@ export default function SSAForecastPage() {
     }
   };
 
+  // Keep refs current on every render.
+  handleSubmitRef.current  = handleSubmit;
+  forecastCountRef.current = forecastCount;
+
+  // Auto-run whenever inputs change. Debounced so fast count keypresses don't spam the SSA service.
+  useEffect(() => {
+    if (autoRunTimerRef.current) clearTimeout(autoRunTimerRef.current);
+    const count = parseInt(forecastCount, 10);
+    if (!count || count < 1 || !token) return;
+    if (dataSource === 'inventory_stock' && !selectedInventoryId) return;
+    autoRunTimerRef.current = setTimeout(() => { handleSubmitRef.current?.(); }, 700);
+    return () => { if (autoRunTimerRef.current) clearTimeout(autoRunTimerRef.current); };
+  }, [dataSource, forecastPeriod.type, forecastCount, selectedInventoryId, token]); // eslint-disable-line
+
+  // Initial historical load — fires when data source / period / token changes but no count is typed.
+  // Uses periods=1 just to populate the historical portion of the chart.
+  useEffect(() => {
+    if (!token) return;
+    if (dataSource === 'inventory_stock' && !selectedInventoryId) return;
+    if (parseInt(forecastCountRef.current, 10) > 0) return; // auto-run handles real forecasts
+    handleSubmitRef.current?.(1);
+  }, [token, dataSource, forecastPeriod.type, selectedInventoryId]); // eslint-disable-line
+
   const getCombinedChartData = () => {
     if (!result) return [];
     const data = [];
@@ -363,15 +388,17 @@ export default function SSAForecastPage() {
         Forecast: null, High: null, Low: null,
       });
     }
-    for (let i = 0; i < fcDates.length; i++) {
-      const fv = fcValues[i]; const fh = fcHigh[i]; const fl = fcLow[i];
-      data.push({
-        date: fcDates[i],
-        Actual: null, BacktestActual: null, Trend: undefined, Seasonality: undefined,
-        Forecast: fv != null ? Math.round(fv * 100) / 100 : null,
-        High: showConfidence ? (fh != null ? Math.round(fh * 100) / 100 : null) : null,
-        Low:  showConfidence ? (fl != null ? Math.round(fl * 100) / 100 : null) : null,
-      });
+    if (parseInt(forecastCount, 10) > 0) {
+      for (let i = 0; i < fcDates.length; i++) {
+        const fv = fcValues[i]; const fh = fcHigh[i]; const fl = fcLow[i];
+        data.push({
+          date: fcDates[i],
+          Actual: null, BacktestActual: null, Trend: undefined, Seasonality: undefined,
+          Forecast: fv != null ? Math.round(fv * 100) / 100 : null,
+          High: showConfidence ? (fh != null ? Math.round(fh * 100) / 100 : null) : null,
+          Low:  showConfidence ? (fl != null ? Math.round(fl * 100) / 100 : null) : null,
+        });
+      }
     }
     return data;
   };
@@ -447,7 +474,7 @@ export default function SSAForecastPage() {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
               <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
             </svg>
-            <span>Data is pulled directly from your database. Select a data source, choose a forecast period, then click Run Forecast. SSA requires at least 10 historical data points.</span>
+            <span>Data is pulled directly from your database. Choose a data source, forecast period, and how many periods ahead — results update automatically. SSA requires at least 10 historical data points.</span>
           </div>
         )}
 
@@ -482,7 +509,15 @@ export default function SSAForecastPage() {
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
               {FORECAST_PERIODS.map(p => (
                 <button key={p.type} type="button" className={`ssa-period-btn ${forecastPeriod.type === p.type ? 'active' : ''}`}
-                  onClick={() => { setForecastPeriod(p); setForecastCount(''); setResult(null); setSubmittedConfig(null); }}>
+                  onClick={() => {
+                    setForecastPeriod(p);
+                    setForecastCount(prev => {
+                      const n = parseInt(prev, 10);
+                      if (!n || n < 1) return '';
+                      return Math.min(n, p.maxCount);
+                    });
+                    setResult(null); setSubmittedConfig(null);
+                  }}>
                   {p.label}
                 </button>
               ))}
@@ -500,17 +535,13 @@ export default function SSAForecastPage() {
                 onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
               />
               <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>{forecastPeriod.unit} ahead (max {forecastPeriod.maxCount})</span>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button className="btn-primary" disabled={isLoading || !forecastCount} onClick={handleSubmit}>
-              {isLoading ? (
-                <><svg className="ssa-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" strokeOpacity="1"/></svg>Running...</>
-              ) : (
-                <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>Run Forecast</>
+              {isLoading && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', color: 'var(--gold)', fontWeight: 600, opacity: 0.8 }}>
+                  <svg className="ssa-spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" strokeOpacity="0.2"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                  Updating...
+                </span>
               )}
-            </button>
+            </div>
           </div>
 
           {error && (
@@ -521,80 +552,75 @@ export default function SSAForecastPage() {
           )}
         </div>
 
-        {(isLoading || (result && submittedConfig)) && (
-          <div className="ssa-stat-grid">
-            {[
-              {
-                label: 'Historical Data Points',
-                content: isLoading ? null : <div className="ssa-stat-value">{dataPointCount}</div>,
-              },
-              {
-                label: 'Forecast Period',
-                content: isLoading ? null : <div className="ssa-stat-value" style={{ fontSize: '1.1rem' }}>{submittedConfig.count} {submittedConfig.period.unit}</div>,
-              },
-              {
-                label: 'Last Recorded Value',
-                content: isLoading ? null : (() => {
-                  const vals = result.historical?.values || [];
-                  const lastVal = vals.length > 0 ? vals[vals.length - 1] : null;
-                  const isRevenue = submittedConfig.source === 'sales_revenue';
-                  return (
-                    <>
-                      <div className="ssa-stat-value" style={{ color: 'var(--gold)' }}>
-                        {lastVal !== null ? `${isRevenue ? '\u20b1' : ''}${lastVal.toFixed(2)}` : '\u2014'}
-                      </div>
-                      {!isRevenue && <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.15rem' }}>units</div>}
-                    </>
-                  );
-                })(),
-              },
-              {
-                label: 'Forecast Accuracy (MAPE)',
-                content: isLoading ? null : (() => {
-                  const mape = result?.accuracy?.mape;
-                  const n    = result?.accuracy?.backtest_n;
-                  const color = mape == null ? 'var(--gray)' : mape < 15 ? '#4ade80' : mape < 30 ? '#fbbf24' : '#f87171';
-                  return (
-                    <>
-                      <div className="ssa-stat-value" style={{ color, fontSize: '1.3rem' }}>{mape != null ? `${mape.toFixed(1)}%` : 'N/A'}</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.15rem' }}>{n ? `tested on last ${n} points` : 'insufficient data'}</div>
-                    </>
-                  );
-                })(),
-              },
-              {
-                label: 'MAE',
-                content: isLoading ? null : (() => {
-                  const mae = result?.accuracy?.mae;
-                  const isRevenue = submittedConfig?.source === 'sales_revenue';
-                  return <div className="ssa-stat-value" style={{ fontSize: '1.1rem' }}>{mae != null ? `${isRevenue ? '\u20b1' : ''}${mae.toFixed(2)}` : 'N/A'}</div>;
-                })(),
-              },
-              {
-                label: 'Auto Window (L)',
-                content: isLoading ? null : (() => {
-                  const L      = result?.auto_L?.L_used;
-                  const period = result?.auto_L?.period_detected;
-                  return (
-                    <>
-                      <div className="ssa-stat-value" style={{ fontSize: '1.3rem' }}>{L ?? '\u2014'}</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.15rem' }}>{period ? `period detected: ${period}` : 'no clear period'}</div>
-                    </>
-                  );
-                })(),
-              },
-            ].map(({ label, content }) => (
-              <div key={label} className="ssa-stat-card">
-                <div className="ssa-stat-label">{label}</div>
-                {isLoading ? <div className="ssa-skeleton" /> : content}
+        {(isLoading || (result && submittedConfig)) && (() => {
+          const firstLoad = isLoading && !result;
+          const hasForecastCount = parseInt(forecastCount, 10) > 0;
+          const vals = result?.historical?.values || [];
+          const lastVal = vals.length > 0 ? vals[vals.length - 1] : null;
+          const isRevenue = (result ? submittedConfig?.source : dataSource) === 'sales_revenue';
+          const mape  = result?.accuracy?.mape;
+          const mapeN = result?.accuracy?.backtest_n;
+          const mapeColor = mape == null ? 'var(--gray)' : mape < 15 ? '#4ade80' : mape < 30 ? '#fbbf24' : '#f87171';
+          const mae = result?.accuracy?.mae;
+          const L = result?.auto_L?.L_used;
+          const period = result?.auto_L?.period_detected;
+
+          return (
+            <div className="ssa-stat-grid">
+              <div className="ssa-stat-card">
+                <div className="ssa-stat-label">Historical Data Points</div>
+                {firstLoad ? <div className="ssa-skeleton" /> : <div className="ssa-stat-value">{dataPointCount}</div>}
               </div>
-            ))}
-          </div>
-        )}
+              <div className="ssa-stat-card">
+                <div className="ssa-stat-label">Forecast Period</div>
+                {firstLoad ? <div className="ssa-skeleton" /> : hasForecastCount && submittedConfig
+                  ? <div className="ssa-stat-value" style={{ fontSize: '1.1rem' }}>{submittedConfig.count} {submittedConfig.period.unit}</div>
+                  : <div className="ssa-stat-value" style={{ color: 'var(--gray)', fontSize: '1.5rem' }}>&mdash;</div>}
+              </div>
+              <div className="ssa-stat-card">
+                <div className="ssa-stat-label">Last Recorded Value</div>
+                {firstLoad ? <div className="ssa-skeleton" /> : (
+                  <>
+                    <div className="ssa-stat-value" style={{ color: 'var(--gold)' }}>
+                      {lastVal !== null ? `${isRevenue ? '\u20b1' : ''}${lastVal.toFixed(2)}` : '\u2014'}
+                    </div>
+                    {!isRevenue && <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.15rem' }}>units</div>}
+                  </>
+                )}
+              </div>
+              <div className="ssa-stat-card">
+                <div className="ssa-stat-label">Forecast Accuracy (MAPE)</div>
+                {firstLoad ? <div className="ssa-skeleton" /> : hasForecastCount
+                  ? <>
+                      <div className="ssa-stat-value" style={{ color: mapeColor, fontSize: '1.3rem' }}>{mape != null ? `${mape.toFixed(1)}%` : 'N/A'}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.15rem' }}>
+                        {mapeN ? `tested on last ${mapeN} ${submittedConfig?.period?.unit ?? 'periods'}` : 'insufficient data'}
+                      </div>
+                    </>
+                  : <div className="ssa-stat-value" style={{ color: 'var(--gray)', fontSize: '1.5rem' }}>&mdash;</div>}
+              </div>
+              <div className="ssa-stat-card">
+                <div className="ssa-stat-label">MAE ({forecastPeriod.unit.replace(/s$/, '')})</div>
+                {firstLoad ? <div className="ssa-skeleton" /> : hasForecastCount
+                  ? <div className="ssa-stat-value" style={{ fontSize: '1.1rem' }}>{mae != null ? `${isRevenue ? '\u20b1' : ''}${mae.toFixed(2)}` : 'N/A'}</div>
+                  : <div className="ssa-stat-value" style={{ color: 'var(--gray)', fontSize: '1.5rem' }}>&mdash;</div>}
+              </div>
+              <div className="ssa-stat-card">
+                <div className="ssa-stat-label">Auto Window (L)</div>
+                {firstLoad ? <div className="ssa-skeleton" /> : (
+                  <>
+                    <div className="ssa-stat-value" style={{ fontSize: '1.3rem' }}>{L ?? '\u2014'}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.15rem' }}>{period ? `period detected: ${period}` : 'no clear period'}</div>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {result && submittedConfig && (
           <>
-            {result?.data_quality?.is_low_confidence && (
+            {parseInt(forecastCount, 10) > 0 && result?.data_quality?.is_low_confidence && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '10px', padding: '0.875rem 1.25rem', marginBottom: '1.5rem', fontSize: '0.85rem', color: 'var(--gray)', lineHeight: 1.6 }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
                   <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
@@ -610,13 +636,19 @@ export default function SSAForecastPage() {
 
             <div className="ssa-card">
               <div className="ssa-card-header">
-                <h2 className="ssa-card-title">{`${submittedConfig.sourceLabel} \u2014 ${submittedConfig.count} ${submittedConfig.period.unit} Forecast`}</h2>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <button type="button" className={`ssa-toggle-btn ${showConfidence ? 'active' : ''}`} onClick={() => setShowConfidence(v => !v)}>Confidence Band</button>
-                  <button type="button" className={`ssa-toggle-btn ${showTrend ? 'active' : ''}`} onClick={() => setShowTrend(v => !v)}>Trend</button>
-                  <button type="button" className={`ssa-toggle-btn ${showSeasonality ? 'active' : ''}`} onClick={() => setShowSeasonality(v => !v)}>Seasonality</button>
-                  <button type="button" className={`ssa-toggle-btn ${showBacktest ? 'active' : ''}`} onClick={() => setShowBacktest(v => !v)}>Backtest</button>
-                </div>
+                <h2 className="ssa-card-title">
+                  {parseInt(forecastCount, 10) > 0
+                    ? `${submittedConfig.sourceLabel} \u2014 ${submittedConfig.count} ${submittedConfig.period.unit} Forecast`
+                    : `${submittedConfig.sourceLabel} \u2014 Historical Data`}
+                </h2>
+                {parseInt(forecastCount, 10) > 0 && (
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button type="button" className={`ssa-toggle-btn ${showConfidence ? 'active' : ''}`} onClick={() => setShowConfidence(v => !v)}>Confidence Band</button>
+                    <button type="button" className={`ssa-toggle-btn ${showTrend ? 'active' : ''}`} onClick={() => setShowTrend(v => !v)}>Trend</button>
+                    <button type="button" className={`ssa-toggle-btn ${showSeasonality ? 'active' : ''}`} onClick={() => setShowSeasonality(v => !v)}>Seasonality</button>
+                    <button type="button" className={`ssa-toggle-btn ${showBacktest ? 'active' : ''}`} onClick={() => setShowBacktest(v => !v)}>Backtest</button>
+                  </div>
+                )}
               </div>
               <div ref={chartRef} style={{ height: 360 }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -648,7 +680,7 @@ export default function SSAForecastPage() {
                         tickFormatter={v => formatDateLabel(v, submittedConfig.period.type)}
                         startIndex={Math.max(0, chartData.length - Math.min(60, chartData.length))}
                       />
-                      {(() => { const firstFcDate = result?.forecast?.dates?.[0]; return firstFcDate ? (
+                      {parseInt(forecastCount, 10) > 0 && (() => { const firstFcDate = result?.forecast?.dates?.[0]; return firstFcDate ? (
                         <ReferenceLine x={firstFcDate} stroke="rgba(255,255,255,0.2)" strokeDasharray="4 4"
                           label={{ value: 'Forecast Start', position: 'insideTopLeft', fill: 'var(--gray)', fontSize: 10 }}
                         />
@@ -691,17 +723,19 @@ export default function SSAForecastPage() {
               </div>
             )}
 
-            <p style={{ fontSize: '0.75rem', color: 'var(--gray)', fontStyle: 'italic', marginTop: '0.75rem', marginBottom: '0.5rem', lineHeight: 1.5 }}>
-              {'SSA decomposed the series into trend, seasonality, and noise. Shaded bands show \u00b11.96\u03c3 confidence interval.'}
-            </p>
-            {result?.auto_L && (
-              <p style={{ fontSize: '0.72rem', color: 'var(--gray)', fontStyle: 'italic', marginTop: '0.25rem', marginBottom: '1.5rem' }}>
-                {`Window length L=${result.auto_L.L_used} was selected automatically`}
-                {result.auto_L.period_detected ? ` based on a detected period of ${result.auto_L.period_detected} input-granularity steps.` : ' (no dominant period detected; fallback heuristic used).'}
+            {parseInt(forecastCount, 10) > 0 && <>
+              <p style={{ fontSize: '0.75rem', color: 'var(--gray)', fontStyle: 'italic', marginTop: '0.75rem', marginBottom: '0.5rem', lineHeight: 1.5 }}>
+                {'SSA decomposed the series into trend, seasonality, and noise. Shaded bands show \u00b11.96\u03c3 confidence interval.'}
               </p>
-            )}
+              {result?.auto_L && (
+                <p style={{ fontSize: '0.72rem', color: 'var(--gray)', fontStyle: 'italic', marginTop: '0.25rem', marginBottom: '1.5rem' }}>
+                  {`Window length L=${result.auto_L.L_used} was selected automatically`}
+                  {result.auto_L.period_detected ? ` based on a detected period of ${result.auto_L.period_detected} input-granularity steps.` : ' (no dominant period detected; fallback heuristic used).'}
+                </p>
+              )}
+            </>}
 
-            <div className="ssa-card">
+            {parseInt(forecastCount, 10) > 0 && <div className="ssa-card">
               <div className="ssa-card-header">
                 <h2 className="ssa-card-title">Forecasted Values</h2>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -751,7 +785,7 @@ export default function SSAForecastPage() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </div>}
           </>
         )}
       </div>

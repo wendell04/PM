@@ -49,22 +49,34 @@ class SSA:
         if isinstance(components, int):
             components = [components]
         components = [c for c in components if c < len(self.Sigma)]
-        U_m = self.U[:-1, components]
-        pi_m = self.U[-1, components]
-        v_sq = np.sum(pi_m**2)
-        if v_sq >= 1.0:
+
+        # Progressively drop the smallest (last) component until LRF is stable.
+        # This avoids crashing on sparse data where higher-order components
+        # introduce numerical instability (v_sq >= 1.0).
+        stable = list(components)
+        while stable:
+            pi_m = self.U[-1, stable]
+            if np.sum(pi_m ** 2) < 1.0:
+                break
+            stable = stable[:-1]
+
+        if not stable:
             raise ValueError(
-                "LRF is numerically unstable for the selected components "
-                "(v_sq >= 1.0). Try fewer components or more historical data."
+                "LRF is numerically unstable even for component 0. "
+                "More historical data is required."
             )
+
+        U_m  = self.U[:-1, stable]
+        pi_m = self.U[-1, stable]
+        v_sq = np.sum(pi_m ** 2)
         R = np.zeros(self.L - 1)
-        for i in range(len(components)):
+        for i in range(len(stable)):
             R += pi_m[i] * U_m[:, i]
-        R = R / (1 - v_sq)
-        rec = self.reconstruct(components)
+        R /= (1 - v_sq)
+        rec = self.reconstruct(stable)
         predictions = list(rec)
         for _ in range(steps):
-            last_window = np.array(predictions[-(self.L-1):])
+            last_window = np.array(predictions[-(self.L - 1):])
             next_val = np.dot(R, last_window)
             predictions.append(next_val)
         return np.array(predictions[-steps:])
