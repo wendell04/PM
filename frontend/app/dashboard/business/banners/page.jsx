@@ -36,6 +36,7 @@ const createDefaultBanner = () => ({
   scheduleStart: null,
   scheduleEnd: null,
   order: 0,
+  showOn: 'both',
 });
 
 // ── Calendar Helpers ────────────────────────────────────────────────────────────
@@ -505,6 +506,19 @@ export default function BannerManagementPage() {
   const updateField = (field, value) => {
     setEditedBanner(prev => ({ ...prev, [field]: value }));
     setHasUnsavedChanges(true);
+  };
+
+  // Auto-saves showOn immediately — no Save button needed for display location
+  const updateShowOn = async (value) => {
+    setEditedBanner(prev => ({ ...prev, showOn: value }));
+    setBanners(prev => prev.map(b => (b._id || b.id) === activeBannerId ? { ...b, showOn: value } : b));
+    if (activeBannerId) {
+      try {
+        await apiUpdateBanner(activeBannerId, { showOn: value }, token);
+      } catch (err) {
+        console.error('Failed to update display location:', err);
+      }
+    }
   };
 
   const discardChanges = () => {
@@ -1062,7 +1076,46 @@ export default function BannerManagementPage() {
                 onEndChange={(value) => updateField('scheduleEnd', value)}
               />
 
+              {/* Display Location */}
               <div className="banner-form-group" style={{ marginTop: '1.5rem' }}>
+                <label className="banner-form-label">Display Location</label>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  {[
+                    { value: 'both',    label: 'Both' },
+                    { value: 'shop',    label: 'Shop only' },
+                    { value: 'landing', label: 'Landing only' },
+                  ].map(opt => {
+                    const active = (editedBanner?.showOn || 'both') === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => updateShowOn(opt.value)}
+                        style={{
+                          flex: 1,
+                          padding: '0.55rem 0.5rem',
+                          borderRadius: '7px',
+                          border: `1px solid ${active ? 'var(--gold)' : 'var(--border)'}`,
+                          background: active ? 'rgba(212,168,67,0.12)' : 'var(--dark2)',
+                          color: active ? 'var(--gold)' : 'var(--gray)',
+                          fontWeight: active ? 700 : 400,
+                          fontSize: '0.78rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.18s',
+                          fontFamily: "'DM Sans', sans-serif",
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.5rem' }}>
+                  Saves instantly — no publish required
+                </p>
+              </div>
+
+              <div className="banner-form-group" style={{ marginTop: '1rem' }}>
                 <label className="banner-form-label">Display Order</label>
                 <p style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
                   Use the ▲ ▼ buttons in the queue to reorder banners

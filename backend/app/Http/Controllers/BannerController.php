@@ -42,6 +42,7 @@ class BannerController extends Controller
                 'order' => 'nullable|integer',
                 'scheduleStart' => 'nullable|date',
                 'scheduleEnd' => 'nullable|date',
+                'showOn' => 'nullable|in:both,shop,landing',
             ]);
 
             $banner = Banner::create([
@@ -55,6 +56,7 @@ class BannerController extends Controller
                 'order' => $validated['order'] ?? 0,
                 'scheduleStart' => $validated['scheduleStart'] ?? null,
                 'scheduleEnd' => $validated['scheduleEnd'] ?? null,
+                'showOn' => $validated['showOn'] ?? 'both',
             ]);
 
             Cache::forget('admin_banners');
@@ -90,6 +92,7 @@ class BannerController extends Controller
                 'order' => 'nullable|integer',
                 'scheduleStart' => 'nullable|date',
                 'scheduleEnd' => 'nullable|date',
+                'showOn' => 'nullable|in:both,shop,landing',
             ]);
 
             $banner->update($validated);
@@ -174,16 +177,27 @@ class BannerController extends Controller
     }
 
     /**
-     * GET /api/storefront/banners
-     * Public endpoint - returns only live and visible banners
+     * GET /api/storefront/banners?context=shop|landing
+     * Public endpoint - returns only live and visible banners, filtered by context.
+     * context=shop    → showOn is 'both' or 'shop'
+     * context=landing → showOn is 'both' or 'landing'
+     * no context      → all live banners (backward compat)
      */
-    public function storefront()
+    public function storefront(Request $request)
     {
         try {
-            $banners = Banner::where('status', 'live')
-                ->where('isVisible', true)
-                ->orderBy('order', 'asc')
-                ->get();
+            $context = $request->query('context');
+
+            $query = Banner::where('status', 'live')
+                ->where('isVisible', true);
+
+            if ($context === 'shop') {
+                $query->whereIn('showOn', ['both', 'shop', null]);
+            } elseif ($context === 'landing') {
+                $query->whereIn('showOn', ['both', 'landing', null]);
+            }
+
+            $banners = $query->orderBy('order', 'asc')->get();
 
             return $this->successResponse('Banners retrieved.', $banners);
         } catch (\Exception $e) {

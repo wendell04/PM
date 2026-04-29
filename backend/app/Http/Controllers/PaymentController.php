@@ -6,6 +6,8 @@ use App\Models\Order;
 use App\Models\OrderRequest;
 use App\Models\Voucher;
 use App\Models\Product;
+use App\Models\Inventory;
+use App\Models\StockHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
@@ -118,9 +120,14 @@ class PaymentController extends Controller
                     $pendingFlashSaleIncrements[] = [$appliedFlashSale, $qty];
                 }
 
+                $thumb = $product->thumbnail ?? null;
                 $orderItems[] = [
                     'productId'   => (string) $product->_id,
                     'productName' => $product->name,
+                    'isCustom'    => (bool) $product->isCustom,
+                    'thumbnail'   => $thumb
+                        ? (str_starts_with($thumb, 'http') ? $thumb : asset('storage/' . $thumb))
+                        : null,
                     'variantId'   => $item['variantId']   ?? null,
                     'variantName' => $item['variantName'] ?? null,
                     'qty'         => $qty,
@@ -205,7 +212,8 @@ class PaymentController extends Controller
             $itemIds = collect($validated['items'])->pluck('productId')->sort()->values()->toArray();
             $recentOrder = Order::where('userId', (string) $user->_id)
                 ->where('paymentStatus', 'unpaid')
-                ->where('createdAt', '>=', now()->subMinutes(5))
+                ->where('paymentMethod', 'online')
+                ->where('createdAt', '>=', now()->subMinutes(30))
                 ->latest('createdAt')
                 ->first();
 
@@ -217,6 +225,51 @@ class PaymentController extends Controller
                         'checkoutUrl' => $recentOrder->checkoutUrl,
                     ]);
                 }
+            }
+
+            // ── Atomic stock reservation BEFORE order creation ──────────
+            $stockReservations = [];
+            foreach ($orderItems as $item) {
+                $prod = Product::find($item['productId'] ?? null);
+                if (!$prod || !$prod->inventoryId) continue;
+                $inv = Inventory::find($prod->inventoryId);
+                if (!$inv || $inv->isOnDemand) continue;
+
+                $qty = (int) $item['qty'];
+
+                $updated = DB::connection('mongodb')
+                    ->getCollection('inventories')
+                    ->findOneAndUpdate(
+                        [
+                            '_id'      => new \MongoDB\BSON\ObjectId((string) $inv->_id),
+                            'stockQty' => ['$gte' => $qty],
+                        ],
+                        ['$inc' => ['stockQty' => -$qty]],
+                        ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                    );
+
+                if ($updated === null) {
+                    foreach ($stockReservations as $r) {
+                        DB::connection('mongodb')
+                            ->getCollection('inventories')
+                            ->updateOne(
+                                ['_id' => new \MongoDB\BSON\ObjectId($r['invId'])],
+                                ['$inc' => ['stockQty' => $r['qty']]]
+                            );
+                    }
+                    $currentStock = (int) ($inv->stockQty ?? 0);
+                    return $this->errorResponse(
+                        "\"{$prod->name}\" only has {$currentStock} item(s) in stock.",
+                        422
+                    );
+                }
+
+                $stockReservations[] = [
+                    'invId'       => (string) $inv->_id,
+                    'qty'         => $qty,
+                    'newStockQty' => (int) ($updated->stockQty ?? 0),
+                    'unitCost'    => (float) ($inv->averageCost ?? 0),
+                ];
             }
 
             // ── Create order (paymentStatus: unpaid) ──────────────────
@@ -234,6 +287,7 @@ class PaymentController extends Controller
                 'voucherCode'     => $appliedVoucher?->code ?? null,
                 'orderStatus'     => 'Pending',
                 'paymentStatus'   => 'unpaid',
+                'paymentMethod'   => 'online',
                 'notes'           => htmlspecialchars(strip_tags(trim($validated['notes'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 'deliveryAddress' => $validated['deliveryAddress'] ?? null,
                 'designNotes'     => isset($validated['design_notes'])
@@ -241,6 +295,7 @@ class PaymentController extends Controller
                     : null,
                 'designFilePath'  => $designFilePath,
                 'designStatus'    => $designFilePath ? 'pending_review' : null,
+                'statusHistory'   => [['status' => 'Pending', 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
@@ -248,6 +303,26 @@ class PaymentController extends Controller
             // Deduct flash sale stock only after order is persisted
             foreach ($pendingFlashSaleIncrements as [$flashSale, $qty]) {
                 $flashSale->increment('stockUsed', $qty);
+            }
+
+            // Record StockHistory for the atomically-reserved quantities
+            foreach ($stockReservations as $r) {
+                try {
+                    StockHistory::create([
+                        'inventoryId'  => $r['invId'],
+                        'quantity'     => $r['qty'],
+                        'remainingQty' => $r['newStockQty'],
+                        'unitCost'     => $r['unitCost'],
+                        'totalCost'    => $r['unitCost'] * $r['qty'],
+                        'reason'       => 'sale_reserved',
+                        'type'         => 'deduction',
+                        'performedBy'  => 'system',
+                        'remarks'      => 'Order: ' . (string) $order->_id,
+                        'createdAt'    => now(),
+                    ]);
+                } catch (\Exception $e) {
+                    Log::warning('createLink: StockHistory write failed', ['error' => $e->getMessage()]);
+                }
             }
 
             $orderId     = (string) $order->_id;
@@ -265,12 +340,18 @@ class PaymentController extends Controller
                     'quantity' => 1,
                 ]];
             } else {
-                $pmLineItems = array_map(fn($item) => [
-                    'currency' => 'PHP',
-                    'amount'   => (int) round(($item['unitPrice'] ?? 0) * 100),
-                    'name'     => ($item['productName'] ?? 'Product') . ($item['variantName'] ? ' — ' . $item['variantName'] : ''),
-                    'quantity' => (int) ($item['qty'] ?? 1),
-                ], $orderItems);
+                $pmLineItems = array_map(function ($item) {
+                    $lineItem = [
+                        'currency' => 'PHP',
+                        'amount'   => (int) round(($item['unitPrice'] ?? 0) * 100),
+                        'name'     => ($item['productName'] ?? 'Product') . ($item['variantName'] ? ' — ' . $item['variantName'] : ''),
+                        'quantity' => (int) ($item['qty'] ?? 1),
+                    ];
+                    if (!empty($item['thumbnail'])) {
+                        $lineItem['images'] = [$item['thumbnail']];
+                    }
+                    return $lineItem;
+                }, $orderItems);
             }
 
             // Delivery fee — only shown when a real fee is set (manually booked courier).
@@ -292,7 +373,11 @@ class PaymentController extends Controller
                             'billing'              => [
                                 'name'  => $order->userSnapshot['name'] ?? '',
                                 'email' => $order->userSnapshot['email'] ?? '',
-                                'phone' => $order->userSnapshot['phone'] ?? ($validated['deliveryAddress']['phone'] ?? ''),
+                                'phone' => (function ($p) {
+                                    $p = preg_replace('/\s+/', '', $p ?? '');
+                                    $p = preg_replace('/^\+?63/', '', $p);
+                                    return ltrim($p, '0');
+                                })($order->userSnapshot['phone'] ?? ($validated['deliveryAddress']['phone'] ?? '')),
                             ],
                             'reference_number'     => (string) $orderId,
                             'payment_method_types' => ['gcash', 'paymaya', 'card'],
@@ -301,7 +386,7 @@ class PaymentController extends Controller
                                 'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}",
                                 'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}",
                             ],
-                            'cancel_url'  => "{$frontendUrl}/shop/checkout",
+                            'cancel_url'  => "{$frontendUrl}/shop/checkout?payment_cancelled=1",
                         ],
                     ],
                 ]);
@@ -721,6 +806,87 @@ class PaymentController extends Controller
      * Used when a customer wants to pay online for a COD or previously unpaid order.
      * The webhook uses the raw orderId as reference_number to mark the order paid.
      */
+    private function deductInventoryFIFO(
+        Inventory $inventory,
+        int $qty,
+        string $reason,
+        float $unitPrice = 0.0,
+        ?string $orderId = null,
+    ): void {
+        $qty = max(0, $qty);
+        if ($qty <= 0) return;
+
+        $batches = $inventory->batches ?? [];
+        usort($batches, fn($a, $b) =>
+            strtotime($a['dateReceived'] ?? '0') <=> strtotime($b['dateReceived'] ?? '0')
+        );
+
+        $available = array_reduce($batches, fn($carry, $b) =>
+            $carry + ($b['remainingQty'] ?? $b['goodQty'] ?? 0), 0
+        );
+
+        if ($available < $qty) {
+            $inventory->stockQty  = max(0, (int) ($inventory->stockQty ?? 0) - $qty);
+            $inventory->updatedAt = now();
+            $inventory->save();
+            StockHistory::create([
+                'inventoryId'  => (string) $inventory->_id,
+                'quantity'     => $qty,
+                'remainingQty' => $inventory->stockQty,
+                'unitCost'     => $inventory->averageCost ?? 0,
+                'totalCost'    => ($inventory->averageCost ?? 0) * $qty,
+                'reason'       => $reason,
+                'type'         => 'deduction',
+                'performedBy'  => 'system',
+                'remarks'      => $orderId ? "Order: {$orderId}" : null,
+                'createdAt'    => now(),
+            ]);
+            return;
+        }
+
+        $remaining       = $qty;
+        $batchDeductions = [];
+        foreach ($batches as &$batch) {
+            if ($remaining <= 0) break;
+            $batchQty = $batch['remainingQty'] ?? $batch['goodQty'] ?? 0;
+            if ($batchQty <= 0) continue;
+            $deduct                  = min($batchQty, $remaining);
+            $batch['remainingQty']   = $batchQty - $deduct;
+            $remaining              -= $deduct;
+            $batchDeductions[]       = [
+                'batchId'  => $batch['batchId'] ?? null,
+                'qty'      => $deduct,
+                'unitCost' => $batch['unitCost'] ?? 0,
+            ];
+        }
+        unset($batch);
+
+        $newStock             = max(0, (int) ($inventory->stockQty ?? 0) - $qty);
+        $inventory->batches   = $batches;
+        $inventory->stockQty  = $newStock;
+        $inventory->updatedAt = now();
+        $inventory->save();
+
+        $running = $newStock + $qty;
+        foreach ($batchDeductions as $bd) {
+            $running -= $bd['qty'];
+            StockHistory::create([
+                'inventoryId'  => (string) $inventory->_id,
+                'quantity'     => $bd['qty'],
+                'remainingQty' => $running,
+                'unitCost'     => $bd['unitCost'],
+                'totalCost'    => $bd['qty'] * $bd['unitCost'],
+                'reason'       => $reason,
+                'type'         => 'deduction',
+                'batchId'      => $bd['batchId'],
+                'sellingPrice' => $unitPrice,
+                'performedBy'  => 'system',
+                'remarks'      => $orderId ? "Order: {$orderId}" : null,
+                'createdAt'    => now(),
+            ]);
+        }
+    }
+
     public function createOrderPayLink(Request $request)
     {
         try {

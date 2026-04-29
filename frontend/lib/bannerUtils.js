@@ -168,13 +168,16 @@ export async function unpublishBanner(id, token) {
 
 /**
  * Get storefront banners (public endpoint)
- * GET /api/storefront/banners
- * Returns only banners where status='live' AND isVisible=true
+ * GET /api/storefront/banners?context=shop|landing
+ * @param {'shop'|'landing'|undefined} context - Filter by display location
  * @returns {Promise<Array>} Array of live banner objects
  */
-export async function getStorefrontBanners() {
+export async function getStorefrontBanners(context) {
   try {
-    const res = await fetchWithTimeout(`${API_URL}/api/storefront/banners`, {
+    const url = context
+      ? `${API_URL}/api/storefront/banners?context=${context}`
+      : `${API_URL}/api/storefront/banners`;
+    const res = await fetchWithTimeout(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

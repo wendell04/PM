@@ -270,6 +270,9 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/notifications',                 [NotificationController::class, 'index']);
     Route::patch('/admin/notifications/{id}/read',     [NotificationController::class, 'markRead']);
 
+    // ─── Order delete (hard) ──────────────────────────────────────────────────────────────────
+    Route::delete('/admin/orders/{id}',               [OrderController::class, 'hardDelete']);
+
     // ─── Record Payment ────────────────────────────────────────────────────────────────────────
     Route::post('/admin/orders/{id}/record-payment',  [OrderController::class, 'recordPayment']);
 

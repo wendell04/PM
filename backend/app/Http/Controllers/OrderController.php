@@ -129,9 +129,14 @@ class OrderController extends Controller
                     $pendingFlashSaleIncrements[] = [$appliedFlashSale, $qty];
                 }
 
+                $thumb = $product->thumbnail ?? null;
                 $orderItems[] = [
                     'productId'   => (string) $product->_id,
                     'productName' => $product->name,
+                    'isCustom'    => (bool) $product->isCustom,
+                    'thumbnail'   => $thumb
+                        ? (str_starts_with($thumb, 'http') ? $thumb : asset('storage/' . $thumb))
+                        : null,
                     'variantId'   => $item['variantId']   ?? null,
                     'variantName' => $item['variantName'] ?? null,
                     'qty'         => $qty,
@@ -215,6 +220,54 @@ class OrderController extends Controller
                 }
             }
 
+            // ── Atomic stock reservation BEFORE order creation ───────────
+            // Uses findOneAndUpdate with $gte condition: if two buyers race,
+            // only one succeeds; the other gets a 422 and no order is created.
+            $stockReservations = [];
+            foreach ($orderItems as $item) {
+                $prod = Product::find($item['productId'] ?? null);
+                if (!$prod || !$prod->inventoryId) continue;
+                $inv = Inventory::find($prod->inventoryId);
+                if (!$inv || $inv->isOnDemand) continue;
+
+                $qty = (int) $item['qty'];
+
+                $updated = DB::connection('mongodb')
+                    ->getCollection('inventories')
+                    ->findOneAndUpdate(
+                        [
+                            '_id'      => new \MongoDB\BSON\ObjectId((string) $inv->_id),
+                            'stockQty' => ['$gte' => $qty],
+                        ],
+                        ['$inc' => ['stockQty' => -$qty]],
+                        ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                    );
+
+                if ($updated === null) {
+                    // Rollback all previous reservations in this request
+                    foreach ($stockReservations as $r) {
+                        DB::connection('mongodb')
+                            ->getCollection('inventories')
+                            ->updateOne(
+                                ['_id' => new \MongoDB\BSON\ObjectId($r['invId'])],
+                                ['$inc' => ['stockQty' => $r['qty']]]
+                            );
+                    }
+                    $currentStock = (int) ($inv->stockQty ?? 0);
+                    return $this->errorResponse(
+                        "\"{$prod->name}\" only has {$currentStock} item(s) in stock.",
+                        422
+                    );
+                }
+
+                $stockReservations[] = [
+                    'invId'       => (string) $inv->_id,
+                    'qty'         => $qty,
+                    'newStockQty' => (int) ($updated->stockQty ?? 0),
+                    'unitCost'    => (float) ($inv->averageCost ?? 0),
+                ];
+            }
+
             $order = Order::create([
                 'userId'          => (string) $user->_id,
                 'userSnapshot'    => [
@@ -247,6 +300,26 @@ class OrderController extends Controller
                 $flashSale->increment('stockUsed', $qty);
             }
 
+            // Record StockHistory for the atomically-reserved quantities
+            foreach ($stockReservations as $r) {
+                try {
+                    StockHistory::create([
+                        'inventoryId'  => $r['invId'],
+                        'quantity'     => $r['qty'],
+                        'remainingQty' => $r['newStockQty'],
+                        'unitCost'     => $r['unitCost'],
+                        'totalCost'    => $r['unitCost'] * $r['qty'],
+                        'reason'       => 'sale_reserved',
+                        'type'         => 'deduction',
+                        'performedBy'  => 'system',
+                        'remarks'      => 'Order: ' . (string) $order->_id,
+                        'createdAt'    => now(),
+                    ]);
+                } catch (\Exception $e) {
+                    Log::warning('store: StockHistory write failed', ['error' => $e->getMessage()]);
+                }
+            }
+
             // Broadcast new order to admin channel
             try {
                 broadcast(new OrderStatusUpdated(
@@ -254,7 +327,7 @@ class OrderController extends Controller
                     'pending',
                     null
                 ));
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 Log::warning('OrderController@store: broadcast failed', ['error' => $e->getMessage()]);
             }
 
@@ -482,8 +555,16 @@ class OrderController extends Controller
 
             // Enforce valid status transitions when orderStatus is being changed
             if (isset($validated['orderStatus']) && $validated['orderStatus'] !== $oldStatus) {
+                // Ready-made orders (no custom items, no design file) skip In Production
+                $hasCustomItems = !empty(array_filter(
+                    $order->items ?? [],
+                    fn($i) => ($i['isCustom'] ?? false) === true
+                )) || !empty($order->designFilePath);
+
                 $allowedTransitions = [
-                    'Pending'       => ['In Production', 'Cancelled'],
+                    'Pending'       => $hasCustomItems
+                        ? ['In Production', 'Cancelled']
+                        : ['For Delivery', 'In Production', 'Cancelled'],
                     'In Production' => ['For Delivery', 'Cancelled'],
                     'For Delivery'  => ['Delivered', 'Returned'],
                     'Delivered'     => [],
@@ -498,7 +579,7 @@ class OrderController extends Controller
                     ], 422);
                 }
 
-                // Payment gate — same rule as updateStatus()
+                // Payment gate
                 if ($validated['orderStatus'] === 'In Production') {
                     $downPayment    = $order->downPayment ?? 0;
                     $paymentMethod  = $order->paymentMethod ?? '';
@@ -515,22 +596,19 @@ class OrderController extends Controller
                     }
                 }
 
-                // Courier gate — same rule as updateStatus()
+                // Courier gate — optional, just store if provided
                 if ($validated['orderStatus'] === 'For Delivery') {
-                    $courierValidated = $request->validate([
-                        'courierName'    => 'required|string|max:100',
-                        'trackingNumber' => 'nullable|string|max:200',
-                    ]);
-                    $order->courierName    = $courierValidated['courierName'];
-                    $order->trackingNumber = $courierValidated['trackingNumber'] ?? null;
+                    $order->courierName    = $request->input('courierName') ?: null;
+                    $order->trackingNumber = $request->input('trackingNumber') ?: null;
                 }
             }
 
             $order->update($validated);
 
-            // Handle cancellation: cancel linked JobOrder
+            // Handle cancellation: cancel linked JobOrder and restore inventory
             if (isset($validated['orderStatus']) && $order->orderStatus === 'Cancelled' && $oldStatus !== 'Cancelled') {
                 $this->cancelLinkedJobOrder($order);
+                $this->restoreStockOnCancel($order);
             }
 
             // Handle return: restore inventory
@@ -703,17 +781,6 @@ class OrderController extends Controller
                     'createdAt'       => now(),
                 ]);
 
-                // 2. Deduct Inventory FIFO only if inventory exists and is not on-demand
-                if ($inventory && !$inventory->isOnDemand) {
-                    $this->deductInventoryFIFO(
-                        inventory:    $inventory,
-                        qty:          (int) $item['qty'],
-                        reason:       'sale',
-                        unitPrice:    (float) ($item['unitPrice'] ?? 0),
-                        orderId:      (string) $order->_id,
-                    );
-                }
-
                 // 3. Increment Flash Sale stockUsed (if item was part of a flash sale)
                 if (!empty($item['flashSaleId'])) {
                     try {
@@ -863,6 +930,35 @@ class OrderController extends Controller
     }
 
     // ─── Admin API Endpoints (New Schema) ─────────────────────────────────────
+
+    /**
+     * DELETE /api/admin/orders/{id}
+     * Permanently deletes an order. Owner/Admin only.
+     */
+    public function hardDelete(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+                return response()->json(['error' => 'Forbidden'], 403);
+            }
+
+            $order = Order::find($id);
+            if (!$order) {
+                return response()->json(['error' => 'Order not found'], 404);
+            }
+
+            if ($order->designFilePath) {
+                try { Storage::disk('public')->delete($order->designFilePath); } catch (\Exception $e) {}
+            }
+
+            $order->delete();
+
+            return response()->json(['message' => 'Order deleted']);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to delete order.');
+        }
+    }
 
     /**
      * GET /api/orders
@@ -1030,7 +1126,7 @@ class OrderController extends Controller
                     $order->orderStatus,
                     trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')) ?: null
                 ))->toOthers();
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 Log::warning('OrderController@updateStatus: broadcast failed', ['error' => $e->getMessage()]);
             }
 
@@ -1039,9 +1135,10 @@ class OrderController extends Controller
                 $this->completeOrder($order);
             }
 
-            // Handle cancellation: cancel linked JobOrder
+            // Handle cancellation: cancel linked JobOrder and restore inventory
             if ($order->orderStatus === 'Cancelled') {
                 $this->cancelLinkedJobOrder($order);
+                if ($oldStatus !== 'Cancelled') $this->restoreStockOnCancel($order);
             }
 
             // Handle return: restore inventory
@@ -1103,6 +1200,53 @@ class OrderController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while updating the order status.');
+        }
+    }
+
+    /**
+     * Restores product inventory when an order is cancelled.
+     * Mirrors the immediate deduction done in store().
+     */
+    private function restoreStockOnCancel(Order $order): void
+    {
+        try {
+            foreach ($order->items as $item) {
+                $product = Product::find($item['productId'] ?? null);
+                if (!$product || !$product->inventoryId) continue;
+                $inv = Inventory::find($product->inventoryId);
+                if (!$inv || $inv->isOnDemand) continue;
+                $qty = (int) ($item['qty'] ?? 0);
+                if ($qty <= 0) continue;
+
+                // Atomic restore — mirrors the atomic reservation on order creation
+                $updated = DB::connection('mongodb')
+                    ->getCollection('inventories')
+                    ->findOneAndUpdate(
+                        ['_id' => new \MongoDB\BSON\ObjectId((string) $inv->_id)],
+                        ['$inc' => ['stockQty' => $qty]],
+                        ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                    );
+
+                $newQty = (int) ($updated->stockQty ?? (($inv->stockQty ?? 0) + $qty));
+
+                StockHistory::create([
+                    'inventoryId'  => (string) $inv->_id,
+                    'quantity'     => $qty,
+                    'remainingQty' => $newQty,
+                    'unitCost'     => $inv->averageCost ?? 0,
+                    'totalCost'    => 0,
+                    'reason'       => 'order_cancelled',
+                    'type'         => 'adjustment',
+                    'performedBy'  => 'system',
+                    'remarks'      => 'Order cancelled: ' . (string) $order->_id,
+                    'createdAt'    => now(),
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('restoreStockOnCancel: failed', [
+                'orderId' => (string) $order->_id,
+                'error'   => $e->getMessage(),
+            ]);
         }
     }
 
@@ -1469,6 +1613,9 @@ class OrderController extends Controller
             $order->orderStatus = 'Cancelled';
             $order->updatedAt   = now();
             $order->save();
+
+            // Restore inventory reserved at order creation
+            $this->restoreStockOnCancel($order);
 
             // Email notification to customer
             try {

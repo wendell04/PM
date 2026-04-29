@@ -64,7 +64,7 @@ export default function OrderQuickViewModal({
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.message || 'Failed to confirm COD payment');
       }
-      setOrder(prev => prev ? { ...prev, payment_status: 'paid' } : null);
+      setOrder(prev => prev ? { ...prev, paymentStatus: 'paid' } : null);
       setCodSuccess(true);
       if (onStatusUpdated) onStatusUpdated();
     } catch (err) {
@@ -90,7 +90,7 @@ export default function OrderQuickViewModal({
       if (!res.ok) throw new Error('fetch failed');
       const data = await res.json();
       setOrder(data.order);
-      setSelectedStatus(data.order.order_status);
+      setSelectedStatus(data.order.orderStatus || '');
       setNotesEdit(data.order.notes || '');
       setPaymentEdit(data.order.paymentStatus || 'unpaid');
     } catch (err) {
@@ -134,7 +134,7 @@ export default function OrderQuickViewModal({
 
     try {
       const payload = {};
-      if (selectedStatus !== order.order_status) {
+      if (selectedStatus !== order.orderStatus) {
         payload.orderStatus = selectedStatus;
       }
       if (paymentEdit !== (order.paymentStatus || 'unpaid')) {
@@ -155,12 +155,12 @@ export default function OrderQuickViewModal({
       }, 15000);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || 'Update failed');
+        throw new Error(errData.message || errData.error || 'Update failed');
       }
       const updated = await res.json();
       setOrder((prev) => prev ? {
         ...prev,
-        order_status: payload.orderStatus ?? prev.order_status,
+        orderStatus: payload.orderStatus ?? prev.orderStatus,
         paymentStatus: payload.paymentStatus ?? prev.paymentStatus,
         notes: payload.notes ?? prev.notes,
       } : null);
@@ -271,6 +271,12 @@ export default function OrderQuickViewModal({
     return lines;
   };
 
+  const availableStatuses = order
+    ? ((order.items?.some(i => i.isCustom) || order.designFilePath)
+        ? ORDER_STATUSES
+        : ORDER_STATUSES.filter(s => s !== 'In Production'))
+    : ORDER_STATUSES;
+
   if (!isOpen) return null;
 
   return (
@@ -319,7 +325,7 @@ export default function OrderQuickViewModal({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <span style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--white)' }}>
-              {order?.order_number || orderId}
+              #{String(orderId).slice(-8).toUpperCase()}
             </span>
             {order && (
               <span
@@ -329,12 +335,12 @@ export default function OrderQuickViewModal({
                   fontWeight: 700,
                   padding: '0.25rem 0.625rem',
                   borderRadius: '999px',
-                  background: getStatusBadge(order.order_status).bg,
-                  color: getStatusBadge(order.order_status).color,
-                  border: `1px solid ${getStatusBadge(order.order_status).border}`,
+                  background: getStatusBadge(order.orderStatus).bg,
+                  color: getStatusBadge(order.orderStatus).color,
+                  border: `1px solid ${getStatusBadge(order.orderStatus).border}`,
                 }}
               >
-                {order.order_status}
+                {order.orderStatus}
               </span>
             )}
           </div>
@@ -472,13 +478,13 @@ export default function OrderQuickViewModal({
                     Customer
                   </h4>
                   <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.25rem' }}>
-                    {order.customer?.name}
+                    {order.userSnapshot?.name || '—'}
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '0.125rem' }}>
-                    {order.customer?.email}
+                    {order.userSnapshot?.email || '—'}
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>
-                    {order.customer?.phone}
+                    {order.userSnapshot?.phone || '—'}
                   </div>
                 </div>
 
@@ -497,8 +503,8 @@ export default function OrderQuickViewModal({
                     Shipping Address
                   </h4>
                   <div style={{ fontSize: '0.875rem', color: 'var(--white)', lineHeight: '1.6' }}>
-                    {formatAddress(order.shipping_address).length > 0 ? (
-                      formatAddress(order.shipping_address).map((line, i) => (
+                    {formatAddress(order.deliveryAddress).length > 0 ? (
+                      formatAddress(order.deliveryAddress).map((line, i) => (
                         <div key={i}>{line}</div>
                       ))
                     ) : (
@@ -525,7 +531,7 @@ export default function OrderQuickViewModal({
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Method:</span>
                       <span style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-                        {order.payment_method || '—'}
+                        {order.paymentMethod === 'cod' ? 'Cash on Delivery' : order.paymentMethod === 'online' ? 'Online Payment' : order.paymentMethod || '—'}
                       </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -537,16 +543,16 @@ export default function OrderQuickViewModal({
                           fontWeight: 700,
                           padding: '0.2rem 0.5rem',
                           borderRadius: '999px',
-                          background: getPaymentBadge(order.payment_status).bg,
-                          color: getPaymentBadge(order.payment_status).color,
-                          border: `1px solid ${getPaymentBadge(order.payment_status).border}`,
+                          background: getPaymentBadge(order.paymentStatus).bg,
+                          color: getPaymentBadge(order.paymentStatus).color,
+                          border: `1px solid ${getPaymentBadge(order.paymentStatus).border}`,
                         }}
                       >
-                        {order.payment_status}
+                        {order.paymentStatus}
                       </span>
                     </div>
                     {/* COD POS — B-14 */}
-                    {order.payment_method === 'COD' && order.payment_status !== 'paid' && (
+                    {order.paymentMethod === 'COD' && order.paymentStatus !== 'paid' && (
                       <div style={{
                         marginTop: '0.75rem',
                         padding: '0.75rem',
@@ -622,7 +628,7 @@ export default function OrderQuickViewModal({
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Down Payment:</span>
                       <span style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-                        ₱{(order.down_payment || 0).toLocaleString()}
+                        ₱{(order.downPayment || 0).toLocaleString()}
                       </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -648,6 +654,12 @@ export default function OrderQuickViewModal({
                   >
                     Admin Notes
                   </h4>
+                  <div style={{
+                    padding: '0.75rem',
+                    background: 'var(--dark)',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)',
+                  }}>
                   {isEditingNotes ? (
                     <div>
                       <textarea
@@ -714,6 +726,7 @@ export default function OrderQuickViewModal({
                       </button>
                     </div>
                   )}
+                  </div>
                 </div>
               </div>
 
@@ -752,17 +765,17 @@ export default function OrderQuickViewModal({
                               width: '40px',
                               height: '40px',
                               borderRadius: '4px',
-                              background: item.preview_image_url ? 'transparent' : 'var(--border)',
+                              background: item.thumbnail ? 'transparent' : 'var(--border)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                               flexShrink: 0,
                             }}
                           >
-                            {item.preview_image_url ? (
+                            {item.thumbnail ? (
                               <Image
-                                src={item.preview_image_url}
-                                alt={item.product_name}
+                                src={item.thumbnail}
+                                alt={item.productName}
                                 width={40}
                                 height={40}
                                 style={{ borderRadius: '4px', objectFit: 'cover' }}
@@ -780,11 +793,11 @@ export default function OrderQuickViewModal({
                           {/* Item Details */}
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.125rem' }}>
-                              {item.product_name}
+                              {item.productName}
                             </div>
-                            {item.variant && (
+                            {item.variantName && (
                               <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>
-                                {item.variant}
+                                {item.variantName}
                               </div>
                             )}
                             {item.customization_note && (
@@ -803,10 +816,10 @@ export default function OrderQuickViewModal({
                           {/* Line Total */}
                           <div style={{ textAlign: 'right', flexShrink: 0 }}>
                             <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-                              {item.quantity} × ₱{(item.unit_price || 0).toLocaleString()}
+                              {item.qty} × ₱{(item.unitPrice || 0).toLocaleString()}
                             </div>
                             <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--gold)' }}>
-                              ₱{((item.unit_price || 0) * (item.quantity || 0)).toLocaleString()}
+                              ₱{(item.lineTotal || (item.unitPrice || 0) * (item.qty || 0)).toLocaleString()}
                             </div>
                           </div>
                         </div>
@@ -845,11 +858,11 @@ export default function OrderQuickViewModal({
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
                       <span style={{ color: 'var(--gray)' }}>Subtotal:</span>
-                      <span style={{ color: 'var(--white)' }}>₱{(order.subtotal || 0).toLocaleString()}</span>
+                      <span style={{ color: 'var(--white)' }}>₱{(order.items || []).reduce((s, i) => s + (i.lineTotal || (i.unitPrice || 0) * (i.qty || 0)), 0).toLocaleString()}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
                       <span style={{ color: 'var(--gray)' }}>Shipping Fee:</span>
-                      <span style={{ color: 'var(--white)' }}>₱{(order.shipping_fee || 0).toLocaleString()}</span>
+                      <span style={{ color: 'var(--white)' }}>₱{(order.shippingFee || 0).toLocaleString()}</span>
                     </div>
                     <div
                       style={{
@@ -861,7 +874,7 @@ export default function OrderQuickViewModal({
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--white)' }}>Total:</span>
                       <span style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--gold)' }}>
-                        ₱{(order.total || 0).toLocaleString()}
+                        ₱{(order.totalAmount || 0).toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -1077,7 +1090,7 @@ export default function OrderQuickViewModal({
                     Tracking
                   </h4>
                   <div style={{ fontSize: '0.875rem', color: 'var(--white)' }}>
-                    {order.tracking_number || '—'}
+                    {order.trackingNumber || '—'}
                   </div>
                 </div>
               </div>
@@ -1149,7 +1162,7 @@ export default function OrderQuickViewModal({
                 minWidth: '140px',
               }}
             >
-              {ORDER_STATUSES.map((status) => (
+              {availableStatuses.map((status) => (
                 <option key={status} value={status} style={{ background: 'var(--dark)', color: 'var(--white)' }}>
                   {status}
                 </option>
@@ -1157,16 +1170,16 @@ export default function OrderQuickViewModal({
             </select>
             <button
               onClick={handleUpdateStatus}
-              disabled={isUpdating || selectedStatus === order?.order_status}
+              disabled={isUpdating || selectedStatus === order?.orderStatus}
               style={{
                 padding: '0.5rem 1.25rem',
-                background: isUpdating || selectedStatus === order?.order_status ? 'var(--border)' : 'var(--gold)',
+                background: isUpdating || selectedStatus === order?.orderStatus ? 'var(--border)' : 'var(--gold)',
                 border: 'none',
                 borderRadius: '6px',
-                color: isUpdating || selectedStatus === order?.order_status ? 'var(--gray)' : 'var(--dark)',
+                color: isUpdating || selectedStatus === order?.orderStatus ? 'var(--gray)' : 'var(--dark)',
                 fontSize: '0.875rem',
                 fontWeight: 600,
-                cursor: isUpdating || selectedStatus === order?.order_status ? 'not-allowed' : 'pointer',
+                cursor: isUpdating || selectedStatus === order?.orderStatus ? 'not-allowed' : 'pointer',
               }}
             >
               {isUpdating ? 'Updating...' : 'Update'}

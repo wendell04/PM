@@ -37,12 +37,67 @@ export default function CheckoutPage() {
   const [designFilePreviewUrl, setDesignFilePreviewUrl] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [successModal,       setSuccessModal]       = useState(null); // { orderId, order | null }
+  const [failedModal,        setFailedModal]        = useState(false);
+  const [pendingVerifyId,    setPendingVerifyId]    = useState(null);
+  const [verifyingPayment,   setVerifyingPayment]   = useState(false);
 
   // Voucher
   const [voucherInput, setVoucherInput]       = useState('');
-  const [appliedVoucher, setAppliedVoucher]   = useState(null); // { code, discountAmount, discountType, discountValue }
+  const [appliedVoucher, setAppliedVoucher]   = useState(null);
   const [voucherLoading, setVoucherLoading]   = useState(false);
   const [voucherError, setVoucherError]       = useState(null);
+
+  // ── EFFECT: Handle return from PayMongo ──
+  useEffect(() => {
+    const params         = new URLSearchParams(window.location.search);
+    const isCancelled    = params.get('payment_cancelled') === '1';
+    const fromPayMongo   = isCancelled || (document.referrer || '').includes('paymongo.com');
+    const pendingOrderId = sessionStorage.getItem('pending_payment_order_id');
+
+    if (isCancelled) router.replace('/shop/checkout', { scroll: false });
+
+    if (fromPayMongo && pendingOrderId) {
+      sessionStorage.removeItem('pending_payment_order_id');
+      setVerifyingPayment(true);
+      setPendingVerifyId(pendingOrderId);
+      return;
+    }
+
+    if (isCancelled && !pendingOrderId) setFailedModal(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── EFFECT: Verify payment status after PayMongo return ──
+  // Polls up to 6× (12 s) to allow webhook to arrive before concluding.
+  useEffect(() => {
+    if (!pendingVerifyId || !token) return;
+    let cancelled = false;
+    let attempt   = 0;
+
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const res   = await fetchWithTimeout(`${API_URL}/api/orders/my/${pendingVerifyId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }, 10000);
+        const data  = await res.json();
+        const order = data.data ?? data;
+        if (order.paymentStatus === 'paid') {
+          if (!cancelled) { setVerifyingPayment(false); setSuccessModal({ orderId: pendingVerifyId, order }); }
+        } else if (attempt < 5) {
+          attempt++;
+          setTimeout(poll, 2000);
+        } else {
+          if (!cancelled) { setVerifyingPayment(false); setFailedModal(true); }
+        }
+      } catch {
+        if (!cancelled) { setVerifyingPayment(false); setFailedModal(true); }
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [pendingVerifyId, token]);
 
   // ── EFFECT: Load cart payload from sessionStorage ──
   useEffect(() => {
@@ -279,10 +334,9 @@ export default function CheckoutPage() {
           const fieldErrors = data.errors ? Object.values(data.errors).flat().join(' ') : null;
           throw new Error(fieldErrors || data.message || 'Failed to create payment link.');
         }
-        const { checkoutUrl } = data.data ?? data;
+        const { checkoutUrl, orderId: pendingOrderId } = data.data ?? data;
         if (!checkoutUrl) throw new Error('No payment URL returned. Please try again.');
-        // Do NOT remove checkout_payload here — PayMongo redirect may be abandoned.
-        // checkout_payload is cleared by payment-success page on confirmed payment.
+        if (pendingOrderId) sessionStorage.setItem('pending_payment_order_id', pendingOrderId);
         window.location.href = checkoutUrl;
       }
 
@@ -341,6 +395,114 @@ export default function CheckoutPage() {
   // ── MAIN RENDER ──
   return (
     <div className="checkout-wrapper">
+
+      {/* ── Payment Success Modal ── */}
+      {successModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
+          <div style={{ background: 'var(--dark2)', border: '1px solid rgba(74,222,128,0.2)', borderRadius: '18px', padding: '40px 32px', maxWidth: '460px', width: '100%', textAlign: 'center' }}>
+            <div style={{ width: 68, height: 68, borderRadius: '50%', background: 'rgba(74,222,128,0.1)', border: '2px solid #4ade80', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+            <h2 style={{ color: '#4ade80', fontWeight: 700, fontSize: '1.4rem', marginBottom: 6 }}>Payment Successful!</h2>
+            <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 24, lineHeight: 1.6 }}>
+              Your payment has been received. We'll start processing your order shortly.
+            </p>
+
+            {/* Receipt */}
+            <div style={{ background: 'var(--dark3)', borderRadius: '10px', padding: '16px', marginBottom: 24, textAlign: 'left' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <span style={{ color: 'var(--gray)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Order Receipt</span>
+                <span style={{ color: 'var(--white)', fontFamily: 'monospace', fontSize: '0.82rem', fontWeight: 600 }}>
+                  #{(successModal.orderId || '').slice(-8).toUpperCase()}
+                </span>
+              </div>
+              {successModal.order ? (
+                <>
+                  {(successModal.order.items || []).map((item, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>
+                        {item.productName || item.product_name || 'Item'}
+                        {item.variantName ? ` — ${item.variantName}` : ''} ×{item.qty || item.quantity}
+                      </span>
+                      <span style={{ color: 'var(--white)', fontSize: '0.82rem' }}>
+                        ₱{Number(item.lineTotal ?? (item.unitPrice * (item.qty || 1)) ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 10, paddingTop: 10, display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--gold)', fontWeight: 600, fontSize: '0.85rem' }}>Total Paid</span>
+                    <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.95rem' }}>
+                      ₱{Number(successModal.order.totalAmount ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <p style={{ color: 'var(--gray)', fontSize: '0.82rem', textAlign: 'center', padding: '8px 0' }}>Loading order details…</p>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => {
+                  sessionStorage.removeItem('checkout_payload');
+                  clearCart();
+                  router.push('/shop/orders-history');
+                }}
+                style={{ flex: 1, padding: '11px', background: 'var(--gold)', color: '#000', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer', fontSize: '0.875rem' }}
+              >
+                View Orders
+              </button>
+              <button
+                onClick={() => {
+                  sessionStorage.removeItem('checkout_payload');
+                  clearCart();
+                  router.push('/shop');
+                }}
+                style={{ flex: 1, padding: '11px', background: 'transparent', color: 'var(--white)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 9, fontWeight: 500, cursor: 'pointer', fontSize: '0.875rem' }}
+              >
+                Continue Shopping
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Verifying Payment Overlay ── */}
+      {verifyingPayment && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div style={{ background: 'var(--dark2)', borderRadius: '18px', padding: '40px 32px', textAlign: 'center' }}>
+            <div style={{ width: 48, height: 48, border: '3px solid var(--gold)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 20px' }} />
+            <p style={{ color: 'var(--white)', fontWeight: 600, marginBottom: 6 }}>Verifying payment…</p>
+            <p style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Please wait, this may take a few seconds.</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Payment Cancelled/Failed Modal ── */}
+      {failedModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
+          <div style={{ background: 'var(--dark2)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '18px', padding: '40px 32px', maxWidth: '400px', width: '100%', textAlign: 'center' }}>
+            <div style={{ width: 68, height: 68, borderRadius: '50%', background: 'rgba(239,68,68,0.1)', border: '2px solid var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </div>
+            <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Payment Cancelled</h2>
+            <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }}>
+              Your payment was not completed. Your cart items are still saved — you can try again anytime.
+            </p>
+            <button
+              onClick={() => setFailedModal(false)}
+              style={{ width: '100%', padding: '12px', background: 'var(--gold)', color: '#000', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* SECTION 1 — Header */}
       <div className="checkout-header">
         <button
@@ -890,7 +1052,7 @@ export default function CheckoutPage() {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: 'var(--dark-2)',
+              background: 'var(--dark2)',
               border: '1px solid var(--border)',
               borderRadius: '12px',
               padding: '2rem',

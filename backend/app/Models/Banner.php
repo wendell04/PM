@@ -20,6 +20,7 @@ class Banner extends Model
         'order',
         'scheduleStart',
         'scheduleEnd',
+        'showOn',
     ];
 
     protected $casts = [

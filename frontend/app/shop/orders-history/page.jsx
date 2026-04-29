@@ -767,8 +767,9 @@ export default function OrdersHistoryPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {filteredOrders.slice(0, visibleCount).map(order => {
               const oid = order.id ?? order._id;
-              const items = order.items || [];
-              const firstName = items[0]?.productName || items[0]?.product_name || 'Order';
+              const rawItems = order.items || [];
+              const items = Array.isArray(rawItems) ? rawItems : (typeof rawItems === 'string' ? (() => { try { return JSON.parse(rawItems); } catch { return []; } })() : []);
+              const firstName = (items[0]?.productName || items[0]?.product_name || 'Order') + (items[0]?.variantName ? ` — ${items[0].variantName}` : '');
               const itemSummary = items.length > 1
                 ? `${firstName} +${items.length - 1} more`
                 : firstName;
@@ -1212,6 +1213,11 @@ export default function OrdersHistoryPage() {
                                 <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>
                                   {item.productName || item.product_name || 'Product'}
                                 </div>
+                                {item.variantName && (
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--gold)', marginTop: '1px' }}>
+                                    {item.variantName}
+                                  </div>
+                                )}
                                 {item.category && (
                                   <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
                                     {item.category}

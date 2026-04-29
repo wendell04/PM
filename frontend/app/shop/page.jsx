@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useCart } from './layout';
@@ -265,6 +266,7 @@ export default function ShopPage() {
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const [flashSales, setFlashSales] = useState({});
   const { addToCart } = useCart();
+  const router = useRouter();
 
   useEffect(() => {
     const handleSearch = (e) => setSearchQuery(e.detail?.query ?? '');
@@ -324,9 +326,8 @@ export default function ShopPage() {
    */
   async function loadBanners() {
     try {
-      const data = await getStorefrontBanners();
+      const data = await getStorefrontBanners('shop');
       const banners = Array.isArray(data) ? data : [];
-      // Sort by order
       const sorted = banners.sort((a, b) => (a.order || 0) - (b.order || 0));
       setBanners(sorted);
     } catch (err) {
@@ -388,6 +389,11 @@ export default function ShopPage() {
   }
 
   const handleAddToCart = (product) => {
+    const hasVariants = (product.variantGroups?.length > 0) || (product.combinations?.length > 0);
+    if (hasVariants) {
+      router.push(`/shop/products/${product.id ?? product._id}`);
+      return;
+    }
     addToCart(product, 1, null, null);
     setToast({ message: `${product.name} added to cart!`, type: 'success' });
     setTimeout(() => setToast(null), 2000);

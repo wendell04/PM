@@ -12,9 +12,6 @@ class Order extends Model
     protected $guarded = [];
 
     protected $casts = [
-        'items'              => 'array',
-        'userSnapshot'       => 'array',
-        'deliveryAddress'    => 'array',
         'isRush'             => 'boolean',
         'checkoutRestricted' => 'boolean',
         'downPayment'        => 'float',
@@ -31,8 +28,6 @@ class Order extends Model
         'designStatus'             => 'string',
         'createdAt'            => 'datetime',
         'updatedAt'            => 'datetime',
-        'paymentHistory'       => 'array',
-        'statusHistory'        => 'array',
         'orderSource'          => 'string',
         'voucherCode'          => 'string',
         'discountAmount'       => 'float',
@@ -55,6 +50,36 @@ class Order extends Model
         'statusHistory'      => [],
         'orderSource'        => 'online',
     ];
+
+    public function getItemsAttribute($value)
+    {
+        if (is_string($value)) return json_decode($value, true) ?? [];
+        return is_array($value) ? $value : [];
+    }
+
+    public function getUserSnapshotAttribute($value)
+    {
+        if (is_string($value)) return json_decode($value, true) ?? [];
+        return is_array($value) ? $value : [];
+    }
+
+    public function getDeliveryAddressAttribute($value)
+    {
+        if (is_string($value)) return json_decode($value, true) ?? null;
+        return $value;
+    }
+
+    public function getPaymentHistoryAttribute($value)
+    {
+        if (is_string($value)) return json_decode($value, true) ?? [];
+        return is_array($value) ? $value : [];
+    }
+
+    public function getStatusHistoryAttribute($value)
+    {
+        if (is_string($value)) return json_decode($value, true) ?? [];
+        return is_array($value) ? $value : [];
+    }
 
     public function user()
     {

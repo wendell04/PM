@@ -18,19 +18,16 @@ export default function PaymentSuccessPage() {
   const isCod         = method === 'cod';
   const isOrderRequest = searchParams.get('type') === 'order_request';
 
-  // Clear checkout payload on confirmed success (online payment lands here after PayMongo)
   useEffect(() => {
     sessionStorage.removeItem('checkout_payload');
-    // Only clear cart if this is a confirmed successful payment landing
-    // (orderId present in URL = came from PayMongo redirect or COD confirmation)
-    if (orderId) {
-      clearCart();
-    }
+    sessionStorage.removeItem('pending_payment_order_id');
+    if (orderId) clearCart();
   }, [orderId]);
 
-  const [order,   setOrder]   = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState(null);
+  const [order,        setOrder]        = useState(null);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState(null);
+  const [verifying,    setVerifying]    = useState(!isCod && !isOrderRequest);
 
   useEffect(() => {
     if (!orderId) {
@@ -38,35 +35,38 @@ export default function PaymentSuccessPage() {
       setLoading(false);
       return;
     }
-    if (!token) return; // wait for auth hydration
+    if (!token) return;
 
-    const fetchOrder = async () => {
+    const endpoint = isOrderRequest
+      ? `${API_URL}/api/shop/order-requests/${orderId}`
+      : `${API_URL}/api/orders/my/${orderId}`;
+
+    const fetchOrder = async (attempt = 0) => {
       try {
-        const endpoint = isOrderRequest
-          ? `${API_URL}/api/shop/order-requests/${orderId}`
-          : `${API_URL}/api/orders/my/${orderId}`;
-        const res = await fetchWithTimeout(
-          endpoint,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-          },
-          10000
-        );
+        const res = await fetchWithTimeout(endpoint, {
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        }, 10000);
         if (!res.ok) throw new Error('Could not load order details.');
         const data = await res.json();
-        setOrder(data.data ?? data);
+        const fetched = data.data ?? data;
+        setOrder(fetched);
+
+        // For online payments, poll up to 6× (12 s) waiting for webhook to mark paid
+        if (!isCod && !isOrderRequest && fetched.paymentStatus !== 'paid' && attempt < 6) {
+          setTimeout(() => fetchOrder(attempt + 1), 2000);
+        } else {
+          setVerifying(false);
+          setLoading(false);
+        }
       } catch (err) {
         setError(err.message);
-      } finally {
+        setVerifying(false);
         setLoading(false);
       }
     };
 
     fetchOrder();
-  }, [orderId, token, isOrderRequest]);
+  }, [orderId, token, isOrderRequest, isCod]);
 
   return (
     <div style={{
@@ -126,7 +126,12 @@ export default function PaymentSuccessPage() {
             : "Thank you for your order. We've received your payment and will begin processing shortly."}
         </p>
 
-        {loading && (
+        {verifying && (
+          <p style={{ color: 'var(--gold)', fontSize: '0.875rem', marginBottom: '8px' }}>
+            Verifying payment...
+          </p>
+        )}
+        {loading && !verifying && (
           <p style={{ color: 'var(--gray)', fontSize: '0.875rem' }}>
             Loading order details...
           </p>
@@ -200,14 +205,18 @@ export default function PaymentSuccessPage() {
                 Status
               </span>
               <span style={{
-                color: order.paymentStatus === 'paid'
+                color: (order.paymentStatus === 'paid' || (!isCod && !isOrderRequest))
                   ? 'var(--green)'
                   : 'var(--gold)',
                 fontSize: '0.85rem',
                 fontWeight: 600,
                 textTransform: 'capitalize',
               }}>
-                {order.paymentStatus ?? 'Processing'}
+                {order.paymentStatus === 'paid'
+                  ? 'Paid'
+                  : (!isCod && !isOrderRequest)
+                    ? 'Payment Received'
+                    : (order.paymentStatus ?? 'Processing')}
               </span>
             </div>
           </div>

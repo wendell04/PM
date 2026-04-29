@@ -1,4 +1,5 @@
 'use client';
+import { useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -6,6 +7,10 @@ export default function PaymentFailedPage() {
   const searchParams = useSearchParams();
   const orderId      = searchParams.get('id');
   const cancelled    = searchParams.get('cancelled') === '1';
+
+  useEffect(() => {
+    sessionStorage.removeItem('pending_payment_order_id');
+  }, []);
 
   return (
     <div style={{
@@ -62,8 +67,8 @@ export default function PaymentFailedPage() {
           lineHeight: 1.6,
         }}>
           {cancelled
-            ? 'You cancelled the payment. Your order has been saved — you can retry from your order history.'
-            : 'Your payment was not completed. Your order has been saved — you can retry from your order history.'}
+            ? 'You cancelled the payment. Your order has been saved, you can retry from your order history.'
+            : 'Your payment was not completed. Your order has been saved, you can retry from your order history.'}
         </p>
 
         {orderId && (

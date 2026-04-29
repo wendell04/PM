@@ -235,7 +235,7 @@ const LandingPage = ({onEnterShop}) => {
 
   // Fetch live banners for hero carousel
   useEffect(() => {
-    getStorefrontBanners()
+    getStorefrontBanners('landing')
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
           setHeroBanners(data);

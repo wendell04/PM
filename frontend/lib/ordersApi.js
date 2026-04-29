@@ -101,6 +101,7 @@ function normalizeOrder(apiOrder) {
 
   // Get first item category
   const category = items[0]?.category || '';
+  const variant = items[0]?.variantName || items[0]?.variant_name || '';
 
   const paymentHistory = apiOrder.paymentHistory || [];
   const paid = paymentHistory.length > 0
@@ -122,8 +123,10 @@ function normalizeOrder(apiOrder) {
 
   const normalizedStatus = apiOrder.orderStatus || apiOrder.status || 'Pending';
   const totalAmount = parseFloat(
-    apiOrder.total || apiOrder.totalAmount || apiOrder.totalPrice || 0
+    apiOrder.totalAmount || apiOrder.total || apiOrder.totalPrice || 0
   );
+  const isCustom = !!(items[0]?.isCustom || apiOrder.designFilePath || apiOrder.design_file_path);
+  const productType = isCustom ? 'Customized' : 'Ready Made';
 
   return {
     id: apiOrder._id || apiOrder.id,
@@ -137,8 +140,11 @@ function normalizeOrder(apiOrder) {
     customerEmail:   apiOrder.userSnapshot?.email || apiOrder.customer?.email || apiOrder.customerEmail || '',
     customerContact: apiOrder.userSnapshot?.phone || apiOrder.customer?.phone || apiOrder.customerContact || '',
     items: items,
+    isCustom: isCustom,
+    productType: productType,
     productName: productName,
     category: category,
+    variant: variant,
     quantity: quantity,
     subtotal: apiOrder.subtotal || 0,
     shippingFee: apiOrder.shipping_fee || apiOrder.shippingFee || 0,
@@ -479,3 +485,22 @@ export async function recordOrderPayment(orderId, payload, token) {
  * Fixes broken imports in inventory, job-orders, orders, products pages.
  */
 export { fetchAllOrdersNew as fetchAllOrders };
+
+/**
+ * Hard-delete an order (admin/owner only)
+ * Maps to DELETE /api/admin/orders/{id}
+ */
+export async function deleteOrder(orderId, token) {
+  const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${orderId}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  }, 15000);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || err.message || 'Failed to delete order');
+  }
+  return res.json();
+}

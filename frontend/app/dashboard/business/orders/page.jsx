@@ -9,7 +9,7 @@ import ErrorBoundary from '../../../../components/ErrorBoundary';
 import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchAllOrdersNew, updateOrder as updateOrderApi, updateJobOrderStatus } from '@/lib/ordersApi';
+import { fetchAllOrdersNew, updateOrder as updateOrderApi, updateJobOrderStatus, deleteOrder as deleteOrderApi } from '@/lib/ordersApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStatusBadge } from '@/lib/utils/orderHelpers';
 import CustomDropdown from '@/app/components/CustomDropdown';
@@ -30,30 +30,23 @@ export default function OrdersPage() {
   const [filterStatus, setFilterStatus] = useState('All');
   const [dateFilter, setDateFilter] = useState('this-month'); // 'today', 'this-week', 'this-month', 'custom'
   const [customDateRange, setCustomDateRange] = useState({ fromMonth: 0, toMonth: 0, year: 2025 });
-  const [expandedIds, setExpandedIds] = useState(new Set()); // Multiple rows can be expanded
-  const [selectedOrders, setSelectedOrders] = useState(new Set());
+  const [expandedIds, setExpandedIds] = useState(new Set());
   const [showJOQueuing, setShowJOQueuing] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [selectedJO, setSelectedJO] = useState(null);
-  const [showUnpaidWarning, setShowUnpaidWarning] = useState(false);
-  const [pendingStatusUpdate, setPendingStatusUpdate] = useState(null);
-  const [showCourierModal, setShowCourierModal] = useState(false);
-  const [pendingDeliveryOrders, setPendingDeliveryOrders] = useState(null);
-  const [courierName, setCourierName] = useState('');
-  const [trackingNumber, setTrackingNumber] = useState('');
-  const [courierError, setCourierError] = useState('');
+  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // Print modal form state
   const [printDescription, setPrintDescription] = useState('');
   const [printDesignImages, setPrintDesignImages] = useState([]); // Multiple images
   const [loadError, setLoadError] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMoreOrders, setHasMoreOrders] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const nextFetchPageRef = useRef(2);
   const skipPollRef = useRef(false);
-  const ORDERS_PAGE_SIZE = 50;
+  const ORDERS_PAGE_SIZE = 500;
 
   // Order Quick View Modal state
   const [selectedOrderId, setSelectedOrderId] = useState(null);
@@ -70,48 +63,19 @@ export default function OrdersPage() {
 
   // Extract fetch orders logic into named function (paginated; poll skips after "Load more")
   const fetchOrders = useCallback(
-    async (options = {}) => {
-      const append = options.append === true;
-      if (append) setLoadingMore(true);
-      else {
-        setIsRefreshing(true);
-        skipPollRef.current = false;
-      }
+    async () => {
+      setIsRefreshing(true);
+      skipPollRef.current = false;
       setLoadError('');
       try {
-        const page = append ? nextFetchPageRef.current : 1;
-        const data = await fetchAllOrdersNew(token, {
-          page,
-          limit: ORDERS_PAGE_SIZE,
-        });
-        const list = Array.isArray(data) ? data : [];
-        setHasMoreOrders(list.length >= ORDERS_PAGE_SIZE);
-        if (!append) {
-          setOrders(list);
-          nextFetchPageRef.current = 2;
-        } else {
-          skipPollRef.current = true;
-          setOrders((prev) => {
-            const seen = new Set(prev.map((o) => String(o.id)));
-            const merged = [...prev];
-            for (const o of list) {
-              const oid = String(o.id);
-              if (!seen.has(oid)) {
-                merged.push(o);
-                seen.add(oid);
-              }
-            }
-            return merged;
-          });
-          nextFetchPageRef.current = page + 1;
-        }
+        const data = await fetchAllOrdersNew(token, { page: 1, limit: ORDERS_PAGE_SIZE });
+        setOrders(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Failed to load orders:', error);
         setLoadError('Failed to load orders. Please refresh the page.');
-        if (!append) setOrders([]);
+        setOrders([]);
       } finally {
         setIsRefreshing(false);
-        setLoadingMore(false);
       }
     },
     [token],
@@ -123,17 +87,17 @@ export default function OrdersPage() {
     fetchOrders();
   }, [token, fetchOrders]);
 
-  // Auto-refresh every 30s — skipped when a manual refresh is already running or after load-more
+  // Auto-refresh every 30s
   const pollRef = useRef(null);
   useEffect(() => {
     if (!token) return;
     pollRef.current = setInterval(() => {
-      if (!isRefreshing && !loadingMore && !skipPollRef.current) {
+      if (!isRefreshing && !skipPollRef.current) {
         fetchOrders();
       }
     }, 30000);
     return () => clearInterval(pollRef.current);
-  }, [token, isRefreshing, loadingMore, fetchOrders]);
+  }, [token, isRefreshing, fetchOrders]);
 
   const filtered = orders.filter(o => {
     const matchSearch = !search || o.customerName?.toLowerCase().includes(search.toLowerCase()) || o.id?.toLowerCase().includes(search.toLowerCase()) || o.productName?.toLowerCase().includes(search.toLowerCase());
@@ -177,25 +141,9 @@ export default function OrdersPage() {
   const delivered = sorted.filter(o => o.orderStatus === 'Delivered').length;
   const returned = sorted.filter(o => o.orderStatus === 'Returned').length;
 
-  const toggleSelectOrder = (orderId) => {
-    setSelectedOrders(prev => {
-      const next = new Set(prev);
-      if (next.has(orderId)) {
-        next.delete(orderId);
-      } else {
-        next.add(orderId);
-      }
-      return next;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedOrders.size === sorted.length) {
-      setSelectedOrders(new Set());
-    } else {
-      setSelectedOrders(new Set(sorted.map(o => o.id)));
-    }
-  };
+  const totalPages = Math.max(1, Math.ceil(sorted.length / rowsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginated = sorted.slice((safePage - 1) * rowsPerPage, safePage * rowsPerPage);
 
   const getPaymentBadge = (status) => {
     if (status === 'paid')    return { label: 'Paid',    color: 'var(--green)', bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.3)'  };
@@ -259,197 +207,85 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="inventory-toolbar">
-        <div className="search-wrapper">
-          <span className="search-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-            </svg>
-          </span>
-          <input className="search-input" placeholder="Search orders..." value={search} onChange={e => setSearch(e.target.value)} />
-          {search && <button className="search-clear" onClick={() => setSearch('')}>×</button>}
-        </div>
-        
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <CustomDropdown
-            value={filterStatus}
-            onChange={v => setFilterStatus(v)}
-            options={['All','Pending','In Production','For Delivery','Delivered','Returned','Cancelled'].map(s => ({ value: s, label: s }))}
-            style={{ minWidth: '150px' }}
-          />
-
-          <CustomDropdown
-            value={dateFilter}
-            onChange={v => setDateFilter(v)}
-            options={[
-              { value: 'today', label: 'Today' },
-              { value: 'this-week', label: 'This Week' },
-              { value: 'this-month', label: 'This Month' },
-              { value: 'custom', label: 'Custom Range' },
-            ]}
-            style={{ minWidth: '130px' }}
-          />
-
-          {dateFilter === 'custom' && (
-            <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-              <CustomDropdown
-                value={String(customDateRange.fromMonth)}
-                onChange={v => setCustomDateRange(prev => ({ ...prev, fromMonth: parseInt(v) }))}
-                options={MONTHS.map((m, i) => ({ value: String(i), label: m }))}
-                style={{ minWidth: '110px' }}
-              />
-              <span style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>to</span>
-              <CustomDropdown
-                value={String(customDateRange.toMonth)}
-                onChange={v => setCustomDateRange(prev => ({ ...prev, toMonth: parseInt(v) }))}
-                options={MONTHS.map((m, i) => ({ value: String(i), label: m }))}
-                style={{ minWidth: '110px' }}
-              />
-              <CustomDropdown
-                value={String(customDateRange.year)}
-                onChange={v => setCustomDateRange(prev => ({ ...prev, year: parseInt(v) }))}
-                options={YEARS.map(y => ({ value: String(y), label: String(y) }))}
-                style={{ minWidth: '90px' }}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Selection Toolbar - Shows when orders are selected */}
-      {selectedOrders.size > 0 && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem',
-          padding: '1rem',
-          background: 'rgba(99, 102, 241, 0.1)',
-          borderRadius: '8px',
-          border: '1px solid rgba(99, 102, 241, 0.3)',
-          marginBottom: '1rem'
-        }}>
-          <span style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>
-            {selectedOrders.size} selected
-          </span>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {(() => {
-              const hasPending = Array.from(selectedOrders).some(id => orders.find(o => o.id === id)?.orderStatus === 'Pending');
-              const hasInProduction = Array.from(selectedOrders).some(id => orders.find(o => o.id === id)?.orderStatus === 'In Production');
-              const hasForDelivery = Array.from(selectedOrders).some(id => orders.find(o => o.id === id)?.orderStatus === 'For Delivery');
-              
-              // Check if mixed status (different statuses selected)
-              const mixedStatus = (hasPending ? 1 : 0) + (hasInProduction ? 1 : 0) + (hasForDelivery ? 1 : 0) > 1;
-
-              const handleStatusUpdate = async (newStatus) => {
-                if (isSubmitting) return;
-                // Check for unpaid orders when updating to In Production
-                if (newStatus === 'In Production') {
-                  const unpaidOrders = [];
-                  selectedOrders.forEach(orderId => {
-                    const order = orders.find(o => o.id === orderId);
-                    if (order && order.orderStatus === 'Pending' && order.downPayment === 0) {
-                      unpaidOrders.push(order);
-                    }
-                  });
-
-                  if (unpaidOrders.length > 0) {
-                    setPendingStatusUpdate({ newStatus, selectedOrders: new Set(selectedOrders) });
-                    setShowUnpaidWarning(true);
-                    return;
-                  }
-                }
-
-                // For Delivery requires courier info — show modal first
-                if (newStatus === 'For Delivery') {
-                  setPendingDeliveryOrders(new Set(selectedOrders));
-                  setCourierName('');
-                  setTrackingNumber('');
-                  setCourierError('');
-                  setShowCourierModal(true);
-                  return;
-                }
-
-                // Update order status for selected orders via API
-                setIsSubmitting(true);
-                try {
-                  const updatePromises = Array.from(selectedOrders).map(async (orderId) => {
-                    const result = await updateOrderApi(orderId, { orderStatus: newStatus }, token);
-                    return result;
-                  });
-
-                  const updatedOrders = await Promise.all(updatePromises);
-
-                  // Update local state with API responses
-                  setOrders(prev => prev.map(ord => {
-                    if (selectedOrders.has(ord.id)) {
-                      const apiUpdated = updatedOrders.find(u => u.id === ord.id || u._id === ord.id);
-                      return apiUpdated ? { ...ord, ...apiUpdated } : { ...ord, orderStatus: newStatus };
-                    }
-                    return ord;
-                  }));
-                } catch (error) {
-                  console.error('Failed to update order status:', error);
-                  setLoadError(error.message || 'Failed to update order status. Please try again.');
-                } finally {
-                  setIsSubmitting(false);
-                }
-
-                setSelectedOrders(new Set());
-              };
-
-              return (
-                <>
-                  {mixedStatus ? (
-                    <span style={{ fontSize: '0.8rem', color: 'var(--gold)', fontStyle: 'italic' }}>
-                      Mixed status selected. Please select orders with the same status for bulk update.
-                    </span>
-                  ) : (
-                    <>
-                      {hasPending && (
-                        <>
-                          <button className="btn-sm btn-primary" onClick={() => handleStatusUpdate('In Production')} disabled={isSubmitting} style={{ opacity: isSubmitting ? 0.6 : 1 }}>{isSubmitting ? 'Updating...' : 'In Production'}</button>
-                          <button className="btn-sm btn-secondary" onClick={() => handleStatusUpdate('Cancelled')} disabled={isSubmitting} style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)', opacity: isSubmitting ? 0.6 : 1 }}>{isSubmitting ? 'Updating...' : 'Cancel'}</button>
-                        </>
-                      )}
-                      {hasInProduction && (
-                        <>
-                          <button className="btn-sm btn-primary" onClick={() => handleStatusUpdate('For Delivery')} disabled={isSubmitting} style={{ opacity: isSubmitting ? 0.6 : 1 }}>{isSubmitting ? 'Updating...' : 'For Delivery'}</button>
-                          <button className="btn-sm btn-secondary" onClick={() => handleStatusUpdate('Cancelled')} disabled={isSubmitting} style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)', opacity: isSubmitting ? 0.6 : 1 }}>{isSubmitting ? 'Updating...' : 'Cancel'}</button>
-                        </>
-                      )}
-                      {hasForDelivery && (
-                        <>
-                          <button className="btn-sm btn-primary" onClick={() => handleStatusUpdate('Delivered')} disabled={isSubmitting} style={{ opacity: isSubmitting ? 0.6 : 1 }}>{isSubmitting ? 'Updating...' : 'Delivered'}</button>
-                          <button className="btn-sm btn-secondary" onClick={() => handleStatusUpdate('Returned')} disabled={isSubmitting} style={{ background: 'var(--dark2)', borderColor: 'var(--border)', color: 'var(--white)', opacity: isSubmitting ? 0.6 : 1 }}>{isSubmitting ? 'Updating...' : 'Returned'}</button>
-                        </>
-                      )}
-                    </>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-          <button onClick={() => setSelectedOrders(new Set())} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '1.25rem', lineHeight: 1, padding: '0.25rem' }}>×</button>
-        </div>
-      )}
-
-      {/* Table */}
       {isRefreshing && (
-        <div className="text-sm text-gray-500" style={{ marginBottom: '0.75rem' }}>
+        <div className="text-sm text-gray-500" style={{ marginBottom: '0.5rem' }}>
           Refreshing...
         </div>
       )}
+
+      {/* Table card — filter + table + pagination inside one container */}
+      <div style={{
+        border: '1px solid var(--border)',
+        borderRadius: '10px',
+        overflow: 'hidden',
+        marginBottom: '1rem',
+      }}>
+        {/* Filters toolbar */}
+        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="search-wrapper" style={{ flex: '1', minWidth: '180px', maxWidth: '280px' }}>
+            <span className="search-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+              </svg>
+            </span>
+            <input className="search-input" placeholder="Search orders..." value={search} onChange={e => { setSearch(e.target.value); setCurrentPage(1); }} />
+            {search && <button className="search-clear" onClick={() => setSearch('')}>×</button>}
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <CustomDropdown
+              value={filterStatus}
+              onChange={v => { setFilterStatus(v); setCurrentPage(1); }}
+              options={['All','Pending','In Production','For Delivery','Delivered','Returned','Cancelled'].map(s => ({ value: s, label: s }))}
+              style={{ minWidth: '150px' }}
+            />
+
+            <CustomDropdown
+              value={dateFilter}
+              onChange={v => setDateFilter(v)}
+              options={[
+                { value: 'today', label: 'Today' },
+                { value: 'this-week', label: 'This Week' },
+                { value: 'this-month', label: 'This Month' },
+                { value: 'custom', label: 'Custom Range' },
+              ]}
+              style={{ minWidth: '130px' }}
+            />
+
+            {dateFilter === 'custom' && (
+              <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                <CustomDropdown
+                  value={String(customDateRange.fromMonth)}
+                  onChange={v => setCustomDateRange(prev => ({ ...prev, fromMonth: parseInt(v) }))}
+                  options={MONTHS.map((m, i) => ({ value: String(i), label: m }))}
+                  style={{ minWidth: '110px' }}
+                />
+                <span style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>to</span>
+                <CustomDropdown
+                  value={String(customDateRange.toMonth)}
+                  onChange={v => setCustomDateRange(prev => ({ ...prev, toMonth: parseInt(v) }))}
+                  options={MONTHS.map((m, i) => ({ value: String(i), label: m }))}
+                  style={{ minWidth: '110px' }}
+                />
+                <CustomDropdown
+                  value={String(customDateRange.year)}
+                  onChange={v => setCustomDateRange(prev => ({ ...prev, year: parseInt(v) }))}
+                  options={YEARS.map(y => ({ value: String(y), label: String(y) }))}
+                  style={{ minWidth: '90px' }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Table */}
       <div style={{
         WebkitOverflowScrolling: 'touch',
-        border: '1px solid var(--border)',
         boxSizing: 'border-box',
         scrollbarWidth: 'thin',
         scrollbarColor: 'var(--gold) var(--dark2)',
-        borderRadius: '10px',
         width: '0',
         minWidth: '100%',
-        marginBottom: '1rem',
         display: 'block',
         overflowX: 'auto',
       }}>
@@ -461,25 +297,22 @@ export default function OrdersPage() {
         <table className="inventory-table" style={{ fontFamily: 'inherit' }}>
           <thead>
             <tr>
-              <th style={{ width: '40px', textAlign: 'center' }}>
-                <input type="checkbox" checked={sorted.length > 0 && selectedOrders.size === sorted.length} onChange={toggleSelectAll} style={{ cursor: 'pointer', accentColor: 'var(--gold)' }} />
-              </th>
               <th style={{ width: '28px' }}></th>
-              <th className="table-col-name" style={{ width: '100px' }}>Order ID</th>
-              <th className="table-header" style={{ whiteSpace: 'nowrap' }}>Ref #</th>
+              <th className="table-header" style={{ whiteSpace: 'nowrap' }}>Order Ref #</th>
+              <th className="table-col-category">Product Type</th>
               <th className="table-col-category">Customer</th>
               <th className="table-col-stock">Product</th>
               <th className="table-col-min" style={{ textAlign: 'center' }}>Qty</th>
               <th className="table-col-min">Total</th>
               <th className="table-col-status">Status</th>
               <th className="table-col-min">Date</th>
-              <th style={{ width: '60px' }}></th>
+              <th style={{ width: '90px' }}></th>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={11}>
+                <td colSpan={10}>
                   <div className="empty-state">
                     <div className="empty-icon">
                       <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -492,17 +325,13 @@ export default function OrdersPage() {
                 </td>
               </tr>
             ) : (
-              sorted.map(o => {
+              paginated.map(o => {
                 const statusBadge = getStatusBadge(o.orderStatus);
                 const isExpanded = expandedIds.has(o.id);
-                const isSelected = selectedOrders.has(o.id);
 
                 return (
                   <React.Fragment key={o.id}>
                     <tr className="inventory-table-row">
-                      <td style={{ width: '40px', textAlign: 'center' }}>
-                        <input type="checkbox" checked={isSelected} onChange={() => toggleSelectOrder(o.id)} style={{ cursor: 'pointer', accentColor: 'var(--gold)' }} />
-                      </td>
                       <td style={{ width: '28px', cursor: 'pointer' }} onClick={() => {
                         setExpandedIds(prev => {
                           const next = new Set(prev);
@@ -519,9 +348,6 @@ export default function OrdersPage() {
                           <path d="M9 18l6-6-6-6"/>
                         </svg>
                       </td>
-                      <td className="table-cell-name">
-                        <div style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: 'var(--gray)' }}>{o.id}</div>
-                      </td>
                       <td className="table-cell" style={{
                         fontSize: '0.75rem',
                         fontFamily: 'monospace',
@@ -530,6 +356,17 @@ export default function OrdersPage() {
                         whiteSpace: 'nowrap',
                       }}>
                         #{String(o.id ?? o._id ?? '').slice(-8).toUpperCase()}
+                      </td>
+                      <td className="table-cell">
+                        {o.isCustom ? (
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '999px', background: 'rgba(99,102,241,0.12)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)', whiteSpace: 'nowrap' }}>
+                            Customized
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '999px', background: 'rgba(74,222,128,0.08)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)', whiteSpace: 'nowrap' }}>
+                            Ready Made
+                          </span>
+                        )}
                       </td>
                       <td className="table-cell">
                         <div style={{ fontWeight: 500 }}>{o.customerName}</div>
@@ -566,31 +403,55 @@ export default function OrdersPage() {
                           {statusBadge.label}
                         </span>
                       </td>
-                      <td className="table-cell" style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{o.createdAt}</td>
+                      <td className="table-cell" style={{ fontSize: '0.72rem', color: 'var(--gray)', whiteSpace: 'nowrap' }}>
+                        {o.createdAt ? new Date(o.createdAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
+                      </td>
                       <td className="table-cell" style={{ textAlign: 'center' }}>
-                        <button
-                          onClick={() => {
-                            setSelectedOrderId(o.id);
-                            setIsModalOpen(true);
-                          }}
-                          style={{
-                            padding: '0.25rem 0.625rem',
-                            fontSize: '0.75rem',
-                            background: 'transparent',
-                            border: '1px solid var(--gold)',
-                            borderRadius: '4px',
-                            color: 'var(--gold)',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          View
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'center' }}>
+                          <button
+                            onClick={() => {
+                              setSelectedOrderId(o.id);
+                              setIsModalOpen(true);
+                            }}
+                            style={{
+                              padding: '0.25rem 0.625rem',
+                              fontSize: '0.75rem',
+                              background: 'transparent',
+                              border: '1px solid var(--gold)',
+                              borderRadius: '4px',
+                              color: 'var(--gold)',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            View
+                          </button>
+                          {['Cancelled', 'Delivered', 'Returned'].includes(o.orderStatus) && (
+                            <button
+                              onClick={() => { setDeleteTargetId(o.id); setDeleteError(''); }}
+                              title="Delete order"
+                              style={{
+                                padding: '0.25rem 0.375rem',
+                                background: 'transparent',
+                                border: '1px solid rgba(248,113,113,0.4)',
+                                borderRadius: '4px',
+                                color: 'var(--red)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={11} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
+                        <td colSpan={10} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
                           <div style={{ padding: '1rem 1.25rem 1.25rem', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
                             {/* Customer Info */}
                             <div>
@@ -716,24 +577,35 @@ export default function OrdersPage() {
         </table>
       </div>
 
-      {hasMoreOrders && (
-        <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-          <button
-            type="button"
-            className="btn-sm btn-secondary"
-            disabled={loadingMore}
-            onClick={() => fetchOrders({ append: true })}
-            style={{
-              background: 'var(--dark2)',
-              borderColor: 'var(--border)',
-              color: 'var(--white)',
-              opacity: loadingMore ? 0.6 : 1,
-            }}
+      {/* Pagination — inside card */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.625rem 1rem', borderTop: '1px solid var(--border)', gap: '1rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--gray)' }}>
+          <span>Rows per page:</span>
+          <select
+            value={rowsPerPage}
+            onChange={e => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+            style={{ padding: '0.2rem 0.4rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--white)', fontSize: '0.8rem', cursor: 'pointer' }}
           >
-            {loadingMore ? 'Loading…' : 'Load more orders'}
-          </button>
+            {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
         </div>
-      )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.8rem', color: 'var(--gray)' }}>
+          <span>{sorted.length === 0 ? '0' : `${(safePage - 1) * rowsPerPage + 1}–${Math.min(safePage * rowsPerPage, sorted.length)}`} of {sorted.length}</span>
+          <button
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={safePage <= 1}
+            style={{ padding: '0.25rem 0.5rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '4px', color: safePage <= 1 ? 'var(--gray)' : 'var(--white)', cursor: safePage <= 1 ? 'not-allowed' : 'pointer', fontSize: '0.8rem' }}
+          >‹</button>
+          <span style={{ color: 'var(--white)', fontWeight: 600 }}>{safePage} / {totalPages}</span>
+          <button
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={safePage >= totalPages}
+            style={{ padding: '0.25rem 0.5rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '4px', color: safePage >= totalPages ? 'var(--gray)' : 'var(--white)', cursor: safePage >= totalPages ? 'not-allowed' : 'pointer', fontSize: '0.8rem' }}
+          >›</button>
+        </div>
+      </div>
+
+      </div>{/* end table card */}
 
       {/* JO Queuing Modal */}
       {showJOQueuing && (
@@ -1365,8 +1237,57 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* Unpaid Warning Modal — hard stop, no bypass */}
-      {showUnpaidWarning && (
+      {/* Delete Confirm Modal */}
+      {deleteTargetId && (
+        <div className="modal-overlay" onClick={() => { setDeleteTargetId(null); setDeleteError(''); }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px', width: '90%' }}>
+            <div className="modal-header">
+              <h2 className="modal-title" style={{ color: 'var(--red)' }}>Delete Order</h2>
+              <button className="modal-close" onClick={() => { setDeleteTargetId(null); setDeleteError(''); }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: '0.95rem', color: 'var(--white)', lineHeight: 1.6 }}>
+                Permanently delete order <span style={{ fontFamily: 'monospace', color: 'var(--gold)' }}>#{String(deleteTargetId).slice(-8).toUpperCase()}</span>? This cannot be undone.
+              </p>
+              {deleteError && (
+                <p style={{ marginTop: '0.75rem', fontSize: '0.82rem', color: 'var(--red)' }}>{deleteError}</p>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={() => { setDeleteTargetId(null); setDeleteError(''); }} disabled={isDeleting}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                style={{ padding: '0.5rem 1.25rem', background: isDeleting ? 'var(--border)' : 'var(--red)', border: 'none', borderRadius: '6px', color: isDeleting ? 'var(--gray)' : '#fff', fontWeight: 600, fontSize: '0.875rem', cursor: isDeleting ? 'not-allowed' : 'pointer', opacity: isDeleting ? 0.7 : 1 }}
+                onClick={async () => {
+                  setIsDeleting(true);
+                  setDeleteError('');
+                  try {
+                    await deleteOrderApi(deleteTargetId, token);
+                    setOrders(prev => prev.filter(o => o.id !== deleteTargetId));
+                    setDeleteTargetId(null);
+                  } catch (err) {
+                    setDeleteError(err.message || 'Failed to delete order.');
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+              >
+                {isDeleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* [removed bulk-select modals] */}
+      {false && (
         <div className="modal-overlay" onClick={() => { setShowUnpaidWarning(false); setPendingStatusUpdate(null); }}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '90%' }}>
             <div className="modal-header">
@@ -1402,9 +1323,9 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* Courier Modal — required for For Delivery transition */}
-      {showCourierModal && (
-        <div className="modal-overlay" onClick={() => { setShowCourierModal(false); setPendingDeliveryOrders(null); }}>
+      {/* DEPRECATED — Courier Modal (removed; status updates go through View modal) */}
+      {false && (
+        <div className="modal-overlay">
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '90%' }}>
             <div className="modal-header">
               <h2 className="modal-title" style={{ color: 'var(--gold)' }}>Assign Courier</h2>
@@ -1720,6 +1641,11 @@ export default function OrdersPage() {
           setSelectedOrderId(null);
         }}
         onStatusUpdated={fetchOrders}
+        onOrderDeleted={(id) => {
+          setOrders(prev => prev.filter(o => o.id !== id));
+          setIsModalOpen(false);
+          setSelectedOrderId(null);
+        }}
       />
     </div>
     </ErrorBoundary>
