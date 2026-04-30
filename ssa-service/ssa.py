@@ -1,6 +1,11 @@
 import numpy as np
 
-def dominant_period(series, max_lag=None):
+def dominant_period(series, max_lag=None, acf_threshold=0.15):
+    """Return the lag of the first significant ACF peak, or None.
+
+    acf_threshold: minimum ACF value to qualify as a real peak (0.15 avoids
+    false detections on noisy/sparse data; lower values risk picking up noise).
+    """
     n = len(series)
     if max_lag is None:
         max_lag = n // 2
@@ -14,7 +19,7 @@ def dominant_period(series, max_lag=None):
         for k in range(1, max_lag + 1)
     ])
     for i in range(1, len(acf) - 1):
-        if acf[i] > acf[i - 1] and acf[i] > acf[i + 1] and acf[i] > 0.1:
+        if acf[i] > acf[i - 1] and acf[i] > acf[i + 1] and acf[i] > acf_threshold:
             return i + 1
     return None
 

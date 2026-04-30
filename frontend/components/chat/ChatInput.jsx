@@ -92,57 +92,46 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, isAdmi
   return (
     <div className="chat-input-area">
       {previewUrl && (
-        <div style={{
-          padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.08)',
-          display: 'flex', alignItems: 'center', gap: '10px',
-          background: 'rgba(0,0,0,0.25)', borderRadius: '8px 8px 0 0', marginBottom: '2px',
-        }}>
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            <img src={previewUrl} alt="preview" style={{
-              width: '64px', height: '64px', objectFit: 'cover',
-              borderRadius: '8px', border: '2px solid #d4a843', display: 'block',
-            }} />
+        <div className="img-preview-strip">
+          <div className="img-preview-thumb-wrap">
+            <img src={previewUrl} alt="preview" className="img-preview-thumb" />
             <button
               type="button"
               onClick={cancelPreview}
               disabled={isUploading}
-              style={{
-                position: 'absolute', top: '-7px', right: '-7px',
-                width: '18px', height: '18px', borderRadius: '50%',
-                background: '#222', border: '1px solid #555',
-                color: '#ccc', fontSize: '9px', cursor: isUploading ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: 0, lineHeight: 1,
-              }}
+              className="btn-cancel-preview"
             >✕</button>
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '0.75rem', color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {previewFile?.name}
-            </div>
-            <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '2px' }}>Ready to send</div>
+          <div className="img-preview-info">
+            <div className="img-preview-name">{previewFile?.name}</div>
+            <div className="img-preview-label">Ready to send</div>
           </div>
           <button
             type="button"
             onClick={handleSendImage}
             disabled={isUploading || isSending}
             style={{
-              padding: '6px 16px', background: isUploading ? '#555' : '#d4a843',
-              border: 'none', borderRadius: '8px',
+              padding: '6px 16px',
+              background: isUploading ? '#555' : '#d4a843',
+              border: 'none',
+              borderRadius: '8px',
               color: isUploading ? '#999' : '#000',
-              fontWeight: 700, fontSize: '0.8rem',
-              cursor: isUploading || isSending ? 'not-allowed' : 'pointer', flexShrink: 0,
+              fontWeight: 700,
+              fontSize: '0.8rem',
+              cursor: isUploading || isSending ? 'not-allowed' : 'pointer',
+              flexShrink: 0,
+              fontFamily: 'inherit',
             }}
           >
             {isUploading ? 'Sending...' : 'Send'}
           </button>
         </div>
       )}
+
       {uploadError && (
-        <div style={{ fontSize: '0.75rem', color: '#ef4444', marginBottom: '6px', padding: '4px 8px', background: 'rgba(239,68,68,0.08)', borderRadius: '6px' }}>
-          {uploadError}
-        </div>
+        <div className="upload-error">{uploadError}</div>
       )}
+
       {showQuotation && (
         <QuotationModal
           onClose={() => setShowQuotation(false)}
@@ -157,12 +146,7 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, isAdmi
           disabled={isSending || isUploading || !!previewUrl}
           onClick={() => fileInputRef.current?.click()}
           title="Send image"
-          style={{
-            background: 'transparent', border: 'none',
-            color: isUploading ? '#d4a843' : '#888',
-            cursor: isSending || isUploading ? 'not-allowed' : 'pointer',
-            fontSize: '1.3rem', lineHeight: 1, padding: '4px',
-          }}
+          className={`input-action-btn${isUploading ? ' uploading' : ''}`}
         >
           {isUploading ? (
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
@@ -189,12 +173,7 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, isAdmi
             disabled={isSending || isUploading || !!previewUrl}
             onClick={() => setShowQuotation(true)}
             title="Send quotation"
-            style={{
-              background: 'transparent', border: 'none',
-              color: '#888',
-              cursor: isSending || isUploading || !!previewUrl ? 'not-allowed' : 'pointer',
-              lineHeight: 1, padding: '4px', flexShrink: 0,
-            }}
+            className="input-action-btn"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="4" y="2" width="16" height="20" rx="2"/>
@@ -230,7 +209,6 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, isAdmi
           type="submit"
           disabled={!text.trim() || isSending || isUploading}
           className="send-btn"
-          style={{ color: 'black', fontWeight: 800, fontSize: '1rem' }}
         >
           {isSending ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

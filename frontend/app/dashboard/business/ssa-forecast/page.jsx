@@ -254,7 +254,7 @@ export default function SSAForecastPage() {
     try {
       let rows = [];
       if (dataSource === 'sales_revenue' || dataSource === 'sales_qty') {
-        const res = await fetchWithTimeout(`${API_URL}/api/admin/sales?limit=2000`, {
+        const res = await fetchWithTimeout(`${API_URL}/api/admin/sales?limit=2000&status=completed`, {
           headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         });
         const d = await res.json();
@@ -321,12 +321,9 @@ export default function SSAForecastPage() {
       setResult(data);
       setDataPointCount(data.historical?.dates?.length ?? rows.length);
 
-      const btN = data?.accuracy?.backtest_n ?? 0;
-      if (btN > 0 && data.historical?.dates?.length >= btN) {
-        const histDates = data.historical.dates;
-        const histVals  = data.historical.values;
-        const cutIdx    = histDates.length - btN;
-        setBacktestData(histDates.slice(cutIdx).map((date, i) => ({ date, BacktestActual: histVals[cutIdx + i] })));
+      const btSeries = data?.backtest_series;
+      if (btSeries?.dates?.length > 0) {
+        setBacktestData(btSeries.dates.map((date, i) => ({ date, BacktestActual: btSeries.actuals[i] })));
       } else {
         setBacktestData([]);
       }
@@ -417,17 +414,39 @@ export default function SSAForecastPage() {
     }));
   };
 
-  const formatDateLabel = (dateString, periodType) => {
+  // Historical data is returned at daily granularity; forecast at weekly/monthly/annual.
+  // We detect whether a date string is from the historical (daily) or forecast section
+  // by checking the result granularity field, and format accordingly.
+  const formatDateLabel = (dateString, periodType, forceDaily = false) => {
     if (!dateString) return dateString;
     const d = new Date(dateString + 'T00:00:00Z');
     if (isNaN(d)) return dateString;
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const year = d.getUTCFullYear();
     const pt = periodType || (submittedConfig?.period?.type) || forecastPeriod.type;
+    const isDaily = forceDaily || result?.granularity === 'daily';
+    // Historical section is always daily; only forecast section uses period granularity
+    if (isDaily) {
+      // Show "MMM D, YYYY" for daily data points
+      return `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${year}`;
+    }
     if (pt === 'weekly')   return `W${getISOWeek(d)} ${year}`;
     if (pt === 'monthly')  return `${months[d.getUTCMonth()]} ${year}`;
     if (pt === 'annually') return `${year}`;
     return dateString;
+  };
+
+  // For the X-axis tick labels: historical dates use daily format, forecast uses period format.
+  // Since both are mixed on the same chart, we detect by whether the date exists in forecast.
+  const fcDateSet = new Set(result?.forecast?.dates || []);
+  const chartDateFormatter = (dateString) => {
+    if (!dateString) return '';
+    if (fcDateSet.has(dateString)) {
+      // Forecast point — use period granularity
+      return formatDateLabel(dateString, submittedConfig?.period?.type, false);
+    }
+    // Historical point — always daily
+    return formatDateLabel(dateString, null, true);
   };
 
   const yAxisFormatter = (v) => {
@@ -556,7 +575,7 @@ export default function SSAForecastPage() {
           const firstLoad = isLoading && !result;
           const hasForecastCount = parseInt(forecastCount, 10) > 0;
           const vals = result?.historical?.values || [];
-          const lastVal = vals.length > 0 ? vals[vals.length - 1] : null;
+          const lastVal = result?.last_period_value ?? (vals.length > 0 ? vals[vals.length - 1] : null);
           const isRevenue = (result ? submittedConfig?.source : dataSource) === 'sales_revenue';
           const mape  = result?.accuracy?.mape;
           const mapeN = result?.accuracy?.backtest_n;
@@ -655,12 +674,12 @@ export default function SSAForecastPage() {
                   {(() => { const chartData = getCombinedChartData(); return (
                     <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="date" stroke="var(--gray)" tick={{ fill: 'var(--gray)', fontSize: 11 }} tickMargin={8} minTickGap={40} tickFormatter={v => formatDateLabel(v, submittedConfig.period.type)} />
+                      <XAxis dataKey="date" stroke="var(--gray)" tick={{ fill: 'var(--gray)', fontSize: 11 }} tickMargin={8} minTickGap={60} tickFormatter={chartDateFormatter} />
                       <YAxis stroke="var(--gray)" tick={{ fill: 'var(--gray)', fontSize: 11 }} tickFormatter={yAxisFormatter} />
                       <Tooltip
                         contentStyle={{ backgroundColor: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.8rem' }}
                         itemStyle={{ color: 'var(--white)' }} labelStyle={{ color: 'var(--gray)' }}
-                        labelFormatter={v => formatDateLabel(v, submittedConfig.period.type)}
+                        labelFormatter={chartDateFormatter}
                       />
                       <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '0.8rem' }} />
                       <Line type="monotone" dataKey="Actual" stroke="var(--gray)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
@@ -676,10 +695,17 @@ export default function SSAForecastPage() {
                       {showBacktest && backtestData.length > 0 && (
                         <Line type="monotone" dataKey="BacktestActual" name="Backtest Actual" stroke="#4ade80" strokeWidth={2} strokeDasharray="4 2" dot={false} activeDot={{ r: 3 }} legendType="line" />
                       )}
-                      <Brush dataKey="date" height={28} stroke="#3a3a3a" fill="#1a1a1a" travellerWidth={8}
-                        tickFormatter={v => formatDateLabel(v, submittedConfig.period.type)}
-                        startIndex={Math.max(0, chartData.length - Math.min(60, chartData.length))}
-                      />
+                      {chartData.length > 1 && (() => {
+                        const window = result?.granularity === 'daily' ? 365 : 60;
+                        const si = Math.max(0, chartData.length - Math.min(window, chartData.length));
+                        return (
+                          <Brush dataKey="date" height={28} stroke="#3a3a3a" fill="#1a1a1a" travellerWidth={8}
+                            tickFormatter={chartDateFormatter}
+                            startIndex={si}
+                            endIndex={chartData.length - 1}
+                          />
+                        );
+                      })()}
                       {parseInt(forecastCount, 10) > 0 && (() => { const firstFcDate = result?.forecast?.dates?.[0]; return firstFcDate ? (
                         <ReferenceLine x={firstFcDate} stroke="rgba(255,255,255,0.2)" strokeDasharray="4 4"
                           label={{ value: 'Forecast Start', position: 'insideTopLeft', fill: 'var(--gray)', fontSize: 10 }}
@@ -707,9 +733,9 @@ export default function SSAForecastPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={getDecompChartData()} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="date" stroke="var(--gray)" tick={{ fill: 'var(--gray)', fontSize: 11 }} tickMargin={8} minTickGap={40} tickFormatter={v => formatDateLabel(v, submittedConfig.period.type)} />
+                      <XAxis dataKey="date" stroke="var(--gray)" tick={{ fill: 'var(--gray)', fontSize: 11 }} tickMargin={8} minTickGap={60} tickFormatter={v => formatDateLabel(v, null, true)} />
                       <YAxis stroke="var(--gray)" tick={{ fill: 'var(--gray)', fontSize: 11 }} tickFormatter={yAxisFormatter} />
-                      <Tooltip contentStyle={{ backgroundColor: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.8rem' }} itemStyle={{ color: 'var(--white)' }} labelStyle={{ color: 'var(--gray)' }} labelFormatter={v => formatDateLabel(v, submittedConfig.period.type)} />
+                      <Tooltip contentStyle={{ backgroundColor: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.8rem' }} itemStyle={{ color: 'var(--white)' }} labelStyle={{ color: 'var(--gray)' }} labelFormatter={v => formatDateLabel(v, null, true)} />
                       <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '0.8rem' }} />
                       <Line type="monotone" dataKey="Trend" stroke="var(--gold)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
                       <Line type="monotone" dataKey="Seasonality" stroke="#60a5fa" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} />

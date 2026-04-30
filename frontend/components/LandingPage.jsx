@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStorefrontBanners } from '@/lib/bannerUtils';
 import { useAuth } from '@/contexts/AuthContext';
-import ChatModule from '@/components/chat/ChatModule';
+import CustomerChatModal from '@/components/chat/CustomerChatModal';
 import '@/components/custom-styles.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -57,7 +57,6 @@ const PasswordStrength = ({password}) => {
 const LandingPage = ({onEnterShop}) => {
   const router = useRouter();
   const { user, token } = useAuth();
-  const [chatOpen, setChatOpen] = useState(false);
 
   // Allow everyone to browse products (no login required)
   const handleEnterShop = () => {
@@ -918,77 +917,16 @@ const handleForgotResetPassword = async () => {
 
   const currentBannerImage = effectiveSlides[heroSlide]?.image ?? null;
 
+
   // ─── JSX ──────────────────────────────────────────────────────────────────────
   return (
     <>
-      <style>{`
-        .chat-floating-btn {
-          position: fixed;
-          bottom: 2rem;
-          right: 2rem;
-          width: 60px;
-          height: 60px;
-          background: var(--gold);
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-          z-index: 1000;
-          transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-          border: none;
-        }
-        .chat-floating-btn:hover { transform: scale(1.1); }
-        .chat-floating-btn:active { transform: scale(0.9); }
-        .chat-popup {
-          position: fixed;
-          bottom: 6.5rem;
-          right: 2rem;
-          width: 550px;
-          height: 600px;
-          max-width: calc(100vw - 4rem);
-          max-height: calc(100vh - 10rem);
-          background: #1a1a1a;
-          border: 1px solid var(--border);
-          border-radius: 16px;
-          z-index: 1001;
-          display: flex;
-          flex-direction: column;
-          box-shadow: 0 12px 48px rgba(0,0,0,0.5);
-          overflow: hidden;
-        }
-        .animate-fade-in {
-          animation: fadeIn 0.3s ease-out;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
-
-      {/* Floating Chat */}
-      {user && (
-        <>
-          <button 
-            className="chat-floating-btn"
-            onClick={() => setChatOpen(!chatOpen)}
-            aria-label="Toggle chat"
-          >
-            {chatOpen ? (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--black)" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
-            ) : (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--black)" strokeWidth="2.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-            )}
-          </button>
-          
-          {chatOpen && (
-            <div className="chat-popup animate-fade-in">
-              <ChatModule user={user} token={token} />
-            </div>
-          )}
-        </>
-      )}
+      {/* Floating chat widget */}
+      <CustomerChatModal
+        user={user}
+        token={token}
+        onRequestLogin={() => openModal('login')}
+      />
 
       {/* NAVBAR */}
       <nav className={`navbar ${scrolled ? 'scrolled' : ''}`}>
@@ -999,13 +937,18 @@ const handleForgotResetPassword = async () => {
               <div className="nav-logo-text">PERSONALIZE <span>ME</span><br/>PRINTS</div>
             </a>
             <ul className="nav-links">
-              <li><a href="#services">Services</a></li>
+              <li><a href="#services">Products</a></li>
               <li><a href="#how-it-works">How It Works</a></li>
-              <li><a href="#why-us">Why Us</a></li>
+              <li><a href="#pricing">Pricing</a></li>
+              <li><a href="#contact">Contact</a></li>
             </ul>
-            <div className="nav-auth">
-              <button className="btn-nav-login" suppressHydrationWarning onClick={() => openModal('login')}>Login</button>
-              <button className="btn-nav-register" suppressHydrationWarning onClick={() => openModal('register')}>Register</button>
+            <div className="nav-auth" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {!user && (
+                <>
+                  <button className="btn-nav-login" suppressHydrationWarning onClick={() => openModal('login')}>Sign In</button>
+                  <button className="btn-nav-register" suppressHydrationWarning onClick={() => openModal('register')}>Get Started</button>
+                </>
+              )}
             </div>
             <button className={`hamburger ${mobileMenuOpen ? 'open' : ''}`} onClick={toggleMobile} aria-label="Menu">
               <span/><span/><span/>
@@ -1016,12 +959,13 @@ const handleForgotResetPassword = async () => {
 
       {/* MOBILE MENU */}
       <div className={`mobile-menu ${mobileMenuOpen ? 'open' : ''}`}>
-        <a href="#services"    onClick={closeMobile}>Services</a>
+        <a href="#services"     onClick={closeMobile}>Products</a>
         <a href="#how-it-works" onClick={closeMobile}>How It Works</a>
-        <a href="#why-us"      onClick={closeMobile}>Why Us</a>
+        <a href="#pricing"      onClick={closeMobile}>Pricing</a>
+        <a href="#contact"      onClick={closeMobile}>Contact</a>
         <div className="mobile-auth-btns">
-          <button className="btn-nav-login" suppressHydrationWarning onClick={() => openModal('login')}>Login</button>
-          <button className="btn-nav-register" suppressHydrationWarning onClick={() => openModal('register')}>Register</button>
+          <button className="btn-nav-login" suppressHydrationWarning onClick={() => openModal('login')}>Sign In</button>
+          <button className="btn-nav-register" suppressHydrationWarning onClick={() => openModal('register')}>Get Started</button>
         </div>
       </div>
 
@@ -1302,86 +1246,76 @@ const handleForgotResetPassword = async () => {
       </section>
 
       {/* HOW IT WORKS */}
-      <section id="how-it-works" className="fade-up">
-        <div className="hiw-inner">
-          <div className="section-header center">
+      <section id="how-it-works" className="hiw-new-section">
+        <div className="hiw-new-layout">
+
+          {/* Left sticky column */}
+          <div className="hiw-left">
             <span className="section-tag">Simple Process</span>
-            <h2 className="section-title">How It <span className="red-text">Works</span></h2>
-            <p className="section-subtitle">From idea to your hands in four simple steps.</p>
+            <h2>How It <span className="red-text">Works</span></h2>
+            <p>From idea to your hands in four simple steps.</p>
+            <button className="btn-primary" onClick={handleEnterShop}>
+              Get Started
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+              </svg>
+            </button>
           </div>
-          <div className="hiw-steps">
 
-            {/* Step 1 — Browse */}
-            <div className="hiw-step">
-              <div className="hiw-step-badge">
-                <span className="hiw-step-number">1</span>
-                <svg className="hiw-step-icon" width="26" height="26" viewBox="0 0 24 24"
-                  fill="none" stroke="currentColor" strokeWidth="1.8"
-                  strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="11" cy="11" r="8"/>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          {/* Right steps column */}
+          <div className="hiw-new-steps">
+
+            <div className="hiw-new-step">
+              <div className="hiw-new-step-num">
+                <span className="hiw-new-step-n">01</span>
+                <svg className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                 </svg>
               </div>
-              <p className="hiw-step-title">Browse Products</p>
-              <p className="hiw-step-desc">
-                Explore our full catalogue of personalizable
-                items — shirts, mugs, bags, and more.
-              </p>
+              <div>
+                <p className="hiw-new-step-title">Browse Products</p>
+                <p className="hiw-new-step-desc">Explore our full catalogue of personalizable items — shirts, mugs, bags, stickers, and more.</p>
+              </div>
             </div>
 
-            {/* Step 2 — Customize */}
-            <div className="hiw-step">
-              <div className="hiw-step-badge">
-                <span className="hiw-step-number">2</span>
-                <svg className="hiw-step-icon" width="26" height="26" viewBox="0 0 24 24"
-                  fill="none" stroke="currentColor" strokeWidth="1.8"
-                  strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 20h9"/>
-                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            <div className="hiw-new-step">
+              <div className="hiw-new-step-num">
+                <span className="hiw-new-step-n">02</span>
+                <svg className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                 </svg>
               </div>
-              <p className="hiw-step-title">Personalize It</p>
-              <p className="hiw-step-desc">
-                Add your name, message, or design.
-                We handle every detail to make it yours.
-              </p>
+              <div>
+                <p className="hiw-new-step-title">Personalize It</p>
+                <p className="hiw-new-step-desc">Add your name, message, or upload a design. We handle every detail to make it uniquely yours.</p>
+              </div>
             </div>
 
-            {/* Step 3 — Order */}
-            <div className="hiw-step">
-              <div className="hiw-step-badge">
-                <span className="hiw-step-number">3</span>
-                <svg className="hiw-step-icon" width="26" height="26" viewBox="0 0 24 24"
-                  fill="none" stroke="currentColor" strokeWidth="1.8"
-                  strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="9" cy="21" r="1"/>
-                  <circle cx="20" cy="21" r="1"/>
+            <div className="hiw-new-step">
+              <div className="hiw-new-step-num">
+                <span className="hiw-new-step-n">03</span>
+                <svg className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
                   <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
                 </svg>
               </div>
-              <p className="hiw-step-title">Place Your Order</p>
-              <p className="hiw-step-desc">
-                Review your item and check out securely.
-                We confirm every order before production.
-              </p>
+              <div>
+                <p className="hiw-new-step-title">Place Your Order</p>
+                <p className="hiw-new-step-desc">Review your item and check out. We confirm every order and send a proof before production.</p>
+              </div>
             </div>
 
-            {/* Step 4 — Receive */}
-            <div className="hiw-step">
-              <div className="hiw-step-badge">
-                <span className="hiw-step-number">4</span>
-                <svg className="hiw-step-icon" width="26" height="26" viewBox="0 0 24 24"
-                  fill="none" stroke="currentColor" strokeWidth="1.8"
-                  strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/>
-                  <circle cx="12" cy="10" r="3"/>
+            <div className="hiw-new-step">
+              <div className="hiw-new-step-num">
+                <span className="hiw-new-step-n">04</span>
+                <svg className="hiw-new-step-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
                 </svg>
               </div>
-              <p className="hiw-step-title">Receive &amp; Enjoy</p>
-              <p className="hiw-step-desc">
-                Your personalized item is crafted with care
-                and delivered straight to your door.
-              </p>
+              <div>
+                <p className="hiw-new-step-title">Receive &amp; Enjoy</p>
+                <p className="hiw-new-step-desc">Your personalized item is crafted with care and delivered straight to your door.</p>
+              </div>
             </div>
 
           </div>
@@ -1443,36 +1377,35 @@ const handleForgotResetPassword = async () => {
             <h2 className="section-title">Our <span className="gold-text">Price</span> List</h2>
             <p className="section-subtitle">Starting prices for all our products. Login or Register to view the complete pricelist with bulk pricing breakdowns.</p>
           </div>
-          <div className="pub-pricing-grid">
-            {publicPricing.map((item, i) => (
-              <div className="pub-pricing-card fade-up" key={i}>
-                <div className="pub-pricing-top">
-                  <h4 className="pub-pricing-name">{item.category}</h4>
-                  <div className="pub-pricing-starts">
-                    <span className="pub-pricing-label">Starts at</span>
-                    <span className="pub-pricing-amount gold-text">{item.startingAt}</span>
-                  </div>
-                </div>
-                <p className="pub-pricing-note">{item.note}</p>
-              </div>
-            ))}
-          </div>
-          <div className="pricing-unlock-banner fade-up" style={{ background:'linear-gradient(135deg,rgba(212,168,67,0.08) 0%,rgba(196,30,58,0.08) 100%)', border:'1px solid rgba(212,168,67,0.25)', borderRadius:'16px', padding:'2.5rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'2rem', flexWrap:'wrap' }}>
-            <div style={{display:'flex',alignItems:'center',gap:'1.5rem'}}>
-              <div style={{width:'56px',height:'56px',borderRadius:'14px',flexShrink:0,background:'linear-gradient(135deg,var(--gold-dark),var(--gold))',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <div className="pricing-new-layout">
+            {/* Left — unlock card */}
+            <div className="pricing-unlock-card">
+              <div className="pricing-unlock-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                   <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
                 </svg>
               </div>
-              <div>
-                <h3 style={{margin:'0 0 0.35rem',fontSize:'1.2rem',color:'var(--white)'}}>View the Complete Pricelist</h3>
-                <p style={{margin:0,color:'var(--gray)',fontSize:'0.9rem',maxWidth:'480px',lineHeight:'1.6'}}>Create a free account or log in to access full bulk pricing breakdowns for all our products and services.</p>
-              </div>
+              <h3>Full Pricelist</h3>
+              <p>Unlock bulk pricing breakdowns for all our products and services.</p>
+              <button className="btn-primary" onClick={() => { setLoginFromPricing(true); openModal('login'); }}>Login to View</button>
+              <button className="btn-secondary" onClick={() => { setLoginFromPricing(true); openModal('register'); }}>Register Free</button>
             </div>
-            <div style={{display:'flex',gap:'0.75rem',flexWrap:'wrap'}}>
-              <button className="btn-primary"   onClick={() => {setLoginFromPricing(true); openModal('login');}}>Login to View</button>
-              <button className="btn-secondary" onClick={() => {setLoginFromPricing(true); openModal('register');}}>Register Free</button>
+
+            {/* Right — pricing grid */}
+            <div className="pub-pricing-grid">
+              {publicPricing.map((item, i) => (
+                <div className="pub-pricing-card fade-up" key={i}>
+                  <div className="pub-pricing-top">
+                    <h4 className="pub-pricing-name">{item.category}</h4>
+                    <div className="pub-pricing-starts">
+                      <span className="pub-pricing-label">Starts at</span>
+                      <span className="pub-pricing-amount gold-text">{item.startingAt}</span>
+                    </div>
+                  </div>
+                  <p className="pub-pricing-note">{item.note}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -1487,7 +1420,7 @@ const handleForgotResetPassword = async () => {
             <p className="section-subtitle">Have a question, a bulk order, or a custom request? We'd love to hear from you.</p>
           </div>
           <div className="contact-layout">
-            <div className="contact-info fade-up">
+            <div className="contact-info">
               <div className="contact-info-card">
                 <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1536,7 +1469,7 @@ const handleForgotResetPassword = async () => {
                 </a>
               </div>
             </div>
-            <div className="contact-form-wrap fade-up">
+            <div className="contact-form-wrap">
               {contactSent ? (
                 <div className="contact-success">
                   <div className="contact-success-icon" style={{color:'var(--green)',display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -1612,8 +1545,8 @@ const handleForgotResetPassword = async () => {
               <div className="nav-logo-text">PERSONALIZE<span>ME</span><br/>PRINTS</div>
             </a>
             <nav className="footer-nav">
-              <a href="#services">Services</a><a href="#how-it-works">How It Works</a>
-              <a href="#why-us">Why Us</a><a href="#pricing">Pricing</a><a href="#contact">Contact</a>
+              <a href="#services">Products</a><a href="#how-it-works">How It Works</a>
+              <a href="#pricing">Pricing</a><a href="#contact">Contact</a>
             </nav>
             <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:'0.4rem'}}>
               <div className="footer-legal"><a href="#">Privacy Policy</a><a href="#">Terms of Service</a></div>

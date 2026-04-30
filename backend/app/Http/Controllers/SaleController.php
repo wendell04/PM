@@ -44,7 +44,7 @@ class SaleController extends Controller
             }
 
             $limit = $request->filled('limit')
-                ? min(max((int) $request->input('limit'), 1), 500)
+                ? min(max((int) $request->input('limit'), 1), 10000)
                 : 50;
 
             $sales = $query->limit($limit)->get();

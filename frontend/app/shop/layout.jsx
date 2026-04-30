@@ -17,8 +17,7 @@ import {
 } from '@/lib/notificationApi';
 import { getEcho, disconnectEcho } from '@/lib/echo';
 import { useTheme } from '../../contexts/ThemeContext';
-import ChatModule from '@/components/chat/ChatModule';
-import { getConversations } from '@/lib/chatApi';
+import CustomerChatModal from '@/components/chat/CustomerChatModal';
 import './shop.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -801,8 +800,6 @@ export default function ShopLayout({ children }) {
   const notifRef = useRef(null);
   const [logoutBanner, setLogoutBanner] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatUnreadCount, setChatUnreadCount] = useState(0);
 
   // Load user info (public access - no login required to browse)
   useEffect(() => {
@@ -1233,21 +1230,6 @@ export default function ShopLayout({ children }) {
     return () => clearTimeout(t);
   }, [forgotResendCooldown]);
 
-  // Poll chat unread count every 10s when chat popup is closed
-  useEffect(() => {
-    const token = getToken();
-    if (!token || !user || chatOpen) return;
-    const poll = async () => {
-      try {
-        const convs = await getConversations(token);
-        const total = convs.reduce((sum, c) => sum + (c.unread_count || 0), 0);
-        setChatUnreadCount(total);
-      } catch { /* silent */ }
-    };
-    poll();
-    const id = setInterval(poll, 10000);
-    return () => clearInterval(id);
-  }, [user, chatOpen]);
 
   // Poll unread count every 60 seconds (logged-in only)
   // Stops polling after 3 consecutive failures to prevent console spam
@@ -1799,6 +1781,7 @@ export default function ShopLayout({ children }) {
                     )}
                   </div>
 
+
                   {/* Logged in - Show user menu */}
                   <div className="shop-navbar-user">
                     <button
@@ -2191,87 +2174,14 @@ export default function ShopLayout({ children }) {
         @media (max-width: 768px) {
           .shop-fab-cart { display: flex !important; }
         }
-        .chat-floating-btn {
-          position: fixed;
-          bottom: 2rem;
-          right: 2rem;
-          width: 60px;
-          height: 60px;
-          background: var(--gold);
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-          z-index: 1000;
-          transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-          border: none;
-        }
-        .chat-floating-btn:hover { transform: scale(1.1); }
-        .chat-floating-btn:active { transform: scale(0.9); }
-        .chat-popup {
-          position: fixed;
-          bottom: 6.5rem;
-          right: 2rem;
-          width: 550px;
-          height: 600px;
-          max-width: calc(100vw - 4rem);
-          max-height: calc(100vh - 10rem);
-          background: var(--dark2);
-          border: 1px solid var(--border);
-          border-radius: 16px;
-          z-index: 1001;
-          display: flex;
-          flex-direction: column;
-          box-shadow: 0 12px 48px rgba(0,0,0,0.5);
-          overflow: hidden;
-        }
-        .animate-fade-in {
-          animation: fadeIn 0.3s ease-out;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
       `}</style>
 
-      {/* Floating Chat */}
-      {user && (
-        <>
-          <button
-            className="chat-floating-btn"
-            onClick={() => { setChatOpen(o => !o); setChatUnreadCount(0); }}
-            aria-label="Toggle chat"
-          >
-            {chatOpen ? (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--black)" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
-            ) : (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--black)" strokeWidth="2.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-            )}
-            {!chatOpen && chatUnreadCount > 0 && (
-              <span style={{
-                position: 'absolute', top: '-4px', right: '-4px',
-                minWidth: '20px', height: '20px', borderRadius: '10px',
-                background: '#ef4444', color: '#fff',
-                fontSize: '0.65rem', fontWeight: 900,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: '0 5px', lineHeight: 1,
-                border: '2px solid var(--dark)',
-                pointerEvents: 'none',
-              }}>
-                {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
-              </span>
-            )}
-          </button>
-
-          {chatOpen && (
-            <div className="chat-popup animate-fade-in">
-              <ChatModule user={user} token={getToken()} addToCart={globalAddToCart} />
-            </div>
-          )}
-        </>
-      )}
+      {/* Floating chat widget */}
+      <CustomerChatModal
+        user={user}
+        token={getToken()}
+        addToCart={globalAddToCart}
+      />
 
     </>
   );
