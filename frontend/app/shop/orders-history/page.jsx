@@ -12,7 +12,7 @@ import { useCart } from '@/app/shop/layout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-const TABS = ['All', 'Pending', 'In Production', 'For Delivery', 'Delivered', 'Cancelled'];
+const TABS = ['All', 'Pending', 'Processing', 'In Production', 'For Delivery', 'Delivered', 'Cancelled'];
 
 const TRACK_STEPS = [
   {
@@ -312,6 +312,15 @@ export default function OrdersHistoryPage() {
   const [reuploadError, setReuploadError]     = useState(null);
   const [reuploadSuccess, setReuploadSuccess] = useState(false);
 
+  // Admin design draft review
+  const [approveDesignLoading, setApproveDesignLoading] = useState(false);
+  const [approveDesignError, setApproveDesignError]     = useState(null);
+  const [showRevisionForm, setShowRevisionForm]         = useState(false);
+  const [revisionNotes, setRevisionNotes]               = useState('');
+  const [revisionLoading, setRevisionLoading]           = useState(false);
+  const [revisionError, setRevisionError]               = useState(null);
+  const [revisionSuccess, setRevisionSuccess]           = useState(false);
+
   // Reviews
   const [existingReview, setExistingReview]       = useState(null);
   const [reviewCheckLoading, setReviewCheckLoading] = useState(false);
@@ -400,6 +409,13 @@ export default function OrdersHistoryPage() {
     setReuploadNotes('');
     setReuploadError(null);
     setReuploadSuccess(false);
+    setApproveDesignLoading(false);
+    setApproveDesignError(null);
+    setShowRevisionForm(false);
+    setRevisionNotes('');
+    setRevisionLoading(false);
+    setRevisionError(null);
+    setRevisionSuccess(false);
     setReorderMsg('');
     setExistingReview(null);
     setReviewCheckLoading(false);
@@ -560,6 +576,58 @@ export default function OrdersHistoryPage() {
       setReuploadError(err.message || 'Failed to submit design.');
     } finally {
       setReuploadLoading(false);
+    }
+  };
+
+  // ── Approve admin design draft ─────────────────────────
+  const handleApproveAdminDesign = async () => {
+    if (!selectedOrder || !token) return;
+    setApproveDesignLoading(true);
+    setApproveDesignError(null);
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/orders/my/${selectedOrder._id ?? selectedOrder.id}/approve-admin-design`,
+        { method: 'POST', headers: apiHeaders(token) },
+        15000
+      );
+      const data = await res.json();
+      if (!res.ok) { setApproveDesignError(data.message || 'Failed to approve design.'); return; }
+      const oid = selectedOrder._id ?? selectedOrder.id;
+      setSelectedOrder(prev => ({ ...prev, designStatus: 'approved' }));
+      setOrders(prev => prev.map(o => (o._id ?? o.id) === oid ? { ...o, designStatus: 'approved' } : o));
+    } catch (err) {
+      setApproveDesignError(err.message || 'Failed to approve design.');
+    } finally {
+      setApproveDesignLoading(false);
+    }
+  };
+
+  const handleRequestRevision = async () => {
+    if (!selectedOrder || !token) return;
+    setRevisionLoading(true);
+    setRevisionError(null);
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/orders/my/${selectedOrder._id ?? selectedOrder.id}/request-revision`,
+        {
+          method: 'POST',
+          headers: { ...apiHeaders(token), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes: revisionNotes.trim() || null }),
+        },
+        15000
+      );
+      const data = await res.json();
+      if (!res.ok) { setRevisionError(data.message || 'Failed to submit revision request.'); return; }
+      const oid = selectedOrder._id ?? selectedOrder.id;
+      setSelectedOrder(prev => ({ ...prev, designStatus: 'revision_requested' }));
+      setOrders(prev => prev.map(o => (o._id ?? o.id) === oid ? { ...o, designStatus: 'revision_requested' } : o));
+      setRevisionSuccess(true);
+      setShowRevisionForm(false);
+      setRevisionNotes('');
+    } catch (err) {
+      setRevisionError(err.message || 'Failed to submit revision request.');
+    } finally {
+      setRevisionLoading(false);
     }
   };
 
@@ -1033,13 +1101,12 @@ export default function OrdersHistoryPage() {
                                 ? 'var(--red)'
                                 : 'var(--gold)',
                           }}>
-                            {selectedOrder.designStatus === 'pending_review'
-                              ? 'Under Review'
-                              : selectedOrder.designStatus === 'approved'
-                                ? 'Approved'
-                                : selectedOrder.designStatus === 'rejected'
-                                  ? 'Rejected'
-                                  : selectedOrder.designStatus}
+                            {selectedOrder.designStatus === 'pending_review' ? 'Under Review'
+                              : selectedOrder.designStatus === 'approved' ? '✓ Approved'
+                              : selectedOrder.designStatus === 'rejected' ? 'Rejected'
+                              : selectedOrder.designStatus === 'draft_ready' ? 'Draft Ready — Action Needed'
+                              : selectedOrder.designStatus === 'revision_requested' ? 'Revision Requested'
+                              : selectedOrder.designStatus}
                           </span>
                         </div>
                       )}
@@ -1186,6 +1253,75 @@ export default function OrdersHistoryPage() {
                     </div>
                   </div>
 
+                  {/* Admin Design Draft */}
+                  {selectedOrder.adminDesignUrl && (
+                    <div style={{ padding: '14px', background: 'rgba(212,168,67,0.05)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px' }}>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+                        Your Design Draft
+                      </div>
+                      {selectedOrder.designStatus === 'approved' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <span style={{ fontSize: '0.8rem', color: '#4ade80', fontWeight: 600 }}>✓ You approved this design. We'll proceed to production.</span>
+                          <a href={selectedOrder.adminDesignUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--gold)', fontWeight: 600, textDecoration: 'none' }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            View Design
+                          </a>
+                        </div>
+                      ) : selectedOrder.designStatus === 'revision_requested' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--gold)' }}>↩ Revision requested — we'll update the design and notify you.</span>
+                          <a href={selectedOrder.adminDesignUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--gray)', fontWeight: 600, textDecoration: 'none' }}>View current draft</a>
+                          {revisionSuccess && <div style={{ fontSize: '0.75rem', color: '#4ade80' }}>✓ Revision request sent.</div>}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Your design draft is ready. Please review and let us know if it looks good.</div>
+                          <a href={selectedOrder.adminDesignUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '8px', fontSize: '0.8rem', color: 'var(--gold)', fontWeight: 600, textDecoration: 'none' }}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            View Design Draft
+                          </a>
+                          {approveDesignError && <div style={{ fontSize: '0.75rem', color: 'var(--red)' }}>{approveDesignError}</div>}
+                          {!showRevisionForm ? (
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button
+                                onClick={handleApproveAdminDesign}
+                                disabled={approveDesignLoading}
+                                style={{ flex: 1, padding: '9px 14px', borderRadius: '8px', border: 'none', background: approveDesignLoading ? 'var(--border)' : '#4ade80', color: '#000', fontSize: '0.8rem', fontWeight: 700, cursor: approveDesignLoading ? 'not-allowed' : 'pointer' }}
+                              >
+                                {approveDesignLoading ? 'Approving...' : '✓ Looks Good! Approve'}
+                              </button>
+                              <button
+                                onClick={() => setShowRevisionForm(true)}
+                                style={{ flex: 1, padding: '9px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--gray)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+                              >
+                                ↩ Request Changes
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <textarea
+                                placeholder="Describe what you'd like changed..."
+                                value={revisionNotes}
+                                onChange={e => setRevisionNotes(e.target.value)}
+                                rows={3}
+                                style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.8rem', padding: '8px 12px', resize: 'vertical', outline: 'none' }}
+                              />
+                              {revisionError && <div style={{ fontSize: '0.75rem', color: 'var(--red)' }}>{revisionError}</div>}
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button onClick={handleRequestRevision} disabled={revisionLoading} style={{ flex: 1, padding: '8px 14px', borderRadius: '8px', border: 'none', background: revisionLoading ? 'var(--border)' : 'var(--gold)', color: '#000', fontSize: '0.8rem', fontWeight: 700, cursor: revisionLoading ? 'not-allowed' : 'pointer' }}>
+                                  {revisionLoading ? 'Sending...' : 'Send Revision Request'}
+                                </button>
+                                <button onClick={() => { setShowRevisionForm(false); setRevisionNotes(''); setRevisionError(null); }} style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.8rem', cursor: 'pointer' }}>
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Section 2: Items */}
                   {selectedOrder.items && selectedOrder.items.length > 0 && (
                     <div>
@@ -1259,12 +1395,20 @@ export default function OrdersHistoryPage() {
                           </span>
                         </div>
                       )}
-                      {selectedOrder.shippingFee > 0 && (
+                      {!['Delivered', 'Cancelled', 'Returned'].includes(selectedOrder.orderStatus) && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Shipping</span>
-                          <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>
-                            {formatPeso(selectedOrder.shippingFee)}
-                          </span>
+                          {selectedOrder.shippingFee > 0 ? (
+                            <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee)}</span>
+                          ) : (
+                            <span style={{ fontSize: '0.78rem', color: 'var(--gold)', fontStyle: 'italic' }}>To be confirmed by shop</span>
+                          )}
+                        </div>
+                      )}
+                      {selectedOrder.shippingFee > 0 && ['Delivered', 'Cancelled', 'Returned'].includes(selectedOrder.orderStatus) && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Shipping</span>
+                          <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee)}</span>
                         </div>
                       )}
                       {selectedOrder.discountAmount > 0 && (

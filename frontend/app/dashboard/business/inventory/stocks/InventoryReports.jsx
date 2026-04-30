@@ -123,6 +123,18 @@ function InventoryReports({ materials, stockOuts }) {
     };
   }, [filteredStockOuts, materials]);
 
+  // Per-material adjustment totals from stock-out history (non-sale reductions)
+  const adjMap = useMemo(() => {
+    const map = {};
+    (stockOuts || []).forEach((so) => {
+      if (so.issueType === "manual_sale" || so.issueType === "sale") return;
+      const id = String(so.inventoryId || so.materialId || "");
+      if (!id) return;
+      map[id] = (map[id] || 0) + Math.abs(so.quantity || 0);
+    });
+    return map;
+  }, [stockOuts]);
+
   // Stock Summary Data
   const stockSummary = useMemo(() => {
     const items = (materials || [])
@@ -145,14 +157,14 @@ function InventoryReports({ materials, stockOuts }) {
       })
       .map((m) => {
         const hasChildren = m.hasVariants;
-        let goodStock, damaged, totalStock, avgCost, goodsValue, damageValue;
+        let goodStock, adjusted, totalStock, avgCost, goodsValue, adjustValue;
 
         if (hasChildren) {
           const children = materials.filter((c) => String(c.parentId) === String(m.id ?? m._id));
           const allChildrenBatches = children.flatMap((c) => c.batches || []);
           goodStock = allChildrenBatches.reduce((s, b) => s + (b.remainingQty || 0), 0);
-          damaged = allChildrenBatches.reduce((s, b) => s + (b.damagedQty || 0), 0);
-          totalStock = goodStock + damaged;
+          adjusted = children.reduce((s, c) => s + (adjMap[String(c.id ?? c._id)] || 0), 0);
+          totalStock = goodStock;
           avgCost =
             allChildrenBatches.length > 0
               ? allChildrenBatches.reduce((s, b) => s + (b.unitCost || 0), 0) / allChildrenBatches.length
@@ -160,8 +172,8 @@ function InventoryReports({ materials, stockOuts }) {
         } else {
           const batches = m.batches || [];
           goodStock = batches.reduce((s, b) => s + (b.remainingQty || 0), 0);
-          damaged = batches.reduce((s, b) => s + (b.damagedQty || 0), 0);
-          totalStock = goodStock + damaged;
+          adjusted = adjMap[String(m.id ?? m._id)] || 0;
+          totalStock = goodStock;
           avgCost =
             batches.length > 0
               ? batches.reduce((s, b) => s + (b.unitCost || 0), 0) / batches.length
@@ -169,15 +181,15 @@ function InventoryReports({ materials, stockOuts }) {
         }
 
         goodsValue = goodStock * avgCost;
-        damageValue = damaged * avgCost;
-        return { ...m, goodStock, damaged, totalStock, avgCost, goodsValue, damageValue };
+        adjustValue = adjusted * avgCost;
+        return { ...m, goodStock, adjusted, totalStock, avgCost, goodsValue, adjustValue };
       });
     const totalGood = items.reduce((s, i) => s + i.goodStock, 0);
-    const totalDamaged = items.reduce((s, i) => s + i.damaged, 0);
+    const totalAdjusted = items.reduce((s, i) => s + i.adjusted, 0);
     const totalValue = items.reduce((s, i) => s + i.goodsValue, 0);
-    const totalDamageValue = items.reduce((s, i) => s + i.damageValue, 0);
-    return { items, totalGood, totalDamaged, totalValue, totalDamageValue };
-  }, [materials]);
+    const totalAdjustValue = items.reduce((s, i) => s + i.adjustValue, 0);
+    return { items, totalGood, totalAdjusted, totalValue, totalAdjustValue };
+  }, [materials, adjMap]);
 
   const handlePrint = () => {
     const printContent = printRef.current;
@@ -886,12 +898,12 @@ function InventoryReports({ materials, stockOuts }) {
                   </span>
                 </div>
               </div>
-              <div className="summary-card summary-card-danger">
+              <div className="summary-card">
                 <div className="summary-content">
-                  <span className="summary-value">
-                    {stockSummary.totalDamaged} pcs
+                  <span className="summary-value" style={{ color: stockSummary.totalAdjusted > 0 ? "#ef4444" : "var(--gray)" }}>
+                    {stockSummary.totalAdjusted} pcs
                   </span>
-                  <span className="summary-label">Total Damaged</span>
+                  <span className="summary-label">Total Adjustment</span>
                 </div>
               </div>
               <div
@@ -912,16 +924,16 @@ function InventoryReports({ materials, stockOuts }) {
                   <span className="summary-label">Goods Value</span>
                 </div>
               </div>
-              <div className="summary-card summary-card-danger">
+              <div className="summary-card">
                 <div className="summary-content">
-                  <span className="summary-value" style={{ color: "#ef4444" }}>
+                  <span className="summary-value" style={{ color: stockSummary.totalAdjustValue > 0 ? "#ef4444" : "var(--gray)" }}>
                     ₱
-                    {stockSummary.totalDamageValue.toLocaleString("en-PH", {
+                    {stockSummary.totalAdjustValue.toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
                   </span>
-                  <span className="summary-label">Damage Value</span>
+                  <span className="summary-label">Adjustment Value</span>
                 </div>
               </div>
             </div>
@@ -946,7 +958,7 @@ function InventoryReports({ materials, stockOuts }) {
                   <th style={{ ...thStyle, textAlign: "center" }}>
                     Good Stock
                   </th>
-                  <th style={{ ...thStyle, textAlign: "center" }}>Damaged</th>
+                  <th style={{ ...thStyle, textAlign: "center" }}>Adjustment</th>
                   <th style={{ ...thStyle, textAlign: "center" }}>Total</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>Unit Cost</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>
@@ -1009,10 +1021,10 @@ function InventoryReports({ materials, stockOuts }) {
                         padding: "0.5rem 0.75rem",
                         textAlign: "center",
                         fontWeight: 700,
-                        color: item.damaged > 0 ? "#ef4444" : "#6b7280",
+                        color: item.adjusted > 0 ? "#ef4444" : "#6b7280",
                       }}
                     >
-                      {item.damaged}
+                      {item.adjusted}
                     </td>
                     <td
                       style={{

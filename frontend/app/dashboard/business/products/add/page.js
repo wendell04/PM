@@ -249,6 +249,11 @@ export default function AddProductPage() {
   const [backorderMap, setBackorderMap] = useState({});
   const [isMadeToOrder, setIsMadeToOrder] = useState(false);
   const [isCustomizable, setIsCustomizable] = useState(false);
+  const [moqEnabled, setMoqEnabled] = useState(false);
+  const [minOrderQty, setMinOrderQty] = useState(15);
+  const [designFee, setDesignFee] = useState('');
+  const [requiresDownpayment, setRequiresDownpayment] = useState(false);
+  const [downpaymentPercent, setDownpaymentPercent] = useState('50');
   const [designFormats, setDesignFormats] = useState([]); // [{id, name, url, ext, bomId}]
   const [formatUploading, setFormatUploading] = useState(false);
   const [mediaItems, setMediaItems] = useState([]);
@@ -393,6 +398,11 @@ export default function AddProductPage() {
     setIsPublished(!!ep.isPublished);
     setIsCustomizable(!!ep.isCustom);
     setIsMadeToOrder(!!ep.isMadeToOrder);
+    setMoqEnabled(!!ep.minOrderQty);
+    setMinOrderQty(ep.minOrderQty || 15);
+    setDesignFee(ep.designFee != null ? String(ep.designFee) : '');
+    setRequiresDownpayment(!!ep.requiresDownpayment);
+    setDownpaymentPercent(ep.downpaymentPercent != null ? String(ep.downpaymentPercent) : '50');
     setPriceType(ep.priceType || "fixed");
 
     // Pre-populate prices
@@ -495,9 +505,6 @@ export default function AddProductPage() {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  useEffect(() => {
-    if (allZeroStock) setIsMadeToOrder(true);
-  }, [allZeroStock]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const variantDropdownRef = useRef(null);
   useEffect(() => {
@@ -637,6 +644,10 @@ export default function AddProductPage() {
         isPublished,
         isArchived: false,
         isCustom: isCustomizable,
+        minOrderQty: moqEnabled ? (parseInt(minOrderQty) || 1) : null,
+        requiresDownpayment: requiresDownpayment,
+        downpaymentPercent: requiresDownpayment ? (parseInt(downpaymentPercent) || 50) : null,
+        designFee: isCustomizable && designFee !== '' ? (parseFloat(designFee) || 0) : null,
         variantImageUrls,
         designFormats: isCustomizable ? designFormats : [],
       };
@@ -1203,23 +1214,120 @@ export default function AddProductPage() {
               <Toggle
                 on={isMadeToOrder}
                 onChange={setIsMadeToOrder}
-                disabled={allZeroStock}
                 label="Made to Order"
-                hint={allZeroStock
-                  ? "No stock available — automatically set to made to order."
-                  : isMadeToOrder
-                    ? "Publish with 0 stock — fulfill on demand."
+                hint={isMadeToOrder
+                  ? "Publish with 0 stock — fulfill on demand."
+                  : allZeroStock
+                    ? "No stock — product will appear as Out of Stock."
                     : "Stock capped to what you can currently produce."}
               />
               <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
               <Toggle
                 on={isCustomizable}
-                onChange={setIsCustomizable}
+                onChange={v => { setIsCustomizable(v); if (!v) setDesignFee(''); }}
                 label="Customizable"
                 hint={isCustomizable
                   ? "Customer must upload a design file to order."
                   : "Finished product — no customer design required."}
               />
+              {isCustomizable && (
+                <div style={{ paddingLeft: "0.5rem", display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+                  <label style={{ fontSize: "0.72rem", color: "var(--gray)", fontWeight: 600 }}>
+                    Design Request Fee <span style={{ color: "#f87171" }}>*</span>
+                  </label>
+                  <div style={{ position: "relative", maxWidth: "180px" }}>
+                    <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "var(--gray)", fontSize: "0.875rem", pointerEvents: "none" }}>₱</span>
+                    <input
+                      type="text" inputMode="decimal" placeholder="0.00"
+                      value={designFee}
+                      onChange={e => {
+                        const v = e.target.value.replace(/[^\d.]/g, '');
+                        const n = parseFloat(v);
+                        if (v === '' || v === '.' || (isNaN(n) ? false : n <= 9999)) setDesignFee(v);
+                      }}
+                      onBlur={e => {
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v)) setDesignFee(Math.min(9999, Math.max(0, v)).toFixed(2));
+                        else setDesignFee('');
+                      }}
+                      style={{ ...inputSt, paddingLeft: "1.75rem" }}
+                    />
+                  </div>
+                  <div style={{ fontSize: "0.7rem", color: "var(--gray)", opacity: 0.7 }}>
+                    Added to the order total for layout / design service. Max ₱9,999.
+                  </div>
+                </div>
+              )}
+              <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
+              <Toggle
+                on={moqEnabled}
+                onChange={v => { setMoqEnabled(v); if (!v) setMinOrderQty(15); }}
+                label="Minimum Order Quantity"
+                hint={moqEnabled
+                  ? `Customers must order at least ${minOrderQty || 1} pcs.`
+                  : "No minimum — any quantity allowed."}
+              />
+              {moqEnabled && (
+                <div style={{ paddingLeft: "0.5rem", display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+                  <label style={{ fontSize: "0.72rem", color: "var(--gray)", fontWeight: 600 }}>
+                    Minimum quantity
+                  </label>
+                  <input
+                    type="text" inputMode="numeric" placeholder="15"
+                    value={minOrderQty}
+                    onChange={e => {
+                      const v = e.target.value.replace(/\D/g, '');
+                      const n = parseInt(v);
+                      if (v === '' || (n >= 1 && n <= 9999)) setMinOrderQty(v);
+                    }}
+                    onBlur={e => {
+                      const v = parseInt(e.target.value);
+                      if (!isNaN(v)) setMinOrderQty(Math.min(9999, Math.max(1, v)));
+                      else setMinOrderQty(15);
+                    }}
+                    style={{ ...inputSt, maxWidth: "120px" }}
+                  />
+                </div>
+              )}
+              <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
+              <Toggle
+                on={requiresDownpayment}
+                onChange={v => { setRequiresDownpayment(v); if (!v) setDownpaymentPercent('50'); }}
+                label="Require Downpayment"
+                hint={requiresDownpayment
+                  ? `Any order containing this product requires ${downpaymentPercent || 50}% upfront.`
+                  : "No downpayment — customers pay in full at checkout."}
+              />
+              {requiresDownpayment && (
+                <div style={{ paddingLeft: "0.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+                    <label style={{ fontSize: "0.72rem", color: "var(--gray)", fontWeight: 600 }}>
+                      Downpayment %
+                    </label>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <input
+                        type="text" inputMode="numeric" placeholder="50"
+                        value={downpaymentPercent}
+                        onChange={e => {
+                          const v = e.target.value.replace(/\D/g, '');
+                          const n = parseInt(v);
+                          if (v === '' || (n >= 1 && n <= 100)) setDownpaymentPercent(v);
+                        }}
+                        onBlur={e => {
+                          const v = parseInt(e.target.value);
+                          if (!isNaN(v)) setDownpaymentPercent(String(Math.min(100, Math.max(1, v))));
+                          else setDownpaymentPercent('50');
+                        }}
+                        style={{ ...inputSt, maxWidth: "80px" }}
+                      />
+                      <span style={{ fontSize: "0.875rem", color: "var(--gray)" }}>%</span>
+                    </div>
+                    <div style={{ fontSize: "0.7rem", color: "var(--gray)", opacity: 0.7 }}>
+                      If this product is in the cart, the entire order total requires this % upfront. Balance collected before fulfillment.
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>}
 
@@ -1235,7 +1343,7 @@ export default function AddProductPage() {
               {designFormats.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1rem" }}>
                   {designFormats.map((fmt) => {
-                    const variantLabel = fmt.bomId ? (selectedBoms.find(s => s.bom.id === fmt.bomId)?.label || fmt.bomId) : "All Variants";
+                    const variantLabel = fmt.bomId ? (selectedBoms.find(s => String(s.bom.id) === String(fmt.bomId))?.label || selectedBoms.find(s => String(s.bom.id) === String(fmt.bomId))?.bom?.productName || fmt.bomId) : "All Variants";
                     const extColor = { ai: "#FF7C1E", psd: "#31A8FF", pdf: "#ef4444", svg: "#22c55e", png: "#a78bfa" }[fmt.ext] || "var(--gray)";
                     return (
                       <div key={fmt.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", borderRadius: "8px", padding: "0.5rem 0.75rem" }}>
@@ -1262,7 +1370,7 @@ export default function AddProductPage() {
                       <button type="button" onClick={() => setFmtVariantOpen(o => !o)}
                         style={{ ...inputSt, display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", fontSize: "0.82rem", cursor: "pointer", textAlign: "left" }}>
                         <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {fmtVariantId ? (selectedBoms.find(s => s.bom.id === fmtVariantId)?.label || fmtVariantId) : "All Variants"}
+                          {fmtVariantId ? (selectedBoms.find(s => String(s.bom.id) === String(fmtVariantId))?.label || selectedBoms.find(s => String(s.bom.id) === String(fmtVariantId))?.bom?.productName || fmtVariantId) : "All Variants"}
                         </span>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: "var(--gray)", transform: fmtVariantOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}><path d="M6 9l6 6 6-6"/></svg>
                       </button>

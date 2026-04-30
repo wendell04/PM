@@ -22,6 +22,7 @@ use App\Models\Voucher;
 use App\Models\FlashSale;
 use App\Models\BillOfMaterial;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use App\Models\StockHistory;
 use App\Services\PriceResolver;
 
@@ -129,15 +130,21 @@ class OrderController extends Controller
                     $pendingFlashSaleIncrements[] = [$appliedFlashSale, $qty];
                 }
 
-                $thumb = $product->thumbnail ?? null;
+                $variantId         = $item['variantId'] ?? null;
+                $variantImageUrls  = (array) ($product->variantImageUrls ?? []);
+                $rawThumb          = ($variantId && !empty($variantImageUrls[$variantId]))
+                    ? $variantImageUrls[$variantId]
+                    : ($product->thumbnail ?? null);
+                $thumb = $rawThumb
+                    ? (str_starts_with($rawThumb, 'http') ? $rawThumb : asset('storage/' . $rawThumb))
+                    : null;
+
                 $orderItems[] = [
                     'productId'   => (string) $product->_id,
                     'productName' => $product->name,
                     'isCustom'    => (bool) $product->isCustom,
-                    'thumbnail'   => $thumb
-                        ? (str_starts_with($thumb, 'http') ? $thumb : asset('storage/' . $thumb))
-                        : null,
-                    'variantId'   => $item['variantId']   ?? null,
+                    'thumbnail'   => $thumb,
+                    'variantId'   => $variantId,
                     'variantName' => $item['variantName'] ?? null,
                     'qty'         => $qty,
                     'unitPrice'   => $unitPrice,
@@ -546,64 +553,29 @@ class OrderController extends Controller
             }
 
             $validated = $request->validate([
-                'orderStatus'   => 'sometimes|in:Pending,In Production,For Delivery,Delivered,Returned,Cancelled',
+                'orderStatus'   => 'sometimes|in:Pending,Processing,In Production,For Delivery,Delivered,Returned,Cancelled',
                 'paymentStatus' => 'sometimes|in:unpaid,paid',
                 'notes'         => 'nullable|string|max:1000',
+                'shippingFee'   => 'sometimes|numeric|min:0|max:50000',
             ]);
 
             $oldStatus = $order->orderStatus;
 
-            // Enforce valid status transitions when orderStatus is being changed
-            if (isset($validated['orderStatus']) && $validated['orderStatus'] !== $oldStatus) {
-                // Ready-made orders (no custom items, no design file) skip In Production
-                $hasCustomItems = !empty(array_filter(
-                    $order->items ?? [],
-                    fn($i) => ($i['isCustom'] ?? false) === true
-                )) || !empty($order->designFilePath);
-
-                $allowedTransitions = [
-                    'Pending'       => $hasCustomItems
-                        ? ['In Production', 'Cancelled']
-                        : ['For Delivery', 'In Production', 'Cancelled'],
-                    'In Production' => ['For Delivery', 'Cancelled'],
-                    'For Delivery'  => ['Delivered', 'Returned'],
-                    'Delivered'     => [],
-                    'Returned'      => [],
-                    'Cancelled'     => [],
-                ];
-
-                $allowed = $allowedTransitions[$oldStatus] ?? [];
-                if (!in_array($validated['orderStatus'], $allowed)) {
-                    return response()->json([
-                        'error' => "Invalid transition: cannot move from '{$oldStatus}' to '{$validated['orderStatus']}'.",
-                    ], 422);
-                }
-
-                // Payment gate
-                if ($validated['orderStatus'] === 'In Production') {
-                    $downPayment    = $order->downPayment ?? 0;
-                    $paymentMethod  = $order->paymentMethod ?? '';
-                    $paymentHistory = $order->paymentHistory ?? [];
-                    $paymentStatus  = $order->paymentStatus ?? '';
-
-                    $hasCodMethod  = $paymentMethod === 'cod';
-                    $hasAnyPayment = $downPayment > 0 || count($paymentHistory) > 0 || $paymentStatus === 'paid';
-
-                    if (!$hasCodMethod && !$hasAnyPayment) {
-                        return response()->json([
-                            'error' => 'A downpayment is required before moving this order to production. Please collect at least a partial payment first.',
-                        ], 422);
-                    }
-                }
-
-                // Courier gate — optional, just store if provided
-                if ($validated['orderStatus'] === 'For Delivery') {
-                    $order->courierName    = $request->input('courierName') ?: null;
-                    $order->trackingNumber = $request->input('trackingNumber') ?: null;
-                }
+            // Store courier info when moving to For Delivery
+            if (isset($validated['orderStatus']) && $validated['orderStatus'] === 'For Delivery') {
+                $order->courierName    = $request->input('courierName') ?: null;
+                $order->trackingNumber = $request->input('trackingNumber') ?: null;
             }
 
             $order->update($validated);
+
+            // When shipping fee is updated, derive subtotal from existing data and recalculate total
+            if (isset($validated['shippingFee'])) {
+                $prevShipping = (float) ($order->getOriginal('shippingFee') ?? $order->shippingFee ?? 0);
+                $subtotal = (float) ($order->subtotal ?? ($order->totalAmount - $prevShipping));
+                $order->totalAmount = round($subtotal + (float) $validated['shippingFee'], 2);
+                $order->save();
+            }
 
             // Handle cancellation: cancel linked JobOrder and restore inventory
             if (isset($validated['orderStatus']) && $order->orderStatus === 'Cancelled' && $oldStatus !== 'Cancelled') {
@@ -1803,6 +1775,207 @@ class OrderController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to resubmit design.');
+        }
+    }
+
+    /**
+     * POST /api/orders/my/{id}/approve-admin-design
+     * Customer approves the admin's uploaded design draft.
+     */
+    public function approveAdminDesign(Request $request, $id)
+    {
+        try {
+            $user = $this->getAuthUser($request);
+            if (!$user) return $this->unauthorizedResponse();
+
+            $order = Order::find($id);
+            if (!$order || (string) $order->userId !== (string) $user->_id) {
+                return $this->notFoundResponse('Order');
+            }
+
+            if (!$order->adminDesignUrl) {
+                return $this->errorResponse('No design draft available for this order.', 422);
+            }
+
+            $order->designStatus = 'approved';
+            $order->updatedAt    = now();
+            $order->save();
+
+            try {
+                $admins = User::whereIn('role', ['admin', 'owner'])->get();
+                foreach ($admins as $admin) {
+                    Notification::create([
+                        'user_id'    => (string) $admin->_id,
+                        'type'       => 'design_approved_by_customer',
+                        'title'      => 'Design Approved',
+                        'message'    => 'Customer approved the design for order #' .
+                            strtoupper(substr((string) $order->_id, -8)) . '.',
+                        'is_read'    => false,
+                        'data'       => ['orderId' => (string) $order->_id],
+                        'created_at' => now(),
+                    ]);
+                }
+            } catch (\Exception $notifErr) {
+                Log::warning('approveAdminDesign: notification failed', ['error' => $notifErr->getMessage()]);
+            }
+
+            return $this->successResponse('Design approved. We\'ll proceed to production.', $order);
+
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to approve design.');
+        }
+    }
+
+    /**
+     * POST /api/orders/my/{id}/request-revision
+     * Customer requests a revision on the admin's design draft.
+     */
+    public function requestDesignRevision(Request $request, $id)
+    {
+        try {
+            $user = $this->getAuthUser($request);
+            if (!$user) return $this->unauthorizedResponse();
+
+            $order = Order::find($id);
+            if (!$order || (string) $order->userId !== (string) $user->_id) {
+                return $this->notFoundResponse('Order');
+            }
+
+            if (!$order->adminDesignUrl) {
+                return $this->errorResponse('No design draft available for this order.', 422);
+            }
+
+            $validated = $request->validate([
+                'notes' => 'nullable|string|max:2000',
+            ]);
+
+            $order->designStatus   = 'revision_requested';
+            $order->revisionNotes  = isset($validated['notes'])
+                ? htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                : null;
+            $order->updatedAt      = now();
+            $order->save();
+
+            try {
+                $admins = User::whereIn('role', ['admin', 'owner'])->get();
+                foreach ($admins as $admin) {
+                    Notification::create([
+                        'user_id'    => (string) $admin->_id,
+                        'type'       => 'design_revision_requested',
+                        'title'      => 'Design Revision Requested',
+                        'message'    => 'Customer requested a revision for order #' .
+                            strtoupper(substr((string) $order->_id, -8)) .
+                            ($order->revisionNotes ? ': ' . substr($order->revisionNotes, 0, 100) : '.'),
+                        'is_read'    => false,
+                        'data'       => ['orderId' => (string) $order->_id],
+                        'created_at' => now(),
+                    ]);
+                }
+            } catch (\Exception $notifErr) {
+                Log::warning('requestDesignRevision: notification failed', ['error' => $notifErr->getMessage()]);
+            }
+
+            return $this->successResponse('Revision request sent. We\'ll update the design and notify you.', $order);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to submit revision request.');
+        }
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/upload-design
+     * Admin uploads a design draft for a design-service order.
+     */
+    public function adminUploadDesign(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+                return $this->unauthorizedResponse();
+            }
+
+            $order = Order::find($id);
+            if (!$order) {
+                return $this->notFoundResponse('Order');
+            }
+
+            $request->validate([
+                'design' => 'required|file|max:20480',
+            ]);
+
+            $cloudName    = config('services.cloudinary.cloud_name');
+            $uploadPreset = config('services.cloudinary.upload_preset');
+
+            if (!$cloudName || !$uploadPreset) {
+                return response()->json(['message' => 'Cloudinary configuration missing.'], 500);
+            }
+
+            $file     = $request->file('design');
+            $response = Http::attach(
+                'file',
+                file_get_contents($file->getPathname()),
+                $file->getClientOriginalName()
+            )->post("https://api.cloudinary.com/v1_1/{$cloudName}/auto/upload", [
+                'upload_preset' => $uploadPreset,
+                'folder'        => 'pmp-admin-designs',
+            ]);
+
+            if (!$response->successful()) {
+                Log::warning('adminUploadDesign: Cloudinary error', ['body' => $response->body()]);
+                return response()->json(['message' => 'Failed to upload design to Cloudinary.'], 500);
+            }
+
+            $adminDesignUrl = $response->json()['secure_url'];
+
+            $order->adminDesignUrl = $adminDesignUrl;
+            $order->designStatus   = 'draft_ready';
+            $order->updatedAt      = now();
+            $order->save();
+
+            try {
+                Notification::create([
+                    'user_id'    => (string) $order->userId,
+                    'type'       => 'design_draft_ready',
+                    'title'      => 'Your Design Draft is Ready!',
+                    'message'    => 'Your custom design for order #' .
+                        strtoupper(substr((string) $order->_id, -8)) .
+                        ' is ready for review. Open your order to view it.',
+                    'is_read'    => false,
+                    'data'       => [
+                        'orderId'        => (string) $order->_id,
+                        'designStatus'   => 'draft_ready',
+                        'adminDesignUrl' => $adminDesignUrl,
+                    ],
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $notifErr) {
+                Log::warning('adminUploadDesign: notification failed', ['error' => $notifErr->getMessage()]);
+            }
+
+            try {
+                ActivityLog::create([
+                    'action'           => 'design_draft_uploaded',
+                    'entityType'       => 'order',
+                    'entityId'         => (string) $order->_id,
+                    'description'      => 'Design draft uploaded for order #' .
+                        strtoupper(substr((string) $order->_id, -8)),
+                    'performedBy'      => trim("{$user->firstName} {$user->lastName}"),
+                    'performedByEmail' => $user->email ?? null,
+                    'metadata'         => ['orderId' => (string) $order->_id],
+                    'createdAt'        => now(),
+                ]);
+            } catch (\Exception $logErr) {
+                Log::warning('ActivityLog write failed (adminUploadDesign)', ['error' => $logErr->getMessage()]);
+            }
+
+            return $this->successResponse('Design draft uploaded. Customer has been notified.', $order);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to upload design draft.');
         }
     }
 }

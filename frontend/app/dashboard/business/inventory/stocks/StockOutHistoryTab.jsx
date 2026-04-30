@@ -21,34 +21,16 @@ const thStyle = {
 function IssueTypeBadge({ type }) {
   const ISSUE_TYPES = {
     manual_sale: {
-      label: "Sale",
+      label: "Manual Sale",
       color: "#22c55e",
       bg: "rgba(34,197,94,0.1)",
       border: "rgba(34,197,94,0.2)",
     },
-    damage: {
-      label: "Damage",
-      color: "#ef4444",
-      bg: "rgba(239,68,68,0.1)",
-      border: "rgba(239,68,68,0.2)",
-    },
-    scrap: {
-      label: "Scrap",
-      color: "#f97316",
-      bg: "rgba(249,115,22,0.1)",
-      border: "rgba(249,115,22,0.2)",
-    },
-    production: {
-      label: "Production Use",
-      color: "#8b5cf6",
-      bg: "rgba(139,92,246,0.1)",
-      border: "rgba(139,92,246,0.2)",
-    },
-    lost: {
-      label: "Lost/Missing",
-      color: "#f59e0b",
-      bg: "rgba(245,158,11,0.1)",
-      border: "rgba(245,158,11,0.2)",
+    sale: {
+      label: "Manual Sale",
+      color: "#22c55e",
+      bg: "rgba(34,197,94,0.1)",
+      border: "rgba(34,197,94,0.2)",
     },
     writeoff: {
       label: "Write-Off",
@@ -56,14 +38,14 @@ function IssueTypeBadge({ type }) {
       bg: "rgba(239,68,68,0.1)",
       border: "rgba(239,68,68,0.2)",
     },
-    adjustment: {
-      label: "Adjustment",
-      color: "#9ca3af",
-      bg: "rgba(156,163,175,0.1)",
-      border: "rgba(156,163,175,0.2)",
-    },
   };
-  const cfg = ISSUE_TYPES[type] || ISSUE_TYPES.adjustment;
+  const fallback = {
+    label: "Damaged",
+    color: "#ef4444",
+    bg: "rgba(239,68,68,0.1)",
+    border: "rgba(239,68,68,0.2)",
+  };
+  const cfg = ISSUE_TYPES[type] || fallback;
   return (
     <span
       style={{
@@ -282,12 +264,9 @@ function StockOutHistoryTab({ stockOuts, materials }) {
             onChange={setTypeFilter}
             options={[
               { value: "", label: "All Types" },
-              { value: "manual_sale", label: "Sale" },
-              { value: "damage", label: "Damage" },
-              { value: "scrap", label: "Scrap" },
-              { value: "lost", label: "Lost/Missing" },
+              { value: "manual_sale", label: "Manual Sale" },
+              { value: "damage", label: "Damaged" },
               { value: "writeoff", label: "Write-Off" },
-              { value: "adjustment", label: "Adjustment" },
             ]}
             placeholder="All Types"
             style={{ minWidth: "140px" }}

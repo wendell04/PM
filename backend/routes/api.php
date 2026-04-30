@@ -88,7 +88,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders/my',                            [OrderController::class, 'myOrders']);
     Route::get('/orders/my/{id}',                       [OrderController::class, 'myOrderShow']);
     Route::post('/orders/my/{id}/cancel',               [OrderController::class, 'cancelMyOrder']);
-    Route::post('/orders/my/{id}/reupload-design',      [OrderController::class, 'reuploadDesign']);
+    Route::post('/orders/my/{id}/reupload-design',       [OrderController::class, 'reuploadDesign']);
+    Route::post('/orders/my/{id}/approve-admin-design', [OrderController::class, 'approveAdminDesign']);
+    Route::post('/orders/my/{id}/request-revision',     [OrderController::class, 'requestDesignRevision']);
     Route::post('/orders',                              [OrderController::class, 'store']);
 
     // ─── Reviews (Customer) ───────────────────────────────────────────────────
@@ -219,6 +221,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     // ─── Design Approval ──────────────────────────────────────────────────────
     Route::post('/admin/orders/{id}/approve-design', [OrderController::class, 'approveDesign']);
     Route::post('/admin/orders/{id}/reject-design',  [OrderController::class, 'rejectDesign']);
+    Route::post('/admin/orders/{id}/upload-design',  [OrderController::class, 'adminUploadDesign']);
 
     // ─── Audit Logs ───────────────────────────────────────────────────────────
     Route::get('/admin/audit-logs',              [AuditLogController::class, 'index']);
@@ -327,6 +330,8 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::post('/payment/webhook',     [PaymentController::class, 'webhook']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payment/create-link',              [PaymentController::class, 'createLink']);
+    Route::post('/payment/initiate',                 [PaymentController::class, 'initiatePayment']);
+    Route::post('/payment/verify-intent',            [PaymentController::class, 'verifyIntent']);
     Route::post('/payment/order-request-link',       [PaymentController::class, 'createOrderRequestLink']);
     Route::post('/payment/create-order-pay-link',    [PaymentController::class, 'createOrderPayLink']);
 });

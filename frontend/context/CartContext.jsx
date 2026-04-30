@@ -98,37 +98,29 @@ export function CartProvider({ children }) {
   const addToCart = useCallback(async (product, qty = 1, variantId = null, variantName = null, flashSaleId = null, designData = null) => {
     setIsCartLoading(true);
     try {
+      const resolvedQty = Math.max(1, parseInt(qty) || 1);
       const newItem = {
         lineId: `line_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         productId: product._id || product.id,
         productName: product.name,
         ...(variantId != null ? { variantId: String(variantId) } : {}),
         ...(variantName != null ? { variantName: String(variantName) } : {}),
-        qty: Math.max(1, parseInt(qty) || 1),
+        qty: resolvedQty,
         unitPrice: product.flatPrice || product.price || 0,
-        lineTotal: (product.flatPrice || product.price || 0) * Math.max(1, parseInt(qty) || 1),
+        lineTotal: (product.flatPrice || product.price || 0) * resolvedQty,
+        ...(product.priceTiers?.length ? { priceTiers: product.priceTiers } : {}),
         image: product.thumbnail || product.images?.[0] || null,
         isCustom: product.isCustom ?? false,
+        ...(product.designFee != null ? { designFee: product.designFee } : {}),
+        ...(product.minOrderQty != null ? { minOrderQty: product.minOrderQty } : {}),
+        ...(product.requiresDownpayment ? { requiresDownpayment: true, downpaymentPercent: product.downpaymentPercent ?? 50 } : {}),
         ...(designData?.url ? { designUrl: designData.url } : {}),
         ...(designData?.notes ? { designNotes: designData.notes } : {}),
         ...(flashSaleId != null ? { flashSaleId: String(flashSaleId) } : {}),
       };
 
       let updatedItems = [...cartItems];
-
-      // Custom products always get a new line item — each can have a different design.
-      // Finished goods merge when same product + same variant already in cart.
-      const existingIndex = newItem.isCustom ? -1 : updatedItems.findIndex(
-        item => item.productId === newItem.productId &&
-                (item.variantId || null) === (variantId || null)
-      );
-
-      if (existingIndex !== -1) {
-        updatedItems[existingIndex].qty += newItem.qty;
-        updatedItems[existingIndex].lineTotal = updatedItems[existingIndex].qty * updatedItems[existingIndex].unitPrice;
-      } else {
-        updatedItems.push(newItem);
-      }
+      updatedItems.push(newItem);
 
       await saveCart(updatedItems);
     } catch (error) {
@@ -171,11 +163,31 @@ export function CartProvider({ children }) {
   /**
    * Update item quantity
    */
+  const resolveTierPrice = (priceTiers, qty, variantId) => {
+    if (!priceTiers?.length) return null;
+    const sorted = [...priceTiers].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0));
+    let match = null;
+    for (const t of sorted) {
+      const min = parseInt(t.minQty) || 0;
+      const max = t.maxQty != null && t.maxQty !== '' ? parseInt(t.maxQty) : Infinity;
+      if (qty >= min && qty <= max) { match = t; break; }
+    }
+    if (!match) match = sorted[sorted.length - 1];
+    if (!match) return null;
+    if (variantId && match.prices) {
+      const p = match.prices[String(variantId)];
+      return p != null ? parseFloat(p) : null;
+    }
+    return null;
+  };
+
   const updateQty = useCallback((lineId, newQty) => {
     const updatedItems = cartItems.map(item => {
       if (item.lineId !== lineId) return item;
-      const qty = Math.max(1, parseInt(newQty) || 1);
-      return { ...item, qty, lineTotal: qty * item.unitPrice };
+      const qty = Math.max(item.minOrderQty || 1, parseInt(newQty) || 1);
+      const tierPrice = resolveTierPrice(item.priceTiers, qty, item.variantId);
+      const unitPrice = tierPrice ?? item.unitPrice;
+      return { ...item, qty, unitPrice, lineTotal: qty * unitPrice };
     });
 
     // Optimistic update — reflects immediately in UI

@@ -1739,6 +1739,7 @@ export default function StocksPage() {
           <ActualStockTab
             materials={materials}
             badOrders={badOrders}
+            stockOuts={stockOuts}
             onDeleteZeroStock={handleDeleteZeroStock}
           />
         )}

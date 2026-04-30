@@ -10,6 +10,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 const ORDER_STATUSES = [
   'Pending',
+  'Processing',
   'In Production',
   'For Delivery',
   'Delivered',
@@ -41,6 +42,13 @@ export default function OrderQuickViewModal({
   const [cashReceived, setCashReceived]   = useState('');
   const [codError, setCodError]           = useState(null);
   const [codSuccess, setCodSuccess]       = useState(false);
+  const [shippingFeeEdit, setShippingFeeEdit]   = useState('');
+  const [isSettingShipping, setIsSettingShipping] = useState(false);
+  const [shippingError, setShippingError]       = useState(null);
+  const [shippingSuccess, setShippingSuccess]   = useState(false);
+  const [adminDesignUploading, setAdminDesignUploading] = useState(false);
+  const [adminDesignError, setAdminDesignError]         = useState(null);
+  const [adminDesignSuccess, setAdminDesignSuccess]     = useState(false);
 
   const handleConfirmCOD = async () => {
     const cash = parseFloat(cashReceived);
@@ -93,6 +101,7 @@ export default function OrderQuickViewModal({
       setSelectedStatus(data.order.orderStatus || '');
       setNotesEdit(data.order.notes || '');
       setPaymentEdit(data.order.paymentStatus || 'unpaid');
+      setShippingFeeEdit(data.order.shippingFee != null && data.order.shippingFee > 0 ? String(data.order.shippingFee) : '');
     } catch (err) {
       if (err.message.includes('Unauthorized')) {
         setError('Unauthorized. Please login again.');
@@ -123,6 +132,11 @@ export default function OrderQuickViewModal({
       setNotesEdit('');
       setPaymentEdit('');
       setIsEditingNotes(false);
+      setShippingFeeEdit('');
+      setShippingError(null);
+      setShippingSuccess(false);
+      setAdminDesignError(null);
+      setAdminDesignSuccess(false);
     }
   }, [isOpen]);
 
@@ -232,6 +246,63 @@ export default function OrderQuickViewModal({
     }
   };
 
+  const handleSetShippingFee = async () => {
+    const fee = parseFloat(shippingFeeEdit);
+    if (isNaN(fee) || fee < 0) { setShippingError('Enter a valid shipping fee.'); return; }
+    setShippingError(null);
+    setIsSettingShipping(true);
+    setShippingSuccess(false);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${orderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ shippingFee: fee }),
+      }, 15000);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.message || 'Failed to update shipping fee');
+      }
+      const updated = await res.json();
+      const newTotal = updated.order?.totalAmount ?? updated.totalAmount ?? (order.totalAmount + fee - (order.shippingFee ?? 0));
+      setOrder(prev => prev ? { ...prev, shippingFee: fee, totalAmount: newTotal } : null);
+      setShippingSuccess(true);
+      if (onStatusUpdated) onStatusUpdated();
+    } catch (err) {
+      setShippingError(err.message || 'Failed to update');
+    } finally {
+      setIsSettingShipping(false);
+    }
+  };
+
+  const handleAdminUploadDesign = async (file) => {
+    if (!file || !orderId) return;
+    setAdminDesignUploading(true);
+    setAdminDesignError(null);
+    setAdminDesignSuccess(false);
+    try {
+      const form = new FormData();
+      form.append('design', file);
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${orderId}/upload-design`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      }, 30000);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.message || 'Upload failed');
+      }
+      const data = await res.json();
+      const adminDesignUrl = data.order?.adminDesignUrl ?? data.adminDesignUrl;
+      setOrder(prev => prev ? { ...prev, adminDesignUrl, designStatus: 'draft_ready' } : null);
+      setAdminDesignSuccess(true);
+      if (onStatusUpdated) onStatusUpdated();
+    } catch (err) {
+      setAdminDesignError(err.message || 'Upload failed. Please try again.');
+    } finally {
+      setAdminDesignUploading(false);
+    }
+  };
+
   const handleOverlayClick = (e) => {
     if (e.target === e.currentTarget) {
       onClose();
@@ -271,11 +342,7 @@ export default function OrderQuickViewModal({
     return lines;
   };
 
-  const availableStatuses = order
-    ? ((order.items?.some(i => i.isCustom) || order.designFilePath)
-        ? ORDER_STATUSES
-        : ORDER_STATUSES.filter(s => s !== 'In Production'))
-    : ORDER_STATUSES;
+  const availableStatuses = ORDER_STATUSES;
 
   if (!isOpen) return null;
 
@@ -625,17 +692,59 @@ export default function OrderQuickViewModal({
                         </button>
                       </div>
                     )}
+                    {order.downPayment > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Down Payment Paid:</span>
+                        <span style={{ fontSize: '0.85rem', color: '#60a5fa', fontWeight: 600 }}>
+                          ₱{parseFloat(order.downPayment).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    )}
+                    {order.balance > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Balance Due:</span>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--gold)', fontWeight: 600 }}>
+                          ₱{parseFloat(order.balance).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Down Payment:</span>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-                        ₱{(order.downPayment || 0).toLocaleString()}
+                      <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Order Total:</span>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--white)', fontWeight: 700 }}>
+                        ₱{parseFloat(order.totalAmount ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                       </span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Balance:</span>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--gold)', fontWeight: 600 }}>
-                        ₱{(order.balance || 0).toLocaleString()}
-                      </span>
+
+                    {/* Shipping Fee Setter */}
+                    <div style={{ marginTop: '0.75rem', padding: '0.75rem', borderRadius: '8px', background: 'rgba(212,168,67,0.05)', border: '1px solid rgba(212,168,67,0.15)' }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.5rem' }}>
+                        Shipping Fee (Lalamove / Courier)
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
+                        {order.shippingFee > 0
+                          ? `Current: ₱${parseFloat(order.shippingFee).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+                          : 'Not yet set — book courier and enter actual fee.'}
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={shippingFeeEdit}
+                          onChange={e => { setShippingFeeEdit(e.target.value); setShippingError(null); setShippingSuccess(false); }}
+                          style={{ flex: 1, padding: '0.35rem 0.5rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', fontSize: '0.85rem' }}
+                        />
+                        <button
+                          onClick={handleSetShippingFee}
+                          disabled={isSettingShipping}
+                          style={{ padding: '0.35rem 0.85rem', background: 'var(--gold)', border: 'none', borderRadius: '6px', color: '#000', fontSize: '0.8rem', fontWeight: 700, cursor: isSettingShipping ? 'not-allowed' : 'pointer', opacity: isSettingShipping ? 0.6 : 1 }}
+                        >
+                          {isSettingShipping ? 'Saving...' : 'Set'}
+                        </button>
+                      </div>
+                      {shippingError && <div style={{ fontSize: '0.73rem', color: 'var(--red)', marginTop: '0.3rem' }}>{shippingError}</div>}
+                      {shippingSuccess && <div style={{ fontSize: '0.73rem', color: '#4ade80', marginTop: '0.3rem' }}>✓ Shipping fee updated. Order total recalculated.</div>}
                     </div>
                   </div>
                 </div>
@@ -801,14 +910,27 @@ export default function OrderQuickViewModal({
                               </div>
                             )}
                             {item.customization_note && (
-                              <div
-                                style={{
-                                  fontSize: '0.75rem',
-                                  color: 'var(--gold)',
-                                  fontStyle: 'italic',
-                                }}
-                              >
+                              <div style={{ fontSize: '0.75rem', color: 'var(--gold)', fontStyle: 'italic' }}>
                                 "{item.customization_note}"
+                              </div>
+                            )}
+                            {/* Per-item design file */}
+                            {item.designUrl && (
+                              <a
+                                href={item.designUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontSize: '0.72rem', fontWeight: 600, color: '#60a5fa', textDecoration: 'none' }}
+                              >
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                View Customer Design
+                              </a>
+                            )}
+                            {/* Design service requested */}
+                            {item.designRequested && (
+                              <div style={{ marginTop: '4px', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 7px', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.3)', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700, color: 'var(--gold)' }}>
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                Design Service Requested{item.designFee ? ` (+₱${Number(item.designFee).toLocaleString()})` : ''}
                               </div>
                             )}
                           </div>
@@ -880,6 +1002,54 @@ export default function OrderQuickViewModal({
                   </div>
                 </div>
 
+                {/* Admin Design Service Upload */}
+                {mode === 'admin' && order.items?.some(i => i.designRequested) && (
+                  <div>
+                    <h4 style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.75rem' }}>
+                      Design Service
+                    </h4>
+                    <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(212,168,67,0.05)', border: '1px solid rgba(212,168,67,0.2)' }}>
+                      {order.adminDesignUrl ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#4ade80', padding: '2px 8px', borderRadius: '999px', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.25)' }}>
+                              ✓ Draft Uploaded
+                            </span>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>
+                              {order.designStatus === 'draft_ready' ? '— Awaiting customer review' : order.designStatus === 'approved' ? '— Customer approved' : ''}
+                            </span>
+                          </div>
+                          <a href={order.adminDesignUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none' }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            View Design Draft
+                          </a>
+                          <label style={{ cursor: adminDesignUploading ? 'not-allowed' : 'pointer', display: 'inline-block', marginTop: '0.25rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--gray)', textDecoration: 'underline', cursor: 'inherit' }}>
+                              {adminDesignUploading ? 'Uploading...' : 'Replace draft'}
+                            </span>
+                            <input type="file" accept="image/*,.pdf,.ai,.psd,.svg" style={{ display: 'none' }} disabled={adminDesignUploading} onChange={e => { if (e.target.files?.[0]) handleAdminUploadDesign(e.target.files[0]); e.target.value = ''; }} />
+                          </label>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
+                            Customer requested design service. Upload the design draft when ready.
+                          </div>
+                          <label style={{ cursor: adminDesignUploading ? 'not-allowed' : 'pointer', display: 'inline-block' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '0.4rem 0.875rem', background: adminDesignUploading ? 'var(--border)' : 'var(--gold)', borderRadius: '6px', color: adminDesignUploading ? 'var(--gray)' : '#000', fontSize: '0.8rem', fontWeight: 700, cursor: 'inherit' }}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+                              {adminDesignUploading ? 'Uploading...' : 'Upload Design Draft'}
+                            </div>
+                            <input type="file" accept="image/*,.pdf,.ai,.psd,.svg" style={{ display: 'none' }} disabled={adminDesignUploading} onChange={e => { if (e.target.files?.[0]) handleAdminUploadDesign(e.target.files[0]); e.target.value = ''; }} />
+                          </label>
+                        </div>
+                      )}
+                      {adminDesignError && <div style={{ fontSize: '0.73rem', color: 'var(--red)', marginTop: '0.25rem' }}>{adminDesignError}</div>}
+                      {adminDesignSuccess && <div style={{ fontSize: '0.73rem', color: '#4ade80', marginTop: '0.25rem' }}>✓ Draft uploaded. Customer has been notified.</div>}
+                    </div>
+                  </div>
+                )}
+
                 {/* Design File Section */}
                 {(order.designFilePath || order.designNotes) && (
                   <div>
@@ -926,6 +1096,8 @@ export default function OrderQuickViewModal({
                             ? '✓ Approved'
                             : order.designStatus === 'rejected'
                             ? '✗ Rejected'
+                            : order.designStatus === 'revision_requested'
+                            ? '↩ Revision Requested'
                             : '⏳ Pending Review'}
                         </span>
                       </div>

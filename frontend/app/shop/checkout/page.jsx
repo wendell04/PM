@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
@@ -10,6 +9,46 @@ import '@/app/shop/shop.css';
 import { applyVoucher } from '@/lib/voucherApi';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+function VisaLogo({ width = 38, height = 24 }) {
+  return (
+    <svg width={width} height={height} viewBox="0 0 38 24" xmlns="http://www.w3.org/2000/svg">
+      <rect width="38" height="24" rx="4" fill="#1A1F71"/>
+      <text
+        x="19" y="17"
+        textAnchor="middle"
+        fill="white"
+        fontSize="11"
+        fontWeight="bold"
+        fontStyle="italic"
+        fontFamily="Arial, Helvetica, sans-serif"
+        letterSpacing="0.5"
+      >
+        VISA
+      </text>
+    </svg>
+  );
+}
+
+function MastercardLogo({ width = 38, height = 24 }) {
+  return (
+    <svg width={width} height={height} viewBox="0 0 38 24" xmlns="http://www.w3.org/2000/svg">
+      <rect width="38" height="24" rx="4" fill="#252525"/>
+      <circle cx="14" cy="12" r="7.5" fill="#EB001B"/>
+      <circle cx="24" cy="12" r="7.5" fill="#F79E1B"/>
+      <path d="M19 6.41 A7.5 7.5 0 0 1 19 17.59 A7.5 7.5 0 0 1 19 6.41 Z" fill="#FF5F00"/>
+    </svg>
+  );
+}
+
+function CardLogosBig() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <VisaLogo width={38} height={24} />
+      <MastercardLogo width={38} height={24} />
+    </div>
+  );
+}
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -35,7 +74,13 @@ export default function CheckoutPage() {
   const [designNotes, setDesignNotes] = useState('');
   const [designPreviewUrl, setDesignPreviewUrl] = useState(null);
   const [designFilePreviewUrl, setDesignFilePreviewUrl] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState('cod');
+  const [paymentMethod,    setPaymentMethod]    = useState('cod');
+  const [eWalletPhone,     setEWalletPhone]     = useState('');
+  const [showEWalletPhone, setShowEWalletPhone] = useState(false);
+  const [cardNumber,       setCardNumber]       = useState('');
+  const [cardExpiry,    setCardExpiry]    = useState('');
+  const [cardCvc,       setCardCvc]       = useState('');
+  const [cardName,      setCardName]      = useState('');
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [successModal,       setSuccessModal]       = useState(null); // { orderId, order | null }
   const [failedModal,        setFailedModal]        = useState(false);
@@ -47,6 +92,9 @@ export default function CheckoutPage() {
   const [appliedVoucher, setAppliedVoucher]   = useState(null);
   const [voucherLoading, setVoucherLoading]   = useState(false);
   const [voucherError, setVoucherError]       = useState(null);
+
+  // Pay in full option for downpayment orders
+  const [payFull, setPayFull] = useState(false);
 
   // ── EFFECT: Handle return from PayMongo ──
   useEffect(() => {
@@ -169,12 +217,28 @@ export default function CheckoutPage() {
   // ── Computed ──
   const selectedAddress = addresses.find(a => a.id === selectedAddressId) ?? null;
   const subtotal        = items.reduce((sum, i) => sum + (i.unitPrice * i.qty), 0);
-  // Custom item that doesn't yet have a per-item design uploaded.
-  // Items uploaded on the product page already carry designUrl, so they don't need re-upload.
-  const hasCustomItem = items.some(i => i.isCustom === true && !i.designUrl);
+  // Custom item still needing a design file at checkout (not pre-uploaded and not design-service-requested)
+  const hasCustomItem = items.some(i => i.isCustom === true && !i.designUrl && !i.designRequested);
   const voucherDiscount = appliedVoucher ? appliedVoucher.discountAmount : 0;
   const total           = Math.max(0, subtotal - voucherDiscount);
   const grandTotal      = total; // Delivery is manually arranged — no fixed fee
+
+  // Order-level downpayment: if ANY item requires DP, apply the highest DP% to the full order total
+  const downpaymentPercent = items
+    .filter(i => i.product?.requiresDownpayment)
+    .reduce((max, i) => Math.max(max, i.product?.downpaymentPercent ?? 50), 0);
+  const downpaymentRequired = downpaymentPercent > 0;
+  const amountDue = (downpaymentRequired && !payFull)
+    ? Math.round(grandTotal * downpaymentPercent / 100 * 100) / 100
+    : grandTotal;
+  const remainingBalance = (downpaymentRequired && !payFull) ? Math.round((grandTotal - amountDue) * 100) / 100 : 0;
+
+  // Auto-switch away from COD when downpayment is required
+  useEffect(() => {
+    if (downpaymentRequired && paymentMethod === 'cod') {
+      setPaymentMethod('gcash');
+    }
+  }, [downpaymentRequired, paymentMethod]);
 
   async function handleApplyVoucher() {
     if (!voucherInput.trim()) return;
@@ -221,6 +285,86 @@ export default function CheckoutPage() {
     }
   }
 
+  // ── Card helpers ──
+  const isOnlinePayment = ['gcash', 'paymaya', 'card'].includes(paymentMethod);
+
+  function fmtPHPhone(digits) {
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return digits.slice(0, 3) + ' ' + digits.slice(3);
+    return digits.slice(0, 3) + ' ' + digits.slice(3, 6) + ' ' + digits.slice(6);
+  }
+
+  function fmtCardNumber(v) {
+    return v.replace(/\D/g, '').slice(0, 16).replace(/(.{4})/g, '$1 ').trim();
+  }
+  function fmtExpiry(v) {
+    const d = v.replace(/\D/g, '').slice(0, 4);
+    return d.length >= 3 ? d.slice(0, 2) + '/' + d.slice(2) : d;
+  }
+  function cardBrand(num) {
+    const n = num.replace(/\s/g, '');
+    if (/^4/.test(n)) return 'VISA';
+    if (/^5[1-5]/.test(n) || /^2[2-7]/.test(n)) return 'MC';
+    if (/^3[47]/.test(n)) return 'AMEX';
+    return null;
+  }
+  function luhnCheck(num) {
+    let sum = 0, alt = false;
+    for (let i = num.length - 1; i >= 0; i--) {
+      let n = parseInt(num[i]);
+      if (alt) { n *= 2; if (n > 9) n -= 9; }
+      sum += n;
+      alt = !alt;
+    }
+    return sum % 10 === 0;
+  }
+
+  function validateCardFields() {
+    const num = cardNumber.replace(/\s/g, '');
+    if (num.length < 16) return 'Enter a valid 16-digit card number.';
+    if (!luhnCheck(num)) return 'Card number is invalid. Please check and try again.';
+    const [m, y] = cardExpiry.split('/');
+    if (!m || !y || parseInt(m) < 1 || parseInt(m) > 12 || y.length < 2) return 'Enter a valid expiry date (MM/YY).';
+    if (cardCvc.length < 3) return 'Enter a valid security code (3–4 digits).';
+    if (!cardName.trim()) return 'Enter the name on your card.';
+    return null;
+  }
+  async function tokenizeCard() {
+    const publicKey = process.env.NEXT_PUBLIC_PAYMONGO_PUBLIC_KEY;
+    if (!publicKey || publicKey.includes('REPLACE')) throw new Error('Card payments not configured. Contact support.');
+    const [expMonth, expYear] = cardExpiry.split('/');
+    const res = await fetch('https://api.paymongo.com/v1/payment_methods', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${btoa(publicKey + ':')}`,
+      },
+      body: JSON.stringify({ data: { attributes: {
+        type: 'card',
+        details: {
+          card_number: cardNumber.replace(/\s/g, ''),
+          exp_month: parseInt(expMonth),
+          exp_year: parseInt('20' + expYear),
+          cvc: cardCvc,
+        },
+        billing: {
+          name: cardName.trim() || currentUser?.name || '',
+          email: currentUser?.email || '',
+          phone: '',
+        },
+      }}}),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const detail = data.errors?.[0]?.detail ?? '';
+      if (detail.includes('card_number')) throw new Error('Card number is invalid. Please check and try again.');
+      if (detail.includes('exp_month') || detail.includes('exp_year')) throw new Error('Expiry date is invalid. Use MM/YY format.');
+      if (detail.includes('cvc')) throw new Error('Security code is invalid.');
+      throw new Error('Invalid card details. Please check and try again.');
+    }
+    return data.data.id;
+  }
+
   // ── Place Order ──
   async function handlePlaceOrder() {
     if (!token) return;
@@ -241,10 +385,19 @@ export default function CheckoutPage() {
       return;
     }
 
-    // Minimum ₱100 only applies to online payment (PayMongo requirement — charged amount is grandTotal)
-    if (paymentMethod === 'online' && grandTotal < 100) {
-      setError('Minimum order amount is ₱100.00 for online payment. Please add more items or choose Cash on Delivery.');
+    if (downpaymentRequired && paymentMethod === 'cod') {
+      setError('Cash on Delivery is not available for downpayment orders. Please choose an online payment method.');
       return;
+    }
+
+    if (isOnlinePayment && amountDue < 100) {
+      setError('Minimum payment amount is ₱100.00 for online payment. Please add more items.');
+      return;
+    }
+
+    if (paymentMethod === 'card') {
+      const cardErr = validateCardFields();
+      if (cardErr) { setError(cardErr); return; }
     }
 
     setError(null);
@@ -256,8 +409,10 @@ export default function CheckoutPage() {
         variantId: i.variantId ?? null,
         variantName: i.variantName ?? null,
         qty: Math.max(1, parseInt(i.qty) || 1),
+        unitPrice: i.unitPrice,
         ...(i.designUrl ? { designUrl: i.designUrl } : {}),
         ...(i.designNotes ? { designNotes: i.designNotes } : {}),
+        ...(i.designRequested ? { designRequested: true, designFee: i.designFee ?? null } : {}),
       }));
 
       const deliveryAddress = {
@@ -304,13 +459,9 @@ export default function CheckoutPage() {
       }
 
       if (paymentMethod === 'cod') {
-        // COD path — POST to OrderController::store, no PayMongo
         const res = await fetchWithTimeout(`${API_URL}/api/orders`, {
-          method: 'POST',
-          headers: fetchHeaders,
-          body: fetchBody,
+          method: 'POST', headers: fetchHeaders, body: fetchBody,
         }, 20000);
-
         const data = await res.json();
         if (!res.ok) {
           const fieldErrors = data.errors ? Object.values(data.errors).flat().join(' ') : null;
@@ -322,22 +473,47 @@ export default function CheckoutPage() {
         router.push(`/shop/payment-success?id=${orderId}&method=cod`);
 
       } else {
-        // Online payment path — POST to PaymentController::createLink
-        const res = await fetchWithTimeout(`${API_URL}/api/payment/create-link`, {
-          method: 'POST',
-          headers: fetchHeaders,
-          body: fetchBody,
-        }, 20000);
+        // Custom payment via Payment Intents — bypasses PayMongo hosted checkout
+        let paymentMethodId = null;
+        if (paymentMethod === 'card') {
+          paymentMethodId = await tokenizeCard();
+        }
+
+        const onlineBody = JSON.stringify({
+          items: orderItems,
+          deliveryAddress,
+          design_notes: designNotes || null,
+          paymentType: paymentMethod,
+          paymentMethodId,
+          eWalletPhone: eWalletPhone.trim() ? `+63${eWalletPhone.trim()}` : null,
+          shippingFee: 0,
+          ...(appliedVoucher?.code ? { voucherCode: appliedVoucher.code } : {}),
+          ...(downpaymentRequired && !payFull ? { isDownpayment: true, downpaymentPercent } : {}),
+        });
+        const onlineHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+        const res = await fetchWithTimeout(`${API_URL}/api/payment/initiate`, {
+          method: 'POST', headers: onlineHeaders, body: onlineBody,
+        }, 25000);
 
         const data = await res.json();
         if (!res.ok) {
           const fieldErrors = data.errors ? Object.values(data.errors).flat().join(' ') : null;
-          throw new Error(fieldErrors || data.message || 'Failed to create payment link.');
+          throw new Error(fieldErrors || data.message || 'Failed to initiate payment.');
         }
-        const { checkoutUrl, orderId: pendingOrderId } = data.data ?? data;
-        if (!checkoutUrl) throw new Error('No payment URL returned. Please try again.');
-        if (pendingOrderId) sessionStorage.setItem('pending_payment_order_id', pendingOrderId);
-        window.location.href = checkoutUrl;
+
+        const { orderId, status, redirectUrl } = data.data ?? data;
+
+        if (status === 'succeeded') {
+          sessionStorage.removeItem('checkout_payload');
+          clearCart();
+          router.push(`/shop/payment-success?id=${orderId}&method=${paymentMethod}`);
+        } else if (redirectUrl) {
+          sessionStorage.setItem('pending_payment_order_id', orderId);
+          window.location.href = redirectUrl;
+        } else {
+          throw new Error('No redirect URL returned. Please try again.');
+        }
       }
 
     } catch (err) {
@@ -877,6 +1053,63 @@ export default function CheckoutPage() {
           <span>Total</span>
           <span className="checkout-total-amount">₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
+        {downpaymentRequired && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', padding: '8px 10px', background: 'rgba(212,168,67,0.08)', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.2)' }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gold)' }}>Due Now</span>
+            <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--gold)' }}>₱{amountDue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+        )}
+
+        {downpaymentRequired && (
+          <div style={{
+            marginTop: '0.75rem',
+            padding: '0.75rem 1rem',
+            borderRadius: '10px',
+            background: 'rgba(212,168,67,0.07)',
+            border: '1px solid rgba(212,168,67,0.3)',
+            display: 'flex',
+            gap: '0.625rem',
+            alignItems: 'flex-start',
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '1px' }}>
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gold)', marginBottom: '0.2rem' }}>
+                Downpayment Required
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(212,168,67,0.75)', lineHeight: 1.5 }}>
+                {payFull ? (
+                  <>You&apos;re paying the <strong>full amount of ₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> upfront. No balance on completion.</>
+                ) : (
+                  <>Some items require a downpayment. You&apos;ll pay{' '}
+                  <strong>₱{amountDue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>{' '}
+                  now ({downpaymentPercent}%). The remaining{' '}
+                  <strong>₱{remainingBalance.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>{' '}
+                  is collected on completion. COD is not available.</>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '0.6rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setPayFull(false)}
+                  style={{ padding: '4px 12px', borderRadius: '999px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', border: '1px solid rgba(212,168,67,0.5)', background: !payFull ? 'var(--gold)' : 'transparent', color: !payFull ? '#000' : 'var(--gold)' }}
+                >
+                  Pay {downpaymentPercent}% Now
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPayFull(true)}
+                  style={{ padding: '4px 12px', borderRadius: '999px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', border: '1px solid rgba(212,168,67,0.5)', background: payFull ? 'var(--gold)' : 'transparent', color: payFull ? '#000' : 'var(--gold)' }}
+                >
+                  Pay in Full
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* SECTION 6 — Payment Method */}
@@ -888,64 +1121,314 @@ export default function CheckoutPage() {
           Payment Method
         </div>
 
-        {/* COD Option */}
-        <div
-          onClick={() => setPaymentMethod('cod')}
-          style={{
-            display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
-            padding: '1rem', borderRadius: '10px', cursor: 'pointer',
-            border: `1px solid ${paymentMethod === 'cod' ? 'var(--gold)' : 'rgba(255,255,255,0.07)'}`,
-            background: paymentMethod === 'cod' ? 'rgba(212,168,67,0.06)' : 'var(--dark)',
-            marginBottom: '0.75rem', transition: 'all 0.2s',
-          }}
-        >
-          <div style={{
-            width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0, marginTop: '2px',
-            border: `2px solid ${paymentMethod === 'cod' ? 'var(--gold)' : 'var(--gray)'}`,
-            background: paymentMethod === 'cod' ? 'var(--gold)' : 'transparent',
-            transition: 'all 0.2s',
-          }} />
-          <div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.2rem' }}>
-              Cash on Delivery
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-              Pay the product total upon delivery. Our team will contact you to confirm delivery details and arrange the delivery fee separately.
-            </div>
-          </div>
-        </div>
+        {/* Payment method cards — COD → GCash → Maya → Card */}
+        {([
+          {
+            id: 'cod',
+            label: 'Cash on Delivery',
+            sub: 'Pay when your order arrives. Our team will contact you for details.',
+            accent: 'var(--gold)',
+            accentBg: 'rgba(212,168,67,0.08)',
+            logo: null,
+            icon: (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <rect x="2" y="7" width="20" height="14" rx="2"/>
+                <path d="M16 7V5a2 2 0 0 0-4 0v2"/>
+                <line x1="12" y1="12" x2="12" y2="16"/>
+                <circle cx="12" cy="12" r=".5" fill="currentColor"/>
+              </svg>
+            ),
+          },
+          {
+            id: 'gcash',
+            label: 'GCash',
+            sub: "You'll be redirected to GCash to authorize payment.",
+            accent: '#0066FF',
+            accentBg: 'rgba(0,102,255,0.07)',
+            logo: '/logos/Gcash-Logo-1024x1024.png',
+            icon: null,
+          },
+          {
+            id: 'paymaya',
+            label: 'Maya',
+            sub: "You'll be redirected to Maya to authorize payment.",
+            accent: '#00B14F',
+            accentBg: 'rgba(0,177,79,0.07)',
+            logo: '/logos/maya logo.png',
+            icon: null,
+          },
+          {
+            id: 'card',
+            label: 'Credit / Debit Card',
+            sub: 'Pay securely with Visa or Mastercard.',
+            accent: '#9C7BE8',
+            accentBg: 'rgba(156,123,232,0.07)',
+            logo: '/logos/credit-card.svg',
+            filterImg: true,
+            icon: null,
+          },
+        ].filter(opt => !downpaymentRequired || opt.id !== 'cod')).map(opt => {
+          const isSelected = paymentMethod === opt.id;
+          const isEWallet = opt.id === 'gcash' || opt.id === 'paymaya';
+          const showPanel = isEWallet && isSelected;
+          return (
+            <React.Fragment key={opt.id}>
+              <div
+                onClick={() => { setPaymentMethod(opt.id); setEWalletPhone(''); setShowEWalletPhone(false); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.875rem',
+                  padding: '0.875rem 1rem', borderRadius: '10px', cursor: 'pointer',
+                  border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.07)'}`,
+                  background: isSelected ? opt.accentBg : 'var(--dark)',
+                  marginBottom: showPanel ? '0' : '0.625rem', transition: 'all 0.18s',
+                }}
+              >
+                {/* Logo / icon box */}
+                <div style={{
+                  width: '44px', height: '44px', borderRadius: '10px', flexShrink: 0,
+                  background: opt.logo ? (isSelected ? opt.accentBg : 'rgba(255,255,255,0.05)') : (isSelected ? opt.accentBg : 'rgba(255,255,255,0.04)'),
+                  border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.06)'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: isSelected ? opt.accent : 'var(--gray)',
+                  overflow: 'hidden', transition: 'all 0.18s',
+                }}>
+                  {opt.logo
+                    ? <img
+                        src={opt.logo}
+                        alt={opt.label}
+                        style={{
+                          width: '30px', height: '30px', objectFit: 'contain',
+                          ...(opt.filterImg
+                            ? { filter: 'brightness(0) invert(1)', opacity: isSelected ? 1 : 0.45 }
+                            : { borderRadius: '6px' }),
+                        }}
+                      />
+                    : opt.icon
+                  }
+                </div>
 
-        {/* Online Payment Option */}
-        <div
-          onClick={() => setPaymentMethod('online')}
-          style={{
-            display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
-            padding: '1rem', borderRadius: '10px', cursor: 'pointer',
-            border: `1px solid ${paymentMethod === 'online' ? 'var(--gold)' : 'rgba(255,255,255,0.07)'}`,
-            background: paymentMethod === 'online' ? 'rgba(212,168,67,0.06)' : 'var(--dark)',
-            transition: 'all 0.2s',
-          }}
-        >
-          <div style={{
-            width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0, marginTop: '2px',
-            border: `2px solid ${paymentMethod === 'online' ? 'var(--gold)' : 'var(--gray)'}`,
-            background: paymentMethod === 'online' ? 'var(--gold)' : 'transparent',
-            transition: 'all 0.2s',
-          }} />
-          <div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.2rem' }}>
-              Online Payment
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-              Pay the product total securely via GCash, PayMaya, or Card. Delivery fee will be arranged separately by our team.
-              {grandTotal < 100 && (
-                <span style={{ color: 'var(--red)', display: 'block', marginTop: '0.25rem' }}>
-                  ⚠ Minimum ₱100.00 required for online payment.
-                </span>
+                {/* Label + sub */}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.15rem' }}>
+                    {opt.label}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                    {opt.sub}
+                    {opt.id !== 'cod' && grandTotal < 100 && (
+                      <span style={{ color: 'var(--red)', display: 'block', marginTop: '0.2rem' }}>
+                        ⚠ Minimum ₱100.00 required.
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Radio dot */}
+                <div style={{
+                  width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0,
+                  border: `2px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.2)'}`,
+                  background: isSelected ? opt.accent : 'transparent',
+                  transition: 'all 0.18s',
+                }} />
+              </div>
+
+              {/* Inline e-wallet panel — appears directly below its own card */}
+              {showPanel && (
+                <div style={{
+                  marginTop: '4px', marginBottom: '0.625rem',
+                  padding: '0.875rem 1rem', borderRadius: '10px',
+                  background: opt.id === 'gcash' ? 'rgba(0,102,255,0.04)' : 'rgba(0,177,79,0.04)',
+                  border: `1px solid ${opt.id === 'gcash' ? 'rgba(0,102,255,0.18)' : 'rgba(0,177,79,0.18)'}`,
+                }}>
+                  {!showEWalletPhone ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowEWalletPhone(true)}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                        display: 'flex', alignItems: 'center', gap: '0.4rem',
+                        color: opt.id === 'gcash' ? '#0066FF' : '#00B14F',
+                        fontSize: '0.8rem', fontWeight: 600,
+                      }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>
+                      </svg>
+                      Use a different {opt.id === 'gcash' ? 'GCash' : 'Maya'} number for billing reference
+                    </button>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.625rem' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: opt.id === 'gcash' ? '#0066FF' : '#00B14F', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                          {opt.id === 'gcash' ? 'GCash' : 'Maya'} number
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => { setShowEWalletPhone(false); setEWalletPhone(''); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: '0.75rem', padding: 0 }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <div style={{
+                        display: 'flex', alignItems: 'center',
+                        background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '8px', overflow: 'hidden',
+                      }}
+                        onFocusCapture={e => { e.currentTarget.style.borderColor = opt.id === 'gcash' ? '#0066FF' : '#00B14F'; }}
+                        onBlurCapture={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                      >
+                        <span style={{
+                          padding: '0.65rem 0.75rem', fontSize: '0.9rem', fontFamily: 'monospace',
+                          color: 'var(--gray)', borderRight: '1px solid rgba(255,255,255,0.08)',
+                          flexShrink: 0, userSelect: 'none',
+                        }}>+63</span>
+                        <input
+                          type="tel"
+                          inputMode="numeric"
+                          placeholder="9XX XXX XXXX"
+                          maxLength={12}
+                          value={fmtPHPhone(eWalletPhone)}
+                          autoFocus
+                          onChange={e => setEWalletPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                          style={{
+                            flex: 1, background: 'transparent', border: 'none',
+                            padding: '0.65rem 0.875rem',
+                            color: 'var(--white)', fontSize: '0.9rem', outline: 'none',
+                            fontFamily: 'monospace',
+                          }}
+                        />
+                      </div>
+                      <p style={{ margin: '0.5rem 0 0', fontSize: '0.7rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                        For billing reference only. Actual authorization happens in the {opt.id === 'gcash' ? 'GCash' : 'Maya'} app.
+                      </p>
+                    </>
+                  )}
+                </div>
               )}
+            </React.Fragment>
+          );
+        })}
+
+        {/* Card form */}
+        {paymentMethod === 'card' && (
+          <div style={{
+            marginTop: '0.25rem', padding: '1.25rem', borderRadius: '12px',
+            background: 'rgba(156,123,232,0.05)', border: '1px solid rgba(156,123,232,0.2)',
+          }}>
+            {/* Header with card logos */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'rgba(156,123,232,0.9)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                Card Details
+              </span>
+              <CardLogosBig />
+            </div>
+
+            {/* Card number */}
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem', letterSpacing: '0.03em' }}>
+                Card number
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text" inputMode="numeric" placeholder="1234 1234 1234 1234"
+                  value={cardNumber}
+                  onChange={e => setCardNumber(fmtCardNumber(e.target.value))}
+                  style={{
+                    width: '100%', background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '8px', padding: '0.72rem 2.75rem 0.72rem 0.875rem',
+                    color: 'var(--white)', fontSize: '1rem', outline: 'none', boxSizing: 'border-box',
+                    fontFamily: 'monospace', letterSpacing: '0.08em',
+                  }}
+                  onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
+                  onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                />
+                {cardBrand(cardNumber) && (
+                  <span style={{
+                    position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)',
+                    fontSize: '0.6rem', fontWeight: 900, color: '#9C7BE8', letterSpacing: '0.04em',
+                    background: 'rgba(156,123,232,0.12)', padding: '2px 6px', borderRadius: '4px',
+                  }}>
+                    {cardBrand(cardNumber)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Expiry + CVC */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem', letterSpacing: '0.03em' }}>
+                  Expiration date
+                </label>
+                <input
+                  type="text" inputMode="numeric" placeholder="MM / YY"
+                  value={cardExpiry}
+                  onChange={e => setCardExpiry(fmtExpiry(e.target.value))}
+                  style={{
+                    width: '100%', background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '8px', padding: '0.72rem 0.875rem',
+                    color: 'var(--white)', fontSize: '0.95rem', outline: 'none',
+                    fontFamily: 'monospace', boxSizing: 'border-box',
+                  }}
+                  onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
+                  onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem', letterSpacing: '0.03em' }}>
+                  Security code
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text" inputMode="numeric" placeholder="CVC"
+                    maxLength={4} value={cardCvc}
+                    onChange={e => setCardCvc(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    style={{
+                      width: '100%', background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: '8px', padding: '0.72rem 2.25rem 0.72rem 0.875rem',
+                      color: 'var(--white)', fontSize: '0.95rem', outline: 'none',
+                      fontFamily: 'monospace', boxSizing: 'border-box',
+                    }}
+                    onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
+                    onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                  />
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5"
+                    style={{ position: 'absolute', right: '0.625rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                    <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            {/* Cardholder name */}
+            <div style={{ marginBottom: '0.875rem' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem', letterSpacing: '0.03em' }}>
+                Name on card
+              </label>
+              <input
+                type="text" placeholder="Full name as on card"
+                value={cardName}
+                onChange={e => setCardName(e.target.value)}
+                style={{
+                  width: '100%', background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '8px', padding: '0.72rem 0.875rem',
+                  color: 'var(--white)', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box',
+                }}
+                onFocus={e => { e.target.style.borderColor = '#9C7BE8'; }}
+                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(156,123,232,0.7)" strokeWidth="2">
+                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+              <span style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>
+                Card details encrypted and sent directly to PayMongo — never stored on our servers.
+              </span>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* SECTION 7 — Place Order Button */}
@@ -960,7 +1443,7 @@ export default function CheckoutPage() {
 
       <button
         onClick={handlePlaceOrder}
-        disabled={placing || !selectedAddress || items.length === 0 || (paymentMethod === 'online' && grandTotal < 100)}
+        disabled={placing || !selectedAddress || items.length === 0 || (isOnlinePayment && grandTotal < 100)}
         className="checkout-place-btn"
       >
         {placing ? (
@@ -968,7 +1451,7 @@ export default function CheckoutPage() {
             <svg className="checkout-spinner-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" strokeOpacity="1"/>
             </svg>
-            Placing Order...
+            {paymentMethod === 'card' ? 'Processing...' : 'Placing Order...'}
           </>
         ) : (
           <>
@@ -977,15 +1460,19 @@ export default function CheckoutPage() {
               <line x1="3" y1="6" x2="21" y2="6"/>
               <path d="M16 10a4 4 0 0 1-8 0"/>
             </svg>
-            Place Order
+            {paymentMethod === 'cod' ? 'Place Order' : paymentMethod === 'gcash' ? 'Pay with GCash' : paymentMethod === 'paymaya' ? 'Pay with Maya' : 'Pay with Card'}
           </>
         )}
       </button>
 
       <p className="checkout-disclaimer">
         {paymentMethod === 'cod'
-          ? 'By placing this order, you agree to our terms. You will pay the product total upon delivery. Delivery fee will be billed separately.'
-          : 'By placing this order, you agree to our terms. You will be redirected to pay the product total. Delivery fee will be billed separately.'}
+          ? 'By placing this order, you agree to our terms. You will pay upon delivery. Delivery fee is billed separately.'
+          : paymentMethod === 'gcash'
+            ? 'By placing this order, you agree to our terms. You\'ll be redirected to GCash to complete payment.'
+            : paymentMethod === 'paymaya'
+              ? 'By placing this order, you agree to our terms. You\'ll be redirected to Maya to complete payment.'
+              : 'By placing this order, you agree to our terms. Your card details are processed securely by PayMongo.'}
       </p>
 
       {/* ADDRESS PICKER MODAL */}

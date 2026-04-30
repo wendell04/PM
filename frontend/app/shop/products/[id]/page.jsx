@@ -29,6 +29,7 @@ export default function ProductDetailPage() {
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [showTiers, setShowTiers] = useState(false);
   const [showFormats, setShowFormats] = useState(false);
+  const [showReviews, setShowReviews] = useState(false);
 
   // ── Reviews state ─────────────────────────────────
   const [reviews, setReviews]               = useState([]);
@@ -48,8 +49,6 @@ export default function ProductDetailPage() {
   const [reqError, setReqError] = useState('');
   const [reqSuccess, setReqSuccess] = useState(false);
   const [reqType, setReqType] = useState('upload'); // 'upload' | 'request'
-  const [designRequestFee, setDesignRequestFee] = useState(100);
-
 
   const id = params?.id;
 
@@ -65,6 +64,10 @@ export default function ProductDetailPage() {
         const data = await res.json();
         const p = data.data ?? data;
         setProduct(p);
+
+        const moq = p.minOrderQty || 1;
+        setQuantity(moq);
+        setQuantityInput(String(moq));
 
         if (p.variantGroups?.length) {
           const initial = {};
@@ -83,17 +86,6 @@ export default function ProductDetailPage() {
     };
     fetchProduct();
   }, [id]);
-
-  // Fetch design request fee from public settings
-  useEffect(() => {
-    fetchWithTimeout(`${API_URL}/api/public/settings`, {}, 10000)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        const fee = data?.data?.designRequestFee ?? data?.designRequestFee;
-        if (fee != null) setDesignRequestFee(Number(fee));
-      })
-      .catch(() => {});
-  }, []);
 
   // Reset review state when product changes
   useEffect(() => {
@@ -309,7 +301,7 @@ export default function ProductDetailPage() {
         designNotes:      reqDesignNotes.trim() || null,
         isCustom:         true,
         designType:       type,
-        designFee:        type === 'request' ? designRequestFee : 0,
+        designFee:        type === 'request' ? (product.designFee ?? 0) : 0,
       });
       setReqSuccess(true);
     } catch (err) {
@@ -353,15 +345,19 @@ export default function ProductDetailPage() {
       const payload = {
         items: [{
           product: {
-            _id:            product._id ?? product.id,
-            name:           product.subCategoryName || product.name,
+            _id:                  product._id ?? product.id,
+            name:                 product.subCategoryName || product.name,
             images: [
               ...(product.thumbnail ? [product.thumbnail] : []),
               ...(product.images || []),
             ].filter(Boolean),
-            stock:          product.stock ?? null,
-            trackInventory: product.trackInventory ?? false,
-            stockStatus:    product.stockStatus ?? null,
+            stock:                product.stock ?? null,
+            trackInventory:       product.trackInventory ?? false,
+            stockStatus:          product.stockStatus ?? null,
+            minOrderQty:          product.minOrderQty ?? null,
+            requiresDownpayment:  product.requiresDownpayment ?? false,
+            downpaymentPercent:   product.downpaymentPercent ?? null,
+            downpaymentMinQty:    product.downpaymentMinQty ?? null,
           },
           variantId:   comboId,
           variantName: resolveVariantName(selectedVariants),
@@ -380,16 +376,19 @@ export default function ProductDetailPage() {
     }
   }
 
+  const effectiveMinQty = product?.minOrderQty || 1;
+
   const effectiveMaxQty = (() => {
     if (!product?.trackInventory || product?.stockStatus === 'upon-order') return 9999;
     const comboId = resolveCombinationId(selectedVariants);
+    if (comboId != null && product?.variantBackorder?.[comboId]) return 9999;
     if (comboId != null && product?.variantStock?.[comboId] != null) {
       return Math.max(Number(product.variantStock[comboId]), 0);
     }
     return Math.max(product?.stock ?? 0, 0);
   })();
 
-  const isOutOfStock = effectiveMaxQty === 0 || product?.stockStatus === 'out-of-stock';
+  const isOutOfStock = effectiveMaxQty === 0 && !product?.isMadeToOrder;
 
   // Computed values
   const totalPrice = product
@@ -628,21 +627,92 @@ export default function ProductDetailPage() {
                 )}
               </div>
             )}
-            {product.priceType === 'tiered' && tiers.length > 0 && (
-              <div>
-                <button
-                  onClick={() => setShowTiers(p => !p)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', padding: '0 0 0.75rem 0', color: 'var(--white)', cursor: 'pointer', textAlign: 'left' }}>
+            {/* Reviews accordion */}
+            <div>
+              <button
+                onClick={() => setShowReviews(p => !p)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', padding: '0 0 0.75rem 0', color: 'var(--white)', cursor: 'pointer', textAlign: 'left' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Reviews</span>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
-                    {showTiers
-                      ? <line x1="5" y1="12" x2="19" y2="12"/>
-                      : <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>}
-                  </svg>
-                </button>
-                
-              </div>
-            )}
+                  {reviewsTotalCount > 0 && (
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#000', background: 'var(--gold)', padding: '1px 7px', borderRadius: '999px' }}>
+                      {reviewsTotalCount}
+                    </span>
+                  )}
+                </div>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
+                  {showReviews
+                    ? <line x1="5" y1="12" x2="19" y2="12"/>
+                    : <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>}
+                </svg>
+              </button>
+              {showReviews && (
+                <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {reviewsAvg !== null && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '2px' }}>
+                        {[1,2,3,4,5].map(s => (
+                          <svg key={s} width="14" height="14" viewBox="0 0 24 24"
+                            fill={s <= Math.round(reviewsAvg) ? 'var(--gold)' : 'none'}
+                            stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                          </svg>
+                        ))}
+                      </div>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--gold)' }}>{reviewsAvg}</span>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>({reviewsTotalCount} {reviewsTotalCount === 1 ? 'review' : 'reviews'})</span>
+                    </div>
+                  )}
+                  {reviews.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {reviews.map((r, i) => (
+                        <div key={i} style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(212,168,67,0.15)', border: '1px solid rgba(212,168,67,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--gold)', flexShrink: 0 }}>
+                              {(r.customerName || 'C').charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--white)' }}>{r.customerName || 'Customer'}</div>
+                              <div style={{ display: 'flex', gap: '2px', marginTop: '1px' }}>
+                                {[1,2,3,4,5].map(s => (
+                                  <svg key={s} width="10" height="10" viewBox="0 0 24 24"
+                                    fill={s <= r.rating ? 'var(--gold)' : 'none'}
+                                    stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                                  </svg>
+                                ))}
+                              </div>
+                            </div>
+                            <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--gray)' }}>
+                              {r.created_at ? new Date(r.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}
+                            </span>
+                          </div>
+                          <p style={{ margin: 0, fontSize: '0.825rem', color: 'var(--gray)', lineHeight: 1.55 }}>{r.comment}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {reviewsLoading && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {[1,2].map(i => (
+                        <div key={i} style={{ height: '70px', background: 'var(--dark2)', borderRadius: '10px', border: '1px solid var(--border)', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                      ))}
+                    </div>
+                  )}
+                  {!reviewsLoading && reviews.length === 0 && reviewsTotalCount === 0 && (
+                    <p style={{ margin: 0, fontSize: '0.825rem', color: 'var(--gray)' }}>No reviews yet.</p>
+                  )}
+                  {!reviewsLoading && reviewsPage < reviewsTotalPages && (
+                    <button
+                      onClick={() => setReviewsPage(p => p + 1)}
+                      style={{ width: '100%', padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark2)', color: 'var(--gray)', fontSize: '0.825rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Load More Reviews
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* RIGHT — Info + Order Form */}
@@ -799,6 +869,7 @@ export default function ProductDetailPage() {
               );
             })()}
 
+
             {/* Variants */}
             {product.variantGroups?.length > 0 && (
               product.variantGroups.map(group => (
@@ -838,27 +909,32 @@ export default function ProductDetailPage() {
 
             {/* Quantity input — hidden when out of stock */}
             {!isOutOfStock && <div>
-              <div style={{ fontSize: '0.8rem',
-                fontWeight: 600, color: 'var(--gray)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                marginBottom: '0.5rem' }}>
-                Quantity
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Quantity
+                </div>
+                {effectiveMinQty > 1 && (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--gold)', fontWeight: 600 }}>
+                    Min. {effectiveMinQty} pcs
+                  </span>
+                )}
               </div>
               <div style={{ display: 'flex',
                 alignItems: 'center', gap: '0.5rem' }}>
                 <button
+                  disabled={quantity <= effectiveMinQty}
                   onClick={() => {
-                    const next = Math.max(1, quantity - 1);
+                    const next = Math.max(effectiveMinQty, quantity - 1);
                     setQuantity(next);
                     setQuantityInput(String(next));
                   }}
                   style={{
                     width: '36px', height: '36px',
-                    borderRadius: '8px', border:
-                      '1px solid var(--border)',
+                    borderRadius: '8px', border: '1px solid var(--border)',
                     background: 'var(--dark2)',
-                    color: 'var(--white)', cursor: 'pointer',
+                    color: quantity <= effectiveMinQty ? 'var(--gray)' : 'var(--white)',
+                    cursor: quantity <= effectiveMinQty ? 'not-allowed' : 'pointer',
+                    opacity: quantity <= effectiveMinQty ? 0.4 : 1,
                     fontSize: '1.25rem', fontWeight: 700,
                     display: 'flex', alignItems: 'center',
                     justifyContent: 'center',
@@ -874,7 +950,7 @@ export default function ProductDetailPage() {
                     setQuantityInput(raw);
                     if (raw === '') return;
                     const v = parseInt(raw, 10);
-                    if (!isNaN(v) && v >= 1) {
+                    if (!isNaN(v) && v >= effectiveMinQty) {
                       const clamped = Math.min(v, effectiveMaxQty);
                       setQuantity(clamped);
                       if (String(clamped) !== raw) setQuantityInput(String(clamped));
@@ -882,7 +958,7 @@ export default function ProductDetailPage() {
                   }}
                   onBlur={() => {
                     const v = parseInt(quantityInput, 10);
-                    const clamped = isNaN(v) || v < 1 ? 1 : Math.min(v, effectiveMaxQty);
+                    const clamped = isNaN(v) || v < effectiveMinQty ? effectiveMinQty : Math.min(v, effectiveMaxQty);
                     setQuantity(clamped);
                     setQuantityInput(String(clamped));
                   }}
@@ -915,6 +991,47 @@ export default function ProductDetailPage() {
                   }}>+</button>
               </div>
             </div>}
+
+            {/* Design format download — filtered to selected variant */}
+            {product.isCustom && product.designFormats?.length > 0 && (() => {
+              const formats = product.designFormats.filter(fmt =>
+                fmt.bomId == null || String(fmt.bomId) === String(activeComboId)
+              );
+              if (!formats.length) return null;
+              return (
+                <div style={{ background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px', padding: '0.75rem 1rem' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
+                    Design Template{formats.length > 1 ? 's' : ''}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {formats.map((fmt, i) => {
+                      const ext = (fmt.ext || fmt.name?.split('.').pop() || '').toUpperCase();
+                      const extColors = { AI: '#f97316', PSD: '#3b82f6', PDF: '#ef4444', SVG: '#22c55e', PNG: '#a855f7', JPG: '#60a5fa', JPEG: '#60a5fa' };
+                      const extColor = extColors[ext] || '#9ca3af';
+                      return (
+                        <div key={fmt.id ?? i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <span style={{ fontSize: '0.58rem', fontWeight: 800, color: '#000', background: extColor, padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', flexShrink: 0 }}>
+                            {ext || 'FILE'}
+                          </span>
+                          <span style={{ flex: 1, fontSize: '0.8rem', color: 'var(--white)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {fmt.name}
+                          </span>
+                          <a href={fmt.url} target="_blank" rel="noopener noreferrer"
+                            style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--gold)', textDecoration: 'none', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                              <polyline points="7 10 12 15 17 10"/>
+                              <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            Download
+                          </a>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Action buttons */}
             {token ? (
@@ -988,7 +1105,7 @@ export default function ProductDetailPage() {
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                         <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                       </svg>
-                      Req. Design {!isOutOfStock && <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>(+₱{designRequestFee})</span>}
+                      Req. Design {!isOutOfStock && product.designFee > 0 && <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>(+₱{product.designFee})</span>}
                     </button>
                   </div>
                 ) : (
@@ -1041,113 +1158,6 @@ export default function ProductDetailPage() {
         </div>
       )}
 
-      {/* ── Customer Reviews ──────────────────────────── */}
-      {(reviewsTotalCount > 0 || reviewsLoading) && (
-        <div style={{ marginTop: '3rem', paddingTop: '2rem', borderTop: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--white)' }}>
-              Customer Reviews
-            </h2>
-            {reviewsAvg !== null && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <div style={{ display: 'flex', gap: '2px' }}>
-                  {[1,2,3,4,5].map(s => (
-                    <svg key={s} width="16" height="16" viewBox="0 0 24 24"
-                      fill={s <= Math.round(reviewsAvg) ? 'var(--gold)' : 'none'}
-                      stroke="var(--gold)" strokeWidth="1.5"
-                      strokeLinecap="round" strokeLinejoin="round"
-                    >
-                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                    </svg>
-                  ))}
-                </div>
-                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--gold)' }}>
-                  {reviewsAvg}
-                </span>
-                <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
-                  ({reviewsTotalCount} {reviewsTotalCount === 1 ? 'review' : 'reviews'})
-                </span>
-              </div>
-            )}
-          </div>
-
-          {reviews.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {reviews.map((r, i) => (
-                <div key={i} style={{
-                  padding: '16px',
-                  background: 'var(--dark2)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '10px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
-                    <div style={{
-                      width: '32px', height: '32px', borderRadius: '50%',
-                      background: 'rgba(212,168,67,0.15)',
-                      border: '1px solid rgba(212,168,67,0.3)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold)',
-                      flexShrink: 0,
-                    }}>
-                      {(r.customerName || 'C').charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--white)' }}>
-                        {r.customerName || 'Customer'}
-                      </div>
-                      <div style={{ display: 'flex', gap: '2px', marginTop: '2px' }}>
-                        {[1,2,3,4,5].map(s => (
-                          <svg key={s} width="12" height="12" viewBox="0 0 24 24"
-                            fill={s <= r.rating ? 'var(--gold)' : 'none'}
-                            stroke="var(--gold)" strokeWidth="1.5"
-                            strokeLinecap="round" strokeLinejoin="round"
-                          >
-                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                          </svg>
-                        ))}
-                      </div>
-                    </div>
-                    <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--gray)' }}>
-                      {r.created_at ? new Date(r.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}
-                    </span>
-                  </div>
-                  <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray)', lineHeight: 1.6 }}>
-                    {r.comment}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {reviewsLoading && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
-              {[1,2].map(i => (
-                <div key={i} style={{
-                  height: '80px', background: 'var(--dark2)', borderRadius: '10px',
-                  border: '1px solid var(--border)', animation: 'pulse 1.5s ease-in-out infinite',
-                }} />
-              ))}
-            </div>
-          )}
-
-          {!reviewsLoading && reviewsPage < reviewsTotalPages && (
-            <button
-              onClick={() => setReviewsPage(p => p + 1)}
-              style={{
-                marginTop: '16px', width: '100%',
-                padding: '10px 20px', borderRadius: '8px',
-                border: '1px solid var(--border)',
-                background: 'var(--dark2)',
-                color: 'var(--gray)', fontSize: '0.875rem',
-                fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              Load More Reviews
-            </button>
-          )}
-        </div>
-      )}
-
       {/* ── Design Formats ────────────────────────────── */}
       {product?.isCustom && product?.designFormats?.length > 0 && (
         <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border)' }}>
@@ -1175,8 +1185,10 @@ export default function ProductDetailPage() {
                 {product.designFormats.map((fmt, i) => {
                   const ext = (fmt.ext || fmt.name?.split('.').pop() || '').toLowerCase();
                   const extColor = { ai: '#f97316', psd: '#3b82f6', pdf: '#ef4444', svg: '#22c55e', png: '#a855f7', jpg: '#60a5fa', jpeg: '#60a5fa' }[ext] || '#9ca3af';
-                  const variantLabel = fmt.bomId == null ? null
-                    : (product.combinations?.find(c => String(c.id) === String(fmt.bomId))?.label ?? null);
+                  const matchedCombo = fmt.bomId == null ? null : product.combinations?.find(c => String(c.id) === String(fmt.bomId));
+                  const variantLabel = matchedCombo
+                    ? (matchedCombo.name || matchedCombo.label || Object.values(matchedCombo.combo || {}).join(' / ') || null)
+                    : null;
                   return (
                     <div key={fmt.id ?? i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px' }}>
                       <span style={{ fontSize: '0.6rem', fontWeight: 800, color: '#000', background: extColor, padding: '2px 7px', borderRadius: '4px', textTransform: 'uppercase', flexShrink: 0, letterSpacing: '0.04em' }}>

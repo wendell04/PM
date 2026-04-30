@@ -26,6 +26,8 @@ class Order extends Model
         'paymongoPaymentId'    => 'string',
         'paymongoReferenceNumber' => 'string',
         'designStatus'             => 'string',
+        'adminDesignUrl'           => 'string',
+        'revisionNotes'            => 'string',
         'createdAt'            => 'datetime',
         'updatedAt'            => 'datetime',
         'orderSource'          => 'string',

@@ -223,8 +223,8 @@ export default function ShopOrdersPage() {
 
         {/* Header */}
         <div style={{ marginBottom: '2rem' }}>
-          <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>Order Requests</h1>
-          <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.9rem' }}>Track your custom print quote requests</p>
+          <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>Design Requests</h1>
+          <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.9rem' }}>Custom print quotes where we'll reach out with pricing</p>
         </div>
 
         {/* Loading */}
@@ -589,7 +589,7 @@ export default function ShopOrdersPage() {
             }}
           >
             <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem', fontWeight: 700, color: 'var(--white)' }}>
-              Cancel Order Request?
+              Cancel Design Request?
             </h3>
             <p style={{ margin: '0 0 20px', fontSize: '0.875rem', color: 'var(--gray)', lineHeight: 1.5 }}>
               Are you sure you want to cancel order request{' '}

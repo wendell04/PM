@@ -28,7 +28,7 @@ function CategoryCombobox({ options, value, onChange, inputStyle, placeholder })
   };
 
   return (
-    <div ref={ref} style={{ position: 'relative', flex: 1 }}>
+    <div ref={ref} style={{ position: 'relative', flex: 2 }}>
       <div style={{ position: 'relative' }}>
         <input
           value={query}
@@ -72,6 +72,46 @@ function CategoryCombobox({ options, value, onChange, inputStyle, placeholder })
               + Use &ldquo;{query.trim()}&rdquo; as new category
             </button>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+function UomSelect({ options, value, onChange, style }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+  const selected = options.find((o) => o.value === value);
+  return (
+    <div ref={ref} style={{ position: 'relative', ...style }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#E5E2E1', padding: '0.625rem 0.75rem', fontSize: '0.85rem', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', outline: 'none' }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected?.label || value}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}>
+          <polyline points={open ? '18 15 12 9 6 15' : '6 9 12 15 18 9'} />
+        </svg>
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 300, background: 'var(--dark2, #1a1a1a)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden', maxHeight: '180px', overflowY: 'auto' }}>
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onMouseDown={() => { onChange(o.value); setOpen(false); }}
+              style={{ display: 'block', width: '100%', padding: '0.55rem 0.75rem', background: o.value === value ? 'rgba(212,168,67,0.1)' : 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.04)', color: o.value === value ? '#D4A843' : '#E5E2E1', fontSize: '0.82rem', textAlign: 'left', cursor: 'pointer', fontWeight: o.value === value ? 600 : 400 }}
+              onMouseEnter={(e) => { if (o.value !== value) e.currentTarget.style.background = 'rgba(212,168,67,0.07)'; }}
+              onMouseLeave={(e) => { if (o.value !== value) e.currentTarget.style.background = 'transparent'; }}
+            >
+              {o.label}
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -345,6 +385,7 @@ function VendorFormModal({ vendor, allVendors, materials, units, onClose, onSave
   const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [itemNameInput, setItemNameInput] = useState('');
+  const [newItemUom, setNewItemUom] = useState('pcs');
   const [errors, setErrors] = useState({});
 
   const linkedMaterials = useMemo(
@@ -388,6 +429,7 @@ function VendorFormModal({ vendor, allVendors, materials, units, onClose, onSave
       setForm({ name: '', contact: [], phones: [], emails: [], address: '', notes: '', itemsSupplied: [] });
     }
     setItemNameInput('');
+    setNewItemUom('pcs');
     setNewContact('');
     setNewPhone('');
     setNewEmail('');
@@ -404,8 +446,9 @@ function VendorFormModal({ vendor, allVendors, materials, units, onClose, onSave
     const trimmed = itemNameInput.trim();
     if (!trimmed) return;
     if ((form.itemsSupplied || []).some((i) => i.name.toLowerCase() === trimmed.toLowerCase())) return;
-    setForm((p) => ({ ...p, itemsSupplied: [...(p.itemsSupplied || []), { name: trimmed, uom: 'pcs' }] }));
+    setForm((p) => ({ ...p, itemsSupplied: [...(p.itemsSupplied || []), { name: trimmed, uom: newItemUom || 'pcs' }] }));
     setItemNameInput('');
+    setNewItemUom('pcs');
   };
 
   const removeItem = (idx) => {
@@ -472,17 +515,17 @@ function VendorFormModal({ vendor, allVendors, materials, units, onClose, onSave
   };
 
   const uomOptions = units && units.length > 0
-    ? units.map((u) => <option key={u.code} value={u.code}>{u.name}</option>)
+    ? units.map((u) => ({ value: u.code, label: u.name }))
     : [
-        <option key="pcs" value="pcs">Pieces</option>,
-        <option key="bottle" value="bottle">Bottle</option>,
-        <option key="liter" value="liter">Liter</option>,
-        <option key="kg" value="kg">Kilogram</option>,
-        <option key="meter" value="meter">Meter</option>,
-        <option key="roll" value="roll">Roll</option>,
-        <option key="box" value="box">Box</option>,
-        <option key="pack" value="pack">Pack</option>,
-        <option key="set" value="set">Set</option>,
+        { value: 'pcs', label: 'Pieces' },
+        { value: 'bottle', label: 'Bottle' },
+        { value: 'liter', label: 'Liter' },
+        { value: 'kg', label: 'Kilogram' },
+        { value: 'meter', label: 'Meter' },
+        { value: 'roll', label: 'Roll' },
+        { value: 'box', label: 'Box' },
+        { value: 'pack', label: 'Pack' },
+        { value: 'set', label: 'Set' },
       ];
 
   return (
@@ -554,6 +597,12 @@ function VendorFormModal({ vendor, allVendors, materials, units, onClose, onSave
                   value={itemNameInput}
                   onChange={setItemNameInput}
                   inputStyle={fInStyle}
+                />
+                <UomSelect
+                  options={uomOptions}
+                  value={newItemUom}
+                  onChange={setNewItemUom}
+                  style={{ flex: '0 0 auto', minWidth: '100px' }}
                 />
                 <button type="button" className="btn-primary" onClick={addItem} style={{ padding: '0 1rem', whiteSpace: 'nowrap', flexShrink: 0 }}>+ Add</button>
               </div>

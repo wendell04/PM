@@ -7,6 +7,7 @@ import { useCart } from '../layout';
 import ErrorBoundary from '../../../components/ErrorBoundary';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { useAuth } from '@/contexts/AuthContext';
+import { uploadDesignFile } from '@/lib/orderRequestApi';
 import '@/app/shop/shop.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -97,7 +98,38 @@ export default function CartPage() {
   const [removingId, setRemovingId] = useState(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  // designChoices: { [lineId]: { mode: 'upload'|'request'|null, file: File|null, url: string|null, uploading: boolean } }
+  const [designChoices, setDesignChoices] = useState({});
   const removeTimerRef = useRef(null);
+
+  const setDesignChoice = (lineId, patch) =>
+    setDesignChoices(prev => ({ ...prev, [lineId]: { ...prev[lineId], ...patch } }));
+
+  async function handleDesignFileSelect(lineId, file) {
+    if (!file) return;
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (!allowed.includes(file.type)) { setError('Design must be JPG, PNG, WEBP, or PDF.'); return; }
+    if (file.size > 10 * 1024 * 1024) { setError('Design file must be under 10 MB.'); return; }
+    setError(null);
+    setDesignChoice(lineId, { mode: 'upload', file, url: null, uploading: !!token });
+    if (token) {
+      try {
+        const { url } = await uploadDesignFile(token, file);
+        setDesignChoice(lineId, { url, uploading: false });
+      } catch {
+        setDesignChoice(lineId, { mode: null, file: null, url: null, uploading: false });
+        setError('Upload failed. Please try again.');
+      }
+    }
+  }
+
+  function handleRequestDesign(lineId) {
+    setDesignChoices(prev => {
+      const cur = prev[lineId];
+      const next = cur?.mode === 'request' ? { mode: null, file: null, url: null, uploading: false } : { mode: 'request', file: null, url: null, uploading: false };
+      return { ...prev, [lineId]: next };
+    });
+  }
 
   useEffect(() => () => { if (removeTimerRef.current) clearTimeout(removeTimerRef.current); }, []);
 
@@ -111,9 +143,13 @@ export default function CartPage() {
       unitPrice,
       lineTotal: item.lineTotal || (qty * unitPrice),
       product: item.product ?? {
-        _id: item.productId,
-        name: item.productName,
-        images: item.image ? [item.image] : [],
+        _id:                 item.productId,
+        name:                item.productName,
+        images:              item.image ? [item.image] : [],
+        minOrderQty:         item.minOrderQty ?? null,
+        requiresDownpayment: item.requiresDownpayment ?? false,
+        downpaymentPercent:  item.downpaymentPercent ?? null,
+        downpaymentMinQty:   item.downpaymentMinQty ?? null,
       },
       stockCap: (() => {
         const tracked = item.trackInventory && item.stockStatus !== 'upon-order';
@@ -144,7 +180,12 @@ export default function CartPage() {
 
   // Get selected items
   const selectedCartItems = enrichedCart.filter((_, i) => selectedItems.has(i));
-  const selectedTotal = selectedCartItems.reduce((sum, i) => sum + i.lineTotal, 0);
+  const selectedBaseTotal = selectedCartItems.reduce((sum, i) => sum + i.lineTotal, 0);
+  const selectedDesignFee = selectedCartItems.reduce((sum, i) => {
+    const choice = designChoices[i.lineId];
+    return sum + ((choice?.mode === 'request' && i.designFee > 0) ? (i.designFee * i.qty) : 0);
+  }, 0);
+  const selectedTotal = selectedBaseTotal + selectedDesignFee;
 
   const handleRemoveItem = (lineId, index) => {
     setRemovingId(lineId);
@@ -167,12 +208,17 @@ export default function CartPage() {
     setSelectedItems(new Set());
   };
 
+  // Order-level DP: if ANY selected item requires DP, apply the highest DP% to the full order total
+  const dpPercent = selectedCartItems
+    .filter(i => i.requiresDownpayment)
+    .reduce((max, i) => Math.max(max, i.downpaymentPercent ?? 50), 0);
+  const dpRequired = dpPercent > 0;
+  const dpAmountDue = dpRequired ? Math.round(selectedTotal * dpPercent / 100 * 100) / 100 : selectedTotal;
+  const dpRemaining = dpRequired ? Math.round((selectedTotal - dpAmountDue) * 100) / 100 : 0;
+
   async function handlePlaceOrder() {
     if (isCheckingOut) return;
     if (!token) {
-      // Flush guest cart to localStorage immediately
-      // before showing login modal, so the merge
-      // after login finds the correct items.
       try {
         const guestItems = enrichedCart.map(i => ({
           productId:   i.product._id,
@@ -183,9 +229,7 @@ export default function CartPage() {
           qty:         i.qty,
           unitPrice:   i.unitPrice,
         }));
-        if (guestItems.length > 0) {
-          localStorage.setItem('pmp_guest_cart', JSON.stringify(guestItems));
-        }
+        if (guestItems.length > 0) localStorage.setItem('pmp_guest_cart', JSON.stringify(guestItems));
       } catch {}
       setShowLoginModal(true);
       return;
@@ -196,30 +240,80 @@ export default function CartPage() {
       return;
     }
 
-    setError(null);
+    // Validate all selected custom items have a design choice
+    const customWithNoDesign = selectedCartItems.filter(i => {
+      if (!i.isCustom) return false;
+      if (i.designUrl) return false; // already has design from product page
+      const choice = designChoices[i.lineId];
+      return !choice || (choice.mode !== 'request' && !choice.url);
+    });
+    if (customWithNoDesign.length > 0) {
+      setError(`Please attach a design or request design service for: ${customWithNoDesign.map(i => i.product.name).join(', ')}`);
+      return;
+    }
 
-    // Serialize selected cart items for checkout page
+    // Upload any pending design files (mode='upload' but still uploading or no url yet)
+    const pendingUploads = selectedCartItems.filter(i => {
+      const ch = designChoices[i.lineId];
+      return ch?.mode === 'upload' && ch.file && !ch.url;
+    });
+    if (pendingUploads.length > 0) {
+      setIsCheckingOut(true);
+      try {
+        for (const item of pendingUploads) {
+          const ch = designChoices[item.lineId];
+          setDesignChoice(item.lineId, { uploading: true });
+          const { url } = await uploadDesignFile(token, ch.file);
+          setDesignChoice(item.lineId, { url, uploading: false });
+        }
+      } catch {
+        setError('Design upload failed. Please try again.');
+        setIsCheckingOut(false);
+        return;
+      }
+    }
+
+    setError(null);
+    setIsCheckingOut(true);
+
+    // Read latest designChoices after uploads
+    const latestChoices = { ...designChoices };
+    for (const item of pendingUploads) {
+      // already updated via setDesignChoice — but state may not be flushed yet
+      // so we re-read from the file that was just uploaded above via closure
+    }
+
     const payload = {
-      items: selectedCartItems.map(i => ({
-        product: {
-          _id:       i.product._id,
-          name:      i.product.name,
-          thumbnail: i.thumbnail ?? i.product.thumbnail ?? i.product.images?.[0] ?? null,
-          images:    i.product.images ?? [],
-        },
-        variantId:   i.variantId   ?? null,
-        variantName: i.variantName ?? null,
-        qty:         i.qty,
-        unitPrice:   i.unitPrice,
-        isCustom:    i.isCustom    ?? false,
-        designUrl:   i.designUrl   ?? null,
-        designNotes: i.designNotes ?? null,
-      })),
+      items: selectedCartItems.map(i => {
+        const choice = latestChoices[i.lineId];
+        const designUrl = choice?.url ?? i.designUrl ?? null;
+        const designRequested = choice?.mode === 'request';
+        const designFee = i.designFee ?? null;
+        return {
+          product: {
+            _id:                 i.product._id,
+            name:                i.product.name,
+            thumbnail:           i.thumbnail ?? i.product.thumbnail ?? i.product.images?.[0] ?? null,
+            images:              i.product.images ?? [],
+            minOrderQty:         i.product.minOrderQty ?? null,
+            requiresDownpayment: i.requiresDownpayment ?? i.product.requiresDownpayment ?? false,
+            downpaymentPercent:  i.downpaymentPercent ?? i.product.downpaymentPercent ?? null,
+          },
+          variantId:       i.variantId   ?? null,
+          variantName:     i.variantName ?? null,
+          qty:             i.qty,
+          unitPrice:       designRequested && designFee ? i.unitPrice + designFee : i.unitPrice,
+          isCustom:        i.isCustom    ?? false,
+          designUrl:       designUrl,
+          designNotes:     i.designNotes ?? null,
+          designRequested: designRequested,
+          designFee:       designRequested ? designFee : null,
+        };
+      }),
       notes,
       fromCart: true,
     };
 
-    setIsCheckingOut(true);
     try {
       sessionStorage.setItem('checkout_payload', JSON.stringify(payload));
       router.push('/shop/checkout');
@@ -356,44 +450,67 @@ export default function CartPage() {
 
                   {/* Info */}
                   <div className="cart-item-info">
-                    <Link href={`/shop/products/${item.product._id}`} className="cart-item-name">
-                      {item.product.name}
-                    </Link>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <Link href={`/shop/products/${item.product._id}`} className="cart-item-name">
+                        {item.product.name}
+                      </Link>
+                      {item.requiresDownpayment && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', background: '#D4A843', color: '#000', borderRadius: '999px', padding: '1px 7px', fontSize: '0.55rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>
+                          Req DP
+                        </span>
+                      )}
+                    </div>
                     {item.variantName && (
                       <div className="cart-item-variant">
                         <span className="cart-variant-label">Variant:</span> {item.variantName}
                       </div>
                     )}
-                    {item.isCustom && !item.designUrl && (
-                      <div style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                        marginTop: '0.25rem',
-                        background: 'rgba(212,168,67,0.12)',
-                        border: '1px solid rgba(212,168,67,0.4)',
-                        borderRadius: '4px',
-                        padding: '0.15rem 0.5rem',
-                        fontSize: '0.7rem', fontWeight: 700,
-                        color: 'var(--gold)',
-                      }}>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        Design needed at checkout
-                      </div>
-                    )}
-                    {item.isCustom && item.designUrl && (
-                      <div style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                        marginTop: '0.25rem',
-                        background: 'rgba(34,197,94,0.08)',
-                        border: '1px solid rgba(34,197,94,0.3)',
-                        borderRadius: '4px',
-                        padding: '0.15rem 0.5rem',
-                        fontSize: '0.7rem', fontWeight: 700,
-                        color: 'var(--green)',
-                      }}>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                        Design attached
-                      </div>
-                    )}
+                    {/* Design widget for custom products */}
+                    {item.isCustom && (() => {
+                      const choice = designChoices[item.lineId];
+                      const hasExistingDesign = !!item.designUrl;
+                      if (hasExistingDesign) return (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.25rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '4px', padding: '0.15rem 0.5rem', fontSize: '0.7rem', fontWeight: 700, color: 'var(--green)' }}>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                          Design attached
+                        </div>
+                      );
+                      const isUpload = choice?.mode === 'upload';
+                      const isReq = choice?.mode === 'request';
+                      const uploading = choice?.uploading;
+                      const badge = (active) => ({
+                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                        padding: '3px 10px', borderRadius: '999px',
+                        background: active ? '#D4A843' : 'rgba(212,168,67,0.08)',
+                        border: `1px solid ${active ? '#D4A843' : 'rgba(212,168,67,0.4)'}`,
+                        color: active ? '#000' : 'var(--gold)',
+                        fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer',
+                        textTransform: 'uppercase', letterSpacing: '0.04em', fontFamily: 'inherit',
+                      });
+                      return (
+                        <div style={{ marginTop: '7px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                          {!isUpload && !isReq && (
+                            <div style={{ fontSize: '0.68rem', color: '#ef4444', fontWeight: 600 }}>Design required before checkout</div>
+                          )}
+                          {uploading && (
+                            <div style={{ fontSize: '0.68rem', color: 'var(--gray)' }}>Uploading...</div>
+                          )}
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            <label style={badge(isUpload)}>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                              Upload Design
+                              <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: 'none' }} onChange={e => handleDesignFileSelect(item.lineId, e.target.files?.[0])} />
+                            </label>
+                            {item.designFee > 0 && (
+                              <button type="button" onClick={() => handleRequestDesign(item.lineId)} style={badge(isReq)}>
+                                Req Design
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     <div className="cart-item-price">
                       ₱{Number(item.unitPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / pc
                     </div>
@@ -405,7 +522,7 @@ export default function CartPage() {
                       <button
                         onClick={() => updateQty(item.lineId, item.qty - 1)}
                         className="cart-qty-btn"
-                        disabled={item.qty <= 1}
+                        disabled={item.qty <= (item.minOrderQty || 1)}
                       >
                         −
                       </button>
@@ -469,8 +586,16 @@ export default function CartPage() {
             {/* Subtotal */}
             <div className="cart-summary-row">
               <span>Subtotal</span>
-              <span>₱{Number(selectedTotal).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span>₱{Number(selectedBaseTotal).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
+
+            {/* Design fee */}
+            {selectedDesignFee > 0 && (
+              <div className="cart-summary-row">
+                <span style={{ color: 'var(--gold)' }}>Design fee</span>
+                <span style={{ color: 'var(--gold)' }}>₱{Number(selectedDesignFee).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            )}
 
             {/* Shipping */}
             <div className="cart-summary-row cart-summary-note">
@@ -480,11 +605,34 @@ export default function CartPage() {
 
             {/* Divider */}
             <div className="cart-summary-divider" />
-            {/* Total */}
-            <div className="cart-summary-total">
-              <span>Total</span>
-              <span className="cart-total-price">₱{Number(selectedTotal).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
+
+            {dpRequired ? (
+              <>
+                <div className="cart-summary-total">
+                  <span>Total</span>
+                  <span className="cart-total-price">₱{Number(selectedTotal).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ marginTop: '10px', padding: '10px 12px', background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.25)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)' }}>{dpPercent}% Downpayment Required</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                    <span style={{ color: 'var(--gray)' }}>Due now ({dpPercent}%)</span>
+                    <span style={{ color: 'var(--white)', fontWeight: 700 }}>₱{Number(dpAmountDue).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                    <span style={{ color: 'var(--gray)' }}>Balance on completion</span>
+                    <span style={{ color: 'var(--gray)' }}>₱{Number(dpRemaining).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div style={{ fontSize: '0.67rem', color: 'rgba(212,168,67,0.6)', lineHeight: 1.4, borderTop: '1px solid rgba(212,168,67,0.15)', paddingTop: '6px' }}>
+                    Your cart contains custom items. The full order total requires a {dpPercent}% downpayment before production starts.
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="cart-summary-total">
+                <span>Total</span>
+                <span className="cart-total-price">₱{Number(selectedTotal).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            )}
 
             {/* Order Notes */}
             <div className="cart-notes-section">

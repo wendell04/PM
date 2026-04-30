@@ -497,7 +497,7 @@ export default function BusinessDashboardLayout({ children }) {
       icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
       children: [
         { name: "All Orders", href: "/dashboard/business/orders" },
-        { name: "Requests", href: "/dashboard/business/order-requests" },
+        { name: "Design Requests", href: "/dashboard/business/order-requests" },
         { name: "Job Orders", href: "/dashboard/business/job-orders" },
       ],
     },
@@ -623,7 +623,7 @@ export default function BusinessDashboardLayout({ children }) {
     const map = {
       "/dashboard/business/dashboardoverview": "Dashboard",
       "/dashboard/business/orders": "Orders",
-      "/dashboard/business/order-requests": "Order Requests",
+      "/dashboard/business/order-requests": "Design Requests",
       "/dashboard/business/job-orders": "Job Orders",
       "/dashboard/business/pos": "Point of Sale",
       "/dashboard/business/inventory/master-data": "Master Data",

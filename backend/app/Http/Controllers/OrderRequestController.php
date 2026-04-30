@@ -496,7 +496,7 @@ class OrderRequestController extends Controller
             'file',
             file_get_contents($validated['design']->getPathname()),
             $validated['design']->getClientOriginalName()
-        )->post("https://api.cloudinary.com/v1_1/{$cloudName}/raw/upload", [
+        )->post("https://api.cloudinary.com/v1_1/{$cloudName}/auto/upload", [
             'upload_preset' => $uploadPreset,
             'folder'        => 'pmp-designs',
         ]);

@@ -44,6 +44,10 @@ function ProductCard({ product, onAddToCart, flashSale }) {
   const [hovered, setHovered] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const hasImage = product.thumbnail || product.images?.length > 0;
+  const { cartItems } = useCart();
+  const cartQty = cartItems
+    .filter(item => item.productId === (product._id || product.id))
+    .reduce((sum, item) => sum + (item.qty || 0), 0);
 
   // Flash sale countdown
   const [timeLeft, setTimeLeft] = useState('');
@@ -102,6 +106,34 @@ function ProductCard({ product, onAddToCart, flashSale }) {
             </div>
           )}
 
+          {/* Stock image badge — top left */}
+          {(() => {
+            const totalStock = (() => {
+              const vs = product.variantStock;
+              if (vs && Object.keys(vs).length > 0) {
+                return Object.values(vs).reduce((s, v) => s + (Number(v) || 0), 0);
+              }
+              return product.stock ?? null;
+            })();
+            const hasAnyBackorder = product.variantBackorder && Object.values(product.variantBackorder).some(v => !!v);
+            const isOOS = !product.isMadeToOrder && !hasAnyBackorder && totalStock === 0;
+            const isOnOrder = product.isMadeToOrder;
+            if (isOnOrder) return (
+              <div className="shop-stock-img-badge on-order">Upon Order</div>
+            );
+            if (isOOS) return (
+              <div className="shop-stock-img-badge out-stock">Out of Stock</div>
+            );
+            if (totalStock != null && totalStock <= 10) return (
+              <div className="shop-stock-img-badge low-stock">Stock: {totalStock}</div>
+            );
+            return (
+              <div className="shop-stock-img-badge in-stock">
+                {totalStock != null ? `Stock: ${totalStock}` : 'In Stock'}
+              </div>
+            );
+          })()}
+
           {/* Customizable badge */}
           {product.isCustom && (
             <div style={{
@@ -144,6 +176,18 @@ function ProductCard({ product, onAddToCart, flashSale }) {
             </div>
           )}
 
+          {/* MOQ hover badge */}
+          {(product.minOrderQty ?? 1) > 1 && (
+            <div className="shop-moq-badge">
+              MOQ {product.minOrderQty} pcs
+            </div>
+          )}
+
+          {/* Cart qty badge */}
+          {cartQty > 0 && (
+            <div className="shop-cart-qty-badge">×{cartQty}</div>
+          )}
+
           {/* Quick Add to Cart Button */}
           <button
             className={`shop-quick-add-btn ${isAdding ? 'adding' : ''}`}
@@ -176,20 +220,6 @@ function ProductCard({ product, onAddToCart, flashSale }) {
             {product.description || ''}
           </p>
 
-          {/* Stock indicator — hidden for Made to Order / upon-order */}
-          {!product.isMadeToOrder && product.stockStatus && product.stockStatus !== 'upon-order' && (
-            <div className="shop-product-stock">
-              {product.stockStatus === 'out-of-stock' ? (
-                <span className="shop-stock-badge out-of-stock">Out of Stock</span>
-              ) : (product.stock > 0 && product.stock <= 10) || product.stockStatus === 'low-stock' ? (
-                <span className="shop-stock-badge low-stock">
-                  Only {product.stock} left!
-                </span>
-              ) : (
-                <span className="shop-stock-badge in-stock">In Stock</span>
-              )}
-            </div>
-          )}
 
           <div className="shop-product-footer">
             {flashSale && flashSale.discountedPrice != null ? (
@@ -265,6 +295,9 @@ export default function ShopPage() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const [flashSales, setFlashSales] = useState({});
+  const [quickAddProduct, setQuickAddProduct] = useState(null);
+  const [quickVariant, setQuickVariant] = useState(null);
+  const [quickQty, setQuickQty] = useState(1);
   const { addToCart } = useCart();
   const router = useRouter();
 
@@ -389,13 +422,16 @@ export default function ShopPage() {
   }
 
   const handleAddToCart = (product) => {
-    const hasVariants = (product.variantGroups?.length > 0) || (product.combinations?.length > 0);
+    const hasVariants = (product.combinations?.length > 0) || (product.variantGroups?.length > 0);
+    const moq = product.minOrderQty || 1;
     if (hasVariants) {
-      router.push(`/shop/products/${product.id ?? product._id}`);
+      setQuickAddProduct(product);
+      setQuickVariant(null);
+      setQuickQty(moq);
       return;
     }
-    addToCart(product, 1, null, null);
-    setToast({ message: `${product.name} added to cart!`, type: 'success' });
+    addToCart(product, moq, null, null);
+    setToast({ message: `${product.subCategoryName || product.name} added to cart!`, type: 'success' });
     setTimeout(() => setToast(null), 2000);
   };
 
@@ -606,6 +642,179 @@ export default function ShopPage() {
           </a>
         </div>
       </div>
+
+      {/* Quick Add Modal */}
+      {quickAddProduct && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+          onClick={() => setQuickAddProduct(null)}
+        >
+          <div
+            style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px', maxWidth: '420px', width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', alignItems: 'flex-start' }}>
+              {(quickAddProduct.thumbnail || quickAddProduct.images?.[0]) && (
+                <img
+                  src={quickAddProduct.thumbnail || quickAddProduct.images[0]}
+                  alt=""
+                  style={{ width: '60px', height: '60px', borderRadius: '10px', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--border)' }}
+                />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--white)', lineHeight: 1.3, marginBottom: '4px' }}>
+                  {quickAddProduct.subCategoryName || quickAddProduct.name}
+                </div>
+                {quickAddProduct.isCustom && (
+                  <span style={{ fontSize: '0.62rem', fontWeight: 700, background: '#D4A843', color: '#000', padding: '2px 7px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Customizable
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setQuickAddProduct(null)}
+                style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '2px', flexShrink: 0, display: 'flex', alignItems: 'center' }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Variant picker */}
+            {quickAddProduct.combinations?.length > 0 && (
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>
+                  Select Variant
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {quickAddProduct.combinations.map(combo => {
+                    const isSelected = quickVariant?.id === combo.id;
+                    const comboLabel = combo.name || combo.label || Object.values(combo.combo || {}).join(' / ') || 'Variant';
+                    const variantQty = quickAddProduct.variantStock?.[combo.id] != null
+                      ? Number(quickAddProduct.variantStock[combo.id])
+                      : null;
+                    const isOOS = quickAddProduct.trackInventory && variantQty != null && variantQty === 0;
+                    const price = (() => {
+                      if (quickAddProduct.priceType === 'fixed') {
+                        const p = quickAddProduct.variantPrices?.[combo.id];
+                        return p ? parseFloat(p) : null;
+                      }
+                      if (quickAddProduct.priceType === 'tiered') {
+                        const tiers = quickAddProduct.priceTiers ?? [];
+                        if (!tiers.length) return null;
+                        const sorted = [...tiers].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0));
+                        let match = sorted[sorted.length - 1];
+                        for (const t of sorted) {
+                          const min = parseInt(t.minQty) || 0;
+                          const max = t.maxQty !== null && t.maxQty !== '' ? parseInt(t.maxQty) : Infinity;
+                          if (quickQty >= min && quickQty <= max) { match = t; break; }
+                        }
+                        const p = match?.prices?.[combo.id];
+                        return p ? parseFloat(p) : null;
+                      }
+                      return null;
+                    })();
+                    return (
+                      <button
+                        key={combo.id}
+                        disabled={isOOS}
+                        onClick={() => !isOOS && setQuickVariant(combo)}
+                        style={{
+                          padding: '7px 14px', borderRadius: '8px',
+                          cursor: isOOS ? 'not-allowed' : 'pointer',
+                          border: `1px solid ${isOOS ? 'rgba(239,68,68,0.3)' : isSelected ? 'var(--gold)' : 'var(--border)'}`,
+                          background: isOOS ? 'rgba(239,68,68,0.06)' : isSelected ? 'rgba(212,168,67,0.12)' : 'var(--dark)',
+                          color: isOOS ? 'rgba(239,68,68,0.6)' : isSelected ? 'var(--gold)' : 'var(--white)',
+                          fontSize: '0.82rem', fontWeight: isSelected ? 700 : 500,
+                          opacity: isOOS ? 0.6 : 1,
+                          transition: 'all 0.15s',
+                          display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px',
+                        }}
+                      >
+                        <span style={{ textDecoration: isOOS ? 'line-through' : 'none' }}>{comboLabel}</span>
+                        {price != null && !isOOS && (
+                          <span style={{ fontSize: '0.7rem', opacity: 0.75 }}>₱{price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                        )}
+                        {isOOS && (
+                          <span style={{ fontSize: '0.65rem', color: 'rgba(239,68,68,0.8)' }}>Out of stock</span>
+                        )}
+                        {!isOOS && variantQty != null && variantQty <= 10 && (
+                          <span style={{ fontSize: '0.65rem', color: '#f59e0b' }}>{variantQty} left</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Quantity */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Quantity
+                </div>
+                {quickAddProduct.minOrderQty > 1 && (
+                  <span style={{ fontSize: '0.7rem', color: 'var(--gold)', fontWeight: 600 }}>
+                    Min. {quickAddProduct.minOrderQty} pcs
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <button
+                  onClick={() => setQuickQty(q => Math.max(quickAddProduct.minOrderQty || 1, q - 1))}
+                  style={{ width: '38px', height: '38px', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px 0 0 8px', cursor: 'pointer', color: 'var(--white)', fontSize: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  min={quickAddProduct.minOrderQty || 1}
+                  value={quickQty}
+                  onChange={e => setQuickQty(Math.max(quickAddProduct.minOrderQty || 1, parseInt(e.target.value) || 1))}
+                  style={{ width: '64px', height: '38px', background: 'var(--dark)', border: '1px solid var(--border)', borderLeft: 'none', borderRight: 'none', color: 'var(--white)', textAlign: 'center', fontSize: '0.95rem', outline: 'none' }}
+                />
+                <button
+                  onClick={() => setQuickQty(q => q + 1)}
+                  style={{ width: '38px', height: '38px', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '0 8px 8px 0', cursor: 'pointer', color: 'var(--white)', fontSize: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* Action */}
+            {(() => {
+              const needsVariant = quickAddProduct.combinations?.length > 0 && !quickVariant;
+              return (
+                <button
+                  disabled={needsVariant}
+                  onClick={() => {
+                    const variantLabel = quickVariant
+                      ? (quickVariant.name || quickVariant.label || Object.values(quickVariant.combo || {}).join(' / ') || null)
+                      : null;
+                    addToCart(quickAddProduct, quickQty, quickVariant?.id || null, variantLabel);
+                    setToast({ message: `${quickAddProduct.subCategoryName || quickAddProduct.name} added to cart!`, type: 'success' });
+                    setTimeout(() => setToast(null), 2000);
+                    setQuickAddProduct(null);
+                  }}
+                  style={{
+                    width: '100%', padding: '12px', borderRadius: '10px', border: 'none',
+                    background: needsVariant ? 'rgba(212,168,67,0.35)' : 'var(--gold)',
+                    color: '#000', fontWeight: 700, fontSize: '0.9rem',
+                    cursor: needsVariant ? 'not-allowed' : 'pointer',
+                    transition: 'opacity 0.15s',
+                  }}
+                >
+                  {needsVariant ? 'Select a variant first' : 'Add to Cart'}
+                </button>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification */}
       {toast && (

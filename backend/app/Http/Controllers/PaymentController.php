@@ -120,15 +120,21 @@ class PaymentController extends Controller
                     $pendingFlashSaleIncrements[] = [$appliedFlashSale, $qty];
                 }
 
-                $thumb = $product->thumbnail ?? null;
+                $variantId         = $item['variantId'] ?? null;
+                $variantImageUrls  = (array) ($product->variantImageUrls ?? []);
+                $rawThumb          = ($variantId && !empty($variantImageUrls[$variantId]))
+                    ? $variantImageUrls[$variantId]
+                    : ($product->thumbnail ?? null);
+                $thumb = $rawThumb
+                    ? (str_starts_with($rawThumb, 'http') ? $rawThumb : asset('storage/' . $rawThumb))
+                    : null;
+
                 $orderItems[] = [
                     'productId'   => (string) $product->_id,
                     'productName' => $product->name,
                     'isCustom'    => (bool) $product->isCustom,
-                    'thumbnail'   => $thumb
-                        ? (str_starts_with($thumb, 'http') ? $thumb : asset('storage/' . $thumb))
-                        : null,
-                    'variantId'   => $item['variantId']   ?? null,
+                    'thumbnail'   => $thumb,
+                    'variantId'   => $variantId,
                     'variantName' => $item['variantName'] ?? null,
                     'qty'         => $qty,
                     'unitPrice'   => $unitPrice,
@@ -435,6 +441,308 @@ class PaymentController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to create payment link.');
+        }
+    }
+
+    /**
+     * POST /api/payment/initiate
+     *
+     * Custom payment flow using Payment Intents — bypasses PayMongo hosted checkout.
+     * paymentType: gcash | paymaya | card
+     * paymentMethodId: card PM ID created client-side with the public key (card only)
+     */
+    public function initiatePayment(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) return $this->unauthorizedResponse();
+
+            $validated = $request->validate([
+                'items'                       => 'required|array|min:1',
+                'items.*.productId'           => 'required|string',
+                'items.*.variantId'           => 'nullable|string',
+                'items.*.variantName'         => 'nullable|string',
+                'items.*.qty'                 => 'required|integer|min:1',
+                'items.*.flashSaleId'         => 'nullable|string|max:24',
+                'voucherCode'                 => 'nullable|string|max:50',
+                'notes'                       => 'nullable|string|max:1000',
+                'deliveryAddress'             => 'nullable|array',
+                'deliveryAddress.label'       => 'nullable|string|max:100',
+                'deliveryAddress.house_number'=> 'nullable|string|max:100',
+                'deliveryAddress.street'      => 'nullable|string|max:255',
+                'deliveryAddress.subdivision' => 'nullable|string|max:255',
+                'deliveryAddress.barangay'    => 'nullable|string|max:255',
+                'deliveryAddress.city'        => 'nullable|string|max:255',
+                'deliveryAddress.province'    => 'nullable|string|max:255',
+                'deliveryAddress.zip'         => 'nullable|string|max:10',
+                'deliveryAddress.phone'       => 'nullable|string|max:30',
+                'design_notes'                => 'nullable|string|max:2000',
+                'shippingFee'                 => 'nullable|numeric|min:0|max:10000',
+                'paymentType'                 => 'required|in:gcash,paymaya,card',
+                'paymentMethodId'             => 'nullable|string',
+                'eWalletPhone'                => 'nullable|string|max:20',
+            ]);
+
+            $paymentType = $validated['paymentType'];
+
+            // ── Resolve prices + build order items ────────────────────
+            $orderItems               = [];
+            $totalAmount              = 0;
+            $pendingFlashSaleIncrements = [];
+
+            foreach ($validated['items'] as $item) {
+                $product = Product::where('_id', $item['productId'])
+                                  ->where('isActive', true)
+                                  ->first();
+
+                if (!$product) {
+                    return $this->errorResponse("Product '{$item['productId']}' not found or unavailable.", 422);
+                }
+
+                $qty         = (int) $item['qty'];
+                $variantId   = $item['variantId'] ?? null;
+                $flashSaleId = isset($item['flashSaleId']) && $item['flashSaleId'] !== '' ? $item['flashSaleId'] : null;
+                $appliedFlashSale = null;
+
+                if ($flashSaleId) {
+                    $fs = FlashSale::live()
+                        ->where('_id', $flashSaleId)
+                        ->where('productId', (string) $product->_id)
+                        ->first();
+                    if ($fs && ($fs->stockLimit === null || ($fs->stockUsed ?? 0) < $fs->stockLimit)) {
+                        $appliedFlashSale = $fs;
+                    }
+                }
+
+                $unitPrice = PriceResolver::resolve($product, $qty, $variantId, $appliedFlashSale);
+                if ($unitPrice === null) {
+                    return $this->errorResponse("No price configured for product '{$product->name}'.", 422);
+                }
+
+                $lineTotal    = $unitPrice * $qty;
+                $totalAmount += $lineTotal;
+
+                if ($appliedFlashSale) $pendingFlashSaleIncrements[] = [$appliedFlashSale, $qty];
+
+                $variantImageUrls = (array) ($product->variantImageUrls ?? []);
+                $rawThumb = ($variantId && !empty($variantImageUrls[$variantId]))
+                    ? $variantImageUrls[$variantId]
+                    : ($product->thumbnail ?? null);
+                $thumb = $rawThumb
+                    ? (str_starts_with($rawThumb, 'http') ? $rawThumb : asset('storage/' . $rawThumb))
+                    : null;
+
+                $orderItems[] = [
+                    'productId'   => (string) $product->_id,
+                    'productName' => $product->name,
+                    'isCustom'    => (bool) $product->isCustom,
+                    'thumbnail'   => $thumb,
+                    'variantId'   => $variantId,
+                    'variantName' => $item['variantName'] ?? null,
+                    'qty'         => $qty,
+                    'unitPrice'   => $unitPrice,
+                    'lineTotal'   => $lineTotal,
+                    'flashSaleId' => $flashSaleId,
+                ];
+            }
+
+            $shippingFee  = (float) ($validated['shippingFee'] ?? 0);
+            $totalAmount += $shippingFee;
+
+            // ── Voucher ───────────────────────────────────────────────
+            $discountAmount = 0.0;
+            $appliedVoucher = null;
+
+            if (!empty($validated['voucherCode'])) {
+                $voucherCode = strtoupper(trim($validated['voucherCode']));
+                $userId      = (string) $user->_id;
+                $voucher     = Voucher::where('code', $voucherCode)->first();
+
+                $preValid = $voucher && $voucher->isActive
+                    && (!$voucher->expiresAt || $voucher->expiresAt >= now())
+                    && ($voucher->maxUses === null || $voucher->usedCount < $voucher->maxUses)
+                    && !in_array($userId, $voucher->usedBy ?? [], true)
+                    && ($voucher->minOrderAmount === null || $totalAmount >= $voucher->minOrderAmount);
+
+                if ($preValid) {
+                    $discountAmount = $voucher->discountType === 'percentage'
+                        ? round($totalAmount * $voucher->discountValue / 100, 2)
+                        : min((float) $voucher->discountValue, $totalAmount);
+
+                    $filter = ['code' => $voucherCode, 'isActive' => true, 'usedBy' => ['$nin' => [$userId]]];
+                    if ($voucher->maxUses !== null) $filter['$expr'] = ['$lt' => ['$usedCount', '$maxUses']];
+
+                    $claimed = DB::connection('mongodb')->getCollection('vouchers')->findOneAndUpdate(
+                        $filter,
+                        ['$inc' => ['usedCount' => 1], '$addToSet' => ['usedBy' => $userId]],
+                        ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                    );
+
+                    if ($claimed) { $totalAmount = max(0, $totalAmount - $discountAmount); $appliedVoucher = $voucher; }
+                    else { $discountAmount = 0.0; }
+                }
+            }
+
+            // ── Atomic stock reservation ──────────────────────────────
+            $stockReservations = [];
+            foreach ($orderItems as $item) {
+                $prod = Product::find($item['productId'] ?? null);
+                if (!$prod || !$prod->inventoryId) continue;
+                $inv = Inventory::find($prod->inventoryId);
+                if (!$inv || $inv->isOnDemand) continue;
+
+                $qty     = (int) $item['qty'];
+                $updated = DB::connection('mongodb')->getCollection('inventories')->findOneAndUpdate(
+                    ['_id' => new \MongoDB\BSON\ObjectId((string) $inv->_id), 'stockQty' => ['$gte' => $qty]],
+                    ['$inc' => ['stockQty' => -$qty]],
+                    ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                );
+
+                if ($updated === null) {
+                    foreach ($stockReservations as $r) {
+                        DB::connection('mongodb')->getCollection('inventories')
+                            ->updateOne(['_id' => new \MongoDB\BSON\ObjectId($r['invId'])], ['$inc' => ['stockQty' => $r['qty']]]);
+                    }
+                    return $this->errorResponse("\"{$prod->name}\" only has {$inv->stockQty} item(s) in stock.", 422);
+                }
+
+                $stockReservations[] = [
+                    'invId' => (string) $inv->_id, 'qty' => $qty,
+                    'newStockQty' => (int) ($updated->stockQty ?? 0), 'unitCost' => (float) ($inv->averageCost ?? 0),
+                ];
+            }
+
+            // ── Create order ──────────────────────────────────────────
+            $order = Order::create([
+                'userId'          => (string) $user->_id,
+                'userSnapshot'    => ['name' => trim("{$user->firstName} {$user->lastName}"), 'email' => $user->email, 'phone' => $user->phoneNumber ?? ''],
+                'items'           => $orderItems,
+                'totalAmount'     => $totalAmount,
+                'shippingFee'     => $shippingFee,
+                'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
+                'voucherCode'     => $appliedVoucher?->code ?? null,
+                'orderStatus'     => 'Pending',
+                'paymentStatus'   => 'unpaid',
+                'paymentMethod'   => $paymentType,
+                'notes'           => htmlspecialchars(strip_tags(trim($validated['notes'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                'deliveryAddress' => $validated['deliveryAddress'] ?? null,
+                'designNotes'     => isset($validated['design_notes']) ? htmlspecialchars(strip_tags(trim($validated['design_notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : null,
+                'statusHistory'   => [['status' => 'Pending', 'at' => now()->toISOString()]],
+                'createdAt'       => now(),
+                'updatedAt'       => now(),
+            ]);
+
+            foreach ($pendingFlashSaleIncrements as [$fs, $qty]) $fs->increment('stockUsed', $qty);
+
+            $orderId = (string) $order->_id;
+
+            foreach ($stockReservations as $r) {
+                try {
+                    StockHistory::create([
+                        'inventoryId' => $r['invId'], 'quantity' => $r['qty'], 'remainingQty' => $r['newStockQty'],
+                        'unitCost' => $r['unitCost'], 'totalCost' => $r['unitCost'] * $r['qty'],
+                        'reason' => 'sale_reserved', 'type' => 'deduction', 'performedBy' => 'system',
+                        'remarks' => 'Order: ' . $orderId, 'createdAt' => now(),
+                    ]);
+                } catch (\Exception $e) {
+                    Log::warning('initiatePayment: StockHistory failed', ['error' => $e->getMessage()]);
+                }
+            }
+
+            $frontendUrl    = config('app.frontend_url', 'http://localhost:3000');
+            $amountCentavos = (int) round($totalAmount * 100);
+
+            // ── Create Payment Intent ─────────────────────────────────
+            $intentRes = Http::withBasicAuth($this->secretKey, '')
+                ->post("{$this->baseUrl}/payment_intents", [
+                    'data' => ['attributes' => [
+                        'amount'                 => $amountCentavos,
+                        'payment_method_allowed' => [$paymentType],
+                        'payment_method_options' => ['card' => ['request_three_d_secure' => 'any']],
+                        'currency'               => 'PHP',
+                        'capture_type'           => 'automatic',
+                        'description'            => 'Personalize Me Prints — Order #' . strtoupper(substr($orderId, -8)),
+                        'metadata'               => ['order_id' => $orderId],
+                    ]]
+                ]);
+
+            if (!$intentRes->successful()) {
+                Log::error('initiatePayment: intent failed', ['order_id' => $orderId, 'body' => $intentRes->body()]);
+                return $this->errorResponse('Payment gateway error. Please try again.', 502);
+            }
+
+            $intentId = $intentRes->json()['data']['id'];
+
+            // ── Create Payment Method for GCash/Maya (card PM comes from frontend) ──
+            $paymentMethodId = $validated['paymentMethodId'] ?? null;
+
+            if ($paymentType !== 'card') {
+                $rawPhone = !empty($validated['eWalletPhone'])
+                    ? $validated['eWalletPhone']
+                    : ($user->phoneNumber ?? ($validated['deliveryAddress']['phone'] ?? ''));
+                $phone = preg_replace('/\s+/', '', $rawPhone);
+                $phone = ltrim(preg_replace('/^\+?63/', '', $phone), '0');
+
+                $pmRes = Http::withBasicAuth($this->secretKey, '')
+                    ->post("{$this->baseUrl}/payment_methods", [
+                        'data' => ['attributes' => [
+                            'type'    => $paymentType,
+                            'billing' => [
+                                'name'  => trim("{$user->firstName} {$user->lastName}"),
+                                'email' => $user->email,
+                                'phone' => $phone,
+                            ],
+                        ]]
+                    ]);
+
+                if (!$pmRes->successful()) {
+                    Log::error('initiatePayment: PM failed', ['order_id' => $orderId, 'body' => $pmRes->body()]);
+                    return $this->errorResponse('Failed to initialize payment method.', 502);
+                }
+                $paymentMethodId = $pmRes->json()['data']['id'];
+            }
+
+            if (!$paymentMethodId) {
+                return $this->errorResponse('Card payment method ID is required.', 422);
+            }
+
+            // ── Attach Payment Method to Intent ──────────────────────
+            $attachRes = Http::withBasicAuth($this->secretKey, '')
+                ->post("{$this->baseUrl}/payment_intents/{$intentId}/attach", [
+                    'data' => ['attributes' => [
+                        'payment_method' => $paymentMethodId,
+                        'return_url'     => "{$frontendUrl}/shop/payment-success?id={$orderId}",
+                    ]]
+                ]);
+
+            if (!$attachRes->successful()) {
+                Log::error('initiatePayment: attach failed', ['order_id' => $orderId, 'body' => $attachRes->body()]);
+                return $this->errorResponse('Failed to attach payment. Please try again.', 502);
+            }
+
+            $attachData   = $attachRes->json()['data'];
+            $intentStatus = $attachData['attributes']['status'];
+            $nextAction   = $attachData['attributes']['next_action'] ?? null;
+            $redirectUrl  = $nextAction['redirect']['url'] ?? null;
+
+            $order->paymongoIntentId = $intentId;
+            $order->save();
+
+            if ($intentStatus === 'succeeded') {
+                $order->update(['paymentStatus' => 'paid']);
+                return $this->successResponse('Payment completed.', [
+                    'orderId' => $orderId, 'status' => 'succeeded', 'redirectUrl' => null,
+                ]);
+            }
+
+            return $this->successResponse('Payment initiated.', [
+                'orderId' => $orderId, 'status' => $intentStatus, 'redirectUrl' => $redirectUrl,
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to initiate payment.');
         }
     }
 
@@ -797,6 +1105,112 @@ class PaymentController extends Controller
             ]);
             // Always 200 to prevent PayMongo retries
             return response()->json(['received' => true]);
+        }
+    }
+
+    /**
+     * POST /api/payment/verify-intent
+     *
+     * Checks the stored Payment Intent status directly against PayMongo and marks
+     * the order as paid if the intent has succeeded. Used as a webhook fallback —
+     * the payment-success page calls this once so local dev (no webhook) still works.
+     */
+    public function verifyIntent(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) return $this->unauthorizedResponse();
+
+            $validated = $request->validate([
+                'orderId' => 'required|string|regex:/^[a-f0-9]{24}$/i',
+            ]);
+
+            $order = Order::where('_id', $validated['orderId'])
+                          ->where('userId', (string) $user->_id)
+                          ->first();
+
+            if (!$order) return $this->notFoundResponse('Order');
+
+            if ($order->paymentStatus === 'paid') {
+                return $this->successResponse('Already paid.', ['paymentStatus' => 'paid']);
+            }
+
+            $intentId = $order->paymongoIntentId ?? null;
+            if (!$intentId) {
+                return $this->errorResponse('No payment intent on this order.', 422);
+            }
+
+            $res = Http::withBasicAuth($this->secretKey, '')
+                ->get("{$this->baseUrl}/payment_intents/{$intentId}");
+
+            if (!$res->successful()) {
+                Log::warning('verifyIntent: PayMongo fetch failed', [
+                    'order_id' => $validated['orderId'],
+                    'status'   => $res->status(),
+                ]);
+                return $this->errorResponse('Could not reach payment gateway.', 502);
+            }
+
+            $intentData   = $res->json()['data'];
+            $intentStatus = $intentData['attributes']['status'] ?? null;
+
+            if ($intentStatus !== 'succeeded') {
+                return $this->successResponse('Payment not yet confirmed.', ['paymentStatus' => $intentStatus]);
+            }
+
+            $payments      = $intentData['attributes']['payments'] ?? [];
+            $latestPayment = !empty($payments) ? $payments[0] : [];
+            $paymentId     = $latestPayment['id'] ?? null;
+            $payAttrs      = $latestPayment['attributes'] ?? [];
+            $paymentMethod = $payAttrs['source']['type'] ?? $payAttrs['payment_method_type'] ?? $order->paymentMethod ?? 'online';
+            $totalAmount   = (float) ($order->totalAmount ?? 0);
+
+            $order->paymentStatus           = 'paid';
+            $order->paymentDate             = now();
+            $order->paymentMethod           = $paymentMethod;
+            $order->paymongoPaymentId       = $paymentId;
+            $order->downPayment             = $totalAmount;
+            $order->balance                 = 0;
+            $order->paymentHistory          = [[
+                'amount' => $totalAmount,
+                'method' => $paymentMethod,
+                'note'   => 'Payment confirmed via PayMongo (' . $intentId . ')',
+                'paidAt' => now()->toDateTimeString(),
+            ]];
+            $order->updatedAt = now();
+            $order->save();
+
+            try {
+                $admin = User::where('role', 'admin')->first();
+                if ($admin) {
+                    Notification::create([
+                        'user_id'    => (string) $admin->_id,
+                        'type'       => 'new_order',
+                        'title'      => 'Payment Received',
+                        'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8)) .
+                                        ' paid by ' . ($order->userSnapshot['name'] ?? 'Unknown') .
+                                        " via {$paymentMethod}.",
+                        'is_read'    => false,
+                        'data'       => ['orderId' => (string) $order->_id],
+                        'created_at' => now(),
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('verifyIntent: admin notification failed', ['error' => $e->getMessage()]);
+            }
+
+            Log::info('verifyIntent: order marked paid', [
+                'orderId'       => (string) $order->_id,
+                'paymentMethod' => $paymentMethod,
+                'intentId'      => $intentId,
+            ]);
+
+            return $this->successResponse('Payment verified and order marked paid.', ['paymentStatus' => 'paid']);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to verify payment.');
         }
     }
 

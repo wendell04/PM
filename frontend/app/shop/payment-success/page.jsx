@@ -41,8 +41,24 @@ export default function PaymentSuccessPage() {
       ? `${API_URL}/api/shop/order-requests/${orderId}`
       : `${API_URL}/api/orders/my/${orderId}`;
 
+    const pushVerify = async () => {
+      try {
+        await fetchWithTimeout(`${API_URL}/api/payment/verify-intent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ orderId }),
+        }, 10000);
+      } catch {}
+    };
+
     const fetchOrder = async (attempt = 0) => {
       try {
+        // On online payment flows, push a verify-intent call before the first two polls
+        // so the order gets marked paid in the DB even without a webhook (local dev).
+        if (!isCod && !isOrderRequest && attempt <= 1) {
+          await pushVerify();
+        }
+
         const res = await fetchWithTimeout(endpoint, {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         }, 10000);
@@ -51,7 +67,6 @@ export default function PaymentSuccessPage() {
         const fetched = data.data ?? data;
         setOrder(fetched);
 
-        // For online payments, poll up to 6× (12 s) waiting for webhook to mark paid
         if (!isCod && !isOrderRequest && fetched.paymentStatus !== 'paid' && attempt < 6) {
           setTimeout(() => fetchOrder(attempt + 1), 2000);
         } else {
@@ -155,69 +170,80 @@ export default function PaymentSuccessPage() {
             marginBottom: '32px',
             textAlign: 'left',
           }}>
+            {/* Header row */}
             <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginBottom: '8px',
+              display: 'flex', justifyContent: 'space-between',
+              marginBottom: '12px', paddingBottom: '10px',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
             }}>
-              <span style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>
-                Order ID
+              <span style={{ color: 'var(--gray)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Order Receipt
               </span>
-              <span style={{
-                color: 'var(--white)',
-                fontSize: '0.85rem',
-                fontFamily: 'monospace',
-              }}>
+              <span style={{ color: 'var(--white)', fontFamily: 'monospace', fontSize: '0.82rem', fontWeight: 600 }}>
                 #{(order.id ?? order._id ?? '').slice(-8).toUpperCase()}
               </span>
             </div>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginBottom: '8px',
-            }}>
-              <span style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>
-                {isCod
-                  ? 'Order Total'
-                  : isOrderRequest && order?.paymentStatus === 'downpayment_paid'
-                    ? '50% Downpayment Paid'
-                    : isOrderRequest && order?.paymentStatus === 'paid'
-                      ? 'Balance Paid'
-                      : 'Amount Paid'}
-              </span>
-              <span style={{ color: 'var(--gold)', fontSize: '0.85rem', fontWeight: 600 }}>
-                ₱{Number(order.totalAmount ?? order.finalPrice ?? 0).toLocaleString('en-PH', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </span>
-            </div>
-            {order?.shippingFee > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Shipping Fee</span>
-                <span style={{ color: 'var(--white)', fontSize: '0.85rem' }}>
+
+            {/* Line items */}
+            {(order.items ?? []).length > 0 && (
+              <div style={{ marginBottom: '10px' }}>
+                {(order.items ?? []).map((item, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <span style={{ color: 'var(--gray)', fontSize: '0.82rem', flex: 1, paddingRight: '8px' }}>
+                      {item.productName ?? item.product_name ?? 'Item'}
+                      {item.variantName ? ` — ${item.variantName}` : ''} ×{item.qty ?? item.quantity ?? 1}
+                    </span>
+                    <span style={{ color: 'var(--white)', fontSize: '0.82rem', flexShrink: 0 }}>
+                      ₱{Number(item.lineTotal ?? ((item.unitPrice ?? 0) * (item.qty ?? 1))).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Shipping */}
+            {order.shippingFee > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>Shipping</span>
+                <span style={{ color: 'var(--white)', fontSize: '0.82rem' }}>
                   ₱{Number(order.shippingFee).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                 </span>
               </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>
-                Status
-              </span>
-              <span style={{
-                color: (order.paymentStatus === 'paid' || (!isCod && !isOrderRequest))
-                  ? 'var(--green)'
-                  : 'var(--gold)',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                textTransform: 'capitalize',
-              }}>
-                {order.paymentStatus === 'paid'
-                  ? 'Paid'
-                  : (!isCod && !isOrderRequest)
-                    ? 'Payment Received'
-                    : (order.paymentStatus ?? 'Processing')}
-              </span>
+
+            {/* Discount */}
+            {order.discountAmount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ color: '#22c55e', fontSize: '0.82rem' }}>Discount</span>
+                <span style={{ color: '#22c55e', fontSize: '0.82rem' }}>
+                  −₱{Number(order.discountAmount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+
+            {/* Total + Status */}
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '8px', paddingTop: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.88rem' }}>
+                  {isCod ? 'Order Total' : 'Total Paid'}
+                </span>
+                <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.95rem' }}>
+                  ₱{Number(order.totalAmount ?? order.finalPrice ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>Payment Status</span>
+                <span style={{
+                  fontSize: '0.82rem', fontWeight: 700,
+                  color: (order.paymentStatus === 'paid' || (!isCod && !isOrderRequest)) ? '#4ade80' : 'var(--gold)',
+                }}>
+                  {order.paymentStatus === 'paid'
+                    ? 'Paid'
+                    : isCod
+                      ? 'Cash on Delivery'
+                      : 'Paid'}
+                </span>
+              </div>
             </div>
           </div>
         )}

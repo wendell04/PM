@@ -51,6 +51,7 @@ function ActualStockTab({
   badOrders = [],
   pendingPOs: pendingPOsProp = [],
   backorders = [],
+  stockOuts = [],
   onDeleteZeroStock,
 }) {
   const [expandedMaterial, setExpandedMaterial] = useState(null);
@@ -62,6 +63,24 @@ function ActualStockTab({
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const pendingPOs = pendingPOsProp;
+
+  // Per-material adjustment totals from stock-out history (non-sale reductions)
+  const stockOutsAdjMap = React.useMemo(() => {
+    const map = {};
+    (stockOuts || []).forEach((so) => {
+      if (so.issueType === "manual_sale" || so.issueType === "sale") return;
+      const id = String(so.inventoryId || so.materialId || "");
+      if (!id) return;
+      map[id] = (map[id] || 0) + Math.abs(so.quantity || 0);
+    });
+    return map;
+  }, [stockOuts]);
+
+  const totalAdjustments = React.useMemo(
+    () => Object.values(stockOutsAdjMap).reduce((a, b) => a + b, 0),
+    [stockOutsAdjMap],
+  );
+
   // Date range filter (default to This Month)
   const [dateRange, setDateRange] = useState("thisMonth");
   const [dateFrom, setDateFrom] = useState("");
@@ -242,7 +261,7 @@ function ActualStockTab({
       </div>
       <table><thead><tr>
         <th style="width:12%">Material</th><th style="width:18%">Variant</th>
-        <th style="text-align:center;width:8%">Good</th><th style="text-align:center;width:8%;color:#f59e0b">Bad Order</th><th style="text-align:center;width:8%;color:#ef4444">Waste/Adjust</th><th style="text-align:center;width:8%">Total</th>
+        <th style="text-align:center;width:8%">Good</th><th style="text-align:center;width:8%;color:#f59e0b">Bad Order</th><th style="text-align:center;width:8%;color:#ef4444">Adjustment</th><th style="text-align:center;width:8%">Total</th>
         <th style="text-align:right;width:10%">Unit Cost</th><th style="text-align:right;width:11%">Value</th>
       </tr></thead><tbody>${rows}</tbody></table>
       </body></html>`;
@@ -1001,9 +1020,9 @@ function ActualStockTab({
         <div className="summary-card">
           <div className="summary-content">
             <span className="summary-value" style={{ color: "#ef4444" }}>
-              {summaryCards.internalDamage}
+              {totalAdjustments}
             </span>
-            <span className="summary-label">Waste/Adjustment</span>
+            <span className="summary-label">Adjustment</span>
           </div>
         </div>
         <div className="summary-card">
@@ -1330,7 +1349,7 @@ function ActualStockTab({
                 <th
                   style={{ ...thStyle, textAlign: "center", color: "#ef4444" }}
                 >
-                  Waste/Adjust
+                  Adjustment
                 </th>
                 <th style={{ ...thStyle, textAlign: "center" }}>Total</th>
                 <th style={{ ...thStyle, textAlign: "right" }}>Goods Value</th>
@@ -1375,6 +1394,10 @@ function ActualStockTab({
                   } = stats;
 
                   const children = childrenStats; // Use pre-computed children
+
+                  const matAdj = hasChildren
+                    ? childrenStats.reduce((s, c) => s + (stockOutsAdjMap[String(c.id)] || 0), 0)
+                    : (stockOutsAdjMap[String(mat.id)] || 0);
 
                   const isExpanded = expandedMaterial === mat.id;
                   // Only products with variants are expandable; standalone items are flat rows
@@ -1516,11 +1539,11 @@ function ActualStockTab({
                             padding: "0.875rem 1rem",
                             textAlign: "center",
                             fontWeight: 700,
-                            color: internalDamaged > 0 ? "#ef4444" : "#6b7280",
+                            color: matAdj > 0 ? "#ef4444" : "#6b7280",
                             fontFamily: "monospace",
                           }}
                         >
-                          {internalDamaged}{" "}
+                          {matAdj}{" "}
                           <span
                             style={{
                               color: "var(--gray)",
@@ -1732,7 +1755,7 @@ function ActualStockTab({
                                             textTransform: "uppercase",
                                           }}
                                         >
-                                          Waste/Adjust
+                                          Adjustment
                                         </th>
                                         <th
                                           style={{
@@ -1779,7 +1802,7 @@ function ActualStockTab({
                                         const childArrivalDamaged =
                                           child.arrivalDamaged;
                                         const childInternalDamaged =
-                                          child.internalDamaged;
+                                          stockOutsAdjMap[String(child.id)] || 0;
                                         const childBadOrder =
                                           badOrdersMap[materialKey(child)]?.total || 0;
                                         const childTotal =
@@ -2007,7 +2030,7 @@ function ActualStockTab({
                       color: "#ef4444",
                     }}
                   >
-                    Waste/Adjust
+                    Adjustment
                   </th>
                   <th style={{ ...thStyle, textAlign: "center" }}>Total</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>Value</th>

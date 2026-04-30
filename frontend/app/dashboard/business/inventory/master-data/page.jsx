@@ -4762,15 +4762,12 @@ function VendorFormModal({ vendor, allVendors, materials, units, onClose, onSave
                   placeholder="Item name..."
                   maxLength={60}
                 />
-                <select
-                  style={{ ...inputStyle, flex: 1, minWidth: "100px" }}
+                <CustomDropdown
                   value={itemUomInput}
-                  onChange={(e) => setItemUomInput(e.target.value)}
-                >
-                  {(units && units.length > 0 ? units : [{ code: "pcs", name: "Pieces" }]).map((u) => (
-                    <option key={u.code} value={u.code}>{u.name}</option>
-                  ))}
-                </select>
+                  onChange={setItemUomInput}
+                  options={(units && units.length > 0 ? units : [{ code: "pcs", name: "Pieces" }]).map((u) => ({ value: u.code, label: u.name }))}
+                  style={{ flex: 1, minWidth: "100px" }}
+                />
                 <button
                   type="button"
                   className="btn-primary"
@@ -6516,14 +6513,14 @@ export default function MasterDataPage() {
           onOpenUnits={() => setShowUnitsModal(true)}
         />
       )}
-      {activeTab === "vendors" && (
+      <div style={{ display: activeTab === "vendors" ? "" : "none" }}>
         <VendorsApiTab
           onVendorsChange={setVendors}
           materials={materials}
           units={units}
           onOpenUnits={() => setShowUnitsModal(true)}
         />
-      )}
+      </div>
       {activeTab === "bom" && (
         <BOMTab
           materials={materials}

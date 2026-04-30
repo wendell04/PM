@@ -201,6 +201,12 @@ class ProductController extends Controller
                 'bomGroupName'      => 'nullable|string|max:200',
                 'variantStock'      => 'nullable|array',
                 'variantImageUrls'  => 'nullable|array',
+                'isMadeToOrder'       => 'nullable|boolean',
+                'minOrderQty'         => 'nullable|integer|min:1',
+                'designFee'           => 'nullable|numeric|min:0',
+                'variantBackorder'    => 'nullable|array',
+                'requiresDownpayment' => 'nullable|boolean',
+                'downpaymentPercent'  => 'nullable|integer|min:1|max:100',
             ]);
 
             // Check for duplicate (same category + subCategoryName)
@@ -235,6 +241,21 @@ class ProductController extends Controller
                     if ($inventory->isOnDemand) {
                         $validated['stockStatus'] = 'upon-order';
                     } elseif (($validated['stock'] ?? 0) === 0) {
+                        $validated['stockStatus'] = 'out-of-stock';
+                    } elseif (($validated['stock'] ?? 0) <= 10) {
+                        $validated['stockStatus'] = 'low-stock';
+                    } else {
+                        $validated['stockStatus'] = 'in-stock';
+                    }
+                }
+            }
+
+            // Compute stockStatus for non-inventory products
+            if (empty($validated['inventoryId']) && !isset($validated['stockStatus'])) {
+                if ($validated['isMadeToOrder'] ?? false) {
+                    $validated['stockStatus'] = 'upon-order';
+                } elseif (array_key_exists('stock', $validated)) {
+                    if (($validated['stock'] ?? 0) === 0) {
                         $validated['stockStatus'] = 'out-of-stock';
                     } elseif (($validated['stock'] ?? 0) <= 10) {
                         $validated['stockStatus'] = 'low-stock';
@@ -331,8 +352,14 @@ class ProductController extends Controller
                 'isActive'          => 'boolean',
                 'bomId'             => 'nullable|string|max:24',
                 'bomGroupName'      => 'nullable|string|max:200',
-                'variantStock'      => 'nullable|array',
-                'variantImageUrls'  => 'nullable|array',
+                'variantStock'        => 'nullable|array',
+                'variantImageUrls'    => 'nullable|array',
+                'isMadeToOrder'       => 'nullable|boolean',
+                'minOrderQty'         => 'nullable|integer|min:1',
+                'designFee'           => 'nullable|numeric|min:0',
+                'variantBackorder'    => 'nullable|array',
+                'requiresDownpayment' => 'nullable|boolean',
+                'downpaymentPercent'  => 'nullable|integer|min:1|max:100',
             ]);
 
             // Check for duplicate if category/subCategory changed
@@ -362,6 +389,23 @@ class ProductController extends Controller
                 $inventory = Inventory::find($validated['inventoryId']);
                 if ($inventory && ($validated['trackInventory'] ?? $product->trackInventory)) {
                     $validated['stock'] = $inventory->stockQty;
+                }
+            }
+
+            // Recompute stockStatus when isMadeToOrder or stock changes
+            if (!isset($validated['stockStatus'])) {
+                $isMTO = $validated['isMadeToOrder'] ?? $product->isMadeToOrder ?? false;
+                if ($isMTO) {
+                    $validated['stockStatus'] = 'upon-order';
+                } elseif (array_key_exists('stock', $validated)) {
+                    $stock = $validated['stock'] ?? 0;
+                    if ($stock === 0) {
+                        $validated['stockStatus'] = 'out-of-stock';
+                    } elseif ($stock <= 10) {
+                        $validated['stockStatus'] = 'low-stock';
+                    } else {
+                        $validated['stockStatus'] = 'in-stock';
+                    }
                 }
             }
 
