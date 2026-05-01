@@ -25,6 +25,8 @@ class StoreAddressRequest extends FormRequest
             'phone'        => ['required', 'string',
                                'regex:/^(09|\+639)\d{9}$/'],
             'is_default'   => ['sometimes', 'boolean'],
+            'lat'          => ['nullable', 'numeric', 'between:-90,90'],
+            'lng'          => ['nullable', 'numeric', 'between:-180,180'],
         ];
     }
 

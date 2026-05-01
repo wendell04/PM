@@ -72,6 +72,8 @@ class AddressController extends Controller
             'zip'          => $validated['zip'],
             'phone'        => $validated['phone'],
             'is_default'   => $isDefault,
+            'lat'          => isset($validated['lat']) ? (float) $validated['lat'] : null,
+            'lng'          => isset($validated['lng']) ? (float) $validated['lng'] : null,
         ];
 
         $addresses[] = $newAddress;
@@ -140,6 +142,8 @@ class AddressController extends Controller
             'zip'          => $validated['zip'],
             'phone'        => $validated['phone'],
             'is_default'   => $isDefault,
+            'lat'          => isset($validated['lat']) ? (float) $validated['lat'] : ($addresses[$index]['lat'] ?? null),
+            'lng'          => isset($validated['lng']) ? (float) $validated['lng'] : ($addresses[$index]['lng'] ?? null),
         ]);
 
         $user->addresses = $addresses;
