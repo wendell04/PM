@@ -4,13 +4,14 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useAuth } from '../../../contexts/AuthContext';
 import '../../../components/custom-styles.css';
 import '../shop.css';
-import AddressBook from '../../../components/profile/AddressBook'; // NEW: Address Book component
-import { fetchMyOrders } from '../../../lib/orderTrackingApi';
+import AddressBook from '../../../components/profile/AddressBook';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
-import { StatusBadge } from '@/lib/shopUtils';
+
+const ReadOnlyPinMap = dynamic(() => import('@/components/maps/ReadOnlyPinMap'), { ssr: false });
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -66,15 +67,9 @@ export default function CustomerProfilePage() {
   const [avatarError, setAvatarError] = useState('');
   const [avatarHover, setAvatarHover] = useState(false);
 
-  // Orders state
-  const [orders, setOrders] = useState([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState(null);
-
-  // Order Requests widget state (for Orders tab)
-  const [recentOrders, setRecentOrders] = useState([]);
-  const [widgetLoading, setWidgetLoading] = useState(false);
-  const [widgetError, setWidgetError] = useState('');
+  // Overview addresses state
+  const [overviewAddresses, setOverviewAddresses]     = useState([]);
+  const [overviewAddrLoading, setOverviewAddrLoading] = useState(false);
 
   // Sessions state
   const [sessions, setSessions] = useState([]);
@@ -150,27 +145,18 @@ export default function CustomerProfilePage() {
     }
   }, [activeTab]);
 
-  // Fetch orders when Overview tab is activated (for Recent Orders widget)
+  // Fetch addresses when Overview tab is activated
   useEffect(() => {
     if (activeTab !== 'overview') return;
     if (!token) return;
-
-    const load = async () => {
-      setOrdersLoading(true);
-      setWidgetError('');
-      try {
-        const data = await fetchMyOrders(token);
-        const list = data.data || data || [];
-        setOrders(Array.isArray(list) ? list : []);
-        setRecentOrders(Array.isArray(list) ? list.slice(0, 3) : []);
-      } catch (err) {
-        setWidgetError(err.message || 'Failed to load orders.');
-      } finally {
-        setOrdersLoading(false);
-      }
-    };
-
-    load();
+    setOverviewAddrLoading(true);
+    fetchWithTimeout(`${API_URL}/api/addresses`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }, 15000)
+      .then(r => r.json())
+      .then(d => setOverviewAddresses(d.addresses || []))
+      .catch(() => {})
+      .finally(() => setOverviewAddrLoading(false));
   }, [activeTab, token]);
 
   // Fetch sessions when Security tab is activated
@@ -526,12 +512,6 @@ export default function CustomerProfilePage() {
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return 'Member since Recently';
     return `Member since ${date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
-  };
-
-  const getOrderId = (order) => {
-    if (order.orderId) return `#${order.orderId}`;
-    if (order._id) return `#${order._id.slice(-8).toUpperCase()}`;
-    return '#Unknown';
   };
 
   const getPasswordStrength = (pwd) => {
@@ -896,71 +876,93 @@ export default function CustomerProfilePage() {
                     <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Phone</div>
                     <div style={{ fontSize: '0.95rem', color: 'var(--white)' }}>{profileForm.phoneNumber || '—'}</div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Address</div>
-                    <div style={{ fontSize: '0.95rem', color: 'var(--white)' }}>{profileForm.address || '—'}</div>
-                  </div>
                 </div>
-                {/* Edit action lives in Personal Info tab only — removed from Overview */}
 
-                {/* Recent Orders Widget */}
-                <div style={{
-                  marginTop: '2rem',
-                  borderTop: '1px solid var(--border)',
-                  paddingTop: '1.5rem',
-                }}>
-                  <h4 style={{
-                    fontSize: '0.875rem',
-                    fontWeight: 600,
-                    color: 'var(--white)',
-                    marginBottom: '0.75rem',
-                  }}>
-                    Recent Orders
-                  </h4>
-
-                  {orders.length === 0 ? (
-                    <p style={{
-                      fontSize: '0.8rem',
-                      color: 'var(--gray)',
-                    }}>
-                      No orders yet.
-                    </p>
-                  ) : (
-                    orders.slice(0, 2).map((order, idx) => (
-                      <div key={order._id ?? order.orderId ?? idx}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '0.625rem 0',
-                          borderBottom: '1px solid var(--border)',
-                        }}>
-                        <span style={{
-                          fontSize: '0.8rem',
-                          color: 'var(--gray)',
-                        }}>
-                          {getOrderId(order)}
-                        </span>
-                        <StatusBadge status={order.orderStatus || order.status} />
-                      </div>
-                    ))
-                  )}
-
-                  {orders.length > 2 && (
+                {/* Saved Addresses */}
+                <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600, color: 'var(--white)' }}>
+                      Saved Addresses
+                    </h4>
                     <button
-                      onClick={() => router.push('/shop/orders-history')}
-                      style={{
-                        marginTop: '0.75rem',
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--gold)',
-                        fontSize: '0.8rem',
-                        cursor: 'pointer',
-                        padding: 0,
-                      }}
+                      onClick={() => setActiveTab('addresses')}
+                      style={{ background: 'none', border: 'none', color: 'var(--gold)', fontSize: '0.8rem', cursor: 'pointer', padding: 0, fontWeight: 600 }}
                     >
-                      View all orders →
+                      Manage →
                     </button>
+                  </div>
+
+                  {overviewAddrLoading ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {[1, 2].map(i => (
+                        <div key={i} style={{ height: '60px', background: 'var(--dark)', borderRadius: '10px', border: '1px solid var(--border)', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                      ))}
+                    </div>
+                  ) : overviewAddresses.length === 0 ? (
+                    <div style={{ padding: '1.5rem', textAlign: 'center', background: 'var(--dark)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                      <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: 'var(--gray)' }}>No saved addresses yet.</p>
+                      <button
+                        onClick={() => setActiveTab('addresses')}
+                        style={{ padding: '0.5rem 1rem', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: '#000', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Add Address
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                      {overviewAddresses.map(addr => {
+                        const parts = [
+                          addr.house_number && addr.street ? `${addr.house_number} ${addr.street}` : '',
+                          addr.subdivision,
+                          addr.barangay ? `Brgy. ${addr.barangay}` : '',
+                          addr.city,
+                          addr.province,
+                          addr.zip,
+                        ].filter(Boolean).join(', ');
+                        const isPinned = !!(addr.lat && addr.lng);
+                        return (
+                          <div
+                            key={addr.id}
+                            style={{
+                              background: addr.is_default ? 'rgba(212,168,67,0.05)' : 'var(--dark)',
+                              border: `1px solid ${addr.is_default ? 'rgba(212,168,67,0.3)' : 'var(--border)'}`,
+                              borderRadius: '10px',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <div style={{ padding: '0.875rem 1rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.375rem', flexWrap: 'wrap' }}>
+                                {addr.label && (
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '1px 8px', borderRadius: '999px', background: 'rgba(255,255,255,0.08)', color: 'var(--white)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                    {addr.label}
+                                  </span>
+                                )}
+                                {addr.is_default && (
+                                  <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '1px 8px', borderRadius: '999px', background: 'rgba(212,168,67,0.15)', color: 'var(--gold)', border: '1px solid rgba(212,168,67,0.3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                    Default
+                                  </span>
+                                )}
+                                <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem', color: isPinned ? '#4ade80' : 'var(--gray)' }}>
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                                  </svg>
+                                  {isPinned ? 'Pinned' : 'Not pinned'}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '0.82rem', color: 'var(--gray)', lineHeight: 1.5 }}>{parts || '—'}</div>
+                              {addr.phone && (
+                                <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '0.25rem' }}>{addr.phone}</div>
+                              )}
+                            </div>
+                            {isPinned && (
+                              <div style={{ padding: '0 0.875rem 0.875rem' }}>
+                                <ReadOnlyPinMap lat={addr.lat} lng={addr.lng} height={160} />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>

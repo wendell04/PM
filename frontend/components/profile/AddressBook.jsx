@@ -173,6 +173,8 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
       errors.zip = 'ZIP Code must be a 4-digit number';
     if (!formData.phone.trim() || !/^\+63\d{10}$/.test(formData.phone.trim()))
       errors.phone = 'Phone must be in the format +63XXXXXXXXXX';
+    if (!formData.lat || !formData.lng)
+      errors.pin = 'Please pin your location on the map before saving.';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -184,7 +186,10 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!validateForm()) {
+      if (!formData.lat || !formData.lng) setMapExpanded(true);
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
     try {
@@ -388,19 +393,27 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
             )}
           </div>
 
-          {/* ── Map pin (optional) ── */}
+          {/* ── Map pin (required) ── */}
           <div>
             <button
               type="button"
-              onClick={() => setMapExpanded(v => !v)}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: mapExpanded ? 'rgba(212,168,67,0.1)' : 'transparent', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.875rem', cursor: 'pointer', color: mapExpanded ? 'var(--gold)' : 'var(--gray-light)', fontSize: '0.8125rem', fontWeight: 500 }}
+              onClick={() => { setMapExpanded(v => !v); if (formErrors.pin) setFormErrors(prev => ({ ...prev, pin: null })); }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: mapExpanded ? 'rgba(212,168,67,0.1)' : (formErrors.pin ? 'rgba(239,68,68,0.06)' : 'transparent'), border: `1px solid ${formErrors.pin ? 'rgba(239,68,68,0.4)' : 'var(--border)'}`, borderRadius: '8px', padding: '0.5rem 0.875rem', cursor: 'pointer', color: mapExpanded ? 'var(--gold)' : (formErrors.pin ? 'var(--red)' : 'var(--gray-light)'), fontSize: '0.8125rem', fontWeight: 500 }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
               </svg>
-              {mapExpanded ? 'Hide Map' : 'Pin Location on Map'}
-              <span style={{ fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 400 }}>— auto-fills city, province &amp; zip</span>
+              {mapExpanded ? 'Hide Map' : (formData.lat && formData.lng ? 'Update Pin Location' : 'Pin Location on Map')}
+              <span style={{ fontSize: '0.72rem', color: formErrors.pin ? 'var(--red)' : 'var(--gray)', fontWeight: 400 }}>
+                {formErrors.pin ? '— required' : '— auto-fills city, province & zip'}
+              </span>
             </button>
+            {formErrors.pin && !mapExpanded && (
+              <div style={{ marginTop: '0.375rem', fontSize: '0.78rem', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                {formErrors.pin}
+              </div>
+            )}
 
             {mapExpanded && (
               <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
