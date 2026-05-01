@@ -1782,8 +1782,8 @@ export default function OrdersHistoryPage() {
                               <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
                                 <div style={{ position: 'relative', flexShrink: 0 }}>
                                   <div style={{ width: '52px', height: '52px', borderRadius: '10px', background: `${color}18`, border: `1px solid ${color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                                    {item.imageUrl
-                                      ? <img src={item.imageUrl} alt={item.productName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    {(item.thumbnail || item.imageUrl)
+                                      ? <img src={item.thumbnail || item.imageUrl} alt={item.productName} style={{ width: '100%', height: '100%', objectFit: 'contain', background: 'transparent' }} />
                                       : <span style={{ fontSize: '1.2rem', fontWeight: 800, color }}>{initial}</span>
                                     }
                                   </div>
@@ -1849,8 +1849,9 @@ export default function OrdersHistoryPage() {
                       </div>
                     </div>
 
-                    {/* Pay Now – payment method selector */}
+                    {/* Pay Now – payment method selector (only for non-COD unpaid orders) */}
                     {selectedOrder.paymentStatus !== 'paid'
+                      && selectedOrder.paymentMethod !== 'cod'
                       && !['Cancelled', 'Returned'].includes(selectedOrder.orderStatus)
                       && !['pending_review', 'pending_design', 'proof_sent', 'revision_requested', 'design_approved'].includes(selectedOrder.orderStatus) && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1996,7 +1997,7 @@ export default function OrdersHistoryPage() {
               <div style={{ display: 'flex', gap: '8px' }}>
                 {!detailLoading && !detailError && selectedOrder?.items?.length > 0 &&
                   !selectedOrder?.isCustomOrder &&
-                  !['Cancelled'].includes(selectedOrder.orderStatus) && (
+                  selectedOrder.orderStatus === 'Delivered' && (
                   <button
                     onClick={handleReorder}
                     disabled={reorderLoading}

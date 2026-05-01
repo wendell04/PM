@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStorefrontBanners } from '@/lib/bannerUtils';
 import { useAuth } from '@/contexts/AuthContext';
-import CustomerChatModal from '@/components/chat/CustomerChatModal';
 import '@/components/custom-styles.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -100,6 +99,10 @@ const LandingPage = ({onEnterShop}) => {
   const [heroSlide, setHeroSlide] = useState(0);
   const [heroPaused, setHeroPaused] = useState(false);
   const [heroBanners, setHeroBanners] = useState([]);
+
+  // Customer reviews
+  const [landingReviews, setLandingReviews] = useState([]);
+  const [reviewsIdx, setReviewsIdx] = useState(0);
 
   // Forgot password
   const [forgotModal, setForgotModal]     = useState(false);
@@ -230,6 +233,16 @@ const LandingPage = ({onEnterShop}) => {
         }
       });
     }
+  }, []);
+
+  // Fetch customer reviews for landing page
+  useEffect(() => {
+    fetch(`${API_URL}/api/storefront/reviews?limit=12`)
+      .then(r => r.json())
+      .then(d => {
+        if (d?.data?.reviews?.length) setLandingReviews(d.data.reviews);
+      })
+      .catch(console.error);
   }, []);
 
   // Fetch live banners for hero carousel
@@ -921,13 +934,6 @@ const handleForgotResetPassword = async () => {
   // ─── JSX ──────────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Floating chat widget */}
-      <CustomerChatModal
-        user={user}
-        token={token}
-        onRequestLogin={() => openModal('login')}
-      />
-
       {/* NAVBAR */}
       <nav className={`navbar ${scrolled ? 'scrolled' : ''}`}>
         <div className="container">
@@ -1368,6 +1374,68 @@ const handleForgotResetPassword = async () => {
           </div>
         </div>
       </section>
+
+      {/* CUSTOMER REVIEWS */}
+      {landingReviews.length > 0 && (
+        <section className="reviews-landing-section">
+          <div className="container">
+            <div className="section-header center">
+              <span className="section-tag">Customer Reviews</span>
+              <h2 className="section-title">What Our <span className="gold-text">Customers</span> Say</h2>
+              <p className="section-subtitle">Real feedback from real customers who ordered with us.</p>
+            </div>
+            <div className="reviews-carousel-wrap">
+              <button
+                className="reviews-arrow reviews-arrow-left"
+                onClick={() => setReviewsIdx(i => Math.max(0, i - 1))}
+                disabled={reviewsIdx === 0}
+                aria-label="Previous reviews"
+              >&#8249;</button>
+              <div className="reviews-track-outer">
+                <div
+                  className="reviews-track"
+                  style={{ transform: `translateX(-${reviewsIdx * (100 / 3)}%)` }}
+                >
+                  {landingReviews.map((rv, i) => (
+                    <div className="review-card" key={i}>
+                      <div className="review-stars">
+                        {[1,2,3,4,5].map(s => (
+                          <span key={s} style={{ color: s <= rv.rating ? 'var(--gold)' : 'rgba(255,255,255,0.2)', fontSize: '1rem' }}>★</span>
+                        ))}
+                      </div>
+                      <p className="review-comment">&ldquo;{rv.comment}&rdquo;</p>
+                      <div className="review-meta">
+                        <span className="review-name">{rv.customerName}</span>
+                        {rv.created_at && (
+                          <span className="review-date">
+                            {new Date(rv.created_at).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <button
+                className="reviews-arrow reviews-arrow-right"
+                onClick={() => setReviewsIdx(i => Math.min(landingReviews.length - 1, i + 1))}
+                disabled={reviewsIdx >= landingReviews.length - 3}
+                aria-label="Next reviews"
+              >&#8250;</button>
+            </div>
+            <div className="reviews-dots">
+              {Array.from({ length: Math.max(0, landingReviews.length - 2) }).map((_, i) => (
+                <button
+                  key={i}
+                  className={`reviews-dot${reviewsIdx === i ? ' active' : ''}`}
+                  onClick={() => setReviewsIdx(i)}
+                  aria-label={`Go to review ${i + 1}`}
+                />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* PRICING */}
       <section id="pricing" className="pricing-bg">

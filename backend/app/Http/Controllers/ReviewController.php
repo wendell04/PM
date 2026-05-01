@@ -16,6 +16,23 @@ class ReviewController extends Controller
         return $request->user();
     }
 
+    private function serializeReview(Review $review): array
+    {
+        $raw = $review->getAttributes();
+        return [
+            'id'           => isset($raw['_id']) ? (string) $raw['_id'] : '',
+            '_id'          => isset($raw['_id']) ? (string) $raw['_id'] : '',
+            'userId'       => (string) ($raw['userId'] ?? ''),
+            'orderId'      => (string) ($raw['orderId'] ?? ''),
+            'productIds'   => isset($raw['productIds']) ? array_map('strval', (array) $raw['productIds']) : [],
+            'rating'       => (int) ($raw['rating'] ?? 0),
+            'comment'      => (string) ($raw['comment'] ?? ''),
+            'customerName' => (string) ($raw['customerName'] ?? ''),
+            'is_visible'   => (bool) ($raw['is_visible'] ?? true),
+            'created_at'   => isset($raw['created_at']) ? (string) $raw['created_at'] : null,
+        ];
+    }
+
     // ─── Customer: GET /api/orders/my/{orderId}/review ────────────────────────
 
     public function myOrderReview(Request $request, $orderId)
@@ -32,7 +49,7 @@ class ReviewController extends Controller
                 return response()->json(['success' => true, 'data' => null], 200);
             }
 
-            return $this->successResponse('Review fetched', $review->toArray());
+            return $this->successResponse('Review fetched', $this->serializeReview($review));
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e);
         }
@@ -93,9 +110,53 @@ class ReviewController extends Controller
                 'createdAt'        => now(),
             ]);
 
-            return $this->successResponse('Review submitted successfully.', $review->toArray(), 201);
+            return $this->successResponse('Review submitted successfully.', $this->serializeReview($review), 201);
         } catch (ValidationException $e) {
             return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e);
+        }
+    }
+
+    // ─── Public: GET /api/storefront/reviews ─────────────────────────────────
+
+    public function storefrontReviews(Request $request)
+    {
+        try {
+            $limit = min((int) ($request->query('limit', 10)), 50);
+
+            $reviews = Review::where('is_visible', true)
+                ->orderBy('created_at', 'desc')
+                ->take($limit)
+                ->get()
+                ->map(function ($r) {
+                    $raw = $r->getAttributes();
+                    $createdAt = null;
+                    if (isset($raw['created_at'])) {
+                        try {
+                            $createdAt = \Carbon\Carbon::parse($raw['created_at'])->toISOString();
+                        } catch (\Exception $e) {
+                            $createdAt = null;
+                        }
+                    }
+                    return [
+                        'rating'       => (int) ($raw['rating'] ?? 0),
+                        'comment'      => (string) ($raw['comment'] ?? ''),
+                        'customerName' => (string) ($raw['customerName'] ?? ''),
+                        'created_at'   => $createdAt,
+                    ];
+                })
+                ->values()
+                ->all();
+
+            $avgRating = Review::where('is_visible', true)->avg('rating');
+            $total     = Review::where('is_visible', true)->count();
+
+            return $this->successResponse('Reviews fetched', [
+                'reviews'   => $reviews,
+                'avgRating' => $avgRating ? round((float) $avgRating, 1) : null,
+                'total'     => $total,
+            ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e);
         }
@@ -115,8 +176,22 @@ class ReviewController extends Controller
             $reviews = $query->orderBy('created_at', 'desc')
                 ->skip(($page - 1) * $perPage)
                 ->take($perPage)
-                ->get(['rating', 'comment', 'customerName', 'created_at'])
-                ->toArray();
+                ->get()
+                ->map(function ($r) {
+                    $raw = $r->getAttributes();
+                    $createdAt = null;
+                    if (isset($raw['created_at'])) {
+                        try { $createdAt = \Carbon\Carbon::parse($raw['created_at'])->toISOString(); } catch (\Exception $e) {}
+                    }
+                    return [
+                        'rating'       => (int) ($raw['rating'] ?? 0),
+                        'comment'      => (string) ($raw['comment'] ?? ''),
+                        'customerName' => (string) ($raw['customerName'] ?? ''),
+                        'created_at'   => $createdAt,
+                    ];
+                })
+                ->values()
+                ->all();
 
             $avgRating = Review::where('productIds', $productId)
                 ->where('is_visible', true)
@@ -161,7 +236,9 @@ class ReviewController extends Controller
                 ->skip(($page - 1) * $perPage)
                 ->take($perPage)
                 ->get()
-                ->toArray();
+                ->map(fn($r) => $this->serializeReview($r))
+                ->values()
+                ->all();
 
             $allReviews = Review::query();
             $totalAll     = $allReviews->count();

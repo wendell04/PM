@@ -45,6 +45,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   const typingTimeoutRefs = useRef({});
   const conversationChannelRef = useRef(null);
   const scrollRef = useRef(null);
+  const pendingFaqRef = useRef(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -187,6 +188,20 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     setView('chat');
   };
 
+  // Auto-send FAQ question once chat view is ready
+  useEffect(() => {
+    if (view !== 'chat' || !activeConv || !pendingFaqRef.current) return;
+    const q = pendingFaqRef.current;
+    pendingFaqRef.current = null;
+    handleSendMessage({ message: q, type: 'text' });
+  }, [view, activeConv]);
+
+  const handleFaqClick = (question) => {
+    if (!token) { onRequestLogin?.(); return; }
+    pendingFaqRef.current = question;
+    openNewChat();
+  };
+
   const openNewChat = () => {
     const supportConv = conversations.find(
       c => c.other_user?.role === 'admin' || c.other_user?.role === 'owner'
@@ -269,7 +284,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                 <div className="cw-faq-section">
                   <div className="cw-faq-label">Search for help</div>
                   {FAQS.map((f, i) => (
-                    <button key={i} type="button" className="cw-faq-item">
+                    <button key={i} type="button" className="cw-faq-item" onClick={() => handleFaqClick(f.q)}>
                       <span>{f.q}</span>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}><polyline points="9 18 15 12 9 6" /></svg>
                     </button>
