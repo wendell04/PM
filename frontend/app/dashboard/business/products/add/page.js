@@ -254,6 +254,7 @@ export default function AddProductPage() {
   const [designFee, setDesignFee] = useState('');
   const [requiresDownpayment, setRequiresDownpayment] = useState(false);
   const [downpaymentPercent, setDownpaymentPercent] = useState('50');
+  const [weightGrams, setWeightGrams] = useState('');
   const [designFormats, setDesignFormats] = useState([]); // [{id, name, url, ext, bomId}]
   const [formatUploading, setFormatUploading] = useState(false);
   const [mediaItems, setMediaItems] = useState([]);
@@ -403,6 +404,7 @@ export default function AddProductPage() {
     setDesignFee(ep.designFee != null ? String(ep.designFee) : '');
     setRequiresDownpayment(!!ep.requiresDownpayment);
     setDownpaymentPercent(ep.downpaymentPercent != null ? String(ep.downpaymentPercent) : '50');
+    setWeightGrams(ep.weightGrams != null ? String(ep.weightGrams) : '');
     setPriceType(ep.priceType || "fixed");
 
     // Pre-populate prices
@@ -648,6 +650,7 @@ export default function AddProductPage() {
         requiresDownpayment: requiresDownpayment,
         downpaymentPercent: requiresDownpayment ? (parseInt(downpaymentPercent) || 50) : null,
         designFee: isCustomizable && designFee !== '' ? (parseFloat(designFee) || 0) : null,
+        weightGrams: weightGrams !== '' ? (parseInt(weightGrams) || null) : null,
         variantImageUrls,
         designFormats: isCustomizable ? designFormats : [],
       };
@@ -1328,6 +1331,31 @@ export default function AddProductPage() {
                   </div>
                 </div>
               )}
+
+              <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
+
+              {/* Weight */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, color: "#E5E2E1", fontSize: "0.875rem" }}>Product Weight</div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.1rem" }}>
+                    Used to estimate shipping fee at checkout based on distance from store.
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+                  <input
+                    type="text" inputMode="numeric" placeholder="e.g. 300"
+                    value={weightGrams}
+                    onChange={e => {
+                      const v = e.target.value.replace(/\D/g, '');
+                      if (v === '' || parseInt(v) <= 99999) setWeightGrams(v);
+                    }}
+                    style={{ ...inputSt, maxWidth: "90px", textAlign: "right" }}
+                  />
+                  <span style={{ fontSize: "0.8rem", color: "var(--gray)", whiteSpace: "nowrap" }}>grams</span>
+                </div>
+              </div>
+
             </div>
           </Card>}
 

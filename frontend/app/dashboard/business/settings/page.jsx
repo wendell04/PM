@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import ErrorBoundary from '@/components/ErrorBoundary';
+
+const StoreLocationMap = dynamic(() => import('@/components/maps/StoreLocationMap'), { ssr: false });
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -149,6 +152,15 @@ export default function SettingsPage() {
   const [revokingId, setRevokingId]     = useState(null);
   const [revokeAllBusy, setRevokeAllBusy] = useState(false);
 
+  // ── Shipping ──────────────────────────────────────────────
+  const [shippingForm, setShippingForm] = useState({
+    storeAddress: '', storeLat: null, storeLng: null,
+    shippingBaseRate: '50', shippingPerKmRate: '15',
+  });
+  const [isSavingShipping, setIsSavingShipping]   = useState(false);
+  const [shippingError, setShippingError]         = useState('');
+  const [shippingSuccess, setShippingSuccess]     = useState('');
+
   // ── 2FA toggle ────────────────────────────────────────────
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [twoFaToggling, setTwoFaToggling]       = useState(false);
@@ -175,6 +187,25 @@ export default function SettingsPage() {
       setIsLoading(false);
     }
   }, [currentUser]);
+
+  // ── Load shipping settings ────────────────────────────────
+  useEffect(() => {
+    if (!token || activeTab !== 'shipping') return;
+    fetchWithTimeout(`${API_URL}/api/settings`, { headers: { Authorization: `Bearer ${token}` } }, 10000)
+      .then(r => r.json())
+      .then(d => {
+        if (d?.data) {
+          setShippingForm({
+            storeAddress:      d.data.storeAddress      || '',
+            storeLat:          d.data.storeLat          ?? null,
+            storeLng:          d.data.storeLng          ?? null,
+            shippingBaseRate:  d.data.shippingBaseRate  != null ? String(d.data.shippingBaseRate)  : '50',
+            shippingPerKmRate: d.data.shippingPerKmRate != null ? String(d.data.shippingPerKmRate) : '15',
+          });
+        }
+      })
+      .catch(() => {});
+  }, [token, activeTab]);
 
   // ── Reset password form when leaving Security tab ─────────
   useEffect(() => {
@@ -425,6 +456,42 @@ export default function SettingsPage() {
     }
   };
 
+  // ── Save shipping settings ────────────────────────────────
+  const handleSaveShipping = async () => {
+    setShippingError('');
+    setShippingSuccess('');
+    const base = parseFloat(shippingForm.shippingBaseRate);
+    const perKm = parseFloat(shippingForm.shippingPerKmRate);
+    if (isNaN(base) || base < 0)   { setShippingError('Base rate must be a valid positive number.'); return; }
+    if (isNaN(perKm) || perKm < 0) { setShippingError('Per km rate must be a valid positive number.'); return; }
+    setIsSavingShipping(true);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/settings`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          storeName:         currentUser?.storeName        || '',
+          storeDescription:  currentUser?.storeDescription || '',
+          storeEmail:        currentUser?.storeEmail       || currentUser?.email || '',
+          storePhone:        currentUser?.storePhone       || '',
+          storeAddress:      shippingForm.storeAddress,
+          storeLat:          shippingForm.storeLat,
+          storeLng:          shippingForm.storeLng,
+          shippingBaseRate:  base,
+          shippingPerKmRate: perKm,
+        }),
+      }, 15000);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message || 'Failed to save shipping settings.');
+      setShippingSuccess('Shipping settings saved.');
+      setTimeout(() => setShippingSuccess(''), 3000);
+    } catch (err) {
+      setShippingError(err.message || 'An unexpected error occurred.');
+    } finally {
+      setIsSavingShipping(false);
+    }
+  };
+
   // ── Skeleton ──────────────────────────────────────────────
   if (isLoading) {
     return (
@@ -490,6 +557,7 @@ export default function SettingsPage() {
               { id: 'profile', label: 'Profile' },
               { id: 'security', label: 'Security' },
               { id: 'business', label: 'Business' },
+              { id: 'shipping', label: 'Shipping' },
               { id: 'notifications', label: 'Notifications' },
               { id: 'appearance', label: 'Appearance' },
             ].map(({ id, label }) => (
@@ -1415,6 +1483,171 @@ export default function SettingsPage() {
                   Logo upload and API sync for business fields can be wired in a follow-up.
                 </p>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'shipping' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+              {/* Store Location */}
+              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
+                <h2 style={{ margin: '0 0 0.375rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
+                  Store Location
+                </h2>
+                <p style={{ margin: '0 0 1.25rem', fontSize: '0.8125rem', color: 'var(--gray)' }}>
+                  Pin your store on the map. Shipping fee is calculated from this point to the customer's address.
+                </p>
+
+                <StoreLocationMap
+                  lat={shippingForm.storeLat}
+                  lng={shippingForm.storeLng}
+                  onLocationSelect={(lat, lng) => setShippingForm(f => ({ ...f, storeLat: lat, storeLng: lng }))}
+                />
+
+                {shippingForm.storeLat && shippingForm.storeLng && (
+                  <div style={{
+                    marginTop: '0.75rem', padding: '0.625rem 0.875rem',
+                    background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)',
+                    borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--gray-light)' }}>
+                      Pinned: {shippingForm.storeLat.toFixed(6)}, {shippingForm.storeLng.toFixed(6)}
+                    </span>
+                  </div>
+                )}
+
+                <div className="profile-form-field" style={{ marginTop: '1rem' }}>
+                  <label>Store Address <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 400 }}>(displayed to customers)</span></label>
+                  <input
+                    type="text"
+                    value={shippingForm.storeAddress}
+                    onChange={e => setShippingForm(f => ({ ...f, storeAddress: e.target.value }))}
+                    placeholder="e.g., 123 Rizal St., Brgy. San Antonio, Quezon City"
+                    maxLength={300}
+                  />
+                </div>
+              </div>
+
+              {/* Shipping Rates */}
+              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
+                <h2 style={{ margin: '0 0 0.375rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
+                  Shipping Rate Formula
+                </h2>
+                <p style={{ margin: '0 0 1.25rem', fontSize: '0.8125rem', color: 'var(--gray)' }}>
+                  Fee = Base Rate + (Per km Rate × Distance). Used to estimate delivery cost shown at checkout.
+                  Set these to approximate what your courier (Lalamove / Grab) charges.
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', maxWidth: '480px' }}>
+                  <div className="profile-form-field">
+                    <label>Base Rate (₱) <span className="required">*</span></label>
+                    <input
+                      type="text" inputMode="decimal"
+                      value={shippingForm.shippingBaseRate}
+                      onChange={e => {
+                        const v = e.target.value.replace(/[^\d.]/g, '');
+                        setShippingForm(f => ({ ...f, shippingBaseRate: v }));
+                      }}
+                      placeholder="50"
+                    />
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
+                      Flat fee regardless of distance
+                    </div>
+                  </div>
+                  <div className="profile-form-field">
+                    <label>Per km Rate (₱) <span className="required">*</span></label>
+                    <input
+                      type="text" inputMode="decimal"
+                      value={shippingForm.shippingPerKmRate}
+                      onChange={e => {
+                        const v = e.target.value.replace(/[^\d.]/g, '');
+                        setShippingForm(f => ({ ...f, shippingPerKmRate: v }));
+                      }}
+                      placeholder="15"
+                    />
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
+                      Added per kilometer of distance
+                    </div>
+                  </div>
+                </div>
+
+                {/* Example */}
+                {shippingForm.shippingBaseRate && shippingForm.shippingPerKmRate && (
+                  <div style={{
+                    marginTop: '1rem', padding: '0.75rem 1rem',
+                    background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
+                    borderRadius: '8px', fontSize: '0.8125rem', color: 'var(--gray-light)',
+                  }}>
+                    Example — 5 km away:{' '}
+                    <strong style={{ color: 'var(--white)' }}>
+                      ₱{(parseFloat(shippingForm.shippingBaseRate || 0) + parseFloat(shippingForm.shippingPerKmRate || 0) * 5).toFixed(2)}
+                    </strong>
+                    {' '}· 10 km away:{' '}
+                    <strong style={{ color: 'var(--white)' }}>
+                      ₱{(parseFloat(shippingForm.shippingBaseRate || 0) + parseFloat(shippingForm.shippingPerKmRate || 0) * 10).toFixed(2)}
+                    </strong>
+                  </div>
+                )}
+              </div>
+
+              {/* Feedback + Save */}
+              {shippingError && (
+                <div style={{
+                  padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+                  borderRadius: '8px', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem',
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  {shippingError}
+                </div>
+              )}
+              {shippingSuccess && (
+                <div style={{
+                  padding: '0.75rem 1rem', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
+                  borderRadius: '8px', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem',
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                  {shippingSuccess}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={handleSaveShipping}
+                  disabled={isSavingShipping}
+                  style={{
+                    padding: '0.625rem 1.5rem',
+                    background: isSavingShipping ? 'var(--dark3)' : 'var(--gold)',
+                    border: 'none', borderRadius: '8px',
+                    color: isSavingShipping ? 'var(--gray)' : 'var(--black)',
+                    fontSize: '0.875rem', fontWeight: 600,
+                    cursor: isSavingShipping ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  }}
+                >
+                  {isSavingShipping ? (
+                    <><span className="spinner" />Saving...</>
+                  ) : (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                        <polyline points="17 21 17 13 7 13 7 21"/>
+                        <polyline points="7 3 7 8 15 8"/>
+                      </svg>
+                      Save Shipping Settings
+                    </>
+                  )}
+                </button>
+              </div>
+
             </div>
           )}
 

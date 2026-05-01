@@ -45,6 +45,7 @@ class Product extends Model
         'isArchived',
         'requiresDownpayment',
         'downpaymentPercent',
+        'weightGrams',
         'createdAt',
         'updatedAt',
     ];
@@ -58,6 +59,7 @@ class Product extends Model
         'designFee'           => 'float',
         'requiresDownpayment' => 'boolean',
         'downpaymentPercent'  => 'integer',
+        'weightGrams'         => 'integer',
         'price'               => 'float',
         'flatPrice'      => 'float',
         'trackInventory' => 'boolean',

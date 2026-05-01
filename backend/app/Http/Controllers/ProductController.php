@@ -207,6 +207,7 @@ class ProductController extends Controller
                 'variantBackorder'    => 'nullable|array',
                 'requiresDownpayment' => 'nullable|boolean',
                 'downpaymentPercent'  => 'nullable|integer|min:1|max:100',
+                'weightGrams'         => 'nullable|integer|min:1|max:99999',
             ]);
 
             // Check for duplicate (same category + subCategoryName)
@@ -360,6 +361,7 @@ class ProductController extends Controller
                 'variantBackorder'    => 'nullable|array',
                 'requiresDownpayment' => 'nullable|boolean',
                 'downpaymentPercent'  => 'nullable|integer|min:1|max:100',
+                'weightGrams'         => 'nullable|integer|min:1|max:99999',
             ]);
 
             // Check for duplicate if category/subCategory changed
