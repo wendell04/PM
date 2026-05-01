@@ -34,7 +34,6 @@ export default function CustomerProfilePage() {
     lastName: '',
     email: '',
     phoneNumber: '',
-    address: '',
   });
 
   // UI State
@@ -124,7 +123,6 @@ export default function CustomerProfilePage() {
       lastName: user.lastName || '',
       email: user.email || '',
       phoneNumber: user.phoneNumber || '',
-      address: user.address || '',
     });
   }, [currentUser, authLoading, router]);
 
@@ -207,10 +205,6 @@ export default function CustomerProfilePage() {
       setSaveError('Phone number must be a valid PH number (e.g. 09171234567 or +639171234567).');
       return;
     }
-    if (!profileForm.address.trim() || profileForm.address.trim().length < 3) {
-      setSaveError('Address is required (min 3 characters)');
-      return;
-    }
 
     setIsSaving(true);
     setSaveError('');
@@ -226,7 +220,6 @@ export default function CustomerProfilePage() {
           firstName: profileForm.firstName.trim(),
           lastName: profileForm.lastName.trim(),
           phoneNumber: profileForm.phoneNumber.trim(),
-          address: profileForm.address.trim(),
         }),
       }, 15000);
       const data = await res.json();
@@ -1065,10 +1058,6 @@ export default function CustomerProfilePage() {
                       <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Phone</div>
                       <div style={{ fontSize: '0.95rem', color: 'var(--white)' }}>{profileForm.phoneNumber || '—'}</div>
                     </div>
-                    <div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Address</div>
-                      <div style={{ fontSize: '0.95rem', color: 'var(--white)' }}>{profileForm.address || '—'}</div>
-                    </div>
                   </div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -1134,47 +1123,25 @@ export default function CustomerProfilePage() {
                         }}
                       />
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.4rem' }}>
-                          Phone Number <span style={{ color: 'var(--red)' }}>*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={profileForm.phoneNumber}
-                          onChange={(e) => handleProfileChange('phoneNumber', e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '0.625rem 0.75rem',
-                            background: 'var(--dark)',
-                            border: '1px solid var(--border)',
-                            borderRadius: '8px',
-                            color: 'var(--white)',
-                            fontSize: '0.875rem',
-                            boxSizing: 'border-box',
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.4rem' }}>
-                          Address <span style={{ color: 'var(--red)' }}>*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={profileForm.address}
-                          onChange={(e) => handleProfileChange('address', e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '0.625rem 0.75rem',
-                            background: 'var(--dark)',
-                            border: '1px solid var(--border)',
-                            borderRadius: '8px',
-                            color: 'var(--white)',
-                            fontSize: '0.875rem',
-                            boxSizing: 'border-box',
-                          }}
-                        />
-                      </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.4rem' }}>
+                        Phone Number <span style={{ color: 'var(--red)' }}>*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={profileForm.phoneNumber}
+                        onChange={(e) => handleProfileChange('phoneNumber', e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '0.625rem 0.75rem',
+                          background: 'var(--dark)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          color: 'var(--white)',
+                          fontSize: '0.875rem',
+                          boxSizing: 'border-box',
+                        }}
+                      />
                     </div>
                     <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', paddingTop: '0.5rem' }}>
                       <button
