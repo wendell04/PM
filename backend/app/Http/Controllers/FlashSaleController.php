@@ -28,16 +28,14 @@ class FlashSaleController extends Controller
                 && $sale->endDate >= $now;
 
             $product = Product::find($sale->productId);
-            $originalPrice = $product
-                ? ($product->flatPrice ?? $product->price ?? null)
-                : null;
+            $originalPrice = $product ? $this->getBasePrice($product) : null;
 
             if ($originalPrice !== null && $sale->discountType === 'percentage') {
                 $sale->originalPrice = $originalPrice;
-                $sale->discountedPrice = $originalPrice - ($originalPrice * $sale->discountValue / 100);
+                $sale->discountedPrice = round($originalPrice - ($originalPrice * $sale->discountValue / 100), 2);
             } elseif ($originalPrice !== null && $sale->discountType === 'fixed') {
                 $sale->originalPrice = $originalPrice;
-                $sale->discountedPrice = max(0, $originalPrice - $sale->discountValue);
+                $sale->discountedPrice = max(0, round($originalPrice - $sale->discountValue, 2));
             } else {
                 $sale->originalPrice = null;
                 $sale->discountedPrice = null;
@@ -320,14 +318,12 @@ class FlashSaleController extends Controller
 
         $mapped = $sales->map(function ($sale) {
             $product = Product::find($sale->productId);
-            $originalPrice = $product
-                ? ($product->flatPrice ?? $product->price ?? null)
-                : null;
+            $originalPrice = $product ? $this->getBasePrice($product) : null;
 
             if ($originalPrice !== null && $sale->discountType === 'percentage') {
-                $discountedPrice = $originalPrice - ($originalPrice * $sale->discountValue / 100);
+                $discountedPrice = round($originalPrice - ($originalPrice * $sale->discountValue / 100), 2);
             } elseif ($originalPrice !== null && $sale->discountType === 'fixed') {
-                $discountedPrice = max(0, $originalPrice - $sale->discountValue);
+                $discountedPrice = max(0, round($originalPrice - $sale->discountValue, 2));
             } else {
                 $originalPrice = null;
                 $discountedPrice = null;
@@ -346,5 +342,33 @@ class FlashSaleController extends Controller
         });
 
         return response()->json(['data' => $mapped]);
+    }
+
+    /** Returns the lowest unit price for a product across all pricing types. */
+    private function getBasePrice(Product $product): ?float
+    {
+        if (!empty($product->flatPrice) && (float) $product->flatPrice > 0) {
+            return (float) $product->flatPrice;
+        }
+        if (!empty($product->price) && (float) $product->price > 0) {
+            return (float) $product->price;
+        }
+        $vp = $product->variantPrices;
+        if (!empty($vp)) {
+            $prices = array_filter(array_map('floatval', (array) $vp), fn($p) => $p > 0);
+            if (!empty($prices)) return (float) min($prices);
+        }
+        $tiers = $product->priceTiers;
+        if (!empty($tiers)) {
+            $prices = [];
+            foreach ((array) $tiers as $tier) {
+                foreach ((array) ($tier['prices'] ?? []) as $p) {
+                    $fv = (float) $p;
+                    if ($fv > 0) $prices[] = $fv;
+                }
+            }
+            if (!empty($prices)) return (float) min($prices);
+        }
+        return null;
     }
 }

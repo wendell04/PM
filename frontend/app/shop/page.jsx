@@ -50,20 +50,18 @@ function ProductCard({ product, onAddToCart, flashSale }) {
     .reduce((sum, item) => sum + (item.qty || 0), 0);
 
   // Flash sale countdown
+  const EXPIRY_THRESHOLD = 24 * 3600 * 1000; // show timer only within 24h
   const [timeLeft, setTimeLeft] = useState('');
   useEffect(() => {
     if (!flashSale?.endDate) return;
     const calc = () => {
       const diff = new Date(flashSale.endDate) - Date.now();
       if (diff <= 0) { setTimeLeft('Ended'); return; }
+      if (diff > EXPIRY_THRESHOLD) { setTimeLeft(''); return; }
       const h = Math.floor(diff / 3600000);
       const m = Math.floor((diff % 3600000) / 60000);
       const s = Math.floor((diff % 60000) / 1000);
-      setTimeLeft(
-        h > 0
-          ? `${h}h ${m}m ${s}s`
-          : `${m}m ${s}s`
-      );
+      setTimeLeft(h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`);
     };
     calc();
     const id = setInterval(calc, 1000);
@@ -74,7 +72,7 @@ function ProductCard({ product, onAddToCart, flashSale }) {
     e.preventDefault();
     e.stopPropagation();
     setIsAdding(true);
-    onAddToCart(product);
+    onAddToCart(product, flashSale);
     setTimeout(() => setIsAdding(false), 500);
   };
 
@@ -293,6 +291,7 @@ export default function ShopPage() {
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const [flashSales, setFlashSales] = useState({});
   const [quickAddProduct, setQuickAddProduct] = useState(null);
+  const [quickFlashSale, setQuickFlashSale] = useState(null);
   const [quickVariant, setQuickVariant] = useState(null);
   const [quickQty, setQuickQty] = useState(1);
   const { addToCart } = useCart();
@@ -418,16 +417,29 @@ export default function ShopPage() {
     }
   }
 
-  const handleAddToCart = (product) => {
+  const applyFlashDiscount = (price, sale) => {
+    if (!sale || price <= 0) return price;
+    if (sale.discountType === 'percentage') return Math.max(0, price * (1 - sale.discountValue / 100));
+    if (sale.discountType === 'fixed') return Math.max(0, price - sale.discountValue);
+    return price;
+  };
+
+  const handleAddToCart = (product, flashSale) => {
     const hasVariants = (product.combinations?.length > 0) || (product.variantGroups?.length > 0);
     const moq = product.minOrderQty || 1;
     if (hasVariants) {
       setQuickAddProduct(product);
+      setQuickFlashSale(flashSale || null);
       setQuickVariant(null);
       setQuickQty(moq);
       return;
     }
-    addToCart(product, moq, null, null);
+    const basePrice = product.flatPrice || product.price || 0;
+    const effectivePrice = applyFlashDiscount(basePrice, flashSale);
+    const productToAdd = effectivePrice !== basePrice
+      ? { ...product, flatPrice: effectivePrice, price: effectivePrice }
+      : product;
+    addToCart(productToAdd, moq, null, null);
     setToast({ message: `${product.subCategoryName || product.name} added to cart!`, type: 'success' });
     setTimeout(() => setToast(null), 2000);
   };
@@ -740,9 +752,18 @@ export default function ShopPage() {
                         }}
                       >
                         <span style={{ textDecoration: isOOS ? 'line-through' : 'none' }}>{comboLabel}</span>
-                        {price != null && !isOOS && (
-                          <span style={{ fontSize: '0.7rem', opacity: 0.75 }}>₱{price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
-                        )}
+                        {price != null && !isOOS && (() => {
+                          const saleP = quickFlashSale ? applyFlashDiscount(price, quickFlashSale) : price;
+                          return saleP !== price ? (
+                            <span style={{ fontSize: '0.7rem' }}>
+                              <span style={{ color: 'var(--gold)', fontWeight: 700 }}>₱{saleP.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                              {' '}
+                              <span style={{ textDecoration: 'line-through', opacity: 0.5 }}>₱{price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.7rem', opacity: 0.75 }}>₱{price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                          );
+                        })()}
                         {isOOS && (
                           <span style={{ fontSize: '0.65rem', color: 'rgba(239,68,68,0.8)' }}>Out of stock</span>
                         )}
@@ -835,13 +856,25 @@ export default function ShopPage() {
                 <button
                   disabled={needsVariant}
                   onClick={() => {
+                    const variantId = quickVariant?.id || null;
                     const variantLabel = quickVariant
                       ? (quickVariant.name || quickVariant.label || Object.values(quickVariant.combo || {}).join(' / ') || null)
                       : null;
-                    addToCart(quickAddProduct, quickQty, quickVariant?.id || null, variantLabel);
+                    let productForCart = quickAddProduct;
+                    if (quickFlashSale) {
+                      const basePrice = variantId && quickAddProduct.variantPrices?.[variantId]
+                        ? parseFloat(quickAddProduct.variantPrices[variantId])
+                        : (quickAddProduct.flatPrice || quickAddProduct.price || 0);
+                      const discounted = applyFlashDiscount(basePrice, quickFlashSale);
+                      if (discounted !== basePrice) {
+                        productForCart = { ...quickAddProduct, flatPrice: discounted, price: discounted };
+                      }
+                    }
+                    addToCart(productForCart, quickQty, variantId, variantLabel);
                     setToast({ message: `${quickAddProduct.subCategoryName || quickAddProduct.name} added to cart!`, type: 'success' });
                     setTimeout(() => setToast(null), 2000);
                     setQuickAddProduct(null);
+                    setQuickFlashSale(null);
                   }}
                   style={{
                     width: '100%', padding: '12px', borderRadius: '10px', border: 'none',

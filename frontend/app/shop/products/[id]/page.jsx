@@ -10,6 +10,13 @@ import { submitOrderRequest, uploadDesignFile } from '@/lib/orderRequestApi';
 const API_URL = process.env.NEXT_PUBLIC_API_URL
   || 'http://127.0.0.1:8000';
 
+function applyFlashDiscount(price, sale) {
+  if (!sale || price <= 0) return price;
+  if (sale.discountType === 'percentage') return Math.max(0, price * (1 - sale.discountValue / 100));
+  if (sale.discountType === 'fixed') return Math.max(0, price - sale.discountValue);
+  return price;
+}
+
 export default function ProductDetailPage() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -257,8 +264,12 @@ export default function ProductDetailPage() {
     if (!product) return;
     try {
       const comboId = resolveCombinationId(selectedVariants);
+      const basePrice = unitPrice ?? product.flatPrice ?? product.price ?? 0;
+      const effectivePrice = flashSale
+        ? applyFlashDiscount(basePrice, flashSale)
+        : basePrice;
       await addToCart(
-        { ...product, flatPrice: unitPrice ?? product.flatPrice ?? product.price ?? 0, thumbnail: variantImage ?? product.thumbnail },
+        { ...product, flatPrice: effectivePrice, thumbnail: variantImage ?? product.thumbnail },
         quantity,
         comboId,
         resolveVariantName(selectedVariants),
@@ -332,7 +343,8 @@ export default function ProductDetailPage() {
     }
     if (!product) return;
     try {
-      const resolvedPrice = unitPrice ?? product.flatPrice ?? product.price ?? 0;
+      const basePrice = unitPrice ?? product.flatPrice ?? product.price ?? 0;
+      const resolvedPrice = flashSale ? applyFlashDiscount(basePrice, flashSale) : basePrice;
       const comboId = resolveCombinationId(selectedVariants);
       await addToCart(
         { ...product, flatPrice: resolvedPrice },
@@ -760,18 +772,18 @@ export default function ProductDetailPage() {
                     Price upon inquiry
                   </span>
                 </div>
-              ) : flashSale?.discountedPrice != null ? (
+              ) : flashSale != null && unitPrice != null ? (
                 <div style={{ display: 'flex',
                   alignItems: 'center', gap: '0.75rem',
                   flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '1.75rem',
                     fontWeight: 800, color: 'var(--gold)' }}>
-                    {formatPeso(flashSale.discountedPrice)}
+                    {formatPeso(applyFlashDiscount(unitPrice, flashSale))}
                   </span>
                   <span style={{ fontSize: '1rem',
                     color: 'var(--gray)',
                     textDecoration: 'line-through' }}>
-                    {formatPeso(flashSale.originalPrice)}
+                    {formatPeso(unitPrice)}
                   </span>
                   <span style={{ fontSize: '0.8rem',
                     color: '#4ade80', fontWeight: 700 }}>
