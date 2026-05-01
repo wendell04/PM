@@ -50,10 +50,6 @@ export default function OrderQuickViewModal({
   const [cashReceived, setCashReceived]   = useState('');
   const [codError, setCodError]           = useState(null);
   const [codSuccess, setCodSuccess]       = useState(false);
-  const [shippingFeeEdit, setShippingFeeEdit]   = useState('');
-  const [isSettingShipping, setIsSettingShipping] = useState(false);
-  const [shippingError, setShippingError]       = useState(null);
-  const [shippingSuccess, setShippingSuccess]   = useState(false);
   const [adminDesignUploading, setAdminDesignUploading] = useState(false);
   const [adminDesignError, setAdminDesignError]         = useState(null);
   const [adminDesignSuccess, setAdminDesignSuccess]     = useState(false);
@@ -109,7 +105,6 @@ export default function OrderQuickViewModal({
       setSelectedStatus(data.order.orderStatus || '');
       setNotesEdit(data.order.notes || '');
       setPaymentEdit(data.order.paymentStatus || 'unpaid');
-      setShippingFeeEdit(data.order.shippingFee != null && data.order.shippingFee > 0 ? String(data.order.shippingFee) : '');
     } catch (err) {
       if (err.message.includes('Unauthorized')) {
         setError('Unauthorized. Please login again.');
@@ -140,9 +135,6 @@ export default function OrderQuickViewModal({
       setNotesEdit('');
       setPaymentEdit('');
       setIsEditingNotes(false);
-      setShippingFeeEdit('');
-      setShippingError(null);
-      setShippingSuccess(false);
       setAdminDesignError(null);
       setAdminDesignSuccess(false);
     }
@@ -254,33 +246,6 @@ export default function OrderQuickViewModal({
     }
   };
 
-  const handleSetShippingFee = async () => {
-    const fee = parseFloat(shippingFeeEdit);
-    if (isNaN(fee) || fee < 0) { setShippingError('Enter a valid shipping fee.'); return; }
-    setShippingError(null);
-    setIsSettingShipping(true);
-    setShippingSuccess(false);
-    try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${orderId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ shippingFee: fee }),
-      }, 15000);
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.message || 'Failed to update shipping fee');
-      }
-      const updated = await res.json();
-      const newTotal = updated.order?.totalAmount ?? updated.totalAmount ?? (order.totalAmount + fee - (order.shippingFee ?? 0));
-      setOrder(prev => prev ? { ...prev, shippingFee: fee, totalAmount: newTotal } : null);
-      setShippingSuccess(true);
-      if (onStatusUpdated) onStatusUpdated();
-    } catch (err) {
-      setShippingError(err.message || 'Failed to update');
-    } finally {
-      setIsSettingShipping(false);
-    }
-  };
 
   const handleAdminUploadDesign = async (file) => {
     if (!file || !orderId) return;
@@ -723,37 +688,6 @@ export default function OrderQuickViewModal({
                       </span>
                     </div>
 
-                    {/* Shipping Fee Setter */}
-                    <div style={{ marginTop: '0.75rem', padding: '0.75rem', borderRadius: '8px', background: 'rgba(212,168,67,0.05)', border: '1px solid rgba(212,168,67,0.15)' }}>
-                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.5rem' }}>
-                        Shipping Fee (Lalamove / Courier)
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>
-                        {order.shippingFee > 0
-                          ? `Current: ₱${parseFloat(order.shippingFee).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
-                          : 'Not yet set — book courier and enter actual fee.'}
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={shippingFeeEdit}
-                          onChange={e => { setShippingFeeEdit(e.target.value); setShippingError(null); setShippingSuccess(false); }}
-                          style={{ flex: 1, padding: '0.35rem 0.5rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', fontSize: '0.85rem' }}
-                        />
-                        <button
-                          onClick={handleSetShippingFee}
-                          disabled={isSettingShipping}
-                          style={{ padding: '0.35rem 0.85rem', background: 'var(--gold)', border: 'none', borderRadius: '6px', color: '#000', fontSize: '0.8rem', fontWeight: 700, cursor: isSettingShipping ? 'not-allowed' : 'pointer', opacity: isSettingShipping ? 0.6 : 1 }}
-                        >
-                          {isSettingShipping ? 'Saving...' : 'Set'}
-                        </button>
-                      </div>
-                      {shippingError && <div style={{ fontSize: '0.73rem', color: 'var(--red)', marginTop: '0.3rem' }}>{shippingError}</div>}
-                      {shippingSuccess && <div style={{ fontSize: '0.73rem', color: '#4ade80', marginTop: '0.3rem' }}>✓ Shipping fee updated. Order total recalculated.</div>}
-                    </div>
                   </div>
                 </div>
 

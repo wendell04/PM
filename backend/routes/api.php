@@ -138,6 +138,7 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::get('/admin/settings',                   [SettingsController::class, 'show']);
     Route::put('/admin/settings',                   [SettingsController::class, 'update']);
+    Route::put('/admin/settings/shipping',          [SettingsController::class, 'shippingUpdate']);
 
     Route::get('/admin/role-permissions',            [RolePermissionController::class, 'index']);
     Route::put('/admin/role-permissions/{role}',     [RolePermissionController::class, 'update']);

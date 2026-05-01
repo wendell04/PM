@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
@@ -155,11 +155,19 @@ export default function SettingsPage() {
   // ── Shipping ──────────────────────────────────────────────
   const [shippingForm, setShippingForm] = useState({
     storeAddress: '', storeLat: null, storeLng: null,
+    shippingMode: 'distance',
     shippingBaseRate: '50', shippingPerKmRate: '15',
+    flatRateInsideMetro: '150', flatRateOutsideMetro: '250',
   });
   const [isSavingShipping, setIsSavingShipping]   = useState(false);
   const [shippingError, setShippingError]         = useState('');
   const [shippingSuccess, setShippingSuccess]     = useState('');
+  const [addrSearch, setAddrSearch]               = useState('');
+  const [addrSuggestions, setAddrSuggestions]     = useState([]);
+  const [addrShowSug, setAddrShowSug]             = useState(false);
+  const [addrSearching, setAddrSearching]         = useState(false);
+  const [addrMapGeocoding, setAddrMapGeocoding]   = useState(false);
+  const addrTimerRef                              = useRef(null);
 
   // ── 2FA toggle ────────────────────────────────────────────
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
@@ -191,16 +199,19 @@ export default function SettingsPage() {
   // ── Load shipping settings ────────────────────────────────
   useEffect(() => {
     if (!token || activeTab !== 'shipping') return;
-    fetchWithTimeout(`${API_URL}/api/settings`, { headers: { Authorization: `Bearer ${token}` } }, 10000)
+    fetchWithTimeout(`${API_URL}/api/admin/settings`, { headers: { Authorization: `Bearer ${token}` } }, 10000)
       .then(r => r.json())
       .then(d => {
         if (d?.data) {
           setShippingForm({
-            storeAddress:      d.data.storeAddress      || '',
-            storeLat:          d.data.storeLat          ?? null,
-            storeLng:          d.data.storeLng          ?? null,
-            shippingBaseRate:  d.data.shippingBaseRate  != null ? String(d.data.shippingBaseRate)  : '50',
-            shippingPerKmRate: d.data.shippingPerKmRate != null ? String(d.data.shippingPerKmRate) : '15',
+            storeAddress:         d.data.storeAddress         || '',
+            storeLat:             d.data.storeLat             ?? null,
+            storeLng:             d.data.storeLng             ?? null,
+            shippingMode:         d.data.shippingMode         || 'distance',
+            shippingBaseRate:     d.data.shippingBaseRate     != null ? String(d.data.shippingBaseRate)     : '50',
+            shippingPerKmRate:    d.data.shippingPerKmRate    != null ? String(d.data.shippingPerKmRate)    : '15',
+            flatRateInsideMetro:  d.data.flatRateInsideMetro  != null ? String(d.data.flatRateInsideMetro)  : '150',
+            flatRateOutsideMetro: d.data.flatRateOutsideMetro != null ? String(d.data.flatRateOutsideMetro) : '250',
           });
         }
       })
@@ -456,29 +467,106 @@ export default function SettingsPage() {
     }
   };
 
+  // ── Store address autocomplete ────────────────────────────
+  const handleAddrSearchChange = (e) => {
+    const q = e.target.value;
+    setAddrSearch(q);
+    setAddrShowSug(false);
+    clearTimeout(addrTimerRef.current);
+    if (q.length < 3) { setAddrSuggestions([]); return; }
+    setAddrSearching(true);
+    addrTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=ph&q=${encodeURIComponent(q)}`,
+          { headers: { 'Accept-Language': 'en', 'User-Agent': 'PersonalizeMePrints/1.0' } }
+        );
+        const data = await res.json();
+        setAddrSuggestions(data);
+        setAddrShowSug(data.length > 0);
+      } catch { setAddrSuggestions([]); }
+      finally { setAddrSearching(false); }
+    }, 280);
+  };
+
+  const handleAddrSuggestionSelect = (s) => {
+    const a = s.address || {};
+    const parts = [
+      a.house_number,
+      a.road || a.pedestrian || a.footway,
+      a.suburb || a.village || a.neighbourhood || a.quarter,
+      a.city || a.town || a.municipality || a.county,
+      a.state,
+      a.postcode,
+    ].filter(Boolean);
+    const formatted = parts.join(', ');
+    setShippingForm(f => ({
+      ...f,
+      storeAddress: formatted || s.display_name,
+      storeLat:     parseFloat(s.lat),
+      storeLng:     parseFloat(s.lon),
+    }));
+    setAddrSearch('');
+    setAddrSuggestions([]);
+    setAddrShowSug(false);
+  };
+
+  const handleMapLocationSelect = async (lat, lng) => {
+    setShippingForm(f => ({ ...f, storeLat: lat, storeLng: lng }));
+    setAddrMapGeocoding(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
+        { headers: { 'Accept-Language': 'en' } }
+      );
+      const data = await res.json();
+      if (data?.address) {
+        const a = data.address;
+        const parts = [
+          a.house_number,
+          a.road || a.pedestrian || a.footway,
+          a.suburb || a.village || a.neighbourhood || a.quarter,
+          a.city || a.town || a.municipality || a.county,
+          a.state,
+          a.postcode,
+        ].filter(Boolean);
+        const formatted = parts.join(', ');
+        if (formatted) setShippingForm(f => ({ ...f, storeAddress: formatted }));
+      }
+    } catch { /* keep existing */ }
+    finally { setAddrMapGeocoding(false); }
+  };
+
   // ── Save shipping settings ────────────────────────────────
   const handleSaveShipping = async () => {
     setShippingError('');
     setShippingSuccess('');
-    const base = parseFloat(shippingForm.shippingBaseRate);
-    const perKm = parseFloat(shippingForm.shippingPerKmRate);
-    if (isNaN(base) || base < 0)   { setShippingError('Base rate must be a valid positive number.'); return; }
-    if (isNaN(perKm) || perKm < 0) { setShippingError('Per km rate must be a valid positive number.'); return; }
+    const isFlat = shippingForm.shippingMode === 'flat';
+    const base    = parseFloat(shippingForm.shippingBaseRate);
+    const perKm   = parseFloat(shippingForm.shippingPerKmRate);
+    const inside  = parseFloat(shippingForm.flatRateInsideMetro);
+    const outside = parseFloat(shippingForm.flatRateOutsideMetro);
+    if (!isFlat) {
+      if (isNaN(base) || base < 0)   { setShippingError('Base rate must be a valid positive number.'); return; }
+      if (isNaN(perKm) || perKm < 0) { setShippingError('Per km rate must be a valid positive number.'); return; }
+    } else {
+      if (isNaN(inside)  || inside  < 0) { setShippingError('Inside Metro rate must be a valid positive number.'); return; }
+      if (isNaN(outside) || outside < 0) { setShippingError('Outside Metro rate must be a valid positive number.'); return; }
+    }
     setIsSavingShipping(true);
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/settings`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/settings/shipping`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
-          storeName:         currentUser?.storeName        || '',
-          storeDescription:  currentUser?.storeDescription || '',
-          storeEmail:        currentUser?.storeEmail       || currentUser?.email || '',
-          storePhone:        currentUser?.storePhone       || '',
-          storeAddress:      shippingForm.storeAddress,
-          storeLat:          shippingForm.storeLat,
-          storeLng:          shippingForm.storeLng,
-          shippingBaseRate:  base,
-          shippingPerKmRate: perKm,
+          storeAddress:         shippingForm.storeAddress,
+          storeLat:             shippingForm.storeLat,
+          storeLng:             shippingForm.storeLng,
+          shippingMode:         shippingForm.shippingMode,
+          shippingBaseRate:     isFlat ? 50  : base,
+          shippingPerKmRate:    isFlat ? 15  : perKm,
+          flatRateInsideMetro:  inside,
+          flatRateOutsideMetro: outside,
         }),
       }, 15000);
       const d = await res.json();
@@ -1501,7 +1589,7 @@ export default function SettingsPage() {
                 <StoreLocationMap
                   lat={shippingForm.storeLat}
                   lng={shippingForm.storeLng}
-                  onLocationSelect={(lat, lng) => setShippingForm(f => ({ ...f, storeLat: lat, storeLng: lng }))}
+                  onLocationSelect={handleMapLocationSelect}
                 />
 
                 {shippingForm.storeLat && shippingForm.storeLng && (
@@ -1510,17 +1598,68 @@ export default function SettingsPage() {
                     background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)',
                     borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem',
                   }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0 }}>
                       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
                       <circle cx="12" cy="10" r="3"/>
                     </svg>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--gray-light)' }}>
-                      Pinned: {shippingForm.storeLat.toFixed(6)}, {shippingForm.storeLng.toFixed(6)}
-                    </span>
+                    {addrMapGeocoding
+                      ? <span style={{ fontSize: '0.8125rem', color: 'var(--gray)' }}>Detecting address…</span>
+                      : <span style={{ fontSize: '0.8125rem', color: 'var(--gray-light)' }}>
+                          Pinned: {shippingForm.storeAddress || `${shippingForm.storeLat.toFixed(6)}, ${shippingForm.storeLng.toFixed(6)}`}
+                        </span>
+                    }
                   </div>
                 )}
+                <p style={{ margin: '0.5rem 0 0', fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                  Map coordinates may be inaccurate. Pin the exact location on the map to overwrite the address field with the correct address.
+                </p>
 
+                {/* Search → auto-fills address below */}
                 <div className="profile-form-field" style={{ marginTop: '1rem' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.4rem', display: 'block' }}>
+                    Search Address <span style={{ fontWeight: 400 }}>(auto-fills the field below)</span>
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="text"
+                      value={addrSearch}
+                      onChange={handleAddrSearchChange}
+                      onBlur={() => setTimeout(() => setAddrShowSug(false), 200)}
+                      onFocus={() => addrSuggestions.length > 0 && setAddrShowSug(true)}
+                      placeholder="Type a street, barangay, or landmark…"
+                      style={{ paddingRight: '2.2rem' }}
+                    />
+                    <span style={{ position: 'absolute', right: '0.65rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--gray)' }}>
+                      {addrSearching
+                        ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ animation: 'spin 0.8s linear infinite', display: 'block' }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                        : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                      }
+                    </span>
+                    {addrShowSug && addrSuggestions.length > 0 && (
+                      <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', margin: '4px 0 0', padding: '0.25rem 0', listStyle: 'none', zIndex: 200, maxHeight: '220px', overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}>
+                        {addrSuggestions.map((s, i) => (
+                          <li
+                            key={i}
+                            onMouseDown={() => handleAddrSuggestionSelect(s)}
+                            style={{ padding: '0.55rem 0.85rem', fontSize: '0.8125rem', color: 'var(--gray-light)', cursor: 'pointer', borderBottom: i < addrSuggestions.length - 1 ? '1px solid var(--border)' : 'none' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--dark3)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            {s.display_name}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {!addrSearching && addrSearch.length >= 3 && !addrShowSug && addrSuggestions.length === 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', margin: '4px 0 0', padding: '0.75rem 0.875rem', fontSize: '0.8125rem', color: 'var(--gray)', zIndex: 200 }}>
+                        No results. Try a more specific address with correct spelling.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Store Address (displayed to customers) */}
+                <div className="profile-form-field" style={{ marginTop: '0.75rem' }}>
                   <label>Store Address <span style={{ fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 400 }}>(displayed to customers)</span></label>
                   <input
                     type="text"
@@ -1535,61 +1674,93 @@ export default function SettingsPage() {
               {/* Shipping Rates */}
               <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
                 <h2 style={{ margin: '0 0 0.375rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
-                  Shipping Rate Formula
+                  Shipping Rate
                 </h2>
                 <p style={{ margin: '0 0 1.25rem', fontSize: '0.8125rem', color: 'var(--gray)' }}>
-                  Fee = Base Rate + (Per km Rate × Distance). Used to estimate delivery cost shown at checkout.
-                  Set these to approximate what your courier (Lalamove / Grab) charges.
+                  Choose how shipping is calculated at checkout.
                 </p>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', maxWidth: '480px' }}>
-                  <div className="profile-form-field">
-                    <label>Base Rate (₱) <span className="required">*</span></label>
-                    <input
-                      type="text" inputMode="decimal"
-                      value={shippingForm.shippingBaseRate}
-                      onChange={e => {
-                        const v = e.target.value.replace(/[^\d.]/g, '');
-                        setShippingForm(f => ({ ...f, shippingBaseRate: v }));
-                      }}
-                      placeholder="50"
-                    />
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
-                      Flat fee regardless of distance
-                    </div>
-                  </div>
-                  <div className="profile-form-field">
-                    <label>Per km Rate (₱) <span className="required">*</span></label>
-                    <input
-                      type="text" inputMode="decimal"
-                      value={shippingForm.shippingPerKmRate}
-                      onChange={e => {
-                        const v = e.target.value.replace(/[^\d.]/g, '');
-                        setShippingForm(f => ({ ...f, shippingPerKmRate: v }));
-                      }}
-                      placeholder="15"
-                    />
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
-                      Added per kilometer of distance
-                    </div>
-                  </div>
+                {/* Mode toggle */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                  {[
+                    { id: 'distance', label: 'Distance-based', sub: 'Base + ₱/km via OSRM route' },
+                    { id: 'flat',     label: 'Flat Rate',      sub: 'Fixed by Metro / Non-Metro' },
+                  ].map(({ id, label, sub }) => {
+                    const active = shippingForm.shippingMode === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setShippingForm(f => ({ ...f, shippingMode: id }))}
+                        style={{
+                          flex: 1, padding: '0.75rem 1rem', borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
+                          border: `1px solid ${active ? 'var(--gold)' : 'var(--border)'}`,
+                          background: active ? 'rgba(212,168,67,0.08)' : 'var(--dark)',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        <div style={{ fontSize: '0.875rem', fontWeight: 700, color: active ? 'var(--gold)' : 'var(--white)', marginBottom: '0.2rem' }}>{label}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{sub}</div>
+                      </button>
+                    );
+                  })}
                 </div>
 
-                {/* Example */}
-                {shippingForm.shippingBaseRate && shippingForm.shippingPerKmRate && (
-                  <div style={{
-                    marginTop: '1rem', padding: '0.75rem 1rem',
-                    background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
-                    borderRadius: '8px', fontSize: '0.8125rem', color: 'var(--gray-light)',
-                  }}>
-                    Example — 5 km away:{' '}
-                    <strong style={{ color: 'var(--white)' }}>
-                      ₱{(parseFloat(shippingForm.shippingBaseRate || 0) + parseFloat(shippingForm.shippingPerKmRate || 0) * 5).toFixed(2)}
-                    </strong>
-                    {' '}· 10 km away:{' '}
-                    <strong style={{ color: 'var(--white)' }}>
-                      ₱{(parseFloat(shippingForm.shippingBaseRate || 0) + parseFloat(shippingForm.shippingPerKmRate || 0) * 10).toFixed(2)}
-                    </strong>
+                {shippingForm.shippingMode === 'distance' && (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', maxWidth: '480px' }}>
+                      <div className="profile-form-field">
+                        <label>Base Rate (₱) <span className="required">*</span></label>
+                        <input
+                          type="text" inputMode="decimal"
+                          value={shippingForm.shippingBaseRate}
+                          onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingBaseRate: v })); }}
+                          placeholder="50"
+                        />
+                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Flat fee regardless of distance</div>
+                      </div>
+                      <div className="profile-form-field">
+                        <label>Per km Rate (₱) <span className="required">*</span></label>
+                        <input
+                          type="text" inputMode="decimal"
+                          value={shippingForm.shippingPerKmRate}
+                          onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, shippingPerKmRate: v })); }}
+                          placeholder="15"
+                        />
+                        <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>Added per kilometer of distance</div>
+                      </div>
+                    </div>
+                    {shippingForm.shippingBaseRate && shippingForm.shippingPerKmRate && (
+                      <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.8125rem', color: 'var(--gray-light)' }}>
+                        Example — 5 km:{' '}<strong style={{ color: 'var(--white)' }}>₱{(parseFloat(shippingForm.shippingBaseRate || 0) + parseFloat(shippingForm.shippingPerKmRate || 0) * 5).toFixed(2)}</strong>
+                        {' '}· 10 km:{' '}<strong style={{ color: 'var(--white)' }}>₱{(parseFloat(shippingForm.shippingBaseRate || 0) + parseFloat(shippingForm.shippingPerKmRate || 0) * 10).toFixed(2)}</strong>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {shippingForm.shippingMode === 'flat' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', maxWidth: '480px' }}>
+                    <div className="profile-form-field">
+                      <label>Inside Metro Manila (₱) <span className="required">*</span></label>
+                      <input
+                        type="text" inputMode="decimal"
+                        value={shippingForm.flatRateInsideMetro}
+                        onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, flatRateInsideMetro: v })); }}
+                        placeholder="150"
+                      />
+                      <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>NCR / Metro Manila cities</div>
+                    </div>
+                    <div className="profile-form-field">
+                      <label>Outside Metro Manila (₱) <span className="required">*</span></label>
+                      <input
+                        type="text" inputMode="decimal"
+                        value={shippingForm.flatRateOutsideMetro}
+                        onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); setShippingForm(f => ({ ...f, flatRateOutsideMetro: v })); }}
+                        placeholder="250"
+                      />
+                      <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.25rem' }}>All other provinces</div>
+                    </div>
                   </div>
                 )}
               </div>

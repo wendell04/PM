@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
@@ -42,7 +42,7 @@ const emptyForm = {
   is_default: false, lat: null, lng: null,
 };
 
-export default function AddressBook() {
+export default function AddressBook({ onSaved, initialEditAddress }) {
   const { token } = useAuth();
 
   const [addresses, setAddresses]       = useState([]);
@@ -55,10 +55,24 @@ export default function AddressBook() {
   const [formData, setFormData]         = useState(emptyForm);
   const [formErrors, setFormErrors]     = useState({});
   const [deletingId, setDeletingId]     = useState(null);
-  const [mapExpanded, setMapExpanded]   = useState(false);
-  const [isGeocoding, setIsGeocoding]   = useState(false);
+  const [mapExpanded, setMapExpanded]     = useState(false);
+  const autoOpenedRef                     = useRef(false);
+  const [isGeocoding, setIsGeocoding]     = useState(false);
+  const [addressSearch, setAddressSearch] = useState('');
+  const [suggestions, setSuggestions]     = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isSearching, setIsSearching]     = useState(false);
+  const searchTimerRef                    = useRef(null);
 
   useEffect(() => { fetchAddresses(); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-open edit form when initialEditAddress prop is provided (used by checkout pin modal)
+  useEffect(() => {
+    if (!initialEditAddress || autoOpenedRef.current || addresses.length === 0) return;
+    autoOpenedRef.current = true;
+    const found = addresses.find(a => a.id === initialEditAddress.id);
+    if (found) handleEdit(found);
+  }, [addresses]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (successMsg) {
@@ -110,6 +124,44 @@ export default function AddressBook() {
     finally { setIsGeocoding(false); }
   };
 
+  const handleSearchChange = (val) => {
+    setAddressSearch(val);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (val.trim().length < 3) { setSuggestions([]); setShowSuggestions(false); setIsSearching(false); return; }
+    setIsSearching(true);
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&addressdetails=1&limit=6&countrycodes=ph`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        const data = await res.json();
+        setSuggestions(data);
+        setShowSuggestions(data.length > 0);
+      } catch { setSuggestions([]); }
+      finally { setIsSearching(false); }
+    }, 280);
+  };
+
+  const handleSuggestionSelect = (s) => {
+    const a = s.address || {};
+    setFormData(prev => ({
+      ...prev,
+      house_number: a.house_number || prev.house_number,
+      street:       a.road || a.pedestrian || a.footway || prev.street,
+      barangay:     a.suburb || a.village || a.neighbourhood || a.quarter || prev.barangay,
+      city:         a.city || a.town || a.municipality || a.county || prev.city,
+      province:     a.state || a.region || prev.province,
+      zip:          a.postcode ? a.postcode.replace(/\D/g, '').slice(0, 4) : prev.zip,
+      lat:          parseFloat(s.lat),
+      lng:          parseFloat(s.lon),
+    }));
+    setAddressSearch('');
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setMapExpanded(true);
+  };
+
   const validateForm = () => {
     const errors = {};
     if (!formData.house_number.trim()) errors.house_number = 'House/Unit No. is required';
@@ -148,6 +200,7 @@ export default function AddressBook() {
       setAddresses(data.addresses || []);
       setSuccessMsg(editingAddress ? 'Address updated successfully!' : 'Address added successfully!');
       resetForm();
+      onSaved?.();
     } catch (err) {
       setError(err.message || 'An error occurred');
     } finally {
@@ -222,6 +275,9 @@ export default function AddressBook() {
     setShowForm(false);
     setFormErrors({});
     setMapExpanded(false);
+    setAddressSearch('');
+    setSuggestions([]);
+    setShowSuggestions(false);
   };
 
   const openAddForm = () => { resetForm(); setShowForm(true); };
@@ -275,7 +331,62 @@ export default function AddressBook() {
 
       {/* Add / Edit Form */}
       {showForm && (
-        <form onSubmit={handleSubmit} style={{ padding: '1.25rem', background: 'var(--dark)', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <form onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} style={{ padding: '1.25rem', background: 'var(--dark)', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+          {/* ── Address search / autocomplete ── */}
+          <div style={{ position: 'relative' }}>
+            <label style={labelStyle}>Search Address <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional — auto-fills fields below)</span></label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                value={addressSearch}
+                onChange={e => handleSearchChange(e.target.value)}
+                onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 160)}
+                placeholder="Type a street, barangay, or landmark…"
+                style={{ ...inputStyle, paddingRight: '2.25rem' }}
+                autoComplete="off"
+              />
+              {isSearching ? (
+                <span style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                  </svg>
+                </span>
+              ) : (
+                <span style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                </span>
+              )}
+            </div>
+
+            {showSuggestions && suggestions.length > 0 && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', marginTop: '4px', overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+                {suggestions.map((s, i) => (
+                  <button
+                    key={s.place_id || i}
+                    type="button"
+                    onMouseDown={() => handleSuggestionSelect(s)}
+                    style={{ display: 'flex', alignItems: 'flex-start', gap: '0.625rem', width: '100%', padding: '0.625rem 0.875rem', background: 'transparent', border: 'none', borderBottom: i < suggestions.length - 1 ? '1px solid var(--border)' : 'none', color: 'var(--white)', fontSize: '0.8125rem', cursor: 'pointer', textAlign: 'left' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(212,168,67,0.07)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    <span style={{ lineHeight: 1.4 }}>{s.display_name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {!isSearching && addressSearch.trim().length >= 3 && !showSuggestions && suggestions.length === 0 && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', marginTop: '4px', padding: '0.75rem 0.875rem', fontSize: '0.8125rem', color: 'var(--gray)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+                No results. Try a more specific address with correct spelling.
+              </div>
+            )}
+          </div>
 
           {/* ── Map pin (optional) ── */}
           <div>
@@ -306,14 +417,18 @@ export default function AddressBook() {
                 )}
                 {formData.lat && formData.lng && !isGeocoding && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.78rem', color: 'var(--gray-light)' }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0 }}>
                       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
                     </svg>
-                    Pinned · {formData.lat.toFixed(5)}, {formData.lng.toFixed(5)}
+                    Pinned · {
+                      [formData.house_number, formData.street, formData.barangay, formData.city, formData.province]
+                        .filter(Boolean).join(', ')
+                      || `${formData.lat.toFixed(5)}, ${formData.lng.toFixed(5)}`
+                    }
                   </div>
                 )}
-                <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--gray)' }}>
-                  Click the map to drop a pin. City, province, and ZIP will be auto-filled — you can edit them below.
+                <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                  Map coordinates may be inaccurate. Pin the exact location on the map to overwrite the address fields with the correct address.
                 </p>
               </div>
             )}
@@ -341,6 +456,11 @@ export default function AddressBook() {
               <label style={labelStyle}>House/Unit No. <span style={{ color: 'var(--red)' }}>*</span></label>
               <input type="text" value={formData.house_number} onChange={e => handleInputChange('house_number', e.target.value)} placeholder="e.g. Blk 2 Lot 24" style={formErrors.house_number ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.house_number)}
+              {!formErrors.house_number && (
+                <span style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.25rem', display: 'block' }}>
+                  Auto-filled when available. Add Blk/Lot/Unit number manually if missing.
+                </span>
+              )}
             </div>
             <div>
               <label style={labelStyle}>Subdivision / Village <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional)</span></label>
@@ -400,12 +520,28 @@ export default function AddressBook() {
 
       {/* Empty state */}
       {!showForm && addresses.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '3rem 1rem', background: 'var(--dark)', borderRadius: '12px', border: '1px solid var(--border)' }}>
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="1.5" style={{ marginBottom: '1rem' }}>
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-          </svg>
-          <div style={{ fontSize: '1rem', color: 'var(--white)', marginBottom: '0.5rem' }}>No saved addresses yet</div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Add one to get started</div>
+        <div style={{ padding: '2rem 1.5rem', background: 'var(--dark)', borderRadius: '12px', border: '1px solid rgba(212,168,67,0.25)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', textAlign: 'center' }}>
+          <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(212,168,67,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.35rem' }}>No delivery address yet</div>
+            <div style={{ fontSize: '0.82rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+              Add your delivery address so we can calculate shipping and process your orders.
+              <br />Pinning your location on the map lets us give you an accurate shipping estimate at checkout.
+            </div>
+          </div>
+          <button
+            onClick={openAddForm}
+            style={{ padding: '0.625rem 1.5rem', background: 'var(--gold)', border: 'none', borderRadius: '8px', color: 'var(--black)', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Add Delivery Address
+          </button>
         </div>
       )}
 

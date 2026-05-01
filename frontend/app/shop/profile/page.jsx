@@ -150,9 +150,9 @@ export default function CustomerProfilePage() {
     }
   }, [activeTab]);
 
-  // Fetch orders when Orders tab is activated
+  // Fetch orders when Overview tab is activated (for Recent Orders widget)
   useEffect(() => {
-    if (activeTab !== 'orders') return;
+    if (activeTab !== 'overview') return;
     if (!token) return;
 
     const load = async () => {
@@ -160,7 +160,9 @@ export default function CustomerProfilePage() {
       setWidgetError('');
       try {
         const data = await fetchMyOrders(token);
-        setOrders(data.data || data || []);
+        const list = data.data || data || [];
+        setOrders(Array.isArray(list) ? list : []);
+        setRecentOrders(Array.isArray(list) ? list.slice(0, 3) : []);
       } catch (err) {
         setWidgetError(err.message || 'Failed to load orders.');
       } finally {
@@ -169,28 +171,6 @@ export default function CustomerProfilePage() {
     };
 
     load();
-  }, [activeTab, token]);
-
-  // Fetch order requests for Orders tab widget
-  useEffect(() => {
-    if (activeTab !== 'orders') return;
-    if (!token) return;
-
-    const loadWidget = async () => {
-      setWidgetLoading(true);
-      setWidgetError('');
-      try {
-        const data = await fetchMyOrders(token);
-        const list = Array.isArray(data) ? data : [];
-        setRecentOrders(list.slice(0, 3));
-      } catch (err) {
-        setWidgetError(err.message || 'Failed to load orders.');
-      } finally {
-        setWidgetLoading(false);
-      }
-    };
-
-    loadWidget();
   }, [activeTab, token]);
 
   // Fetch sessions when Security tab is activated
@@ -884,50 +864,6 @@ export default function CustomerProfilePage() {
               </svg>
               Addresses
             </button>
-            <button
-              onClick={() => { setActiveTab('orders'); setSelectedOrder(null); }}
-              className={`profile-nav-item${activeTab === 'orders' ? ' active' : ''}`}
-              style={{
-                padding: '0.625rem 1rem',
-                borderRadius: '8px',
-                border: 'none',
-                fontSize: '0.9rem',
-                fontWeight: 500,
-                cursor: 'pointer',
-                textAlign: 'left',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="16" y1="13" x2="8" y2="13"/>
-                <line x1="16" y1="17" x2="8" y2="17"/>
-              </svg>
-              My Orders
-              {orders.length > 0 && (
-                <span style={{
-                  marginLeft: 'auto',
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  padding: '1px 7px',
-                  borderRadius: '999px',
-                  background: activeTab === 'orders'
-                    ? 'rgba(0,0,0,0.2)'
-                    : 'rgba(212,168,67,0.15)',
-                  color: activeTab === 'orders'
-                    ? 'var(--black)'
-                    : 'var(--gold)',
-                  border: activeTab === 'orders'
-                    ? 'none'
-                    : '1px solid rgba(212,168,67,0.3)',
-                }}>
-                  {orders.length}
-                </span>
-              )}
-            </button>
           </nav>
         </aside>
 
@@ -1012,7 +948,7 @@ export default function CustomerProfilePage() {
 
                   {orders.length > 2 && (
                     <button
-                      onClick={() => setActiveTab('orders')}
+                      onClick={() => router.push('/shop/orders-history')}
                       style={{
                         marginTop: '0.75rem',
                         background: 'transparent',
@@ -2111,65 +2047,6 @@ export default function CustomerProfilePage() {
             {/* TAB 4: Addresses */}
             {activeTab === 'addresses' && <AddressBook />}
 
-            {/* TAB 5: My Orders */}
-            {activeTab === 'orders' && (
-              <div>
-                {/* Header row */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-                  <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--white)' }}>My Orders</h2>
-                  <Link href="/shop/orders-history" style={{ color: 'var(--gold)', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 600 }}>View All →</Link>
-                </div>
-
-                {/* Loading */}
-                {widgetLoading && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {[1, 2, 3].map(i => (
-                      <div key={i} style={{ padding: '1rem', background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)', animation: 'pulse 1.5s ease-in-out infinite' }}>
-                        <div style={{ height: '14px', background: 'var(--dark3)', borderRadius: '4px', width: '40%', marginBottom: '0.5rem' }} />
-                        <div style={{ height: '12px', background: 'var(--dark3)', borderRadius: '4px', width: '60%' }} />
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Error */}
-                {widgetError && !widgetLoading && (
-                  <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--red)' }}>
-                    <p style={{ marginBottom: '0.75rem', fontSize: '0.85rem' }}>Failed to load orders.</p>
-                    <button onClick={() => { setWidgetError(''); setWidgetLoading(true); if (!token) return; fetchMyOrders(token).then(data => { const list = Array.isArray(data) ? data : []; setRecentOrders(list.slice(0, 3)); setWidgetError(''); }).catch(err => { setWidgetError(err.message); }).finally(() => { setWidgetLoading(false); }); }} style={{ background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '6px', padding: '0.375rem 0.75rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>Retry</button>
-                  </div>
-                )}
-
-                {/* Empty */}
-                {!widgetLoading && !widgetError && recentOrders.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
-                    <p style={{ fontSize: '0.9rem', color: 'var(--white)', marginBottom: '0.5rem' }}>No orders yet.</p>
-                    <Link href="/shop" style={{ color: 'var(--gold)', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 600 }}>Browse Products</Link>
-                  </div>
-                )}
-
-                {/* Order rows */}
-                {!widgetLoading && !widgetError && recentOrders.length > 0 && (
-                  <div>
-                    {recentOrders.map((order, idx) => (
-                      <div key={order._id ?? order.id ?? `order-row-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.875rem 0', borderBottom: idx < recentOrders.length - 1 ? '1px solid var(--border)' : 'none', flexWrap: 'wrap', gap: '0.5rem' }}>
-                        <div>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--white)' }}>{order._id?.slice(-8).toUpperCase()}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.125rem' }}>{order.productName || '—'}</div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <StatusBadge status={order.status} />
-                          <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.25rem' }}>{order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</div>
-                        </div>
-                      </div>
-                    ))}
-                    <div style={{ marginTop: '1rem' }}>
-                      <Link href="/shop/orders-history" style={{ display: 'block', width: '100%', textAlign: 'center', padding: '0.625rem 1rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 600 }}>View All Orders</Link>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </section>
       </main>

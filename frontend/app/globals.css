@@ -95,3 +95,9 @@
 .back-to-shop-btn:hover {
   color: var(--white, #fff);
 }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.leaflet-container img {
+  max-width: none !important;
+  max-height: none !important;
+}

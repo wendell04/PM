@@ -1,12 +1,23 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import '@/app/shop/shop.css';
 import { applyVoucher } from '@/lib/voucherApi';
+
+const AddressBook = dynamic(() => import('@/components/profile/AddressBook'), { ssr: false });
+
+const METRO_CITIES = ['Manila', 'Quezon City', 'Caloocan', 'Las Piñas', 'Makati', 'Malabon', 'Mandaluyong', 'Marikina', 'Muntinlupa', 'Navotas', 'Parañaque', 'Pasay', 'Pasig', 'Pateros', 'San Juan', 'Taguig', 'Valenzuela'];
+function isMetroManila(city, province) {
+  const p = (province || '').toLowerCase();
+  const c = (city || '').toLowerCase();
+  return p.includes('metro manila') || p.includes('ncr') || p.includes('national capital')
+    || METRO_CITIES.some(m => c.includes(m.toLowerCase()));
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -95,6 +106,56 @@ export default function CheckoutPage() {
 
   // Pay in full option for downpayment orders
   const [payFull, setPayFull] = useState(false);
+
+  // Shipping fee
+  const [storeSettings, setStoreSettings]   = useState(null);
+  const [shippingFeeAmt, setShippingFeeAmt] = useState(null);
+  const [shippingLoading, setShippingLoading] = useState(false);
+  const [showPinModal, setShowPinModal]     = useState(false);
+
+  // ── EFFECT: Load store settings for shipping calculation ──
+  useEffect(() => {
+    fetch(`${API_URL}/api/public/settings`)
+      .then(r => r.json())
+      .then(d => setStoreSettings(d.data ?? d))
+      .catch(() => {});
+  }, []);
+
+  // ── EFFECT: Calculate shipping fee when address or store settings change ──
+  useEffect(() => {
+    const addr = addresses.find(a => a.id === selectedAddressId) ?? null;
+
+    if (storeSettings?.shippingMode === 'flat') {
+      if (!addr) { setShippingFeeAmt(null); return; }
+      const fee = isMetroManila(addr.city, addr.province)
+        ? (storeSettings.flatRateInsideMetro  ?? 150)
+        : (storeSettings.flatRateOutsideMetro ?? 250);
+      setShippingFeeAmt(fee);
+      return;
+    }
+
+    if (!storeSettings?.storeLat || !storeSettings?.storeLng || !addr?.lat || !addr?.lng) {
+      setShippingFeeAmt(null);
+      return;
+    }
+    setShippingLoading(true);
+    const { storeLat, storeLng, shippingBaseRate = 50, shippingPerKmRate = 15 } = storeSettings;
+    fetch(
+      `https://router.project-osrm.org/route/v1/driving/${storeLng},${storeLat};${addr.lng},${addr.lat}?overview=false`
+    )
+      .then(r => r.json())
+      .then(d => {
+        const distanceM = d.routes?.[0]?.distance ?? null;
+        if (distanceM !== null) {
+          const distKm = distanceM / 1000;
+          setShippingFeeAmt(Math.round((shippingBaseRate + shippingPerKmRate * distKm) * 100) / 100);
+        } else {
+          setShippingFeeAmt(null);
+        }
+      })
+      .catch(() => setShippingFeeAmt(null))
+      .finally(() => setShippingLoading(false));
+  }, [selectedAddressId, addresses, storeSettings]);
 
   // ── EFFECT: Handle return from PayMongo ──
   useEffect(() => {
@@ -185,34 +246,33 @@ export default function CheckoutPage() {
     }
   }, [mounted, token, router]);
 
-  // ── EFFECT: Fetch addresses ──
-  useEffect(() => {
+  // ── Fetch addresses (also called after pin modal saves) ──
+  const fetchAddresses = useCallback(async (keepSelection = false) => {
     if (!token) return;
-    const fetchAddresses = async () => {
-      setAddressLoading(true);
-      setError(null);
-      try {
-        const res = await fetchWithTimeout(`${API_URL}/api/addresses`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-        }, 30000);
-        if (!res.ok) throw new Error('Failed to load addresses.');
-        const data = await res.json();
-        const list = data.addresses || [];
-        setAddresses(list);
+    setAddressLoading(true);
+    setError(null);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/addresses`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      }, 30000);
+      if (!res.ok) throw new Error('Failed to load addresses.');
+      const data = await res.json();
+      const list = data.addresses || [];
+      setAddresses(list);
+      if (!keepSelection) {
         const def = list.find(a => a.is_default);
         setSelectedAddressId(def?.id ?? list[0]?.id ?? null);
-      } catch (err) {
-        setError('Failed to load addresses.');
-      } finally {
-        setAddressLoading(false);
       }
-    };
-    fetchAddresses();
+    } catch {
+      setError('Failed to load addresses.');
+    } finally {
+      setAddressLoading(false);
+    }
   }, [token]);
+
+  // ── EFFECT: Fetch addresses on mount ──
+  useEffect(() => { fetchAddresses(); }, [fetchAddresses]);
 
   // ── Computed ──
   const selectedAddress = addresses.find(a => a.id === selectedAddressId) ?? null;
@@ -221,7 +281,7 @@ export default function CheckoutPage() {
   const hasCustomItem = items.some(i => i.isCustom === true && !i.designUrl && !i.designRequested);
   const voucherDiscount = appliedVoucher ? appliedVoucher.discountAmount : 0;
   const total           = Math.max(0, subtotal - voucherDiscount);
-  const grandTotal      = total; // Delivery is manually arranged — no fixed fee
+  const grandTotal      = total + (shippingFeeAmt ?? 0);
 
   // Order-level downpayment: if ANY item requires DP, apply the highest DP% to the full order total
   const downpaymentPercent = items
@@ -438,7 +498,7 @@ export default function CheckoutPage() {
         formData.append('deliveryAddress', JSON.stringify(deliveryAddress));
         formData.append('paymentMethod', paymentMethod);
         if (appliedVoucher?.code) formData.append('voucherCode', appliedVoucher.code);
-        formData.append('shippingFee', '0');
+        formData.append('shippingFee', String(shippingFeeAmt ?? 0));
         fetchBody = formData;
         fetchHeaders = {
           Authorization: `Bearer ${token}`,
@@ -449,7 +509,7 @@ export default function CheckoutPage() {
           deliveryAddress,
           design_notes: designNotes || null,
           paymentMethod,
-          shippingFee: 0,
+          shippingFee: shippingFeeAmt ?? 0,
           ...(appliedVoucher?.code ? { voucherCode: appliedVoucher.code } : {}),
         });
         fetchHeaders = {
@@ -486,7 +546,7 @@ export default function CheckoutPage() {
           paymentType: paymentMethod,
           paymentMethodId,
           eWalletPhone: eWalletPhone.trim() ? `+63${eWalletPhone.trim()}` : null,
-          shippingFee: 0,
+          shippingFee: shippingFeeAmt ?? 0,
           ...(appliedVoucher?.code ? { voucherCode: appliedVoucher.code } : {}),
           ...(downpaymentRequired && !payFull ? { isDownpayment: true, downpaymentPercent } : {}),
         });
@@ -725,6 +785,25 @@ export default function CheckoutPage() {
             </div>
             <div className="checkout-address-phone">{selectedAddress.phone || '—'}</div>
             <div className="checkout-address-text">{formatAddress(selectedAddress)}</div>
+            {!selectedAddress.lat && !selectedAddress.lng && storeSettings?.shippingMode !== 'flat' && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginTop: '0.75rem', padding: '0.625rem 0.75rem', background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.25)', borderRadius: '8px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '1px' }}>
+                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.78rem', color: '#eab308', lineHeight: 1.5 }}>
+                    Pin your location to get a shipping estimate.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowPinModal(true)}
+                    style={{ padding: '0.3rem 0.75rem', background: '#eab308', border: 'none', borderRadius: '6px', color: '#000', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    Pin Location
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : addresses.length > 0 ? (
           <div>
@@ -976,7 +1055,24 @@ export default function CheckoutPage() {
         </div>
         <div className="checkout-summary-row">
           <span>Delivery</span>
-          <span className="checkout-shipping-note">Billed separately</span>
+          {shippingLoading ? (
+            <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Calculating…</span>
+          ) : shippingFeeAmt !== null ? (
+            <span>₱{shippingFeeAmt.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          ) : (() => {
+            const addr = addresses.find(a => a.id === selectedAddressId);
+            if (storeSettings?.shippingMode === 'flat' && !addr)
+              return <span className="checkout-shipping-note">Select an address</span>;
+            if (!storeSettings?.storeLat || !storeSettings?.storeLng && storeSettings?.shippingMode !== 'flat')
+              return <span className="checkout-shipping-note">—</span>;
+            if (!addr?.lat || !addr?.lng)
+              return (
+                <button type="button" className="checkout-shipping-note" style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', padding: 0, fontWeight: 600, fontSize: 'inherit', textDecoration: 'underline' }} onClick={() => setShowPinModal(true)}>
+                  Pin your address
+                </button>
+              );
+            return <span className="checkout-shipping-note">—</span>;
+          })()}
         </div>
         <div className="checkout-divider" />
 
@@ -1467,7 +1563,9 @@ export default function CheckoutPage() {
 
       <p className="checkout-disclaimer">
         {paymentMethod === 'cod'
-          ? 'By placing this order, you agree to our terms. You will pay upon delivery. Delivery fee is billed separately.'
+          ? shippingFeeAmt !== null
+            ? 'By placing this order, you agree to our terms. You will pay upon delivery including the estimated shipping fee.'
+            : 'By placing this order, you agree to our terms. You will pay upon delivery. Exact delivery fee may vary.'
           : paymentMethod === 'gcash'
             ? 'By placing this order, you agree to our terms. You\'ll be redirected to GCash to complete payment.'
             : paymentMethod === 'paymaya'
@@ -1522,6 +1620,32 @@ export default function CheckoutPage() {
                 Manage Addresses (opens in new tab) →
               </a>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* PIN LOCATION MODAL */}
+      {showPinModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 3000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '1rem', overflowY: 'auto' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowPinModal(false); }}
+        >
+          <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.5rem', width: '100%', maxWidth: '580px', marginTop: '2rem', marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--white)', fontWeight: 700 }}>Pin Your Delivery Location</h2>
+              <button onClick={() => setShowPinModal(false)} style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <AddressBook
+              initialEditAddress={selectedAddress}
+              onSaved={() => {
+                fetchAddresses(true);
+                setShowPinModal(false);
+              }}
+            />
           </div>
         </div>
       )}

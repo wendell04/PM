@@ -9,7 +9,8 @@ class SettingsController extends Controller
 {
     private function getOwner(): ?User
     {
-        return User::where('role', 'owner')->first();
+        return User::where('role', 'owner')->first()
+            ?? User::whereIn('role', ['admin', 'owner'])->first();
     }
 
     public function public(Request $request)
@@ -17,11 +18,14 @@ class SettingsController extends Controller
         try {
             $owner = $this->getOwner();
             return $this->successResponse('Public settings retrieved.', [
-                'designRequestFee'  => (float) ($owner->designRequestFee  ?? 100),
-                'storeLat'          => $owner->storeLat         ?? null,
-                'storeLng'          => $owner->storeLng         ?? null,
-                'shippingBaseRate'  => (float) ($owner->shippingBaseRate  ?? 50),
-                'shippingPerKmRate' => (float) ($owner->shippingPerKmRate ?? 15),
+                'designRequestFee'     => (float) ($owner->designRequestFee     ?? 100),
+                'storeLat'             => $owner->storeLat              ?? null,
+                'storeLng'             => $owner->storeLng              ?? null,
+                'shippingMode'         => $owner->shippingMode          ?? 'distance',
+                'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 50),
+                'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
+                'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
+                'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
             ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to retrieve public settings.');
@@ -34,20 +38,72 @@ class SettingsController extends Controller
             $user = $request->user();
             if (!$user) return $this->unauthorizedResponse();
 
+            // Shipping settings are always stored on the owner account
+            $owner = $this->getOwner() ?? $user;
+
             return $this->successResponse('Settings retrieved.', [
-                'storeName'         => $user->storeName        ?? '',
-                'storeDescription'  => $user->storeDescription ?? '',
-                'storeEmail'        => $user->storeEmail       ?? '',
-                'storePhone'        => $user->storePhone       ?? '',
-                'storeAddress'      => $user->storeAddress     ?? '',
-                'storeLat'          => $user->storeLat         ?? null,
-                'storeLng'          => $user->storeLng         ?? null,
-                'shippingBaseRate'  => (float) ($user->shippingBaseRate  ?? 50),
-                'shippingPerKmRate' => (float) ($user->shippingPerKmRate ?? 15),
-                'designRequestFee'  => (float) ($user->designRequestFee  ?? 100),
+                'storeName'            => $user->storeName             ?? '',
+                'storeDescription'     => $user->storeDescription      ?? '',
+                'storeEmail'           => $user->storeEmail            ?? '',
+                'storePhone'           => $user->storePhone            ?? '',
+                'storeAddress'         => $owner->storeAddress          ?? '',
+                'storeLat'             => $owner->storeLat              ?? null,
+                'storeLng'             => $owner->storeLng              ?? null,
+                'shippingMode'         => $owner->shippingMode          ?? 'distance',
+                'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 50),
+                'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
+                'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
+                'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
+                'designRequestFee'     => (float) ($user->designRequestFee      ?? 100),
             ]);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to retrieve settings.');
+        }
+    }
+
+    public function shippingUpdate(Request $request)
+    {
+        try {
+            if (!$request->user()) return $this->unauthorizedResponse();
+
+            $owner = $this->getOwner();
+            if (!$owner) return $this->serverErrorResponse(new \Exception('No owner'), 'Store owner not found.');
+
+            $request->validate([
+                'storeAddress'         => 'nullable|string|max:300',
+                'storeLat'             => 'nullable|numeric|between:-90,90',
+                'storeLng'             => 'nullable|numeric|between:-180,180',
+                'shippingMode'         => 'nullable|string|in:distance,flat',
+                'shippingBaseRate'     => 'nullable|numeric|min:0|max:9999',
+                'shippingPerKmRate'    => 'nullable|numeric|min:0|max:9999',
+                'flatRateInsideMetro'  => 'nullable|numeric|min:0|max:9999',
+                'flatRateOutsideMetro' => 'nullable|numeric|min:0|max:9999',
+            ]);
+
+            if ($request->has('storeAddress'))         $owner->storeAddress         = $request->storeAddress ?? '';
+            if ($request->has('storeLat'))             $owner->storeLat             = $request->storeLat !== null ? (float) $request->storeLat : null;
+            if ($request->has('storeLng'))             $owner->storeLng             = $request->storeLng !== null ? (float) $request->storeLng : null;
+            if ($request->has('shippingMode'))         $owner->shippingMode         = $request->shippingMode ?? 'distance';
+            if ($request->has('shippingBaseRate'))     $owner->shippingBaseRate     = (float) $request->shippingBaseRate;
+            if ($request->has('shippingPerKmRate'))    $owner->shippingPerKmRate    = (float) $request->shippingPerKmRate;
+            if ($request->has('flatRateInsideMetro'))  $owner->flatRateInsideMetro  = (float) $request->flatRateInsideMetro;
+            if ($request->has('flatRateOutsideMetro')) $owner->flatRateOutsideMetro = (float) $request->flatRateOutsideMetro;
+            $owner->save();
+
+            return $this->successResponse('Shipping settings saved.', [
+                'storeAddress'         => $owner->storeAddress          ?? '',
+                'storeLat'             => $owner->storeLat              ?? null,
+                'storeLng'             => $owner->storeLng              ?? null,
+                'shippingMode'         => $owner->shippingMode          ?? 'distance',
+                'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 50),
+                'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
+                'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
+                'flatRateOutsideMetro' => (float) ($owner->flatRateOutsideMetro ?? 250),
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to save shipping settings.');
         }
     }
 

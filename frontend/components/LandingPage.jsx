@@ -1735,12 +1735,15 @@ const handleForgotResetPassword = async () => {
                     </div>
 
                     <div className="auth-field">
-                      <label>Address</label>
-                      <input type="text" placeholder="123 Main Street, City, Province, ZIP Code"
+                      <label>Home Address</label>
+                      <input type="text" placeholder="e.g. 123 Rizal Ave, Brgy. San Antonio, Caloocan"
                         value={registerForm.address}
                         onChange={e => handleRegisterChange('address', e.target.value)}
                         className={errors.address ? 'error' : ''}/>
                       {errors.address && <span className="error-message">{errors.address}</span>}
+                      <span style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.3rem', display: 'block' }}>
+                        For delivery, you&apos;ll add a pinned address in your profile after registering.
+                      </span>
                     </div>
 
                     <div className="auth-field">

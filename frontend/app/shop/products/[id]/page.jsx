@@ -1053,18 +1053,21 @@ export default function ProductDetailPage() {
                   /* Custom product — goes to order form, not cart */
                   <>
                     <button
-                      onClick={() => router.push(`/shop/products/${id}/order`)}
+                      onClick={() => !isOutOfStock && router.push(`/shop/products/${id}/order`)}
+                      disabled={isOutOfStock}
                       style={{
-                        background: 'var(--gold)', color: '#000',
+                        background: isOutOfStock ? 'rgba(107,114,128,0.3)' : 'var(--gold)',
+                        color: isOutOfStock ? 'var(--gray)' : '#000',
                         border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
-                        fontWeight: 800, fontSize: '1rem', cursor: 'pointer',
+                        fontWeight: 800, fontSize: '1rem',
+                        cursor: isOutOfStock ? 'not-allowed' : 'pointer',
                         width: '100%', fontFamily: "'Outfit', sans-serif",
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                       }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                         <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                       </svg>
-                      Place Custom Order
+                      {isOutOfStock ? 'Out of Stock' : 'Place Custom Order'}
                     </button>
                     <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
                       Custom orders are fulfilled separately. You&apos;ll upload or request a design on the next step.

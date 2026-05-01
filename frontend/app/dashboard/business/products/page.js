@@ -2728,7 +2728,7 @@ function ProductExpandRow({ product, inv, boms = [], inventoryList = [] }) {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
                     <span style={{ fontSize: "0.68rem", color: "var(--gray)" }}>
-                      {v.available === 0 ? "Can produce: 0" : `Can produce: ${v.available}`}
+                      Can produce: <span style={{ color: v.available > 0 ? "var(--gold)" : "var(--gray)", fontWeight: 600 }}>{v.available}</span>
                     </span>
                     {v.constraintName && v.available > 0 && (
                       <span style={{ fontSize: "0.68rem", color: "var(--gray)" }}>
@@ -2751,7 +2751,7 @@ function ProductExpandRow({ product, inv, boms = [], inventoryList = [] }) {
               {inv.isOnDemand ? "Upon Order" : (product.stock ?? 0) > 0 ? `${product.stock} in stock` : "Out of stock"}
             </div>
             {!product.isMadeToOrder && inv.stockQty > 0 && (
-              <div style={{ fontSize: "0.68rem", color: "var(--gray)" }}>Can produce: {inv.stockQty}</div>
+              <div style={{ fontSize: "0.68rem", color: "var(--gray)" }}>Can produce: <span style={{ color: "var(--gold)", fontWeight: 600 }}>{inv.stockQty}</span></div>
             )}
           </div>
         ) : (

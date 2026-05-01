@@ -554,6 +554,12 @@ export default function OrdersPage() {
                                     <span style={{ color: 'var(--green)', fontWeight: 600 }}>−₱{Number(o.discountAmount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                   </div>
                                 )}
+                                {Number(o.shippingFee) > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--gray)' }}>Shipping</span>
+                                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{Number(o.shippingFee).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </div>
+                                )}
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ color: 'var(--gray)' }}>Total</span>
                                   <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{Number(o.totalAmount ?? o.totalPrice ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>

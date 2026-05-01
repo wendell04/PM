@@ -90,6 +90,8 @@ export default function CustomOrderPage() {
   const [paymentMethod, setPaymentMethod] = useState('gcash');
   const [placing, setPlacing] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  const [storeSettings, setStoreSettings]     = useState(null);
+  const [shippingFeeAmt, setShippingFeeAmt]   = useState(null);
 
   useEffect(() => {
     if (token === null) {
@@ -121,6 +123,35 @@ export default function CustomOrderPage() {
   }, [id, router]);
 
   useEffect(() => {
+    fetch(`${API_URL}/api/public/settings`)
+      .then(r => r.json())
+      .then(d => setStoreSettings(d.data ?? d))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const addr = addresses.find(a => a.id === selectedAddressId) ?? null;
+    if (!storeSettings?.storeLat || !storeSettings?.storeLng || !addr?.lat || !addr?.lng) {
+      setShippingFeeAmt(null);
+      return;
+    }
+    const { storeLat, storeLng, shippingBaseRate = 50, shippingPerKmRate = 15 } = storeSettings;
+    fetch(
+      `https://router.project-osrm.org/route/v1/driving/${storeLng},${storeLat};${addr.lng},${addr.lat}?overview=false`
+    )
+      .then(r => r.json())
+      .then(d => {
+        const distM = d.routes?.[0]?.distance ?? null;
+        if (distM !== null) {
+          setShippingFeeAmt(Math.round((shippingBaseRate + shippingPerKmRate * distM / 1000) * 100) / 100);
+        } else {
+          setShippingFeeAmt(null);
+        }
+      })
+      .catch(() => setShippingFeeAmt(null));
+  }, [selectedAddressId, addresses, storeSettings]);
+
+  useEffect(() => {
     if (!token) return;
     setAddressLoading(true);
     fetchWithTimeout(`${API_URL}/api/addresses`, { headers: { Authorization: `Bearer ${token}` } }, 30000)
@@ -139,7 +170,7 @@ export default function CustomOrderPage() {
   const unitPrice = getUnitPrice(product, quantity, selectedVariants);
   const designFee = designMode === 'request' ? (product?.designFee ?? 0) : 0;
   const lineTotal = (unitPrice ?? 0) * quantity;
-  const grandTotal = lineTotal + designFee;
+  const grandTotal = lineTotal + designFee + (shippingFeeAmt ?? 0);
   const downpaymentRequired = product?.requiresDownpayment ?? false;
   const downpaymentPercent = product?.downpaymentPercent ?? 50;
   const amountDue = downpaymentRequired
@@ -233,7 +264,7 @@ export default function CustomOrderPage() {
       const commonFields = {
         items: [orderItem],
         deliveryAddress,
-        shippingFee: 0,
+        shippingFee: shippingFeeAmt ?? 0,
         isCustomOrder: true,
         designType: designMode,
         ...(downpaymentRequired ? { isDownpayment: true, downpaymentPercent } : {}),
@@ -537,6 +568,12 @@ export default function CustomOrderPage() {
                     <span style={{ color: 'var(--gold)' }}>+{fmt(designFee)}</span>
                   </div>
                 )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                  <span style={{ color: 'var(--gray)' }}>Shipping</span>
+                  {shippingFeeAmt !== null
+                    ? <span>{fmt(shippingFeeAmt)}</span>
+                    : <span style={{ color: 'var(--gray)', fontStyle: 'italic', fontSize: '0.78rem' }}>Billed separately</span>}
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 700, paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
                   <span>Total</span>
                   <span>{fmt(grandTotal)}</span>
