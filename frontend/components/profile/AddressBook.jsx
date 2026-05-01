@@ -363,7 +363,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
             </div>
 
             {showSuggestions && suggestions.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', marginTop: '4px', overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1200, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', marginTop: '4px', overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
                 {suggestions.map((s, i) => (
                   <button
                     key={s.place_id || i}
@@ -382,7 +382,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
               </div>
             )}
             {!isSearching && addressSearch.trim().length >= 3 && !showSuggestions && suggestions.length === 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', marginTop: '4px', padding: '0.75rem 0.875rem', fontSize: '0.8125rem', color: 'var(--gray)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1200, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', marginTop: '4px', padding: '0.75rem 0.875rem', fontSize: '0.8125rem', color: 'var(--gray)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
                 No results. Try a more specific address with correct spelling.
               </div>
             )}
