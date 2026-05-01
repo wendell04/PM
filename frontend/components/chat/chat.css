@@ -782,63 +782,87 @@
    Chat Widget (floating bubble + slide-up panel)
    ══════════════════════════════════════════════════════════════ */
 
-/* Floating launcher button (renamed from cw-bubble to avoid conflict with message bubbles) */
+/* Floating launcher button — offset-shadow style */
 .cw-launcher {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
+  bottom: 28px;
+  right: 28px;
   z-index: 1400;
-  width: 60px;
-  height: 60px;
+  width: 62px;
+  height: 62px;
   border-radius: 50%;
-  background: #1e1e1e;
-  border: 1.5px solid rgba(255,255,255,0.1);
-  box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+  /* Layered shadow: soft ambient + strong offset for the "lifted card" look */
+  background: #d4a843;
+  border: none;
+  box-shadow:
+    4px 6px 0px #8a6a1c,          /* hard offset — bottom-right */
+    0 12px 32px rgba(0,0,0,0.55), /* ambient depth */
+    0 2px 6px rgba(0,0,0,0.4);    /* close contact shadow */
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: visible;
   padding: 0;
-  color: #888;
-  transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+  color: #000;
+  transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.18s ease;
 }
 
 .cw-launcher:hover {
-  transform: scale(1.07);
-  box-shadow: 0 12px 36px rgba(0,0,0,0.6);
-  background: #262626;
+  transform: translate(-1px, -2px);
+  box-shadow:
+    6px 9px 0px #8a6a1c,
+    0 18px 40px rgba(0,0,0,0.6),
+    0 4px 8px rgba(0,0,0,0.45);
+  background: #e0b44e;
+}
+
+.cw-launcher:active {
+  transform: translate(2px, 3px);
+  box-shadow:
+    2px 3px 0px #8a6a1c,
+    0 6px 16px rgba(0,0,0,0.45),
+    0 1px 3px rgba(0,0,0,0.3);
 }
 
 .cw-launcher--open {
-  background: #252525;
-  color: #aaa;
+  background: #1e1e1e;
+  color: #ccc;
+  box-shadow:
+    4px 6px 0px #0a0a0a,
+    0 12px 32px rgba(0,0,0,0.55),
+    0 2px 6px rgba(0,0,0,0.4);
 }
 
 .cw-launcher--open:hover {
-  background: #2e2e2e;
+  background: #2a2a2a;
   color: #fff;
-  transform: scale(1.05);
+  transform: translate(-1px, -2px);
+  box-shadow:
+    6px 9px 0px #0a0a0a,
+    0 18px 40px rgba(0,0,0,0.6),
+    0 4px 8px rgba(0,0,0,0.45);
 }
 
 .cw-launcher-badge {
   position: absolute;
-  top: -3px;
-  right: -3px;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 9px;
+  top: -4px;
+  right: -4px;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
   background: #ef4444;
   color: #fff;
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   font-weight: 900;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
-  border: 2px solid #111;
+  padding: 0 5px;
+  border: 2.5px solid #d4a843;
   pointer-events: none;
   line-height: 1;
+  box-shadow: 1px 2px 0 #8a6a1c;
 }
 
 /* Panel */

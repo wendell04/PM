@@ -8,8 +8,9 @@ export async function fetchVouchers(token) {
   const res = await fetchWithTimeout(`${API_URL}/api/admin/vouchers`, {
     headers: { Authorization: `Bearer ${token}` },
   }, 30000);
-  if (!res.ok) throw new Error('Failed to fetch vouchers.');
-  return res.json();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'Failed to fetch vouchers.');
+  return data;
 }
 
 export async function createVoucher(token, payload) {

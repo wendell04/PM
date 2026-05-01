@@ -779,8 +779,8 @@ export default function CheckoutPage() {
 
             {/* Pricing */}
             <div className="checkout-item-pricing">
-              <div className="checkout-item-price">{item.qty} × ₱{item.unitPrice.toLocaleString()}</div>
-              <div className="checkout-item-total">₱{(item.unitPrice * item.qty).toLocaleString()}</div>
+              <div className="checkout-item-price">{item.qty} × ₱{Number(item.unitPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div className="checkout-item-total">₱{(item.unitPrice * item.qty).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
           </div>
         ))}
@@ -1030,7 +1030,7 @@ export default function CheckoutPage() {
                 <span style={{ fontSize: '0.78rem', color: 'var(--gray)', marginLeft: '0.5rem' }}>
                   {appliedVoucher.discountType === 'percentage'
                     ? `${appliedVoucher.discountValue}% off`
-                    : `₱${Number(appliedVoucher.discountValue).toLocaleString()} off`}
+                    : `₱${Number(appliedVoucher.discountValue).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} off`}
                 </span>
               </div>
               <button onClick={handleRemoveVoucher} style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>✕</button>

@@ -539,14 +539,9 @@ export default function BusinessDashboardLayout({ children }) {
       icon: "M13 10V3L4 14h7v7l9-11h-7z",
       children: [
         {
-          name: "Flash Sales",
-          href: "/dashboard/business/flash-sales",
+          name: "Promotions",
+          href: "/dashboard/business/promotions",
           permKey: "flashSales",
-        },
-        {
-          name: "Vouchers",
-          href: "/dashboard/business/vouchers",
-          permKey: "vouchers",
         },
       ],
     },
@@ -634,6 +629,7 @@ export default function BusinessDashboardLayout({ children }) {
       "/dashboard/business/products": "Products",
       "/dashboard/business/banners": "Banners",
       "/dashboard/business/reviews": "Reviews",
+      "/dashboard/business/promotions": "Promotions",
       "/dashboard/business/flash-sales": "Flash Sales",
       "/dashboard/business/vouchers": "Vouchers",
       "/dashboard/business/sales": "Sales",

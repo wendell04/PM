@@ -9,7 +9,8 @@
       "Bash(npx next *)",
       "Bash(xargs grep *)",
       "Bash(python3 -c ' *)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(grep -E \"\\\\.\\(php|js\\)$\")"
     ]
   }
 }

@@ -135,12 +135,32 @@ export default function CustomerTrackingView({ order }) {
             </span>
           </div>
 
+          {Number(order.discountAmount) > 0 && order.finalPrice != null && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Original Price</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--white)', fontFamily: 'monospace', textDecoration: 'line-through', opacity: 0.6 }}>
+                {formatPeso(Number(order.finalPrice) + Number(order.discountAmount))}
+              </span>
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Final Price</span>
             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--gold)', fontFamily: 'monospace' }}>
               {order.finalPrice != null ? formatPeso(order.finalPrice) : 'To be confirmed'}
             </span>
           </div>
+
+          {Number(order.discountAmount) > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--green)' }}>
+                Voucher Discount{order.voucherCode ? ` · ${order.voucherCode}` : ''}
+              </span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--green)', fontFamily: 'monospace' }}>
+                −{formatPeso(order.discountAmount)}
+              </span>
+            </div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Estimated Completion</span>

@@ -230,7 +230,7 @@ function ProductCard({ product, onAddToCart, flashSale }) {
                   textDecoration: 'line-through',
                   lineHeight: 1,
                 }}>
-                  ₱{parseFloat(flashSale.originalPrice).toLocaleString()}
+                  ₱{parseFloat(flashSale.originalPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
                 <span style={{
                   fontSize: '1.05rem',
@@ -238,7 +238,7 @@ function ProductCard({ product, onAddToCart, flashSale }) {
                   color: 'var(--red)',
                   lineHeight: 1,
                 }}>
-                  ₱{parseFloat(flashSale.discountedPrice).toLocaleString()}
+                  ₱{parseFloat(flashSale.discountedPrice).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </span>
             ) : (

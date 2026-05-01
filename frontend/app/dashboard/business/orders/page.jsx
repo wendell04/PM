@@ -378,7 +378,7 @@ export default function OrdersPage() {
                       </td>
                       <td className="table-cell" style={{ textAlign: 'center', color: 'var(--gray)' }}>{o.quantity} pcs</td>
                       <td className="table-cell">
-                        <div style={{ color: 'var(--gold)', fontSize: '1rem', fontWeight: 600 }}>₱{(o.totalAmount ?? o.totalPrice)?.toLocaleString()}</div>
+                        <div style={{ color: 'var(--gold)', fontSize: '1rem', fontWeight: 600 }}>₱{Number(o.totalAmount ?? o.totalPrice ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                         {(() => {
                           const pb = getPaymentBadge(o.paymentStatus);
                           return (
@@ -539,26 +539,37 @@ export default function OrdersPage() {
                                 )}
                               </div>
                               <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.7 }}>
+                                {Number(o.discountAmount) > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--gray)' }}>Subtotal</span>
+                                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{(Number(o.totalAmount ?? o.totalPrice ?? 0) + Number(o.discountAmount ?? 0)).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </div>
+                                )}
+                                {Number(o.discountAmount) > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--green)' }}>Voucher{o.voucherCode ? ` (${o.voucherCode})` : ''}</span>
+                                    <span style={{ color: 'var(--green)', fontWeight: 600 }}>−₱{Number(o.discountAmount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </div>
+                                )}
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ color: 'var(--gray)' }}>Total</span>
-                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{(o.totalAmount ?? o.totalPrice)?.toLocaleString()}</span>
+                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{Number(o.totalAmount ?? o.totalPrice ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ color: 'var(--gray)' }}>Paid</span>
-                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{(o.downPayment ?? 0).toLocaleString()}</span>
+                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{Number(o.downPayment ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ color: 'var(--gray)' }}>Balance</span>
-                                  <span style={{ color: (o.balance ?? 0) <= 0 ? 'var(--green)' : 'var(--gold)', fontWeight: 600 }}>₱{(o.balance ?? 0).toLocaleString()}</span>
+                                  <span style={{ color: (o.balance ?? 0) <= 0 ? 'var(--green)' : 'var(--gold)', fontWeight: 600 }}>₱{Number(o.balance ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
-                                {/* Payment history entries */}
                                 {Array.isArray(o.paymentHistory) && o.paymentHistory.length > 0 && (
                                   <div style={{ marginTop: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '0.5rem' }}>
                                     <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>History</div>
                                     {o.paymentHistory.map((p, idx) => (
                                       <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '0.2rem' }}>
                                         <span style={{ color: 'var(--gray)' }}>{p.method} {p.note ? `| ${p.note}` : ''}</span>
-                                        <span style={{ color: 'var(--green)', fontWeight: 600 }}>+₱{Number(p.amount).toLocaleString()}</span>
+                                        <span style={{ color: 'var(--green)', fontWeight: 600 }}>+₱{Number(p.amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                       </div>
                                     ))}
                                   </div>
@@ -1489,11 +1500,11 @@ export default function OrdersPage() {
                 <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem' }}>
                   <div>
                     <span style={{ color: 'var(--gray)' }}>Total </span>
-                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{(paymentTarget.totalAmount ?? paymentTarget.totalPrice ?? 0).toLocaleString()}</span>
+                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{Number(paymentTarget.totalAmount ?? paymentTarget.totalPrice ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div>
                     <span style={{ color: 'var(--gray)' }}>Balance </span>
-                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{(paymentTarget.balance ?? 0).toLocaleString()}</span>
+                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{Number(paymentTarget.balance ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
               </div>
