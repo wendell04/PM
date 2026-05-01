@@ -861,7 +861,7 @@ export default function CustomerProfilePage() {
                     <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Last Name</div>
                     <div style={{ fontSize: '0.95rem', color: 'var(--white)' }}>{profileForm.lastName || '—'}</div>
                   </div>
-                  <div style={{ gridColumn: '1 / -1' }}>
+                  <div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Email</div>
                     <div style={{ fontSize: '0.95rem', color: 'var(--white)' }}>{profileForm.email || '—'}</div>
                   </div>
@@ -1050,7 +1050,7 @@ export default function CustomerProfilePage() {
                       <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Last Name</div>
                       <div style={{ fontSize: '0.95rem', color: 'var(--white)' }}>{profileForm.lastName || '—'}</div>
                     </div>
-                    <div style={{ gridColumn: '1 / -1' }}>
+                    <div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Email</div>
                       <div style={{ fontSize: '0.95rem', color: 'var(--white)' }}>{profileForm.email || '—'}</div>
                     </div>
@@ -1101,7 +1101,7 @@ export default function CustomerProfilePage() {
                         }}
                       />
                     </div>
-                    <div style={{ gridColumn: '1 / -1' }}>
+                    <div>
                       <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.4rem' }}>
                         Email Address <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>(cannot be changed)</span>
                       </label>
