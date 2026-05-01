@@ -30,6 +30,61 @@ function SkeletonRow() {
   );
 }
 
+const REQUEST_STEPS = [
+  { key: 'pending_design',      label: 'Design' },
+  { key: 'proof_sent',          label: 'Proof' },
+  { key: 'design_approved',     label: 'Approved' },
+  { key: 'awaiting_production', label: 'Queued' },
+  { key: 'in_production',       label: 'Printing' },
+  { key: 'shipped',             label: 'Shipped' },
+  { key: 'delivered',           label: 'Done' },
+];
+
+const UPLOAD_STEPS = [
+  { key: 'pending_review',      label: 'Review' },
+  { key: 'awaiting_payment',    label: 'Pay' },
+  { key: 'awaiting_production', label: 'Queued' },
+  { key: 'in_production',       label: 'Printing' },
+  { key: 'shipped',             label: 'Shipped' },
+  { key: 'delivered',           label: 'Done' },
+];
+
+function customStepIndex(steps, status) {
+  const keys = steps.map(s => s.key);
+  const idx = keys.indexOf(status);
+  if (status === 'ready_for_pickup') return keys.indexOf('shipped');
+  if (status === 'revision_requested') return keys.indexOf('proof_sent');
+  return idx;
+}
+
+function CustomOrderProgress({ status, designType }) {
+  const steps = designType === 'upload' ? UPLOAD_STEPS : REQUEST_STEPS;
+  const active = customStepIndex(steps, status);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0', marginTop: '0.75rem', marginBottom: '0.25rem', overflowX: 'auto', paddingBottom: '2px' }}>
+      {steps.map((step, i) => {
+        const done = i < active;
+        const current = i === active;
+        const isRevision = status === 'revision_requested' && step.key === 'proof_sent';
+        const isAwaitingPay = status === 'awaiting_payment' && step.key === 'awaiting_payment';
+        const dotColor = isRevision ? '#f97316' : isAwaitingPay ? '#f59e0b' : done || current ? '#D4A843' : 'rgba(255,255,255,0.15)';
+        const labelColor = isRevision ? '#f97316' : isAwaitingPay ? '#f59e0b' : current ? '#D4A843' : done ? 'rgba(212,168,67,0.6)' : 'rgba(255,255,255,0.25)';
+        return (
+          <div key={step.key} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, flexShrink: 0, transition: 'background 0.2s' }} />
+              <span style={{ fontSize: '0.6rem', fontWeight: current ? 700 : 500, color: labelColor, whiteSpace: 'nowrap' }}>{isRevision ? 'Revision' : step.label}</span>
+            </div>
+            {i < steps.length - 1 && (
+              <div style={{ width: 24, height: 1, background: done ? 'rgba(212,168,67,0.5)' : 'rgba(255,255,255,0.1)', margin: '0 2px', marginBottom: '11px', flexShrink: 0 }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ImageWithFallback({ src, alt, label, style }) {
   const [broken, setBroken] = useState(false);
   if (!src || broken) {
@@ -70,8 +125,15 @@ export default function ShopOrdersPage() {
   const [visibleCount, setVisibleCount]   = useState(5);
 
   // Payment
-  const [payingId,    setPayingId]    = useState(null); // orderRequestId currently processing
+  const [payingId,    setPayingId]    = useState(null);
   const [payError,    setPayError]    = useState(null);
+
+  // Design approval
+  const [approvingId,     setApprovingId]     = useState(null);
+  const [revisionTarget,  setRevisionTarget]  = useState(null);
+  const [revisionNotes,   setRevisionNotes]   = useState('');
+  const [revisionSending, setRevisionSending] = useState(false);
+  const [designActionErr, setDesignActionErr] = useState(null);
 
   const loadOrders = useCallback(async () => {
     if (!token) {
@@ -210,6 +272,50 @@ export default function ShopOrdersPage() {
     }
   }
 
+  async function handleApproveDesign(order) {
+    const id = order._id ?? order.id;
+    setApprovingId(id);
+    setDesignActionErr(null);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/orders/my/${id}/approve-admin-design`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to approve design.');
+      loadOrders();
+      if (selectedOrder && (selectedOrder._id ?? selectedOrder.id) === id) closeDetail();
+    } catch (err) {
+      setDesignActionErr(err.message);
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
+  async function handleSendRevision() {
+    if (!revisionTarget) return;
+    const id = revisionTarget._id ?? revisionTarget.id;
+    setRevisionSending(true);
+    setDesignActionErr(null);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api/orders/my/${id}/request-revision`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ notes: revisionNotes.trim() || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to send revision request.');
+      setRevisionTarget(null);
+      setRevisionNotes('');
+      loadOrders();
+      if (selectedOrder && (selectedOrder._id ?? selectedOrder.id) === id) closeDetail();
+    } catch (err) {
+      setDesignActionErr(err.message);
+    } finally {
+      setRevisionSending(false);
+    }
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--black)', padding: '2rem 1rem' }}>
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
@@ -223,8 +329,8 @@ export default function ShopOrdersPage() {
 
         {/* Header */}
         <div style={{ marginBottom: '2rem' }}>
-          <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>Design Requests</h1>
-          <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.9rem' }}>Custom print quotes where we'll reach out with pricing</p>
+          <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>My Orders</h1>
+          <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.9rem' }}>Track your custom and regular orders</p>
         </div>
 
         {/* Loading */}
@@ -260,21 +366,53 @@ export default function ShopOrdersPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {orders.slice(0, visibleCount).map(order => (
               <div key={order.id ?? order._id} style={{ padding: '1.25rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--white)' }}>{(order.id ?? order._id)?.slice(-8).toUpperCase()}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--white)' }}>{(order.id ?? order._id)?.slice(-8).toUpperCase()}</span>
+                    {order.isCustomOrder && (
+                      <span style={{ fontSize: '0.6rem', fontWeight: 800, background: 'rgba(212,168,67,0.15)', color: 'var(--gold)', padding: '1px 7px', borderRadius: '999px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Custom</span>
+                    )}
+                  </div>
                   <StatusBadge status={order.status} />
                 </div>
-                <div style={{ fontSize: '0.9rem', color: 'var(--white)', marginBottom: '0.25rem' }}>{order.productName || '—'}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>Qty: {order.quantity}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.75rem' }}>{formatDate(order.createdAt)}</div>
+                <div style={{ fontSize: '0.9rem', color: 'var(--white)', marginBottom: '0.25rem' }}>{order.productName || (order.items?.[0]?.productName ?? order.items?.[0]?.variantName ?? '—')}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Qty: {order.quantity ?? order.items?.reduce((s, i) => s + (i.qty || 0), 0) ?? '—'}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>{formatDate(order.createdAt)}</div>
+                {order.isCustomOrder && (
+                  <CustomOrderProgress status={order.status} designType={order.designType} />
+                )}
                 <div style={{ marginBottom: '0.75rem' }}>
                   {order.finalPrice != null
                     ? <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--gold)' }}>Final Price: {formatPeso(order.finalPrice)}</span>
                     : <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Price pending confirmation</span>
                   }
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.75rem' }}>
                   <button onClick={() => openDetail(order)} style={{ background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>View Details</button>
+
+                  {order.status === 'awaiting_payment' && (
+                    <button
+                      onClick={() => router.push(`/shop/products/${order.items?.[0]?.productId}/order/pay?orderId=${order._id ?? order.id}`)}
+                      style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: '#f59e0b', color: '#000', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>
+                      Pay Now
+                    </button>
+                  )}
+
+                  {order.status === 'proof_sent' && (
+                    <>
+                      <button
+                        onClick={() => handleApproveDesign(order)}
+                        disabled={approvingId === (order._id ?? order.id)}
+                        style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: approvingId === (order._id ?? order.id) ? 'rgba(52,211,153,0.4)' : '#34d399', color: '#000', fontSize: '0.8rem', fontWeight: 700, cursor: approvingId === (order._id ?? order.id) ? 'not-allowed' : 'pointer' }}>
+                        {approvingId === (order._id ?? order.id) ? 'Approving...' : 'Approve Design'}
+                      </button>
+                      <button
+                        onClick={() => { setRevisionTarget(order); setRevisionNotes(''); setDesignActionErr(null); }}
+                        style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #f97316', background: 'transparent', color: '#f97316', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+                        Request Revision
+                      </button>
+                    </>
+                  )}
 
                   {['confirmed', 'processing', 'ready'].includes(order.status) &&
                     order.paymentStatus === 'unpaid' && (
@@ -497,12 +635,49 @@ export default function ShopOrdersPage() {
                 {/* Section 2: Product Details */}
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Product Details</h3>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.25rem' }}>{selectedOrder.productName || '—'}</div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '1rem' }}>Quantity: {selectedOrder.quantity}</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.25rem' }}>
+                    {selectedOrder.productName || selectedOrder.items?.[0]?.productName || '—'}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '1rem' }}>
+                    Quantity: {selectedOrder.quantity ?? selectedOrder.items?.reduce((s, i) => s + (i.qty || 0), 0)}
+                  </div>
+
+                  {selectedOrder.isCustomOrder && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <CustomOrderProgress status={selectedOrder.status} designType={selectedOrder.designType} />
+                    </div>
+                  )}
+
+                  {selectedOrder.proofUrl && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#a78bfa', fontWeight: 700, marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Design Proof</div>
+                      <ImageWithFallback src={selectedOrder.proofUrl} alt="Design Proof" label="Proof" style={{ width: '100%', maxWidth: '280px', height: '160px' }} />
+                    </div>
+                  )}
+
+                  {selectedOrder.status === 'proof_sent' && (
+                    <div style={{ padding: '1rem', background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)', borderRadius: '10px', marginBottom: '1rem' }}>
+                      <p style={{ fontSize: '0.82rem', color: 'var(--white)', fontWeight: 600, marginBottom: '0.75rem' }}>Your design proof is ready. Please review and respond.</p>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => handleApproveDesign(selectedOrder)}
+                          disabled={approvingId === (selectedOrder._id ?? selectedOrder.id)}
+                          style={{ padding: '0.5rem 1.25rem', borderRadius: '8px', border: 'none', background: '#34d399', color: '#000', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}>
+                          {approvingId === (selectedOrder._id ?? selectedOrder.id) ? 'Approving...' : 'Approve & Start Production'}
+                        </button>
+                        <button
+                          onClick={() => { setRevisionTarget(selectedOrder); setRevisionNotes(''); setDesignActionErr(null); }}
+                          style={{ padding: '0.5rem 1.25rem', borderRadius: '8px', border: '1px solid #f97316', background: 'transparent', color: '#f97316', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
+                          Request Revision
+                        </button>
+                      </div>
+                      {designActionErr && <p style={{ fontSize: '0.78rem', color: 'var(--red)', marginTop: '0.5rem' }}>{designActionErr}</p>}
+                    </div>
+                  )}
 
                   {selectedOrder.designUrl && (
                     <div style={{ marginBottom: '1rem' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>Design File</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.375rem' }}>Your Design File</div>
                       <ImageWithFallback src={selectedOrder.designUrl} alt="Design" label="Design File" style={{ width: '100%', maxWidth: '200px', height: '120px' }} />
                     </div>
                   )}
@@ -561,6 +736,35 @@ export default function ShopOrdersPage() {
                 </button>
               )}
               <button onClick={closeDetail} style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.625rem 1.25rem', color: 'var(--gray)', fontSize: '0.875rem', cursor: 'pointer' }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Revision Notes Dialog */}
+      {revisionTarget && (
+        <div onClick={() => { if (!revisionSending) { setRevisionTarget(null); setRevisionNotes(''); setDesignActionErr(null); } }}
+          style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '440px', padding: '1.5rem' }}>
+            <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Request Design Revision</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--gray)', marginBottom: '1rem', lineHeight: 1.5 }}>
+              Describe what you&apos;d like changed. Our designer will update the proof and resend it.
+            </p>
+            <textarea value={revisionNotes} onChange={e => setRevisionNotes(e.target.value)}
+              placeholder="E.g. Change font to bold, shift logo to the left, use darker blue..."
+              rows={4}
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'var(--white)', fontSize: '0.85rem', fontFamily: "'Outfit', sans-serif", resize: 'vertical', boxSizing: 'border-box', outline: 'none', marginBottom: '0.75rem' }} />
+            {designActionErr && <p style={{ fontSize: '0.78rem', color: 'var(--red)', marginBottom: '0.75rem' }}>{designActionErr}</p>}
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button onClick={() => { setRevisionTarget(null); setRevisionNotes(''); setDesignActionErr(null); }} disabled={revisionSending}
+                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--gray)', fontSize: '0.85rem', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={handleSendRevision} disabled={revisionSending}
+                style={{ padding: '0.5rem 1.25rem', borderRadius: '8px', border: 'none', background: revisionSending ? 'rgba(249,115,22,0.4)' : '#f97316', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: revisionSending ? 'not-allowed' : 'pointer' }}>
+                {revisionSending ? 'Sending...' : 'Send Revision Request'}
+              </button>
             </div>
           </div>
         </div>

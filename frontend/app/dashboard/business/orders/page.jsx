@@ -236,7 +236,10 @@ export default function OrdersPage() {
             <CustomDropdown
               value={filterStatus}
               onChange={v => { setFilterStatus(v); setCurrentPage(1); }}
-              options={['All','Pending','In Production','For Delivery','Delivered','Returned','Cancelled'].map(s => ({ value: s, label: s }))}
+              options={[
+                'All','Pending','In Production','For Delivery','Delivered','Returned','Cancelled',
+                'pending_design','proof_sent','revision_requested','design_approved','awaiting_production','in_production','ready_for_pickup','shipped',
+              ].map(s => ({ value: s, label: s }))}
               style={{ minWidth: '150px' }}
             />
 

@@ -183,31 +183,28 @@ function ProductCard({ product, onAddToCart, flashSale }) {
             </div>
           )}
 
-          {/* Cart qty badge */}
-          {cartQty > 0 && (
-            <div className="shop-cart-qty-badge">×{cartQty}</div>
+          {/* Quick Add to Cart — hidden for custom products */}
+          {!product.isCustom && (
+            <button
+              className={`shop-quick-add-btn ${isAdding ? 'adding' : ''}`}
+              onClick={handleAddToCart}
+              title="Add to Cart"
+              onMouseEnter={(e) => e.stopPropagation()}
+              onMouseLeave={(e) => e.stopPropagation()}
+            >
+              {isAdding ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="8" x2="12" y2="16"/>
+                  <line x1="8" y1="12" x2="16" y2="12"/>
+                </svg>
+              )}
+            </button>
           )}
-
-          {/* Quick Add to Cart Button */}
-          <button
-            className={`shop-quick-add-btn ${isAdding ? 'adding' : ''}`}
-            onClick={handleAddToCart}
-            title="Add to Cart"
-            onMouseEnter={(e) => e.stopPropagation()}
-            onMouseLeave={(e) => e.stopPropagation()}
-          >
-            {isAdding ? (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="8" x2="12" y2="16"/>
-                <line x1="8" y1="12" x2="16" y2="12"/>
-              </svg>
-            )}
-          </button>
         </div>
 
         {/* Info */}
@@ -720,7 +717,16 @@ export default function ShopPage() {
                       <button
                         key={combo.id}
                         disabled={isOOS}
-                        onClick={() => !isOOS && setQuickVariant(combo)}
+                        onClick={() => {
+                          if (isOOS) return;
+                          setQuickVariant(combo);
+                          const unlimited = !quickAddProduct.trackInventory || quickAddProduct.isMadeToOrder || quickAddProduct.stockStatus === 'upon-order' || !!quickAddProduct.variantBackorder?.[combo.id];
+                          if (!unlimited) {
+                            const vqty = quickAddProduct.variantStock?.[combo.id];
+                            const cap = vqty != null ? Number(vqty) : (quickAddProduct.stock ?? 9999);
+                            setQuickQty(q => Math.min(q, Math.max(quickAddProduct.minOrderQty || 1, cap)));
+                          }
+                        }}
                         style={{
                           padding: '7px 14px', borderRadius: '8px',
                           cursor: isOOS ? 'not-allowed' : 'pointer',
@@ -751,39 +757,76 @@ export default function ShopPage() {
             )}
 
             {/* Quantity */}
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  Quantity
+            {(() => {
+              const hasVariants = quickAddProduct.combinations?.length > 0;
+              const unlimited = !quickAddProduct.trackInventory || quickAddProduct.isMadeToOrder || quickAddProduct.stockStatus === 'upon-order';
+              const effectiveMaxQty = (() => {
+                if (unlimited) return 9999;
+                if (hasVariants && !quickVariant) return 9999;
+                if (quickVariant && quickAddProduct.variantBackorder?.[quickVariant.id]) return 9999;
+                if (quickVariant) {
+                  const vqty = quickAddProduct.variantStock?.[quickVariant.id];
+                  return vqty != null ? Number(vqty) : (quickAddProduct.stock ?? 9999);
+                }
+                return quickAddProduct.stock ?? 9999;
+              })();
+              const stockLabel = (() => {
+                if (!quickAddProduct.trackInventory) return null;
+                if (quickAddProduct.isMadeToOrder || quickAddProduct.stockStatus === 'upon-order') return { text: 'Made to Order', color: 'var(--gold)' };
+                if (hasVariants && !quickVariant) return null;
+                if (quickVariant && quickAddProduct.variantBackorder?.[quickVariant.id]) return { text: 'Backorder OK', color: 'var(--gray)' };
+                if (effectiveMaxQty < 9999) {
+                  const color = effectiveMaxQty <= 5 ? '#ef4444' : effectiveMaxQty <= 10 ? '#f59e0b' : 'var(--gray)';
+                  return { text: `${effectiveMaxQty} in stock`, color };
+                }
+                return null;
+              })();
+              return (
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Quantity
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {stockLabel && (
+                        <span style={{ fontSize: '0.7rem', color: stockLabel.color, fontWeight: 500 }}>
+                          {stockLabel.text}
+                        </span>
+                      )}
+                      {quickAddProduct.minOrderQty > 1 && (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--gold)', fontWeight: 600 }}>
+                          Min. {quickAddProduct.minOrderQty} pcs
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <button
+                      onClick={() => setQuickQty(q => Math.max(quickAddProduct.minOrderQty || 1, q - 1))}
+                      style={{ width: '38px', height: '38px', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px 0 0 8px', cursor: 'pointer', color: 'var(--white)', fontSize: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    >
+                      −
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={quickQty}
+                      onChange={e => {
+                        const val = parseInt(e.target.value) || (quickAddProduct.minOrderQty || 1);
+                        setQuickQty(Math.min(Math.max(quickAddProduct.minOrderQty || 1, val), effectiveMaxQty));
+                      }}
+                      style={{ width: '64px', height: '38px', background: 'var(--dark)', border: '1px solid var(--border)', borderLeft: 'none', borderRight: 'none', color: 'var(--white)', textAlign: 'center', fontSize: '0.95rem', outline: 'none' }}
+                    />
+                    <button
+                      onClick={() => setQuickQty(q => Math.min(effectiveMaxQty, q + 1))}
+                      style={{ width: '38px', height: '38px', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '0 8px 8px 0', cursor: 'pointer', color: 'var(--white)', fontSize: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
-                {quickAddProduct.minOrderQty > 1 && (
-                  <span style={{ fontSize: '0.7rem', color: 'var(--gold)', fontWeight: 600 }}>
-                    Min. {quickAddProduct.minOrderQty} pcs
-                  </span>
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <button
-                  onClick={() => setQuickQty(q => Math.max(quickAddProduct.minOrderQty || 1, q - 1))}
-                  style={{ width: '38px', height: '38px', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px 0 0 8px', cursor: 'pointer', color: 'var(--white)', fontSize: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                >
-                  −
-                </button>
-                <input
-                  type="number"
-                  min={quickAddProduct.minOrderQty || 1}
-                  value={quickQty}
-                  onChange={e => setQuickQty(Math.max(quickAddProduct.minOrderQty || 1, parseInt(e.target.value) || 1))}
-                  style={{ width: '64px', height: '38px', background: 'var(--dark)', border: '1px solid var(--border)', borderLeft: 'none', borderRight: 'none', color: 'var(--white)', textAlign: 'center', fontSize: '0.95rem', outline: 'none' }}
-                />
-                <button
-                  onClick={() => setQuickQty(q => q + 1)}
-                  style={{ width: '38px', height: '38px', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '0 8px 8px 0', cursor: 'pointer', color: 'var(--white)', fontSize: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                >
-                  +
-                </button>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Action */}
             {(() => {

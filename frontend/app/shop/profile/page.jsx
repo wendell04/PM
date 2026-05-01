@@ -2116,8 +2116,8 @@ export default function CustomerProfilePage() {
               <div>
                 {/* Header row */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-                  <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--white)' }}>Recent Design Requests</h2>
-                  <Link href="/shop/orders" style={{ color: 'var(--gold)', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 600 }}>View All →</Link>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--white)' }}>My Orders</h2>
+                  <Link href="/shop/orders-history" style={{ color: 'var(--gold)', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 600 }}>View All →</Link>
                 </div>
 
                 {/* Loading */}
@@ -2164,7 +2164,7 @@ export default function CustomerProfilePage() {
                       </div>
                     ))}
                     <div style={{ marginTop: '1rem' }}>
-                      <Link href="/shop/orders" style={{ display: 'block', width: '100%', textAlign: 'center', padding: '0.625rem 1rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 600 }}>View All Design Requests</Link>
+                      <Link href="/shop/orders-history" style={{ display: 'block', width: '100%', textAlign: 'center', padding: '0.625rem 1rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 600 }}>View All Orders</Link>
                     </div>
                   </div>
                 )}

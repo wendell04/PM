@@ -33,6 +33,8 @@ class Order extends Model
         'orderSource'          => 'string',
         'voucherCode'          => 'string',
         'discountAmount'       => 'float',
+        'isCustomOrder'        => 'boolean',
+        'designType'           => 'string',
     ];
 
     protected $indexes = [
@@ -51,6 +53,7 @@ class Order extends Model
         'paymentHistory'     => [],
         'statusHistory'      => [],
         'orderSource'        => 'online',
+        'isCustomOrder'      => false,
     ];
 
     public function getItemsAttribute($value)

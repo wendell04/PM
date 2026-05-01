@@ -1037,96 +1037,70 @@ export default function ProductDetailPage() {
             {token ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
 
-                {/* Add to Cart */}
-                <button
-                  onClick={handleAddToCart}
-                  disabled={isOutOfStock}
-                  style={{
-                    background: isOutOfStock
-                      ? 'rgba(107,114,128,0.3)'
-                      : addedToCart ? 'rgba(74,222,128,0.85)' : 'var(--gold)',
-                    color: isOutOfStock ? 'var(--gray)' : addedToCart ? '#fff' : '#000',
-                    border: 'none',
-                    borderRadius: '10px', padding: '0.875rem 1.5rem',
-                    fontWeight: 800, fontSize: '1rem',
-                    cursor: isOutOfStock ? 'not-allowed' : 'pointer',
-                    width: '100%', fontFamily: "'Outfit', sans-serif",
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                    transition: 'opacity 0.15s',
-                  }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                    {addedToCart ? <polyline points="20 6 9 17 4 12"/> : (<><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></>)}
-                  </svg>
-                  {isOutOfStock ? 'Out of Stock' : addedToCart ? 'Added to Cart!' : 'Add to Cart'}
-                </button>
-
-                {/* CUSTOMIZABLE: two buttons — Upload Design | Request Design */}
                 {product.isCustom ? (
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {/* Upload Design */}
+                  /* Custom product — goes to order form, not cart */
+                  <>
                     <button
-                      onClick={() => !isOutOfStock && setShowUploadModal(true)}
-                      disabled={isOutOfStock}
+                      onClick={() => router.push(`/shop/products/${id}/order`)}
                       style={{
-                        flex: 1,
-                        background: isOutOfStock ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)',
-                        color: isOutOfStock ? 'rgba(229,226,225,0.35)' : '#E5E2E1',
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        borderRadius: '10px', padding: '0.875rem 0.75rem',
-                        fontWeight: 700, fontSize: '0.9rem',
-                        cursor: isOutOfStock ? 'not-allowed' : 'pointer',
-                        fontFamily: "'Outfit', sans-serif",
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                        opacity: isOutOfStock ? 0.4 : 1,
+                        background: 'var(--gold)', color: '#000',
+                        border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
+                        fontWeight: 800, fontSize: '1rem', cursor: 'pointer',
+                        width: '100%', fontFamily: "'Outfit', sans-serif",
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                       }}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="17 8 12 3 7 8"/>
-                        <line x1="12" y1="3" x2="12" y2="15"/>
-                      </svg>
-                      Upload Design
-                    </button>
-                    {/* Request Design */}
-                    <button
-                      onClick={() => !isOutOfStock && setShowRequestModal(true)}
-                      disabled={isOutOfStock}
-                      style={{
-                        flex: 1,
-                        background: isOutOfStock ? 'rgba(255,255,255,0.06)' : 'var(--gold)',
-                        color: isOutOfStock ? 'rgba(229,226,225,0.35)' : '#000',
-                        border: 'none', borderRadius: '10px',
-                        padding: '0.875rem 0.75rem',
-                        fontWeight: 800, fontSize: '0.9rem',
-                        cursor: isOutOfStock ? 'not-allowed' : 'pointer',
-                        fontFamily: "'Outfit', sans-serif",
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                        opacity: isOutOfStock ? 0.4 : 0.9,
-                      }}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                         <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                       </svg>
-                      Req. Design {!isOutOfStock && product.designFee > 0 && <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>(+₱{product.designFee})</span>}
+                      Place Custom Order
                     </button>
-                  </div>
+                    <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
+                      Custom orders are fulfilled separately. You&apos;ll upload or request a design on the next step.
+                    </p>
+                  </>
                 ) : (
-                  <button
-                    onClick={handleAddToCartAndCheckout}
-                    disabled={isOutOfStock}
-                    style={{
-                      background: isOutOfStock ? 'rgba(107,114,128,0.3)' : 'var(--gold)',
-                      color: isOutOfStock ? 'var(--gray)' : '#000',
-                      border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
-                      fontWeight: 800, fontSize: '1rem',
-                      cursor: isOutOfStock ? 'not-allowed' : 'pointer',
-                      width: '100%', fontFamily: "'Outfit', sans-serif",
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                      opacity: 0.85,
-                    }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                    </svg>
-                    {isOutOfStock ? 'Out of Stock' : 'Checkout'}
-                  </button>
+                  /* Regular product — Add to Cart + Checkout */
+                  <>
+                    <button
+                      onClick={handleAddToCart}
+                      disabled={isOutOfStock}
+                      style={{
+                        background: isOutOfStock
+                          ? 'rgba(107,114,128,0.3)'
+                          : addedToCart ? 'rgba(74,222,128,0.85)' : 'var(--gold)',
+                        color: isOutOfStock ? 'var(--gray)' : addedToCart ? '#fff' : '#000',
+                        border: 'none',
+                        borderRadius: '10px', padding: '0.875rem 1.5rem',
+                        fontWeight: 800, fontSize: '1rem',
+                        cursor: isOutOfStock ? 'not-allowed' : 'pointer',
+                        width: '100%', fontFamily: "'Outfit', sans-serif",
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                        transition: 'opacity 0.15s',
+                      }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        {addedToCart ? <polyline points="20 6 9 17 4 12"/> : (<><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></>)}
+                      </svg>
+                      {isOutOfStock ? 'Out of Stock' : addedToCart ? 'Added to Cart!' : 'Add to Cart'}
+                    </button>
+                    <button
+                      onClick={handleAddToCartAndCheckout}
+                      disabled={isOutOfStock}
+                      style={{
+                        background: isOutOfStock ? 'rgba(107,114,128,0.3)' : 'var(--gold)',
+                        color: isOutOfStock ? 'var(--gray)' : '#000',
+                        border: 'none', borderRadius: '10px', padding: '0.875rem 1.5rem',
+                        fontWeight: 800, fontSize: '1rem',
+                        cursor: isOutOfStock ? 'not-allowed' : 'pointer',
+                        width: '100%', fontFamily: "'Outfit', sans-serif",
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                        opacity: 0.85,
+                      }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                      </svg>
+                      {isOutOfStock ? 'Out of Stock' : 'Checkout'}
+                    </button>
+                  </>
                 )}
 
               </div>

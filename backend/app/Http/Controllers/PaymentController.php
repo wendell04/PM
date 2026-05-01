@@ -29,6 +29,16 @@ class PaymentController extends Controller
         $this->secretKey = config('services.paymongo.secret_key', '');
     }
 
+    private function resolveCustomOrderStatus($request): string
+    {
+        $isCustom   = filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN);
+        $designType = $request->input('designType');
+        if ($isCustom) {
+            return $designType === 'upload' ? 'awaiting_production' : 'pending_design';
+        }
+        return 'Pending';
+    }
+
     /**
      * POST /api/payment/create-link
      *
@@ -481,6 +491,10 @@ class PaymentController extends Controller
                 'paymentType'                 => 'required|in:gcash,paymaya,card',
                 'paymentMethodId'             => 'nullable|string',
                 'eWalletPhone'                => 'nullable|string|max:20',
+                'isCustomOrder'               => 'nullable|boolean',
+                'designType'                  => 'nullable|string|in:upload,request',
+                'items.*.designRequested'     => 'nullable|boolean',
+                'items.*.designFee'           => 'nullable|numeric|min:0',
             ]);
 
             $paymentType = $validated['paymentType'];
@@ -621,13 +635,15 @@ class PaymentController extends Controller
                 'shippingFee'     => $shippingFee,
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
-                'orderStatus'     => 'Pending',
+                'orderStatus'     => $this->resolveCustomOrderStatus($request),
                 'paymentStatus'   => 'unpaid',
                 'paymentMethod'   => $paymentType,
                 'notes'           => htmlspecialchars(strip_tags(trim($validated['notes'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 'deliveryAddress' => $validated['deliveryAddress'] ?? null,
                 'designNotes'     => isset($validated['design_notes']) ? htmlspecialchars(strip_tags(trim($validated['design_notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : null,
-                'statusHistory'   => [['status' => 'Pending', 'at' => now()->toISOString()]],
+                'isCustomOrder'   => filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN),
+                'designType'      => $request->input('designType'),
+                'statusHistory'   => [['status' => $this->resolveCustomOrderStatus($request), 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);

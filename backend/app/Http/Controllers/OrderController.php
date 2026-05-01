@@ -38,6 +38,26 @@ class OrderController extends Controller
         return $request->user();
     }
 
+    private function resolveInitialStatus($request): string
+    {
+        $isCustom    = filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN);
+        $designType  = $request->input('designType');
+        if ($isCustom) {
+            return $designType === 'upload' ? 'pending_review' : 'pending_design';
+        }
+        return 'Pending';
+    }
+
+    private function normalizeOrderForCustomer(Order $order): array
+    {
+        $arr                = $order->toArray();
+        $arr['id']          = (string) ($order->_id ?? $order->id ?? '');
+        $arr['status']      = $order->orderStatus;
+        $arr['proofUrl']    = $order->adminDesignUrl ?? null;
+        $arr['isCustomOrder'] = (bool) ($order->isCustomOrder ?? false);
+        return $arr;
+    }
+
     // ─── Customer ─────────────────────────────────────────────────────────────
 
     /**
@@ -82,6 +102,10 @@ class OrderController extends Controller
                 'design_notes'                => 'nullable|string|max:2000',
                 'voucherCode'                 => 'nullable|string|max:50',
                 'shippingFee'                 => 'nullable|numeric|min:0|max:10000',
+                'isCustomOrder'               => 'nullable|boolean',
+                'designType'                  => 'nullable|string|in:upload,request',
+                'items.*.designRequested'     => 'nullable|boolean',
+                'items.*.designFee'           => 'nullable|numeric|min:0',
             ]);
 
             // Build order items with pricing (no transaction wrapper for MongoDB compatibility)
@@ -287,7 +311,7 @@ class OrderController extends Controller
                 'shippingFee'     => $shippingFee,
                 'discountAmount'  => $discountAmount > 0 ? $discountAmount : null,
                 'voucherCode'     => $appliedVoucher?->code ?? null,
-                'orderStatus'     => 'Pending',
+                'orderStatus'     => $this->resolveInitialStatus($request),
                 'paymentStatus'   => 'unpaid',
                 'paymentMethod'   => $paymentMethod,
                 'notes'           => htmlspecialchars(strip_tags(trim($validated['notes'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
@@ -297,7 +321,9 @@ class OrderController extends Controller
                     : null,
                 'designFilePath'  => $designFilePath,
                 'designStatus'    => $designFilePath ? 'pending_review' : null,
-                'statusHistory'   => [['status' => 'Pending', 'at' => now()->toISOString()]],
+                'isCustomOrder'   => filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN),
+                'designType'      => $request->input('designType'),
+                'statusHistory'   => [['status' => $this->resolveInitialStatus($request), 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
@@ -415,7 +441,7 @@ class OrderController extends Controller
                            ->get();
 
             return $this->successResponse('Orders fetched successfully.', [
-                'data'       => $orders,
+                'data'       => $orders->map(fn($o) => $this->normalizeOrderForCustomer($o)),
                 'total'      => $total,
                 'page'       => $page,
                 'limit'      => $limit,
@@ -446,7 +472,7 @@ class OrderController extends Controller
                 return $this->notFoundResponse('Order');
             }
 
-            return $this->successResponse('Order fetched successfully.', $order);
+            return $this->successResponse('Order fetched successfully.', $this->normalizeOrderForCustomer($order));
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching your order.');
         }
@@ -1797,9 +1823,16 @@ class OrderController extends Controller
                 return $this->errorResponse('No design draft available for this order.', 422);
             }
 
-            $order->designStatus = 'approved';
-            $order->updatedAt    = now();
+            $history              = $order->statusHistory ?? [];
+            $history[]            = ['status' => 'design_approved',      'at' => now()->toISOString()];
+            $history[]            = ['status' => 'awaiting_production',  'at' => now()->toISOString()];
+            $order->designStatus  = 'approved';
+            $order->orderStatus   = 'awaiting_production';
+            $order->statusHistory = $history;
+            $order->updatedAt     = now();
             $order->save();
+
+            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, 'awaiting_production', null)); } catch (\Throwable) {}
 
             try {
                 $admins = User::whereIn('role', ['admin', 'owner'])->get();
@@ -1809,7 +1842,7 @@ class OrderController extends Controller
                         'type'       => 'design_approved_by_customer',
                         'title'      => 'Design Approved',
                         'message'    => 'Customer approved the design for order #' .
-                            strtoupper(substr((string) $order->_id, -8)) . '.',
+                            strtoupper(substr((string) $order->_id, -8)) . '. Ready for production.',
                         'is_read'    => false,
                         'data'       => ['orderId' => (string) $order->_id],
                         'created_at' => now(),
@@ -1819,7 +1852,7 @@ class OrderController extends Controller
                 Log::warning('approveAdminDesign: notification failed', ['error' => $notifErr->getMessage()]);
             }
 
-            return $this->successResponse('Design approved. We\'ll proceed to production.', $order);
+            return $this->successResponse('Design approved. We\'ll proceed to production.', $this->normalizeOrderForCustomer($order));
 
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to approve design.');
@@ -1849,7 +1882,11 @@ class OrderController extends Controller
                 'notes' => 'nullable|string|max:2000',
             ]);
 
+            $history               = $order->statusHistory ?? [];
+            $history[]             = ['status' => 'revision_requested', 'at' => now()->toISOString()];
             $order->designStatus   = 'revision_requested';
+            $order->orderStatus    = 'revision_requested';
+            $order->statusHistory  = $history;
             $order->revisionNotes  = isset($validated['notes'])
                 ? htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
                 : null;
@@ -1875,7 +1912,7 @@ class OrderController extends Controller
                 Log::warning('requestDesignRevision: notification failed', ['error' => $notifErr->getMessage()]);
             }
 
-            return $this->successResponse('Revision request sent. We\'ll update the design and notify you.', $order);
+            return $this->successResponse('Revision request sent. We\'ll update the design and notify you.', $this->normalizeOrderForCustomer($order));
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->validationErrorResponse($e);
@@ -1929,10 +1966,16 @@ class OrderController extends Controller
 
             $adminDesignUrl = $response->json()['secure_url'];
 
+            $history               = $order->statusHistory ?? [];
+            $history[]             = ['status' => 'proof_sent', 'at' => now()->toISOString()];
             $order->adminDesignUrl = $adminDesignUrl;
             $order->designStatus   = 'draft_ready';
+            $order->orderStatus    = 'proof_sent';
+            $order->statusHistory  = $history;
             $order->updatedAt      = now();
             $order->save();
+
+            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, 'proof_sent', null)); } catch (\Throwable) {}
 
             try {
                 Notification::create([
@@ -1976,6 +2019,48 @@ class OrderController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to upload design draft.');
+        }
+    }
+
+    public function approveUploadDesign(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, ['admin', 'owner'])) {
+                return $this->unauthorizedResponse();
+            }
+
+            $order = Order::find($id);
+            if (!$order) return $this->notFoundResponse('Order');
+
+            $history   = $order->statusHistory ?? [];
+            $history[] = ['status' => 'awaiting_payment', 'at' => now()->toISOString(), 'by' => 'admin', 'note' => 'Upload approved — awaiting customer payment'];
+            $order->orderStatus   = 'awaiting_payment';
+            $order->statusHistory = $history;
+            $order->updatedAt     = now();
+            $order->save();
+
+            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, 'awaiting_payment', null)); } catch (\Throwable) {}
+
+            try {
+                Notification::create([
+                    'user_id' => (string) $order->userId,
+                    'type'    => 'upload_approved',
+                    'title'   => 'Your Design Was Approved!',
+                    'message' => 'Your uploaded design for order #' .
+                        strtoupper(substr((string) $order->_id, -8)) .
+                        ' has been approved. Please complete your payment to begin production.',
+                    'is_read' => false,
+                    'data'    => ['orderId' => (string) $order->_id],
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('approveUploadDesign: notification failed', ['error' => $e->getMessage()]);
+            }
+
+            return $this->successResponse('Upload approved. Customer notified to complete payment.', $order);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to approve upload.');
         }
     }
 }

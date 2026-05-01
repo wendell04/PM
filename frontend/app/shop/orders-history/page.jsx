@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchMyShopOrders, fetchMyOrder } from '@/lib/orderTrackingApi';
+import { fetchMyShopOrders, fetchMyShopOrder } from '@/lib/orderTrackingApi';
 import { StatusBadge, formatDate, formatPeso } from '@/lib/shopUtils';
 import { getEcho, disconnectEcho } from '@/lib/echo';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
@@ -12,7 +12,40 @@ import { useCart } from '@/app/shop/layout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-const TABS = ['All', 'Pending', 'Processing', 'In Production', 'For Delivery', 'Delivered', 'Cancelled'];
+const TABS = ['All', 'Custom', 'Pending', 'In Production', 'For Delivery', 'Delivered', 'Cancelled'];
+
+const UPLOAD_STEPS = [
+  { key: 'pending_review',      label: 'Review'   },
+  { key: 'awaiting_payment',    label: 'Payment'  },
+  { key: 'awaiting_production', label: 'Queued'   },
+  { key: 'in_production',       label: 'Printing' },
+  { key: 'shipped',             label: 'Shipped'  },
+  { key: 'delivered',           label: 'Done'     },
+];
+
+const REQUEST_STEPS = [
+  { key: 'pending_design',      label: 'Design'   },
+  { key: 'proof_sent',          label: 'Proof'    },
+  { key: 'design_approved',     label: 'Approved' },
+  { key: 'awaiting_production', label: 'Queued'   },
+  { key: 'in_production',       label: 'Printing' },
+  { key: 'shipped',             label: 'Shipped'  },
+  { key: 'delivered',           label: 'Done'     },
+];
+
+const CUSTOM_STATUS_LABEL = {
+  pending_review:      'Under Review',
+  awaiting_payment:    'Awaiting Payment',
+  pending_design:      'Pending Design',
+  proof_sent:          'Proof Sent',
+  revision_requested:  'Revision Requested',
+  design_approved:     'Design Approved',
+  awaiting_production: 'In Queue',
+  in_production:       'In Production',
+  ready_for_pickup:    'Ready for Pickup',
+  shipped:             'Shipped',
+  delivered:           'Delivered',
+};
 
 const TRACK_STEPS = [
   {
@@ -224,6 +257,115 @@ function OrderTracker({ status, statusHistory = [] }) {
   );
 }
 
+function CustomOrderTracker({ orderStatus, designType }) {
+  const steps = designType === 'upload' ? UPLOAD_STEPS : REQUEST_STEPS;
+  const currentIdx = steps.findIndex(s => s.key === orderStatus);
+  const isTerminal = orderStatus === 'Cancelled' || orderStatus === 'Returned';
+
+  const statusLabel = CUSTOM_STATUS_LABEL[orderStatus] || orderStatus;
+  const statusColor = {
+    pending_review:      '#60a5fa',
+    awaiting_payment:    '#f59e0b',
+    pending_design:      '#f59e0b',
+    proof_sent:          '#a78bfa',
+    revision_requested:  '#f97316',
+    design_approved:     '#34d399',
+    awaiting_production: '#6366f1',
+    in_production:       '#3b82f6',
+    ready_for_pickup:    '#4ade80',
+    shipped:             '#a78bfa',
+    delivered:           '#4ade80',
+  }[orderStatus] || '#6b7280';
+
+  if (isTerminal) {
+    return (
+      <div style={{
+        padding: '0.875rem 1rem', borderRadius: '10px', marginBottom: '1.25rem',
+        background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)',
+        display: 'flex', alignItems: 'center', gap: '0.625rem',
+      }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+        <div>
+          <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--red)' }}>Order {orderStatus}</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '2px' }}>This order was {orderStatus.toLowerCase()}.</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.875rem' }}>
+        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          {designType === 'upload' ? 'Upload Design' : 'Design Request'} Progress
+        </div>
+        <span style={{
+          padding: '3px 10px', borderRadius: '999px', fontSize: '0.7rem', fontWeight: 700,
+          background: `${statusColor}18`, color: statusColor, border: `1px solid ${statusColor}40`,
+        }}>
+          {statusLabel}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0 }}>
+        {steps.map((step, idx) => {
+          const isDone    = idx < currentIdx;
+          const isCurrent = idx === currentIdx;
+          return (
+            <div key={step.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+              {idx > 0 && (
+                <div style={{ position: 'absolute', top: '12px', left: 0, width: '50%', height: '2px', background: idx <= currentIdx ? 'var(--gold)' : 'var(--border)' }} />
+              )}
+              {idx < steps.length - 1 && (
+                <div style={{ position: 'absolute', top: '12px', right: 0, width: '50%', height: '2px', background: idx < currentIdx ? 'var(--gold)' : 'var(--border)' }} />
+              )}
+              <div style={{
+                width: '24px', height: '24px', borderRadius: '50%', zIndex: 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: isCurrent ? 'var(--gold)' : isDone ? 'rgba(212,168,67,0.2)' : 'var(--border)',
+                border: isCurrent || isDone ? '2px solid var(--gold)' : '2px solid var(--border)',
+                boxShadow: isCurrent ? '0 0 0 3px rgba(212,168,67,0.2)' : 'none',
+                transition: 'all 0.3s', flexShrink: 0,
+              }}>
+                {isDone && (
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                )}
+              </div>
+              <div style={{
+                marginTop: '4px', fontSize: '0.62rem', textAlign: 'center', lineHeight: 1.3, maxWidth: '52px',
+                fontWeight: isCurrent ? 700 : 500,
+                color: isCurrent ? 'var(--gold)' : isDone ? 'var(--white)' : 'var(--gray)',
+              }}>
+                {step.label}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {orderStatus === 'awaiting_payment' && (
+        <div style={{ marginTop: '12px', padding: '10px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', fontSize: '0.8rem', color: '#f59e0b' }}>
+          Payment required to move to production. Use the Pay Now button below.
+        </div>
+      )}
+      {orderStatus === 'proof_sent' && (
+        <div style={{ marginTop: '12px', padding: '10px 14px', background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '8px', fontSize: '0.8rem', color: '#a78bfa' }}>
+          Your design proof is ready. Please review and approve or request changes below.
+        </div>
+      )}
+      {orderStatus === 'revision_requested' && (
+        <div style={{ marginTop: '12px', padding: '10px 14px', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: '8px', fontSize: '0.8rem', color: '#f97316' }}>
+          Revision submitted — we're working on the updated design and will notify you when it's ready.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PaymentStatusBadge({ status }) {
   if (!status || status === 'paid') return null;
   return (
@@ -303,6 +445,7 @@ export default function OrdersHistoryPage() {
   // Pay Now
   const [payNowLoading, setPayNowLoading] = useState(false);
   const [payNowError, setPayNowError]     = useState(null);
+  const [payMethod, setPayMethod]         = useState(null);
 
   // Design re-upload
   const [showReupload, setShowReupload]       = useState(false);
@@ -404,6 +547,7 @@ export default function OrdersHistoryPage() {
   // ── Reset modal-level state ────────────────────────
   const resetModalState = () => {
     setPayNowError(null);
+    setPayMethod(null);
     setShowReupload(false);
     setReuploadFile(null);
     setReuploadNotes('');
@@ -452,7 +596,7 @@ export default function OrdersHistoryPage() {
     setDetailLoading(true);
     setModalOpen(true);
     try {
-      const data = await fetchMyOrder(token, order.id ?? order._id);
+      const data = await fetchMyShopOrder(token, order.id ?? order._id);
       const detail = data?.data ?? data;
       setSelectedOrder(detail);
       if (detail?.orderStatus === 'Delivered') {
@@ -520,7 +664,7 @@ export default function OrdersHistoryPage() {
 
   // ── Pay Now ────────────────────────────────────────
   const handlePayNow = async () => {
-    if (!selectedOrder || !token) return;
+    if (!selectedOrder || !token || !payMethod) return;
     setPayNowLoading(true);
     setPayNowError(null);
     try {
@@ -529,7 +673,7 @@ export default function OrdersHistoryPage() {
         {
           method: 'POST',
           headers: { ...apiHeaders(token), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId: selectedOrder._id ?? selectedOrder.id }),
+          body: JSON.stringify({ orderId: selectedOrder._id ?? selectedOrder.id, paymentMethod: payMethod }),
         },
         15000
       );
@@ -658,9 +802,12 @@ export default function OrdersHistoryPage() {
   };
 
   // ── Derived: filtered + paginated orders ──────────
-  const filteredOrders = activeTab === 'All'
-    ? orders
-    : orders.filter(o => o.orderStatus === activeTab);
+  const filteredOrders = (() => {
+    if (activeTab === 'All') return orders;
+    if (activeTab === 'Custom') return orders.filter(o => o.isCustomOrder);
+    if (activeTab === 'Delivered') return orders.filter(o => o.orderStatus === 'Delivered' || o.orderStatus === 'delivered');
+    return orders.filter(o => o.orderStatus === activeTab);
+  })();
 
   // ── Render ─────────────────────────────────────────
   return (
@@ -677,10 +824,10 @@ export default function OrdersHistoryPage() {
             ← Back to Shop
           </Link>
           <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>
-            Order History
+            My Orders
           </h1>
           <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: 'var(--gray)' }}>
-            Your purchase orders
+            Regular and custom orders in one place
           </p>
         </div>
 
@@ -695,7 +842,11 @@ export default function OrdersHistoryPage() {
             {TABS.map(tab => {
               const count = tab === 'All'
                 ? orders.length
-                : orders.filter(o => o.orderStatus === tab).length;
+                : tab === 'Custom'
+                  ? orders.filter(o => o.isCustomOrder).length
+                  : tab === 'Delivered'
+                    ? orders.filter(o => o.orderStatus === 'Delivered' || o.orderStatus === 'delivered').length
+                    : orders.filter(o => o.orderStatus === tab).length;
               const isActive = activeTab === tab;
               return (
                 <button
@@ -844,64 +995,96 @@ export default function OrdersHistoryPage() {
               return (
                 <div
                   key={oid}
+                  onClick={() => openDetail(order)}
                   style={{
                     background: 'var(--dark2)',
                     border: '1px solid var(--border)',
-                    borderRadius: '12px',
-                    padding: '20px',
+                    borderRadius: '14px',
+                    overflow: 'hidden',
                     cursor: 'pointer',
-                    transition: 'border-color 0.15s',
+                    transition: 'border-color 0.15s, box-shadow 0.15s',
                   }}
-                  onClick={() => openDetail(order)}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--gold)'}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = 'rgba(212,168,67,0.5)';
+                    e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.3)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = 'var(--border)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
                 >
+                  {/* Top row: icon + order # + badges */}
                   <div style={{
-                    display: 'flex', justifyContent: 'space-between',
-                    alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap',
-                    marginBottom: '8px',
+                    padding: '14px 16px',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px',
+                    borderBottom: '1px solid rgba(255,255,255,0.04)',
                   }}>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--white)' }}>
-                      #{oid?.slice(-8).toUpperCase()}
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                      <div style={{
+                        width: '38px', height: '38px', borderRadius: '10px', flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: order.isCustomOrder ? 'rgba(99,102,241,0.12)' : 'rgba(212,168,67,0.08)',
+                        border: `1px solid ${order.isCustomOrder ? 'rgba(99,102,241,0.25)' : 'rgba(212,168,67,0.2)'}`,
+                      }}>
+                        {order.isCustomOrder ? (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                          </svg>
+                        ) : (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                            <line x1="3" y1="6" x2="21" y2="6"/>
+                          </svg>
+                        )}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--white)', letterSpacing: '0.5px', fontFamily: 'monospace' }}>
+                          #{oid?.slice(-8).toUpperCase()}
+                        </div>
+                        {order.isCustomOrder && (
+                          <div style={{ fontSize: '0.68rem', color: '#6366f1', fontWeight: 600, marginTop: '1px' }}>
+                            Custom · {order.designType === 'upload' ? 'Upload Design' : 'Design Request'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       <PaymentStatusBadge status={order.paymentStatus} />
                       <StatusBadge status={order.orderStatus} />
                     </div>
                   </div>
-                  <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '8px' }}>
-                    {itemSummary}
+
+                  {/* Middle: item summary */}
+                  <div style={{ padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                    <div style={{
+                      fontSize: '0.875rem', color: 'var(--gray)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {itemSummary}
+                    </div>
                   </div>
-                  <div style={{
-                    display: 'flex', justifyContent: 'space-between',
-                    alignItems: 'center', flexWrap: 'wrap', gap: '8px',
-                  }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
+
+                  {/* Bottom: date + amount + action hint */}
+                  <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.77rem', color: 'var(--gray)' }}>
                       {formatDate(order.createdAt)}
                     </span>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--gold)' }}>
-                      {formatPeso(order.totalAmount)}
-                    </span>
-                  </div>
-                  {order.orderStatus === 'Pending' && (
-                    <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end' }}>
-                      <button
-                        onClick={e => { e.stopPropagation(); setCancelTarget(order); }}
-                        style={{
-                          padding: '6px 14px',
-                          borderRadius: '6px',
-                          border: '1px solid var(--red)',
-                          background: 'transparent',
-                          color: 'var(--red)',
-                          fontSize: '0.8rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Cancel Order
-                      </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      {order.orderStatus === 'awaiting_payment' && (
+                        <span style={{ fontSize: '0.72rem', color: '#f59e0b', fontWeight: 700 }}>
+                          Action needed ›
+                        </span>
+                      )}
+                      {order.orderStatus === 'proof_sent' && (
+                        <span style={{ fontSize: '0.72rem', color: '#a78bfa', fontWeight: 700 }}>
+                          Review proof ›
+                        </span>
+                      )}
+                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--gold)' }}>
+                        {formatPeso(order.totalAmount)}
+                      </span>
                     </div>
-                  )}
+                  </div>
                 </div>
               );
             })}
@@ -954,26 +1137,38 @@ export default function OrdersHistoryPage() {
               background: 'var(--dark2)',
               border: '1px solid var(--border)',
               borderRadius: '16px',
-              width: '100%', maxWidth: '560px',
-              maxHeight: '90vh', overflowY: 'auto',
+              width: '100%', maxWidth: '800px',
+              maxHeight: '92vh',
               display: 'flex', flexDirection: 'column',
             }}
           >
             {/* Modal header */}
             <div style={{
-              padding: '20px 24px',
+              padding: '18px 24px',
               borderBottom: '1px solid var(--border)',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px',
             }}>
-              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--white)' }}>
-                Order Details
-              </h2>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--white)' }}>
+                  Order Details
+                </h2>
+                {selectedOrder && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '2px', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
+                    #{(selectedOrder.id ?? selectedOrder._id)?.slice(-8).toUpperCase()}
+                    {selectedOrder.isCustomOrder && (
+                      <span style={{ marginLeft: '8px', color: '#6366f1', fontFamily: 'sans-serif', fontWeight: 600 }}>
+                        Custom · {selectedOrder.designType === 'upload' ? 'Upload Design' : 'Design Request'}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={closeModal}
                 style={{
                   background: 'none', border: 'none',
                   color: 'var(--gray)', fontSize: '1.25rem',
-                  cursor: 'pointer', padding: '4px',
+                  cursor: 'pointer', padding: '4px', flexShrink: 0,
                 }}
               >
                 ✕
@@ -981,10 +1176,10 @@ export default function OrdersHistoryPage() {
             </div>
 
             {/* Modal body */}
-            <div style={{ padding: '24px', flex: 1 }}>
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
 
               {detailLoading && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   {[40, 70, 55, 80, 45].map((w, i) => (
                     <div key={i} style={{
                       height: i === 3 ? '80px' : '13px',
@@ -1000,6 +1195,7 @@ export default function OrdersHistoryPage() {
 
               {!detailLoading && detailError && (
                 <div style={{
+                  margin: '24px',
                   padding: '12px 16px', borderRadius: '8px',
                   background: 'rgba(239,68,68,0.08)',
                   border: '1px solid var(--red)',
@@ -1024,89 +1220,62 @@ export default function OrdersHistoryPage() {
               )}
 
               {!detailLoading && !detailError && selectedOrder && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ display: 'flex', height: '100%', overflow: 'hidden', minHeight: 0 }}>
 
-                  {/* Order Tracker */}
-                  <OrderTracker
-                    status={selectedOrder.orderStatus}
-                    statusHistory={selectedOrder.statusHistory}
-                  />
+                  {/* ── LEFT COLUMN ── */}
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '18px', minWidth: 0 }}>
 
-                  {/* Section 1: Order Summary */}
+                  {/* Tracker */}
+                  {selectedOrder.isCustomOrder ? (
+                    <CustomOrderTracker
+                      orderStatus={selectedOrder.orderStatus}
+                      designType={selectedOrder.designType}
+                    />
+                  ) : (
+                    <OrderTracker
+                      status={selectedOrder.orderStatus}
+                      statusHistory={selectedOrder.statusHistory}
+                    />
+                  )}
+
+                  {/* Order Details meta */}
                   <div>
-                    <h3 style={{
-                      margin: '0 0 12px', fontSize: '0.8rem', fontWeight: 700,
-                      color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px',
-                    }}>
-                      Order Summary
-                    </h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+                      Order Details
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
                       {[
-                        ['Order ID', `#${(selectedOrder.id ?? selectedOrder._id)?.slice(-8).toUpperCase()}`],
-                        ['Status',   null],
-                        ['Payment',  null],
-                        ['Date',     formatDate(selectedOrder.createdAt)],
-                        ['Method',   selectedOrder.paymentMethod
-                          ? <span className="payment-method-badge">{selectedOrder.paymentMethod}</span>
-                          : '—'
-                        ],
-                      ].map(([label, value]) => (
-                        <div key={label} style={{
-                          display: 'flex', justifyContent: 'space-between',
-                          alignItems: 'center', gap: '8px',
-                          padding: '4px 0',
-                          borderBottom: '1px solid rgba(255,255,255,0.04)',
-                        }}>
+                        ['Placed',   formatDate(selectedOrder.createdAt)],
+                        selectedOrder.paymentMethod && selectedOrder.paymentMethod !== 'cod'
+                          ? ['Method', { cod: 'Cash on Delivery', gcash: 'GCash', paymaya: 'Maya', card: 'Credit / Debit Card' }[selectedOrder.paymentMethod] ?? selectedOrder.paymentMethod]
+                          : selectedOrder.paymentMethod === 'cod' && !selectedOrder.isCustomOrder
+                            ? ['Method', 'Cash on Delivery']
+                            : null,
+                      ].filter(Boolean).map(([label, value]) => (
+                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                           <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>{label}</span>
-                          {label === 'Status'
-                            ? <StatusBadge status={selectedOrder.orderStatus} />
-                            : label === 'Payment'
-                              ? selectedOrder.paymentStatus === 'paid'
-                                ? <span style={{ fontSize: '0.875rem', color: 'var(--green)', fontWeight: 600 }}>Paid</span>
-                                : <PaymentStatusBadge status={selectedOrder.paymentStatus} />
-                              : label === 'Method'
-                                ? value
-                                : <span style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>{value}</span>
-                          }
+                          <span style={{ fontSize: '0.82rem', color: 'var(--white)', fontWeight: 600 }}>{value}</span>
                         </div>
                       ))}
-
-                      {/* Design status */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Status</span>
+                        <StatusBadge status={selectedOrder.orderStatus} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: selectedOrder.designStatus ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Payment</span>
+                        {selectedOrder.paymentStatus === 'paid'
+                          ? <span style={{ fontSize: '0.82rem', color: 'var(--green)', fontWeight: 600 }}>Paid</span>
+                          : <PaymentStatusBadge status={selectedOrder.paymentStatus} />}
+                      </div>
                       {selectedOrder.designStatus && (
-                        <div style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '4px 0',
-                          borderBottom: '1px solid rgba(255,255,255,0.04)',
-                        }}>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Design Status</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Design</span>
                           <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            padding: '0.2rem 0.6rem',
-                            borderRadius: '20px',
-                            fontSize: '0.7rem',
-                            fontWeight: 600,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.06em',
-                            background: selectedOrder.designStatus === 'approved'
-                              ? 'rgba(74,222,128,0.12)'
-                              : selectedOrder.designStatus === 'rejected'
-                                ? 'rgba(239,68,68,0.12)'
-                                : 'rgba(234,179,8,0.12)',
-                            color: selectedOrder.designStatus === 'approved'
-                              ? 'var(--green)'
-                              : selectedOrder.designStatus === 'rejected'
-                                ? 'var(--red)'
-                                : 'var(--gold)',
+                            padding: '2px 8px', borderRadius: '999px', fontSize: '0.7rem', fontWeight: 600,
+                            background: selectedOrder.designStatus === 'approved' ? 'rgba(74,222,128,0.12)' : selectedOrder.designStatus === 'rejected' ? 'rgba(239,68,68,0.12)' : 'rgba(234,179,8,0.12)',
+                            color: selectedOrder.designStatus === 'approved' ? 'var(--green)' : selectedOrder.designStatus === 'rejected' ? 'var(--red)' : 'var(--gold)',
                           }}>
-                            {selectedOrder.designStatus === 'pending_review' ? 'Under Review'
-                              : selectedOrder.designStatus === 'approved' ? '✓ Approved'
-                              : selectedOrder.designStatus === 'rejected' ? 'Rejected'
-                              : selectedOrder.designStatus === 'draft_ready' ? 'Draft Ready — Action Needed'
-                              : selectedOrder.designStatus === 'revision_requested' ? 'Revision Requested'
-                              : selectedOrder.designStatus}
+                            {selectedOrder.designStatus === 'pending_review' ? 'Under Review' : selectedOrder.designStatus === 'approved' ? '✓ Approved' : selectedOrder.designStatus === 'rejected' ? 'Rejected' : selectedOrder.designStatus === 'draft_ready' ? 'Draft Ready' : selectedOrder.designStatus === 'revision_requested' ? 'Revision Requested' : selectedOrder.designStatus}
                           </span>
                         </div>
                       )}
@@ -1322,188 +1491,12 @@ export default function OrdersHistoryPage() {
                     </div>
                   )}
 
-                  {/* Section 2: Items */}
-                  {selectedOrder.items && selectedOrder.items.length > 0 && (
-                    <div>
-                      <h3 style={{
-                        margin: '0 0 12px', fontSize: '0.8rem', fontWeight: 700,
-                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px',
-                      }}>
-                        Items
-                      </h3>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {selectedOrder.items.map((item, i) => {
-                          const unitPrice = item.unitPrice ?? item.price ?? 0;
-                          const qty = item.qty || item.quantity || 1;
-                          const lineTotal = item.lineTotal ?? (unitPrice * qty);
-                          return (
-                            <div key={i} style={{
-                              display: 'flex', justifyContent: 'space-between',
-                              alignItems: 'center', gap: '8px',
-                              padding: '10px 14px',
-                              background: 'var(--dark)',
-                              borderRadius: '8px',
-                              border: '1px solid var(--border)',
-                            }}>
-                              <div>
-                                <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>
-                                  {item.productName || item.product_name || 'Product'}
-                                </div>
-                                {item.variantName && (
-                                  <div style={{ fontSize: '0.75rem', color: 'var(--gold)', marginTop: '1px' }}>
-                                    {item.variantName}
-                                  </div>
-                                )}
-                                {item.category && (
-                                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-                                    {item.category}
-                                  </div>
-                                )}
-                              </div>
-                              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                <div style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600 }}>
-                                  {formatPeso(unitPrice)}
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-                                  qty: {qty}
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>
-                                  {formatPeso(lineTotal)}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Section 3: Pricing */}
-                  <div>
-                    <h3 style={{
-                      margin: '0 0 12px', fontSize: '0.8rem', fontWeight: 700,
-                      color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px',
-                    }}>
-                      Pricing
-                    </h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {selectedOrder.subtotal > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Subtotal</span>
-                          <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>
-                            {formatPeso(selectedOrder.subtotal)}
-                          </span>
-                        </div>
-                      )}
-                      {!['Delivered', 'Cancelled', 'Returned'].includes(selectedOrder.orderStatus) && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Shipping</span>
-                          {selectedOrder.shippingFee > 0 ? (
-                            <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee)}</span>
-                          ) : (
-                            <span style={{ fontSize: '0.78rem', color: 'var(--gold)', fontStyle: 'italic' }}>To be confirmed by shop</span>
-                          )}
-                        </div>
-                      )}
-                      {selectedOrder.shippingFee > 0 && ['Delivered', 'Cancelled', 'Returned'].includes(selectedOrder.orderStatus) && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Shipping</span>
-                          <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee)}</span>
-                        </div>
-                      )}
-                      {selectedOrder.discountAmount > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Discount</span>
-                          <span style={{ fontSize: '0.875rem', color: 'var(--green)' }}>
-                            -{formatPeso(selectedOrder.discountAmount)}
-                          </span>
-                        </div>
-                      )}
-                      {selectedOrder.downPayment > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Down Payment</span>
-                          <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>
-                            {formatPeso(selectedOrder.downPayment)}
-                          </span>
-                        </div>
-                      )}
-                      {selectedOrder.balance > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Balance Due</span>
-                          <span style={{ fontSize: '0.875rem', color: 'var(--red)', fontWeight: 700 }}>
-                            {formatPeso(selectedOrder.balance)}
-                          </span>
-                        </div>
-                      )}
-                      <div style={{
-                        display: 'flex', justifyContent: 'space-between',
-                        paddingTop: '8px', borderTop: '1px solid var(--border)',
-                        marginTop: '4px',
-                      }}>
-                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)' }}>Total</span>
-                        <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gold)' }}>
-                          {formatPeso(selectedOrder.totalAmount)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Pay Now — show for unpaid/partial orders that are not cancelled */}
-                    {selectedOrder.paymentStatus !== 'paid'
-                      && !['Cancelled', 'Returned'].includes(selectedOrder.orderStatus) && (
-                      <div style={{ marginTop: '14px' }}>
-                        {payNowError && (
-                          <div style={{
-                            padding: '8px 12px',
-                            background: 'rgba(239,68,68,0.08)',
-                            border: '1px solid rgba(239,68,68,0.2)',
-                            borderRadius: '8px',
-                            color: 'var(--red)',
-                            fontSize: '0.8rem',
-                            marginBottom: '8px',
-                          }}>
-                            {payNowError}
-                          </div>
-                        )}
-                        <button
-                          onClick={handlePayNow}
-                          disabled={payNowLoading}
-                          style={{
-                            width: '100%',
-                            padding: '11px 20px',
-                            borderRadius: '8px',
-                            border: 'none',
-                            background: payNowLoading ? 'var(--border)' : 'var(--gold)',
-                            color: payNowLoading ? 'var(--gray)' : 'var(--dark)',
-                            fontSize: '0.875rem',
-                            fontWeight: 700,
-                            cursor: payNowLoading ? 'not-allowed' : 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '8px',
-                          }}
-                        >
-                          {!payNowLoading && (
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
-                              <line x1="1" y1="10" x2="23" y2="10"/>
-                            </svg>
-                          )}
-                          {payNowLoading ? 'Creating payment link...' : 'Pay Now Online'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
                   {/* Section 4: Delivery Address */}
                   {selectedOrder.deliveryAddress && Object.keys(selectedOrder.deliveryAddress).length > 0 && (
                     <div>
-                      <h3 style={{
-                        margin: '0 0 12px', fontSize: '0.8rem', fontWeight: 700,
-                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px',
-                      }}>
-                        Delivery Address
-                      </h3>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+                        Shipping Address
+                      </div>
                       <div style={{
                         padding: '12px 14px',
                         background: 'var(--dark)',
@@ -1534,12 +1527,9 @@ export default function OrdersHistoryPage() {
                   {/* Section 5: Delivery Details (courier + tracking) */}
                   {(selectedOrder.courierName || selectedOrder.trackingNumber) && (
                     <div>
-                      <h3 style={{
-                        margin: '0 0 12px', fontSize: '0.8rem', fontWeight: 700,
-                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px',
-                      }}>
-                        Delivery Details
-                      </h3>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+                        Shipment
+                      </div>
                       <div style={{
                         padding: '12px 14px',
                         background: 'var(--dark)',
@@ -1592,12 +1582,9 @@ export default function OrdersHistoryPage() {
                   {/* Section 6: Production */}
                   {selectedOrder.joId && (
                     <div>
-                      <h3 style={{
-                        margin: '0 0 12px', fontSize: '0.8rem', fontWeight: 700,
-                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px',
-                      }}>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
                         Production
-                      </h3>
+                      </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Job Order</span>
@@ -1626,12 +1613,9 @@ export default function OrdersHistoryPage() {
                   {/* Section 7: Review */}
                   {selectedOrder.orderStatus === 'Delivered' && (
                     <div>
-                      <h3 style={{
-                        margin: '0 0 12px', fontSize: '0.8rem', fontWeight: 700,
-                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px',
-                      }}>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
                         Your Review
-                      </h3>
+                      </div>
 
                       {reviewCheckLoading && (
                         <div style={{
@@ -1776,6 +1760,214 @@ export default function OrdersHistoryPage() {
                     </div>
                   )}
 
+                  </div>
+                  {/* ── RIGHT COLUMN ── */}
+                  <div style={{ width: '272px', flexShrink: 0, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', background: 'rgba(0,0,0,0.15)' }}>
+
+                    {/* Items */}
+                    {selectedOrder.items && selectedOrder.items.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '14px' }}>
+                          {selectedOrder.items.length} {selectedOrder.items.length === 1 ? 'Item' : 'Items'}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                          {selectedOrder.items.map((item, i) => {
+                            const unitPrice = item.unitPrice ?? item.price ?? 0;
+                            const qty       = item.qty || item.quantity || 1;
+                            const lineTotal = item.lineTotal ?? (unitPrice * qty);
+                            const initial   = (item.productName || 'P')[0].toUpperCase();
+                            const palettes  = ['#6366f1','#f59e0b','#34d399','#f97316','#60a5fa','#a78bfa','#f87171','#4ade80'];
+                            const color     = palettes[initial.charCodeAt(0) % palettes.length];
+                            return (
+                              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                                <div style={{ position: 'relative', flexShrink: 0 }}>
+                                  <div style={{ width: '52px', height: '52px', borderRadius: '10px', background: `${color}18`, border: `1px solid ${color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                    {item.imageUrl
+                                      ? <img src={item.imageUrl} alt={item.productName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                      : <span style={{ fontSize: '1.2rem', fontWeight: 800, color }}>{initial}</span>
+                                    }
+                                  </div>
+                                  <div style={{ position: 'absolute', top: '-6px', right: '-6px', width: '20px', height: '20px', borderRadius: '50%', background: 'var(--dark2)', border: '2px solid var(--border)', color: 'var(--white)', fontSize: '0.62rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    {qty}
+                                  </div>
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--white)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {item.productName || item.product_name || 'Product'}
+                                  </div>
+                                  {item.variantName && <div style={{ fontSize: '0.72rem', color: 'var(--gold)', marginTop: '2px' }}>{item.variantName}</div>}
+                                  {item.category && <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>{item.category}</div>}
+                                </div>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--white)', flexShrink: 0 }}>
+                                  {formatPeso(lineTotal)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Divider */}
+                    <div style={{ height: '1px', background: 'var(--border)' }} />
+
+                    {/* Pricing */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+                      {selectedOrder.subtotal > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Subtotal</span>
+                          <span style={{ fontSize: '0.82rem', color: 'var(--white)' }}>{formatPeso(selectedOrder.subtotal)}</span>
+                        </div>
+                      )}
+                      {selectedOrder.shippingFee > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Shipping</span>
+                          <span style={{ fontSize: '0.82rem', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee)}</span>
+                        </div>
+                      )}
+                      {selectedOrder.discountAmount > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Discount</span>
+                          <span style={{ fontSize: '0.82rem', color: 'var(--green)' }}>-{formatPeso(selectedOrder.discountAmount)}</span>
+                        </div>
+                      )}
+                      {selectedOrder.downPayment > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Down Payment</span>
+                          <span style={{ fontSize: '0.82rem', color: 'var(--white)' }}>{formatPeso(selectedOrder.downPayment)}</span>
+                        </div>
+                      )}
+                      {selectedOrder.balance > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Balance Due</span>
+                          <span style={{ fontSize: '0.82rem', color: 'var(--red)', fontWeight: 700 }}>{formatPeso(selectedOrder.balance)}</span>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid var(--border)', marginTop: '2px' }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--white)' }}>Total</span>
+                        <span style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--gold)' }}>{formatPeso(selectedOrder.totalAmount)}</span>
+                      </div>
+                    </div>
+
+                    {/* Pay Now – payment method selector */}
+                    {selectedOrder.paymentStatus !== 'paid'
+                      && !['Cancelled', 'Returned'].includes(selectedOrder.orderStatus)
+                      && !['pending_review', 'pending_design', 'proof_sent', 'revision_requested', 'design_approved'].includes(selectedOrder.orderStatus) && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          Payment Method
+                        </div>
+
+                        {/* GCash */}
+                        {[
+                          {
+                            id: 'gcash',
+                            label: 'GCash',
+                            sub: "Redirected to GCash to authorize.",
+                            accent: '#0066FF',
+                            accentBg: 'rgba(0,102,255,0.08)',
+                            logo: (
+                              <svg width="26" height="26" viewBox="0 0 100 100" fill="none">
+                                <rect width="100" height="100" rx="20" fill="#0066FF"/>
+                                <path fillRule="evenodd" clipRule="evenodd" d="M50 14C30.12 14 14 30.12 14 50s16.12 36 36 36c16.8 0 30.9-11.46 35.12-27H50V47h39.4c.4 1.96.6 4 .6 6.1C90 74.9 72.1 90 50 90 27 90 10 73 10 50S27 10 50 10c11.55 0 22 4.47 29.6 11.72L73 28.3C67.2 23.2 59 20 50 20z" fill="white"/>
+                              </svg>
+                            ),
+                          },
+                          {
+                            id: 'paymaya',
+                            label: 'Maya',
+                            sub: "Redirected to Maya to authorize.",
+                            accent: '#00B14F',
+                            accentBg: 'rgba(0,177,79,0.08)',
+                            logo: (
+                              <svg width="26" height="26" viewBox="0 0 100 100" fill="none">
+                                <rect width="100" height="100" rx="20" fill="#00B14F"/>
+                                <path d="M18 68V35l18 22 18-22v33" stroke="white" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                                <path d="M62 35h10c5.5 0 10 4.5 10 10s-4.5 10-10 10H62V35z" stroke="white" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                                <line x1="62" y1="55" x2="62" y2="68" stroke="white" strokeWidth="7" strokeLinecap="round"/>
+                              </svg>
+                            ),
+                          },
+                          {
+                            id: 'card',
+                            label: 'Credit / Debit Card',
+                            sub: "Visa or Mastercard accepted.",
+                            accent: '#9C7BE8',
+                            accentBg: 'rgba(156,123,232,0.08)',
+                            logo: (
+                              <svg width="26" height="26" viewBox="0 0 100 100" fill="none">
+                                <rect width="100" height="100" rx="20" fill="#1e1e2e"/>
+                                <rect x="10" y="28" width="80" height="52" rx="8" stroke="#9C7BE8" strokeWidth="5"/>
+                                <rect x="10" y="42" width="80" height="14" fill="#9C7BE8" opacity="0.7"/>
+                                <rect x="20" y="62" width="22" height="8" rx="2" fill="#9C7BE8" opacity="0.5"/>
+                                <rect x="50" y="62" width="14" height="8" rx="2" fill="#9C7BE8" opacity="0.5"/>
+                                <rect x="67" y="62" width="14" height="8" rx="2" fill="#9C7BE8" opacity="0.5"/>
+                              </svg>
+                            ),
+                          },
+                        ].map(opt => {
+                          const isSelected = payMethod === opt.id;
+                          return (
+                            <div
+                              key={opt.id}
+                              onClick={() => setPayMethod(opt.id)}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '10px',
+                                padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
+                                border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.07)'}`,
+                                background: isSelected ? opt.accentBg : 'var(--dark)',
+                                transition: 'all 0.15s',
+                              }}
+                            >
+                              <div style={{
+                                width: '40px', height: '40px', borderRadius: '10px', flexShrink: 0,
+                                background: isSelected ? opt.accentBg : 'rgba(255,255,255,0.04)',
+                                border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.06)'}`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                overflow: 'hidden',
+                              }}>
+                                {opt.logo}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--white)' }}>{opt.label}</div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '1px' }}>{opt.sub}</div>
+                              </div>
+                              <div style={{
+                                width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
+                                border: `2px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.2)'}`,
+                                background: isSelected ? opt.accent : 'transparent',
+                                transition: 'all 0.15s',
+                              }} />
+                            </div>
+                          );
+                        })}
+
+                        {payNowError && (
+                          <div style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: 'var(--red)', fontSize: '0.8rem' }}>
+                            {payNowError}
+                          </div>
+                        )}
+                        <button
+                          onClick={handlePayNow}
+                          disabled={payNowLoading || !payMethod}
+                          style={{
+                            width: '100%', padding: '11px 16px', borderRadius: '8px', border: 'none',
+                            background: (payNowLoading || !payMethod) ? 'var(--border)' : 'var(--gold)',
+                            color: (payNowLoading || !payMethod) ? 'var(--gray)' : 'var(--dark)',
+                            fontSize: '0.875rem', fontWeight: 700,
+                            cursor: (payNowLoading || !payMethod) ? 'not-allowed' : 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                            marginTop: '4px',
+                          }}
+                        >
+                          {!payNowLoading && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>}
+                          {payNowLoading ? 'Creating link...' : !payMethod ? 'Select a method above' : 'Proceed to Payment'}
+                        </button>
+                      </div>
+                    )}
+
+                  </div>
+
                 </div>
               )}
             </div>
@@ -1803,6 +1995,7 @@ export default function OrdersHistoryPage() {
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 {!detailLoading && !detailError && selectedOrder?.items?.length > 0 &&
+                  !selectedOrder?.isCustomOrder &&
                   !['Cancelled'].includes(selectedOrder.orderStatus) && (
                   <button
                     onClick={handleReorder}

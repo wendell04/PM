@@ -2828,7 +2828,7 @@ function ProductCardPreview({ name, category, priceRange, variantCount, maxProdu
       </div>
       <div style={{ background: "#19171580", border: "1px solid rgba(212,168,67,0.18)", borderRadius: "16px", overflow: "hidden", maxWidth: "240px", boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
         {/* Thumbnail */}
-        <div style={{ width: "100%", aspectRatio: "4/3", position: "relative", overflow: "hidden" }}>
+        <div style={{ width: "100%", aspectRatio: "1/1", position: "relative", overflow: "hidden" }}>
           {thumbnail ? (
             <img src={thumbnail} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           ) : (
@@ -4381,7 +4381,7 @@ export default function ProductListPage() {
 
   // ── Modal states ──
   const [deleteModal, setDeleteModal] = useState(null); // product to delete
-  const [archiveModal, setArchiveModal] = useState(null); // product to archive
+  const [blockModal, setBlockModal] = useState(null);   // { product, count } — has active orders
   const [bulkModal, setBulkModal] = useState(null); // { action: 'publish'|'unpublish'|'delete' }
   const [restoreModal, setRestoreModal] = useState(null); // product to restore
 
@@ -4821,40 +4821,24 @@ export default function ProductListPage() {
   };
 
   // ── Delete ─
+  const TERMINAL_STATUSES = new Set(['delivered', 'cancelled', 'rejected', 'completed', 'failed']);
+
   const confirmDelete = async (product) => {
-    // If the product has no BOM link (orphaned), allow hard delete —
-    // it can't be manufactured or fulfilled anyway, and historical sales
-    // carry their own snapshot of product data at sale time.
-    let productBoms = product.bomId
-      ? boms.filter((b) => String(b.id ?? b._id) === String(product.bomId))
-      : [];
-    if (productBoms.length === 0) {
-      const pn = (product.bomGroupName || product.name || product.productName || "").trim().toLowerCase();
-      productBoms = boms.filter((b) => {
-        const bn = (b.productGroupName || "").trim().toLowerCase();
-        return bn && pn && bn === pn;
-      });
-    }
-
-    if (productBoms.length === 0) {
-      setDeleteModal(product);
-      return;
-    }
-
+    const pid = product._id || product.id;
     try {
       const allOrders = await fetchAllOrders(token, {});
-      const hasSales = allOrders.some(
-        (o) =>
-          o.productId === product.id ||
-          o.items?.some((i) => i.productId === product.id),
-      );
-      if (hasSales) {
-        setArchiveModal(product);
+      const activeOrders = allOrders.filter(o => {
+        const touches = o.productId === pid || o.productId === product.id ||
+          o.items?.some(i => i.productId === pid || i.productId === product.id);
+        return touches && !TERMINAL_STATUSES.has(o.status);
+      });
+      if (activeOrders.length > 0) {
+        setBlockModal({ product, count: activeOrders.length });
         return;
       }
       setDeleteModal(product);
     } catch {
-      setArchiveModal(product);
+      setDeleteModal(product);
     }
   };
 
@@ -4878,52 +4862,6 @@ export default function ProductListPage() {
     }
   };
 
-  // ── Archive ──
-  const executeArchive = async (product) => {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      const productId =
-        (product || archiveModal)._id || (product || archiveModal).id;
-
-      // Call API to archive product
-      await updateProduct(
-        productId,
-        {
-          isArchived: true,
-          isPublished: false,
-          updatedAt: new Date().toISOString(),
-        },
-        token,
-      );
-
-      // Update local state
-      setProducts((prev) =>
-        prev.map((p) =>
-          p.id === productId
-            ? {
-                ...p,
-                isArchived: true,
-                isPublished: false,
-                updatedAt: new Date().toISOString(),
-              }
-            : p,
-        ),
-      );
-
-      setArchiveModal(null);
-      clearSelection();
-    } catch (error) {
-      console.error("Failed to archive product:", error);
-      setPriceErrorMessage(
-        error.message || "Failed to archive product. Please try again.",
-      );
-      setPriceErrorTitle("Unable to Archive Product");
-      setShowPriceErrorModal(true);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   // ── Restore ──
   const handleRestore = async (product) => {
@@ -5444,9 +5382,9 @@ export default function ProductListPage() {
         </div>
         {deleteModal && (
           <ConfirmModal
-            title="Remove Product"
-            message={`Remove "${deleteModal.productName || deleteModal.subCategoryName}"? This will move the product to archived.`}
-            confirmLabel="Remove"
+            title="Delete Product"
+            message={`Permanently delete "${deleteModal.productName || deleteModal.subCategoryName}"? This cannot be undone.`}
+            confirmLabel={isSubmitting ? 'Deleting...' : 'Delete'}
             confirmClass="btn-danger"
             onConfirm={executeDelete}
             onCancel={() => setDeleteModal(null)}
@@ -5483,15 +5421,15 @@ export default function ProductListPage() {
           />
         )}
 
-        {/* Archive Suggestion Modal (product has sales) */}
-        {archiveModal && (
+        {/* Block Modal — product has active orders */}
+        {blockModal && (
           <ConfirmModal
-            title="Cannot Remove"
-            message={`"${archiveModal.productName || archiveModal.subCategoryName}" has existing sales history and cannot be removed. Archive it instead?`}
-            confirmLabel="Archive"
+            title="Cannot Delete"
+            message={`"${blockModal.product?.productName || blockModal.product?.subCategoryName}" has ${blockModal.count} active order${blockModal.count !== 1 ? 's' : ''} in progress. Complete or cancel them first before deleting this product.`}
+            confirmLabel="Got it"
             confirmClass="btn-primary"
-            onConfirm={() => executeArchive(archiveModal)}
-            onCancel={() => setArchiveModal(null)}
+            onConfirm={() => setBlockModal(null)}
+            onCancel={() => setBlockModal(null)}
           />
         )}
 

@@ -93,7 +93,7 @@ function ProductCardPreview({ name, category, priceRange, variantCount = 0, thum
       {/* Mirrors .shop-product-card exactly */}
       <div style={{ background: "var(--black, #0e0d0b)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "12px", overflow: "hidden", transition: "all 0.2s" }}>
         {/* Image area — mirrors .shop-product-image-area (180px) */}
-        <div style={{ height: "180px", background: "linear-gradient(135deg, #191716 0%, #131210 100%)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+        <div style={{ aspectRatio: "1/1", width: "100%", background: "linear-gradient(135deg, #191716 0%, #131210 100%)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
           {thumbnail ? (
             <img src={thumbnail} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           ) : (

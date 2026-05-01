@@ -183,7 +183,7 @@ export default function PosPage() {
     try {
       const data = await fetchProducts(token);
       const list = Array.isArray(data) ? data : [];
-      setAllProducts(list.filter(p => p.priceType !== 'inquiry'));
+      setAllProducts(list.filter(p => p.priceType !== 'inquiry' && !p.isArchived));
     } catch (e) {
       setProdError(e.message || 'Failed to load products.');
       setAllProducts([]);

@@ -16,6 +16,14 @@ const ORDER_STATUSES = [
   'Delivered',
   'Returned',
   'Cancelled',
+  'pending_design',
+  'proof_sent',
+  'revision_requested',
+  'design_approved',
+  'awaiting_production',
+  'in_production',
+  'ready_for_pickup',
+  'shipped',
 ];
 
 export default function OrderQuickViewModal({
@@ -293,7 +301,7 @@ export default function OrderQuickViewModal({
       }
       const data = await res.json();
       const adminDesignUrl = data.order?.adminDesignUrl ?? data.adminDesignUrl;
-      setOrder(prev => prev ? { ...prev, adminDesignUrl, designStatus: 'draft_ready' } : null);
+      setOrder(prev => prev ? { ...prev, adminDesignUrl, orderStatus: 'proof_sent', designStatus: 'draft_ready' } : null);
       setAdminDesignSuccess(true);
       if (onStatusUpdated) onStatusUpdated();
     } catch (err) {
@@ -1002,8 +1010,52 @@ export default function OrderQuickViewModal({
                   </div>
                 </div>
 
+                {/* Admin: Approve Upload Design */}
+                {mode === 'admin' && order.isCustomOrder && order.designType === 'upload' && order.orderStatus === 'pending_review' && (
+                  <div>
+                    <h4 style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.75rem' }}>
+                      Upload Review
+                    </h4>
+                    <div style={{ padding: '0.875rem', borderRadius: '8px', background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.2)' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.75rem' }}>
+                        Review the customer&apos;s uploaded design file. If it&apos;s print-ready, approve it to notify them to proceed with payment.
+                      </div>
+                      {order.designFilePath && (
+                        <a href={`${API_URL}/storage/${order.designFilePath}`} target="_blank" rel="noopener noreferrer"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600, color: '#60a5fa', textDecoration: 'none', marginBottom: '0.75rem' }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                          View Uploaded File
+                        </a>
+                      )}
+                      <button
+                        onClick={async () => {
+                          setIsUpdating(true);
+                          try {
+                            const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${orderId}/approve-upload`, {
+                              method: 'POST',
+                              headers: { Authorization: `Bearer ${token}` },
+                            }, 15000);
+                            if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || 'Failed'); }
+                            setOrder(prev => prev ? { ...prev, orderStatus: 'awaiting_payment' } : null);
+                            if (onStatusUpdated) onStatusUpdated();
+                          } catch (err) {
+                            setUpdateError(err.message);
+                          } finally {
+                            setIsUpdating(false);
+                          }
+                        }}
+                        disabled={isUpdating}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0.5rem 1rem', background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.4)', borderRadius: '8px', color: '#60a5fa', fontSize: '0.82rem', fontWeight: 700, cursor: isUpdating ? 'not-allowed' : 'pointer', opacity: isUpdating ? 0.6 : 1 }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                        {isUpdating ? 'Approving...' : 'Approve — Notify Customer to Pay'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Admin Design Service Upload */}
-                {mode === 'admin' && order.items?.some(i => i.designRequested) && (
+                {mode === 'admin' && (order.items?.some(i => i.designRequested) || (order.isCustomOrder && order.designType === 'request')) && (
                   <div>
                     <h4 style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.75rem' }}>
                       Design Service
@@ -1046,6 +1098,18 @@ export default function OrderQuickViewModal({
                       )}
                       {adminDesignError && <div style={{ fontSize: '0.73rem', color: 'var(--red)', marginTop: '0.25rem' }}>{adminDesignError}</div>}
                       {adminDesignSuccess && <div style={{ fontSize: '0.73rem', color: '#4ade80', marginTop: '0.25rem' }}>✓ Draft uploaded. Customer has been notified.</div>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Revision Notes — shown prominently when customer requested changes */}
+                {order.orderStatus === 'revision_requested' && order.revisionNotes && (
+                  <div style={{ padding: '0.875rem', borderRadius: '8px', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.3)' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#f97316', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.5rem' }}>
+                      ↩ Customer Revision Request
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                      {order.revisionNotes}
                     </div>
                   </div>
                 )}

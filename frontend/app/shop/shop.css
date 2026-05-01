@@ -671,7 +671,7 @@
           margin: 0 0 0.75rem;
           font-size: 2.5rem;
           font-weight: 800;
-          color: var(--white);
+          color: #ffffff;
           line-height: 1.1;
         }
 
@@ -914,7 +914,7 @@
         .shop-carousel-cta {
           display: inline-block;
           background: linear-gradient(135deg, var(--gold), var(--gold-dark));
-          color: var(--black);
+          color: #0f0f0f;
           padding: 0.75rem 1.5rem;
           border-radius: 8px;
           text-decoration: none;
@@ -1272,7 +1272,8 @@
         }
 
         .shop-product-image-area {
-          height: 180px;
+          aspect-ratio: 1 / 1;
+          width: 100%;
           background: linear-gradient(135deg, var(--dark) 0%, var(--dark3) 100%);
           display: flex;
           align-items: center;
@@ -1302,16 +1303,16 @@
           color: rgba(255, 255, 255, 0.3);
         }
 
-        .shop-quick-add-btn {
+.shop-quick-add-btn {
           position: absolute;
           bottom: 10px;
           right: 10px;
-          width: 40px;
-          height: 40px;
+          width: 36px;
+          height: 36px;
           border-radius: 50%;
-          background: rgba(212, 168, 67, 0.9);
-          border: 2px solid rgba(255, 255, 255, 0.2);
-          color: var(--black);
+          background: rgba(255, 255, 255, 0.95);
+          border: none;
+          color: #111;
           cursor: pointer;
           display: flex;
           align-items: center;
@@ -1319,7 +1320,7 @@
           opacity: 0;
           transform: translateY(10px);
           transition: all 0.25s ease;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
         }
 
         .shop-product-card:hover .shop-quick-add-btn {
@@ -1328,9 +1329,9 @@
         }
 
         .shop-quick-add-btn:hover {
-          background: var(--gold);
+          background: #fff;
           transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(212, 168, 67, 0.4);
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
         }
 
         .shop-moq-badge {
@@ -2962,14 +2963,14 @@ html.light .cart-continue-shopping {
   color: var(--white);
 }
 html.light .shop-quick-add-btn {
-  background: rgba(0,0,0,0.06);
-  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.95);
+  color: #111;
 }
 html.light .shop-carousel-dot {
   border-color: var(--border);
 }
 html.light .shop-carousel-description {
-  color: var(--gray-light);
+  color: rgba(255, 255, 255, 0.8);
 }
 html.light .shop-social-tiktok {
   border-color: var(--border);
