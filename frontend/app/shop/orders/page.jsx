@@ -319,11 +319,10 @@ export default function ShopOrdersPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--black)', padding: '2rem 1rem' }}>
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-        {/* Back to Shop */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <Link href="/shop" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', color: 'var(--gray)', textDecoration: 'none', fontSize: '0.875rem' }}>
+          <Link href="/shop/profile" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', color: 'var(--gray)', textDecoration: 'none', fontSize: '0.875rem' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
-            Back to Shop
+            My Account
           </Link>
         </div>
 

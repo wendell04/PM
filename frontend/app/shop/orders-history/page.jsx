@@ -816,12 +816,12 @@ export default function OrdersHistoryPage() {
 
         {/* Header */}
         <div style={{ marginBottom: '20px' }}>
-          <Link href="/shop" style={{
+          <Link href="/shop/profile" style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             color: 'var(--gray)', fontSize: '0.85rem', textDecoration: 'none',
             marginBottom: '12px',
           }}>
-            ← Back to Shop
+            ← My Account
           </Link>
           <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)' }}>
             My Orders
