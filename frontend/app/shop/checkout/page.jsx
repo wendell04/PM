@@ -434,6 +434,16 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (
+      storeSettings?.shippingMode !== 'flat' &&
+      storeSettings?.storeLat && storeSettings?.storeLng &&
+      (!selectedAddress.lat || !selectedAddress.lng)
+    ) {
+      setError('Please pin your delivery location so we can calculate the shipping fee.');
+      setShowPinModal(true);
+      return;
+    }
+
     if (!selectedAddress.phone?.trim()) {
       setError('Your delivery address is missing a contact number. Please select a different address or update it in your profile.');
       return;
@@ -1063,7 +1073,7 @@ export default function CheckoutPage() {
             const addr = addresses.find(a => a.id === selectedAddressId);
             if (storeSettings?.shippingMode === 'flat' && !addr)
               return <span className="checkout-shipping-note">Select an address</span>;
-            if (!storeSettings?.storeLat || !storeSettings?.storeLng && storeSettings?.shippingMode !== 'flat')
+            if ((!storeSettings?.storeLat || !storeSettings?.storeLng) && storeSettings?.shippingMode !== 'flat')
               return <span className="checkout-shipping-note">—</span>;
             if (!addr?.lat || !addr?.lng)
               return (
