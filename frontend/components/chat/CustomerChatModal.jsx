@@ -193,7 +193,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     if (view !== 'chat' || !activeConv || !pendingFaqRef.current) return;
     const q = pendingFaqRef.current;
     pendingFaqRef.current = null;
-    handleSendMessage({ message: q, type: 'text' });
+    handleSendMessage({ body: q, type: 'text', conversation_id: activeConv._id });
   }, [view, activeConv]);
 
   const handleFaqClick = (question) => {
@@ -339,11 +339,6 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                     })}
                   </div>
                 )}
-                <button type="button" className="cw-new-msg-btn" onClick={openNewChat}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-                  Send us a message
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6" /></svg>
-                </button>
               </div>
             </>
           )}

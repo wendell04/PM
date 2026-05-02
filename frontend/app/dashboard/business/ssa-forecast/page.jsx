@@ -14,8 +14,8 @@ const SSA_API_URL = process.env.NEXT_PUBLIC_SSA_API_URL || 'http://localhost:800
 
 const FORECAST_PERIODS = [
   { label: 'Weekly',   type: 'weekly',   unit: 'weeks',  tableHeader: 'Week',  maxCount: 52 },
-  { label: 'Monthly',  type: 'monthly',  unit: 'months', tableHeader: 'Month', maxCount: 24 },
-  { label: 'Annually', type: 'annually', unit: 'years',  tableHeader: 'Year',  maxCount: 10 },
+  { label: 'Monthly',  type: 'monthly',  unit: 'months', tableHeader: 'Month', maxCount: 12 },
+  { label: 'Annually', type: 'annually', unit: 'years',  tableHeader: 'Year',  maxCount: 3  },
 ];
 
 const DEFAULT_COUNTS = { weekly: 4, monthly: 3, annually: 2 };
@@ -185,6 +185,7 @@ export default function SSAForecastPage() {
   const [dataSource, setDataSource]         = useState('sales_revenue');
   const [forecastPeriod, setForecastPeriod] = useState(FORECAST_PERIODS[0]);
   const [forecastCount, setForecastCount]   = useState('');
+  const [dynamicMaxCount, setDynamicMaxCount] = useState(FORECAST_PERIODS[0].maxCount);
   const [inventoryList, setInventoryList]   = useState([]);
   const [selectedInventoryId, setSelectedInventoryId] = useState('');
   const [showTrend, setShowTrend]           = useState(false);
@@ -318,6 +319,30 @@ export default function SSAForecastPage() {
         source: dataSource,
         sourceLabel: DATA_SOURCES.find(s => s.key === dataSource)?.label ?? '',
       });
+      // Shift forecast dates to start from today so the chart reflects the current date
+      if (data.forecast?.dates?.length > 0) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const firstFc = new Date(data.forecast.dates[0] + 'T00:00:00Z');
+        const offsetMs = today.getTime() - firstFc.getTime();
+        if (offsetMs !== 0) {
+          data.forecast.dates = data.forecast.dates.map(d => {
+            const shifted = new Date(new Date(d + 'T00:00:00Z').getTime() + offsetMs);
+            return shifted.toISOString().split('T')[0];
+          });
+        }
+      }
+
+      // Update the max input cap to the backend-computed safe horizon for this dataset
+      if (data.safe_max != null) {
+        setDynamicMaxCount(data.safe_max);
+        setForecastCount(prev => {
+          const n = parseInt(prev, 10);
+          if (!n || n < 1) return prev;
+          return n > data.safe_max ? data.safe_max : prev;
+        });
+      }
+
       setResult(data);
       setDataPointCount(data.historical?.dates?.length ?? rows.length);
 
@@ -503,7 +528,7 @@ export default function SSAForecastPage() {
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
               {DATA_SOURCES.map(s => (
                 <button key={s.key} type="button" className={`ssa-source-btn ${dataSource === s.key ? 'active' : ''}`}
-                  onClick={() => { setDataSource(s.key); setResult(null); setSubmittedConfig(null); setError(''); }}>
+                  onClick={() => { setDataSource(s.key); setDynamicMaxCount(forecastPeriod.maxCount); setResult(null); setSubmittedConfig(null); setError(''); }}>
                   {s.label}
                 </button>
               ))}
@@ -530,6 +555,7 @@ export default function SSAForecastPage() {
                 <button key={p.type} type="button" className={`ssa-period-btn ${forecastPeriod.type === p.type ? 'active' : ''}`}
                   onClick={() => {
                     setForecastPeriod(p);
+                    setDynamicMaxCount(p.maxCount);
                     setForecastCount(prev => {
                       const n = parseInt(prev, 10);
                       if (!n || n < 1) return '';
@@ -542,18 +568,18 @@ export default function SSAForecastPage() {
               ))}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input type="number" min={1} max={forecastPeriod.maxCount} value={forecastCount} placeholder="e.g. 4"
+              <input type="number" min={1} max={dynamicMaxCount} value={forecastCount} placeholder="e.g. 4"
                 onChange={e => {
                   const raw = e.target.value;
                   if (raw === '') { setForecastCount(''); return; }
                   const v = parseInt(raw, 10);
-                  if (!isNaN(v) && v > 0 && v <= forecastPeriod.maxCount) setForecastCount(v);
+                  if (!isNaN(v) && v > 0 && v <= dynamicMaxCount) setForecastCount(v);
                 }}
                 style={{ width: '80px', padding: '0.45rem 0.6rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem', outline: 'none' }}
                 onFocus={e => { e.target.style.borderColor = 'var(--gold)'; }}
                 onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
               />
-              <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>{forecastPeriod.unit} ahead (max {forecastPeriod.maxCount})</span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>{forecastPeriod.unit} ahead (max {dynamicMaxCount})</span>
               {isLoading && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', color: 'var(--gold)', fontWeight: 600, opacity: 0.8 }}>
                   <svg className="ssa-spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" strokeOpacity="0.2"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>

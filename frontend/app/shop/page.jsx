@@ -439,7 +439,7 @@ export default function ShopPage() {
     const productToAdd = effectivePrice !== basePrice
       ? { ...product, flatPrice: effectivePrice, price: effectivePrice }
       : product;
-    addToCart(productToAdd, moq, null, null);
+    addToCart(productToAdd, moq, null, null, flashSale?._id ?? null);
     setToast({ message: `${product.subCategoryName || product.name} added to cart!`, type: 'success' });
     setTimeout(() => setToast(null), 2000);
   };
@@ -870,7 +870,7 @@ export default function ShopPage() {
                         productForCart = { ...quickAddProduct, flatPrice: discounted, price: discounted };
                       }
                     }
-                    addToCart(productForCart, quickQty, variantId, variantLabel);
+                    addToCart(productForCart, quickQty, variantId, variantLabel, quickFlashSale?._id ?? null);
                     setToast({ message: `${quickAddProduct.subCategoryName || quickAddProduct.name} added to cart!`, type: 'success' });
                     setTimeout(() => setToast(null), 2000);
                     setQuickAddProduct(null);

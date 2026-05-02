@@ -24,6 +24,7 @@ use App\Models\BillOfMaterial;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use App\Models\StockHistory;
+use App\Models\AuditLog;
 use App\Services\PriceResolver;
 
 class OrderController extends Controller
@@ -881,6 +882,24 @@ class OrderController extends Controller
                 'remarks'      => $orderId ? "Order: {$orderId}" : null,
                 'createdAt'    => now(),
             ]);
+            try {
+                AuditLog::create([
+                    'inventoryId'  => (string) $inventory->_id,
+                    'productName'  => $inventory->name ?? 'Unknown',
+                    'category'     => $inventory->category ?? 'Uncategorized',
+                    'reason'       => $reason,
+                    'quantity'     => -$qty,
+                    'stockBefore'  => $inventory->stockQty + $qty,
+                    'stockAfter'   => $inventory->stockQty,
+                    'unitCost'     => (float) ($inventory->averageCost ?? 0),
+                    'totalCost'    => (float) (($inventory->averageCost ?? 0) * $qty),
+                    'remarks'      => $orderId ? "Order: {$orderId}" : '',
+                    'performedBy'  => 'system',
+                    'createdAt'    => now(),
+                ]);
+            } catch (\Exception $auditEx) {
+                Log::warning('AuditLog write failed (OrderController@deductInventoryFIFO)', ['error' => $auditEx->getMessage()]);
+            }
             return;
         }
 
@@ -924,6 +943,24 @@ class OrderController extends Controller
                 'performedBy'  => 'system',
                 'createdAt'    => now(),
             ]);
+        }
+        try {
+            AuditLog::create([
+                'inventoryId'  => (string) $inventory->_id,
+                'productName'  => $inventory->name ?? 'Unknown',
+                'category'     => $inventory->category ?? 'Uncategorized',
+                'reason'       => $reason,
+                'quantity'     => -$qty,
+                'stockBefore'  => $newStock + $qty,
+                'stockAfter'   => $newStock,
+                'unitCost'     => (float) ($inventory->averageCost ?? 0),
+                'totalCost'    => (float) (($inventory->averageCost ?? 0) * $qty),
+                'remarks'      => $orderId ? "Order: {$orderId}" : '',
+                'performedBy'  => 'system',
+                'createdAt'    => now(),
+            ]);
+        } catch (\Exception $auditEx) {
+            Log::warning('AuditLog write failed (OrderController@deductInventoryFIFO)', ['error' => $auditEx->getMessage()]);
         }
     }
 
@@ -1239,6 +1276,24 @@ class OrderController extends Controller
                     'remarks'      => 'Order cancelled: ' . (string) $order->_id,
                     'createdAt'    => now(),
                 ]);
+                try {
+                    AuditLog::create([
+                        'inventoryId'  => (string) $inv->_id,
+                        'productName'  => $inv->name ?? 'Unknown',
+                        'category'     => $inv->category ?? 'Uncategorized',
+                        'reason'       => 'return',
+                        'quantity'     => $qty,
+                        'stockBefore'  => $newQty - $qty,
+                        'stockAfter'   => $newQty,
+                        'unitCost'     => (float) ($inv->averageCost ?? 0),
+                        'totalCost'    => 0.0,
+                        'remarks'      => 'Order cancelled: ' . (string) $order->_id,
+                        'performedBy'  => 'system',
+                        'createdAt'    => now(),
+                    ]);
+                } catch (\Exception $auditEx) {
+                    Log::warning('AuditLog write failed (OrderController@restoreStockOnCancel)', ['error' => $auditEx->getMessage()]);
+                }
             }
         } catch (\Exception $e) {
             Log::error('restoreStockOnCancel: failed', [

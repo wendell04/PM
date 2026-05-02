@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Inventory;
 use App\Models\StockHistory;
 use App\Models\Supplier;
@@ -600,6 +601,31 @@ class InventoryController extends Controller
                     'performedBy'   => $validated['performedBy'] ?? null,
                     'createdAt'     => now(),
                 ]);
+            }
+
+            try {
+                AuditLog::create([
+                    'inventoryId'  => (string) $inventory->_id,
+                    'productName'  => $inventory->name ?? 'Unknown',
+                    'category'     => $inventory->category ?? 'Uncategorized',
+                    'reason'       => $validated['reason'],
+                    'quantity'     => (int) $quantity,
+                    'stockBefore'  => (int) ($newStock - $quantity),
+                    'stockAfter'   => (int) $newStock,
+                    'unitCost'     => (float) ($validated['unitCost'] ?? $inventory->averageCost ?? 0),
+                    'totalCost'    => (float) (abs($quantity) * ($validated['unitCost'] ?? $inventory->averageCost ?? 0)),
+                    'supplierId'   => $validated['supplierId'] ?? null,
+                    'sellingPrice' => isset($validated['sellingPrice']) ? (float) $validated['sellingPrice'] : null,
+                    'customerName' => $validated['customerName'] ?? null,
+                    'saleDate'     => $validated['saleDate'] ?? null,
+                    'remarks'      => isset($validated['remarks'])
+                        ? htmlspecialchars(strip_tags(trim($validated['remarks'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                        : '',
+                    'performedBy'  => $validated['performedBy'] ?? null,
+                    'createdAt'    => now(),
+                ]);
+            } catch (\Exception $auditEx) {
+                Log::warning('AuditLog write failed', ['error' => $auditEx->getMessage()]);
             }
 
             $this->bustInventoryListCache();

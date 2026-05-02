@@ -257,6 +257,24 @@ class JobOrderController extends Controller
                         'remarks'      => "QC Passed — JO {$jobOrder->joId}",
                         'createdAt'    => now(),
                     ]);
+                    try {
+                        \App\Models\AuditLog::create([
+                            'inventoryId'  => (string) $inventory->_id,
+                            'productName'  => $inventory->name ?? 'Unknown',
+                            'category'     => $inventory->category ?? 'Uncategorized',
+                            'reason'       => 'production',
+                            'quantity'     => -(int) $consumeQty,
+                            'stockBefore'  => (int) $inventory->stockQty + (int) $consumeQty,
+                            'stockAfter'   => (int) $inventory->stockQty,
+                            'unitCost'     => (float) ($inventory->averageCost ?? 0),
+                            'totalCost'    => (float) (($inventory->averageCost ?? 0) * $consumeQty),
+                            'remarks'      => "QC Passed — JO {$jobOrder->joId}",
+                            'performedBy'  => $checkedBy,
+                            'createdAt'    => now(),
+                        ]);
+                    } catch (\Exception $auditEx) {
+                        Log::warning('AuditLog write failed (JobOrderController@submitQC)', ['error' => $auditEx->getMessage()]);
+                    }
                 }
 
                 // 3. Move linked order to For Delivery

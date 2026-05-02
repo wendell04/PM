@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Inventory;
 use App\Models\InventoryReturn;
 use App\Models\StockHistory;
+use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
@@ -242,6 +243,25 @@ class InventoryReturnController extends Controller
                             'type'         => 'in',
                             'createdAt'    => now(),
                         ]);
+                        try {
+                            AuditLog::create([
+                                'inventoryId'  => (string) $inventory->_id,
+                                'productName'  => $inventory->name ?? 'Unknown',
+                                'category'     => $inventory->category ?? 'Uncategorized',
+                                'reason'       => 'return',
+                                'quantity'     => $qty,
+                                'stockBefore'  => $oldStock,
+                                'stockAfter'   => $newStock,
+                                'unitCost'     => (float) $unitCost,
+                                'totalCost'    => (float) ($unitCost * $qty),
+                                'supplierId'   => $inventoryReturn->vendorId ?? null,
+                                'remarks'      => 'Bad order replacement received from vendor',
+                                'performedBy'  => $performedBy,
+                                'createdAt'    => now(),
+                            ]);
+                        } catch (\Exception $auditEx) {
+                            \Illuminate\Support\Facades\Log::warning('AuditLog write failed (InventoryReturnController@update)', ['error' => $auditEx->getMessage()]);
+                        }
                     }
                 }
             }

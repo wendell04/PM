@@ -480,6 +480,7 @@ export default function CheckoutPage() {
         variantName: i.variantName ?? null,
         qty: Math.max(1, parseInt(i.qty) || 1),
         unitPrice: i.unitPrice,
+        ...(i.flashSaleId ? { flashSaleId: String(i.flashSaleId) } : {}),
         ...(i.designUrl ? { designUrl: i.designUrl } : {}),
         ...(i.designNotes ? { designNotes: i.designNotes } : {}),
         ...(i.designRequested ? { designRequested: true, designFee: i.designFee ?? null } : {}),

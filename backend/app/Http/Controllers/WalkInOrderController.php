@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\StockHistory;
+use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -298,6 +299,27 @@ class WalkInOrderController extends Controller
                 'performedBy'   => $performedBy,
                 'createdAt'     => now(),
             ]);
+        }
+        try {
+            AuditLog::create([
+                'inventoryId'  => (string) $inventory->_id,
+                'productName'  => $inventory->name ?? 'Unknown',
+                'category'     => $inventory->category ?? 'Uncategorized',
+                'reason'       => $reason,
+                'quantity'     => -$qty,
+                'stockBefore'  => $newStock + $qty,
+                'stockAfter'   => $newStock,
+                'unitCost'     => (float) ($inventory->averageCost ?? 0),
+                'totalCost'    => (float) (($inventory->averageCost ?? 0) * $qty),
+                'sellingPrice' => $sellingPrice,
+                'customerName' => $customerName,
+                'saleDate'     => now(),
+                'remarks'      => $remarks ?? '',
+                'performedBy'  => $performedBy,
+                'createdAt'    => now(),
+            ]);
+        } catch (\Exception $auditEx) {
+            Log::warning('AuditLog write failed (WalkInOrderController@deductInventoryFIFO)', ['error' => $auditEx->getMessage()]);
         }
     }
 

@@ -38,7 +38,6 @@ class Voucher extends Model
         'usedCount'      => 'integer',
         'isActive'       => 'boolean',
         'expiresAt'      => 'datetime',
-        'usedBy'         => 'array',
     ];
 
     protected $attributes = [

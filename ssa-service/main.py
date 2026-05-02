@@ -107,6 +107,29 @@ async def forecast(req: ForecastRequest):
                        f"SSA requires at least {min_data}."
             )
 
+        # ── Dynamic safe forecast horizon (N // 2 rule) ───────────────────────
+        # Weekly:   N//2 but never beyond 1 full annual cycle (52 weeks)
+        # Monthly:  N//2 but never beyond 1 full annual cycle (12 months)
+        # Annually: n is monthly training points; safe years = n // 12 (≈ training years)
+        if forecast_type == "weekly":
+            safe_max = min(n // 2, 52)
+        elif forecast_type == "monthly":
+            safe_max = min(n // 2, 12)
+        else:
+            safe_max = max(1, n // 12)
+
+        safe_max = max(1, safe_max)
+
+        if forecast_periods > safe_max:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Requested {forecast_periods} {forecast_type} periods exceeds the safe "
+                    f"forecast horizon of {safe_max} for your {n} training data points "
+                    f"(rule: N÷2 ≈ {n // 2}). Reduce to {safe_max} or fewer."
+                )
+            )
+
         # ── SSA window length ─────────────────────────────────────────────────
         # dominant_period uses ACF; threshold 0.15 avoids weak/noise peaks.
         period = dominant_period(df["Value"].values, acf_threshold=0.15)
@@ -315,6 +338,8 @@ async def forecast(req: ForecastRequest):
             "backtest_series":  backtest_series,
             "auto_L":           {"L_used": L, "period_detected": int(period) if period else None},
             "granularity":      "daily",
+            "safe_max":         safe_max,
+            "training_n":       n,
         }
     except HTTPException:
         raise

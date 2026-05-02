@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Sale;
 use App\Models\Inventory;
+use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -133,9 +134,31 @@ class SaleController extends Controller
                     $rem -= $d;
                 }
                 unset($batch);
+                $stockBefore = (int) $inventory->stockQty;
                 $inventory->batches  = $batches;
                 $inventory->stockQty = max(0, $inventory->stockQty - $qty);
                 $inventory->save();
+                try {
+                    AuditLog::create([
+                        'inventoryId'  => (string) $inventory->_id,
+                        'productName'  => $inventory->name ?? $validated['productName'],
+                        'category'     => $inventory->category ?? $validated['category'],
+                        'reason'       => 'sale',
+                        'quantity'     => -$qty,
+                        'stockBefore'  => $stockBefore,
+                        'stockAfter'   => (int) $inventory->stockQty,
+                        'unitCost'     => (float) ($validated['cost'] ?? $inventory->averageCost ?? 0),
+                        'totalCost'    => (float) ($validated['cost'] ?? $inventory->averageCost ?? 0) * $qty,
+                        'sellingPrice' => (float) $validated['unitPrice'],
+                        'customerName' => $validated['customerName'] ?? null,
+                        'saleDate'     => $validated['saleDate'],
+                        'remarks'      => '',
+                        'performedBy'  => $request->user()?->firstName . ' ' . $request->user()?->lastName,
+                        'createdAt'    => now(),
+                    ]);
+                } catch (\Exception $auditEx) {
+                    Log::warning('AuditLog write failed (SaleController@store)', ['error' => $auditEx->getMessage()]);
+                }
             }
 
             $sale = Sale::create([
