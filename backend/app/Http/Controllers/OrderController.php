@@ -580,11 +580,18 @@ class OrderController extends Controller
             }
 
             $validated = $request->validate([
-                'orderStatus'   => 'sometimes|in:Pending,Processing,In Production,For Delivery,Delivered,Returned,Cancelled',
-                'paymentStatus' => 'sometimes|in:unpaid,paid',
+                'orderStatus'   => 'sometimes|in:Pending,Processing,In Production,For QC,For Delivery,Delivered,Returned,Cancelled,pending_design,proof_sent,revision_requested,design_approved,awaiting_payment,awaiting_production,in_production,for_qc,ready_for_delivery,for_delivery,delivered,cancelled',
+                'paymentStatus' => 'sometimes|in:unpaid,partial,paid',
                 'notes'         => 'nullable|string|max:1000',
                 'shippingFee'   => 'sometimes|numeric|min:0|max:50000',
             ]);
+
+            // Block for_delivery if DP custom order hasn't been fully paid
+            if (isset($validated['orderStatus']) && $validated['orderStatus'] === 'for_delivery') {
+                if ($order->isCustomOrder && $order->paymentStatus !== 'paid') {
+                    return response()->json(['message' => 'Customer must complete balance payment before the order can be moved to For Delivery.'], 422);
+                }
+            }
 
             $oldStatus = $order->orderStatus;
 
@@ -1089,7 +1096,7 @@ class OrderController extends Controller
             }
 
             $validated = $request->validate([
-                'orderStatus' => 'required|in:Pending,In Production,For Delivery,Delivered,Returned,Cancelled',
+                'orderStatus' => 'required|in:Pending,In Production,For QC,For Delivery,Delivered,Returned,Cancelled',
             ]);
 
             $order = Order::find($id);
@@ -1104,7 +1111,8 @@ class OrderController extends Controller
             // Enforce valid status transitions
             $allowedTransitions = [
                 'Pending'       => ['In Production', 'Cancelled'],
-                'In Production' => ['For Delivery', 'Cancelled'],
+                'In Production' => ['For QC', 'Cancelled'],
+                'For QC'        => ['For Delivery', 'In Production'],
                 'For Delivery'  => ['Delivered', 'Returned'],
                 'Delivered'     => [],
                 'Returned'      => [],
@@ -1879,15 +1887,14 @@ class OrderController extends Controller
             }
 
             $history              = $order->statusHistory ?? [];
-            $history[]            = ['status' => 'design_approved',      'at' => now()->toISOString()];
-            $history[]            = ['status' => 'awaiting_production',  'at' => now()->toISOString()];
+            $history[]            = ['status' => 'design_approved', 'at' => now()->toISOString()];
             $order->designStatus  = 'approved';
-            $order->orderStatus   = 'awaiting_production';
+            $order->orderStatus   = 'design_approved';
             $order->statusHistory = $history;
             $order->updatedAt     = now();
             $order->save();
 
-            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, 'awaiting_production', null)); } catch (\Throwable) {}
+            try { broadcast(new \App\Events\OrderStatusUpdated((string) $order->_id, 'design_approved', null)); } catch (\Throwable) {}
 
             try {
                 $admins = User::whereIn('role', ['admin', 'owner'])->get();
@@ -1897,7 +1904,7 @@ class OrderController extends Controller
                         'type'       => 'design_approved_by_customer',
                         'title'      => 'Design Approved',
                         'message'    => 'Customer approved the design for order #' .
-                            strtoupper(substr((string) $order->_id, -8)) . '. Ready for production.',
+                            strtoupper(substr((string) $order->_id, -8)) . '. Set to Awaiting Payment so the customer can complete their order.',
                         'is_read'    => false,
                         'data'       => ['orderId' => (string) $order->_id],
                         'created_at' => now(),
@@ -1993,9 +2000,9 @@ class OrderController extends Controller
                 return $this->notFoundResponse('Order');
             }
 
-            $request->validate([
-                'design' => 'required|file|max:20480',
-            ]);
+            if (!$request->hasFile('design')) {
+                return response()->json(['message' => 'At least one design file is required.'], 422);
+            }
 
             $cloudName    = config('services.cloudinary.cloud_name');
             $uploadPreset = config('services.cloudinary.upload_preset');
@@ -2004,26 +2011,38 @@ class OrderController extends Controller
                 return response()->json(['message' => 'Cloudinary configuration missing.'], 500);
             }
 
-            $file     = $request->file('design');
-            $response = Http::attach(
-                'file',
-                file_get_contents($file->getPathname()),
-                $file->getClientOriginalName()
-            )->post("https://api.cloudinary.com/v1_1/{$cloudName}/auto/upload", [
-                'upload_preset' => $uploadPreset,
-                'folder'        => 'pmp-admin-designs',
-            ]);
+            $rawFiles = $request->file('design');
+            $files    = is_array($rawFiles) ? $rawFiles : [$rawFiles];
 
-            if (!$response->successful()) {
-                Log::warning('adminUploadDesign: Cloudinary error', ['body' => $response->body()]);
-                return response()->json(['message' => 'Failed to upload design to Cloudinary.'], 500);
+            $uploadedUrls = [];
+            foreach ($files as $file) {
+                if ($file->getSize() > 20 * 1024 * 1024) {
+                    return response()->json(['message' => 'Each file must be under 20 MB.'], 422);
+                }
+                $response = Http::attach(
+                    'file',
+                    file_get_contents($file->getPathname()),
+                    $file->getClientOriginalName()
+                )->post("https://api.cloudinary.com/v1_1/{$cloudName}/auto/upload", [
+                    'upload_preset' => $uploadPreset,
+                    'folder'        => 'pmp-admin-designs',
+                ]);
+
+                if (!$response->successful()) {
+                    Log::warning('adminUploadDesign: Cloudinary error', ['body' => $response->body()]);
+                    return response()->json(['message' => 'Failed to upload design to Cloudinary.'], 500);
+                }
+
+                $uploadedUrls[] = $response->json()['secure_url'];
             }
 
-            $adminDesignUrl = $response->json()['secure_url'];
+            $adminDesignUrl  = $uploadedUrls[0];
+            $adminDesignUrls = $uploadedUrls;
 
-            $history               = $order->statusHistory ?? [];
-            $history[]             = ['status' => 'proof_sent', 'at' => now()->toISOString()];
-            $order->adminDesignUrl = $adminDesignUrl;
+            $history                = $order->statusHistory ?? [];
+            $history[]              = ['status' => 'proof_sent', 'at' => now()->toISOString()];
+            $order->adminDesignUrl  = $adminDesignUrl;
+            $order->adminDesignUrls = $adminDesignUrls;
             $order->designStatus   = 'draft_ready';
             $order->orderStatus    = 'proof_sent';
             $order->statusHistory  = $history;
@@ -2042,9 +2061,10 @@ class OrderController extends Controller
                         ' is ready for review. Open your order to view it.',
                     'is_read'    => false,
                     'data'       => [
-                        'orderId'        => (string) $order->_id,
-                        'designStatus'   => 'draft_ready',
-                        'adminDesignUrl' => $adminDesignUrl,
+                        'orderId'         => (string) $order->_id,
+                        'designStatus'    => 'draft_ready',
+                        'adminDesignUrl'  => $adminDesignUrl,
+                        'adminDesignUrls' => $adminDesignUrls,
                     ],
                     'created_at' => now(),
                 ]);

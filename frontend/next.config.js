@@ -25,6 +25,15 @@ const securityHeaders = [
 
 const nextConfig = {
   allowedDevOrigins: ['172.20.10.2'],
+  async redirects() {
+    return [
+      {
+        source: '/shop/orders',
+        destination: '/shop/orders-history',
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

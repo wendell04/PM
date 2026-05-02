@@ -12,6 +12,19 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 function fmt(n) {
   return `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+function fmtPHPhone(d) {
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return d.slice(0,3)+' '+d.slice(3);
+  return d.slice(0,3)+' '+d.slice(3,6)+' '+d.slice(6);
+}
+function fmtCardNumber(v) { return v.replace(/\D/g,'').slice(0,16).replace(/(.{4})/g,'$1 ').trim(); }
+function fmtExpiry(v) { const d=v.replace(/\D/g,'').slice(0,4); return d.length>=3?d.slice(0,2)+'/'+d.slice(2):d; }
+function cardBrand(num) {
+  const n=num.replace(/\s/g,'');
+  if(/^4/.test(n)) return 'VISA';
+  if(/^5[1-5]/.test(n)||/^2[2-7]/.test(n)) return 'MC';
+  return null;
+}
 
 function getTierForQty(p, qty) {
   const tiers = p?.priceTiers ?? p?.tiers ?? [];
@@ -88,7 +101,16 @@ export default function CustomOrderPage() {
   const [addressLoading, setAddressLoading] = useState(false);
 
   const [paymentMethod, setPaymentMethod] = useState('gcash');
+  const [eWalletPhone, setEWalletPhone] = useState('');
+  const [showEWalletPhone, setShowEWalletPhone] = useState(false);
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvc, setCardCvc] = useState('');
+  const [cardName, setCardName] = useState('');
   const [placing, setPlacing] = useState(false);
+  const [failedModal, setFailedModal] = useState(false);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
+  const [pendingVerifyId, setPendingVerifyId] = useState(null);
   const [submitError, setSubmitError] = useState(null);
   const [storeSettings, setStoreSettings]     = useState(null);
   const [shippingFeeAmt, setShippingFeeAmt]   = useState(null);
@@ -99,6 +121,48 @@ export default function CustomOrderPage() {
       router.push(`/shop/products/${id}`);
     }
   }, [token, id, router]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const isCancelled = params.get('payment_cancelled') === '1';
+    const pendingOrderId = sessionStorage.getItem('pending_payment_order_id');
+    if (isCancelled) window.history.replaceState({}, '', window.location.pathname);
+    if (pendingOrderId) {
+      sessionStorage.removeItem('pending_payment_order_id');
+      if (isCancelled) { setFailedModal(true); return; }
+      setVerifyingPayment(true);
+      setPendingVerifyId(pendingOrderId);
+    } else if (isCancelled) {
+      setFailedModal(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!pendingVerifyId || !token) return;
+    let cancelled = false;
+    let attempt = 0;
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const res = await fetchWithTimeout(`${API_URL}/api/orders/my/${pendingVerifyId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }, 10000);
+        const data = await res.json();
+        const order = data.data ?? data;
+        if (order.paymentStatus === 'paid') {
+          if (!cancelled) { setVerifyingPayment(false); router.push('/shop/orders-history?submitted=paid'); }
+        } else if (attempt < 5) {
+          attempt++;
+          setTimeout(poll, 2000);
+        } else {
+          if (!cancelled) { setVerifyingPayment(false); setFailedModal(true); }
+        }
+      } catch {
+        if (!cancelled) { setVerifyingPayment(false); setFailedModal(true); }
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [pendingVerifyId, token, router]);
 
   useEffect(() => {
     if (!id) return;
@@ -173,12 +237,16 @@ export default function CustomOrderPage() {
   const grandTotal = lineTotal + designFee + (shippingFeeAmt ?? 0);
   const downpaymentRequired = product?.requiresDownpayment ?? false;
   const downpaymentPercent = product?.downpaymentPercent ?? 50;
-  const amountDue = downpaymentRequired
-    ? Math.round(grandTotal * downpaymentPercent / 100 * 100) / 100
-    : grandTotal;
-  const remainingBalance = downpaymentRequired
-    ? Math.round((grandTotal - amountDue) * 100) / 100
-    : 0;
+  const amountDue = designMode === 'request'
+    ? designFee
+    : downpaymentRequired
+      ? Math.round(grandTotal * downpaymentPercent / 100 * 100) / 100
+      : grandTotal;
+  const remainingBalance = designMode === 'request'
+    ? Math.round((grandTotal - designFee) * 100) / 100
+    : downpaymentRequired
+      ? Math.round((grandTotal - amountDue) * 100) / 100
+      : 0;
   const selectedAddress = addresses.find(a => a.id === selectedAddressId) ?? null;
   const combo = product ? resolveCombo(product, selectedVariants) : null;
   const variantLabel = combo?.label ?? (Object.values(selectedVariants).join(', ') || null);
@@ -210,9 +278,16 @@ export default function CustomOrderPage() {
     if (designMode === 'request' && !selectedAddress) {
       setSubmitError('Please select a delivery address.'); return;
     }
-    if (designMode === 'request' && downpaymentRequired && paymentMethod === 'cod') {
-      setSubmitError('Cash on Delivery is not available for downpayment orders. Please choose GCash or Maya.');
+    if (designMode === 'request' && paymentMethod === 'cod') {
+      setSubmitError('Cash on Delivery is not available for design requests. The design fee must be paid upfront via GCash, Maya, or Card.');
       return;
+    }
+    if (designMode === 'request' && paymentMethod === 'card') {
+      const num = cardNumber.replace(/\s/g,'');
+      if (num.length < 16) { setSubmitError('Enter a valid 16-digit card number.'); return; }
+      if (!cardExpiry || cardExpiry.length < 4) { setSubmitError('Enter a valid expiry date (MM/YY).'); return; }
+      if (cardCvc.length < 3) { setSubmitError('Enter a valid security code.'); return; }
+      if (!cardName.trim()) { setSubmitError('Enter the name on your card.'); return; }
     }
 
     setSubmitError(null);
@@ -245,7 +320,7 @@ export default function CustomOrderPage() {
         }, 20000);
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Failed to submit.');
-        router.push('/shop/orders?submitted=upload');
+        router.push('/shop/orders-history?submitted=upload');
         return;
       }
 
@@ -267,7 +342,9 @@ export default function CustomOrderPage() {
         shippingFee: shippingFeeAmt ?? 0,
         isCustomOrder: true,
         designType: designMode,
-        ...(downpaymentRequired ? { isDownpayment: true, downpaymentPercent } : {}),
+        ...(designMode === 'request'
+          ? { isDesignFeeOnly: true }
+          : downpaymentRequired ? { isDownpayment: true, downpaymentPercent } : {}),
       };
 
       if (paymentMethod === 'cod') {
@@ -281,10 +358,34 @@ export default function CustomOrderPage() {
         const orderId = data.data?._id ?? data.data?.id ?? data._id ?? data.id;
         router.push(`/shop/payment-success?id=${orderId}&method=cod`);
       } else {
+        let paymentMethodId = null;
+        if (paymentMethod === 'card') {
+          const publicKey = process.env.NEXT_PUBLIC_PAYMONGO_PUBLIC_KEY;
+          const [expMonth, expYear] = cardExpiry.split('/');
+          const pmRes = await fetch('https://api.paymongo.com/v1/payment_methods', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Basic ${btoa(publicKey+':')}` },
+            body: JSON.stringify({ data: { attributes: { type: 'card', details: { card_number: cardNumber.replace(/\s/g,''), exp_month: parseInt(expMonth), exp_year: parseInt('20'+expYear), cvc: cardCvc }, billing: { name: cardName.trim(), email: '', phone: '' } } } }),
+          });
+          const pmData = await pmRes.json();
+          if (!pmRes.ok) {
+            const detail = pmData.errors?.[0]?.detail ?? '';
+            if (detail.includes('card_number')) throw new Error('Card number is invalid.');
+            if (detail.includes('exp_month')||detail.includes('exp_year')) throw new Error('Expiry date is invalid.');
+            if (detail.includes('cvc')) throw new Error('Security code is invalid.');
+            throw new Error('Invalid card details. Please check and try again.');
+          }
+          paymentMethodId = pmData.data.id;
+        }
         const res = await fetchWithTimeout(`${API_URL}/api/payment/initiate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ ...commonFields, paymentType: paymentMethod }),
+          body: JSON.stringify({
+            ...commonFields,
+            paymentType: paymentMethod,
+            paymentMethodId,
+            eWalletPhone: (['gcash','paymaya'].includes(paymentMethod) && eWalletPhone.trim()) ? `+63${eWalletPhone.trim()}` : null,
+          }),
         }, 25000);
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Payment initiation failed.');
@@ -304,6 +405,15 @@ export default function CustomOrderPage() {
       setPlacing(false);
     }
   }
+  if (verifyingPayment) return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+      <div style={{ background: 'var(--dark2)', borderRadius: '18px', padding: '40px 32px', textAlign: 'center' }}>
+        <div style={{ width: 48, height: 48, border: '3px solid var(--gold)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 20px' }} />
+        <p style={{ color: 'var(--white)', fontWeight: 600, marginBottom: 6 }}>Verifying payment…</p>
+        <p style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Please wait, this may take a few seconds.</p>
+      </div>
+    </div>
+  );
 
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dark1)' }}>
@@ -312,6 +422,26 @@ export default function CustomOrderPage() {
     </div>
   );
 
+  if (failedModal) return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
+      <div style={{ background: 'var(--dark2)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '18px', padding: '40px 32px', maxWidth: '400px', width: '100%', textAlign: 'center' }}>
+        <div style={{ width: 68, height: 68, borderRadius: '50%', background: 'rgba(239,68,68,0.1)', border: '2px solid var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </div>
+        <h2 style={{ color: 'var(--white)', fontWeight: 700, fontSize: '1.3rem', marginBottom: 8 }}>Payment Cancelled</h2>
+        <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: 28, lineHeight: 1.6 }}>
+          Your payment was not completed. Your order has been saved — you can try again below.
+        </p>
+        <button onClick={() => setFailedModal(false)}
+          style={{ width: '100%', padding: '12px', background: 'var(--gold)', color: '#000', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>
+          Try Again
+        </button>
+      </div>
+    </div>
+  );
+  
   if (loadError || !product) return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', background: 'var(--dark1)', color: 'var(--white)', fontFamily: "'Outfit', sans-serif" }}>
       <p style={{ color: 'var(--gray)' }}>{loadError ?? 'Product not found.'}</p>
@@ -517,25 +647,89 @@ export default function CustomOrderPage() {
             {designMode === 'request' && <section style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
               <h2 style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>4 — Payment Method</h2>
 
-              {downpaymentRequired && (
-                <div style={{ padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-                  A <strong style={{ color: 'var(--gold)' }}>{downpaymentPercent}% downpayment</strong> of {fmt(amountDue)} is required now. The remaining {fmt(remainingBalance)} is due after design approval.
+              <div style={{ padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                Pay the <strong style={{ color: 'var(--gold)' }}>design fee of {fmt(designFee)}</strong> now. The remaining order balance of <strong style={{ color: 'var(--white)' }}>{fmt(remainingBalance)}</strong> will be collected after design approval.
+              </div>
+
+              {[
+                { id: 'gcash',    label: 'GCash',              sub: "Redirect to GCash to authorize.",   accent: '#0066FF', accentBg: 'rgba(0,102,255,0.07)',    logo: '/logos/Gcash-Logo-1024x1024.png' },
+                { id: 'paymaya', label: 'Maya',               sub: "Redirect to Maya to authorize.",    accent: '#00B14F', accentBg: 'rgba(0,177,79,0.07)',     logo: '/logos/maya logo.png' },
+                { id: 'card',    label: 'Credit / Debit Card', sub: 'Pay with Visa or Mastercard.',     accent: '#9C7BE8', accentBg: 'rgba(156,123,232,0.07)', logo: '/logos/credit-card.svg', filterImg: true },
+              ].map(opt => {
+                const isSelected = paymentMethod === opt.id;
+                const isEWallet = opt.id === 'gcash' || opt.id === 'paymaya';
+                const showPanel = isEWallet && isSelected;
+                return (
+                  <div key={opt.id}>
+                    <div onClick={() => { setPaymentMethod(opt.id); setEWalletPhone(''); setShowEWalletPhone(false); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem 1rem', borderRadius: '10px', cursor: 'pointer', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.07)'}`, background: isSelected ? opt.accentBg : 'var(--dark1)', marginBottom: showPanel ? 0 : '0.625rem', transition: 'all 0.18s' }}>
+                      <div style={{ width: '44px', height: '44px', borderRadius: '10px', flexShrink: 0, background: isSelected ? opt.accentBg : 'rgba(255,255,255,0.04)', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.06)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={opt.logo} alt={opt.label} style={{ width: '30px', height: '30px', objectFit: 'contain', ...(opt.filterImg ? { filter: 'brightness(0) invert(1)', opacity: isSelected ? 1 : 0.45 } : { borderRadius: '6px' }) }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.15rem' }}>{opt.label}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>{opt.sub}</div>
+                      </div>
+                      <div style={{ width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0, border: `2px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.2)'}`, background: isSelected ? opt.accent : 'transparent', transition: 'all 0.18s' }} />
+                    </div>
+                    {showPanel && (
+                      <div style={{ marginTop: '4px', marginBottom: '0.625rem', padding: '0.875rem 1rem', borderRadius: '10px', background: opt.id === 'gcash' ? 'rgba(0,102,255,0.04)' : 'rgba(0,177,79,0.04)', border: `1px solid ${opt.id === 'gcash' ? 'rgba(0,102,255,0.18)' : 'rgba(0,177,79,0.18)'}` }}>
+                        {!showEWalletPhone ? (
+                          <button type="button" onClick={() => setShowEWalletPhone(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '0.4rem', color: opt.id === 'gcash' ? '#0066FF' : '#00B14F', fontSize: '0.8rem', fontWeight: 600 }}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                            Use a different {opt.id === 'gcash' ? 'GCash' : 'Maya'} number for billing reference
+                          </button>
+                        ) : (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.625rem' }}>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: opt.id === 'gcash' ? '#0066FF' : '#00B14F', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{opt.id === 'gcash' ? 'GCash' : 'Maya'} number</span>
+                              <button type="button" onClick={() => { setShowEWalletPhone(false); setEWalletPhone(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: '0.75rem', padding: 0 }}>Cancel</button>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', overflow: 'hidden' }} onFocusCapture={e => { e.currentTarget.style.borderColor = opt.id === 'gcash' ? '#0066FF' : '#00B14F'; }} onBlurCapture={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}>
+                              <span style={{ padding: '0.65rem 0.75rem', fontSize: '0.9rem', fontFamily: 'monospace', color: 'var(--gray)', borderRight: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>+63</span>
+                              <input type="tel" inputMode="numeric" placeholder="9XX XXX XXXX" maxLength={12} value={fmtPHPhone(eWalletPhone)} autoFocus onChange={e => setEWalletPhone(e.target.value.replace(/\D/g,'').slice(0,10))} style={{ flex: 1, background: 'transparent', border: 'none', padding: '0.65rem 0.875rem', color: 'var(--white)', fontSize: '0.9rem', outline: 'none', fontFamily: 'monospace' }} />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {paymentMethod === 'card' && (
+                <div style={{ marginTop: '0.25rem', padding: '1.25rem', borderRadius: '12px', background: 'rgba(156,123,232,0.05)', border: '1px solid rgba(156,123,232,0.2)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'rgba(156,123,232,0.9)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Card Details</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <svg width="38" height="24" viewBox="0 0 38 24" xmlns="http://www.w3.org/2000/svg"><rect width="38" height="24" rx="4" fill="#1A1F71"/><text x="19" y="17" textAnchor="middle" fill="white" fontSize="11" fontWeight="bold" fontStyle="italic" fontFamily="Arial,sans-serif">VISA</text></svg>
+                      <svg width="38" height="24" viewBox="0 0 38 24" xmlns="http://www.w3.org/2000/svg"><rect width="38" height="24" rx="4" fill="#252525"/><circle cx="14" cy="12" r="7.5" fill="#EB001B"/><circle cx="24" cy="12" r="7.5" fill="#F79E1B"/></svg>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem' }}>Card number</label>
+                    <div style={{ position: 'relative' }}>
+                      <input type="text" inputMode="numeric" placeholder="1234 1234 1234 1234" value={cardNumber} onChange={e => setCardNumber(fmtCardNumber(e.target.value))} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.72rem 2.75rem 0.72rem 0.875rem', color: 'var(--white)', fontSize: '1rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace', letterSpacing: '0.08em' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
+                      {cardBrand(cardNumber) && <span style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', fontSize: '0.6rem', fontWeight: 900, color: '#9C7BE8', background: 'rgba(156,123,232,0.12)', padding: '2px 6px', borderRadius: '4px' }}>{cardBrand(cardNumber)}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem' }}>Expiration date</label>
+                      <input type="text" inputMode="numeric" placeholder="MM / YY" value={cardExpiry} onChange={e => setCardExpiry(fmtExpiry(e.target.value))} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.72rem 0.875rem', color: 'var(--white)', fontSize: '0.95rem', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem' }}>Security code</label>
+                      <input type="text" inputMode="numeric" placeholder="CVC" maxLength={4} value={cardCvc} onChange={e => setCardCvc(e.target.value.replace(/\D/g,'').slice(0,4))} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.72rem 0.875rem', color: 'var(--white)', fontSize: '0.95rem', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem' }}>Name on card</label>
+                    <input type="text" placeholder="Full name as on card" value={cardName} onChange={e => setCardName(e.target.value)} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.72rem 0.875rem', color: 'var(--white)', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
+                  </div>
                 </div>
               )}
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                {[
-                  { key: 'gcash', label: 'GCash' },
-                  { key: 'maya', label: 'Maya' },
-                  { key: 'cod', label: 'COD', disabled: downpaymentRequired },
-                ].map(m => (
-                  <button key={m.key} onClick={() => !m.disabled && setPaymentMethod(m.key)} disabled={m.disabled}
-                    style={{ padding: '0.75rem 0.5rem', borderRadius: '10px', border: `1.5px solid ${paymentMethod === m.key ? 'var(--gold)' : 'var(--border)'}`, background: paymentMethod === m.key ? 'rgba(212,168,67,0.08)' : 'transparent', cursor: m.disabled ? 'not-allowed' : 'pointer', color: m.disabled ? 'rgba(229,226,225,0.3)' : paymentMethod === m.key ? 'var(--gold)' : 'var(--white)', fontWeight: 700, fontSize: '0.9rem', fontFamily: "'Outfit', sans-serif", opacity: m.disabled ? 0.5 : 1, transition: 'all 0.12s' }}>
-                    {m.label}
-                    {m.disabled && <div style={{ fontSize: '0.6rem', fontWeight: 400, color: 'var(--gray)', marginTop: '3px' }}>N/A for DP</div>}
-                  </button>
-                ))}
-              </div>
             </section>}
 
           </div>
@@ -587,14 +781,14 @@ export default function CustomOrderPage() {
                 </div>
               )}
 
-              {designMode === 'request' && downpaymentRequired && (
+              {designMode === 'request' && (
                 <div style={{ padding: '0.875rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px', marginBottom: '1rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem', fontSize: '0.85rem' }}>
-                    <span style={{ color: 'var(--gray)' }}>Due now ({downpaymentPercent}%)</span>
-                    <span style={{ color: 'var(--gold)', fontWeight: 800 }}>{fmt(amountDue)}</span>
+                    <span style={{ color: 'var(--gray)' }}>Design fee due now</span>
+                    <span style={{ color: 'var(--gold)', fontWeight: 800 }}>{fmt(designFee)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
-                    <span style={{ color: 'var(--gray)' }}>After approval</span>
+                    <span style={{ color: 'var(--gray)' }}>Order total due after approval</span>
                     <span style={{ color: 'var(--gray)' }}>{fmt(remainingBalance)}</span>
                   </div>
                 </div>
@@ -617,10 +811,12 @@ export default function CustomOrderPage() {
                 {placing ? (
                   <>
                     <div style={{ width: 16, height: 16, border: '2px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-                    {designMode === 'upload' ? 'Submitting...' : 'Placing Order...'}
+                    {designMode === 'upload' ? 'Submitting...' : designMode === 'request' ? 'Requesting...' : 'Placing Order...'}
                   </>
                 ) : designMode === 'upload' ? (
                   'Submit for Review'
+                ) : designMode === 'request' ? (
+                  `Request Design & Pay Design Fee ${fmt(designFee)}`
                 ) : (
                   `Place Order & Pay ${fmt(amountDue)}`
                 )}

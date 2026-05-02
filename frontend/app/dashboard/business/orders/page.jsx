@@ -174,22 +174,22 @@ export default function OrdersPage() {
               <span className="summary-label">Total Orders</span>
             </div>
           </div>
-          <div className="summary-card summary-card-warning">
+          <div className="summary-card">
             <div className="summary-content">
               <span className="summary-value">{pendingOrders}</span>
               <span className="summary-label">Pending</span>
             </div>
           </div>
-          <div className="summary-card summary-card-info">
+          <div className="summary-card">
             <div className="summary-content">
               <span className="summary-value">{inProduction}</span>
               <span className="summary-label">In Production</span>
             </div>
           </div>
-          <div className="summary-card summary-card-warning" style={{ background: 'rgba(249, 115, 22, 0.08)', borderColor: 'rgba(249, 115, 22, 0.3)' }}>
+          <div className="summary-card">
             <div className="summary-content">
-              <span className="summary-value" style={{ color: 'var(--orange)' }}>{forDelivery}</span>
-              <span className="summary-label" style={{ color: 'var(--orange)' }}>For Delivery</span>
+              <span className="summary-value">{forDelivery}</span>
+              <span className="summary-label">For Delivery</span>
             </div>
           </div>
           <div className="summary-card summary-card-success">
@@ -329,7 +329,11 @@ export default function OrdersPage() {
               </tr>
             ) : (
               paginated.map(o => {
-                const statusBadge = getStatusBadge(o.orderStatus);
+                const deliveredPaid = o.orderStatus === 'Delivered' && o.paymentStatus === 'paid';
+                const rawBadge = getStatusBadge(o.orderStatus);
+                const statusBadge = deliveredPaid
+                  ? { ...rawBadge, color: '#4ade80', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.4)' }
+                  : rawBadge;
                 const isExpanded = expandedIds.has(o.id);
 
                 return (

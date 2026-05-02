@@ -3,28 +3,43 @@
 import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
-import { getStatusBadge, getPaymentBadge } from '@/lib/utils/orderHelpers';
+import { getStatusBadge } from '@/lib/utils/orderHelpers';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-const ORDER_STATUSES = [
-  'Pending',
-  'Processing',
-  'In Production',
-  'For Delivery',
-  'Delivered',
-  'Returned',
-  'Cancelled',
-  'pending_design',
-  'proof_sent',
-  'revision_requested',
-  'design_approved',
-  'awaiting_production',
-  'in_production',
-  'ready_for_pickup',
-  'shipped',
-];
+function getAvailableStatuses(order) {
+  if (!order) return [];
+  const s = order.orderStatus;
+  const isCOD = (order.paymentMethod || '').toLowerCase() === 'cod';
+  if (order.isCustomOrder) {
+    const map = {
+      pending_review:      ['awaiting_payment'],
+      design_approved:     ['awaiting_payment'],
+      awaiting_production: ['in_production'],
+      in_production:       ['for_qc'],
+      for_qc:              order.paymentStatus === 'paid' ? ['for_delivery'] : ['ready_for_delivery'],
+      for_delivery:        ['delivered'],
+    };
+    return map[s] ?? [];
+  }
+  if (isCOD) {
+    const map = {
+      Pending:        ['Processing', 'Cancelled'],
+      Processing:     ['For Delivery', 'Cancelled'],
+      'For Delivery': ['Delivered'],
+      Delivered:      order.paymentStatus === 'paid' ? [] : ['Paid', 'Returned'],
+    };
+    return map[s] ?? [];
+  }
+  const map = {
+    Pending:        ['Processing', 'Cancelled'],
+    Processing:     ['For Delivery', 'Cancelled'],
+    'For Delivery': ['Delivered'],
+    Delivered:      ['Returned'],
+  };
+  return map[s] ?? [];
+}
 
 export default function OrderQuickViewModal({
   orderId,
@@ -40,51 +55,15 @@ export default function OrderQuickViewModal({
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateError, setUpdateError] = useState(null);
   const [selectedStatus, setSelectedStatus] = useState('');
-  const [notesEdit, setNotesEdit]           = useState('');
-  const [paymentEdit, setPaymentEdit]       = useState('');
-  const [isEditingNotes, setIsEditingNotes] = useState(false);
-  const [designAction, setDesignAction]     = useState(null); // 'approving' | 'rejecting' | null
+  const [confirmStatus, setConfirmStatus]   = useState(null);
+  const [designAction, setDesignAction]     = useState(null);
   const [designError, setDesignError]       = useState(null);
   const [rejectReason, setRejectReason]     = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
-  const [cashReceived, setCashReceived]   = useState('');
-  const [codError, setCodError]           = useState(null);
-  const [codSuccess, setCodSuccess]       = useState(false);
   const [adminDesignUploading, setAdminDesignUploading] = useState(false);
   const [adminDesignError, setAdminDesignError]         = useState(null);
   const [adminDesignSuccess, setAdminDesignSuccess]     = useState(false);
-
-  const handleConfirmCOD = async () => {
-    const cash = parseFloat(cashReceived);
-    const due  = parseFloat(order?.totalAmount ?? 0);
-    if (isNaN(cash) || cash < due) {
-      setCodError('Cash received must be at least ₱' + due.toLocaleString('en-PH', { minimumFractionDigits: 2 }));
-      return;
-    }
-    setCodError(null);
-    setIsUpdating(true);
-    try {
-      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${order._id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ paymentStatus: 'paid' }),
-      }, 15000);
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || 'Failed to confirm COD payment');
-      }
-      setOrder(prev => prev ? { ...prev, paymentStatus: 'paid' } : null);
-      setCodSuccess(true);
-      if (onStatusUpdated) onStatusUpdated();
-    } catch (err) {
-      setCodError(err.message || 'Failed to confirm payment');
-    } finally {
-      setIsUpdating(false);
-    }
-  };
+  const [adminDraftFile, setAdminDraftFile]             = useState(null);
 
   // Hoisted fetch order function using useAuth token
   const fetchOrder = useCallback(async () => {
@@ -103,8 +82,6 @@ export default function OrderQuickViewModal({
       const data = await res.json();
       setOrder(data.order);
       setSelectedStatus(data.order.orderStatus || '');
-      setNotesEdit(data.order.notes || '');
-      setPaymentEdit(data.order.paymentStatus || 'unpaid');
     } catch (err) {
       if (err.message.includes('Unauthorized')) {
         setError('Unauthorized. Please login again.');
@@ -132,55 +109,37 @@ export default function OrderQuickViewModal({
       setIsLoading(false);
       setUpdateError(null);
       setSelectedStatus('');
-      setNotesEdit('');
-      setPaymentEdit('');
-      setIsEditingNotes(false);
       setAdminDesignError(null);
       setAdminDesignSuccess(false);
     }
   }, [isOpen]);
 
   const handleUpdateStatus = async () => {
-    if (!orderId || !order) return;
-
+    if (!orderId || !order || !confirmStatus) return;
+    setConfirmStatus(null);
     setIsUpdating(true);
     setUpdateError(null);
-
     try {
-      const payload = {};
-      if (selectedStatus !== order.orderStatus) {
-        payload.orderStatus = selectedStatus;
-      }
-      if (paymentEdit !== (order.paymentStatus || 'unpaid')) {
-        payload.paymentStatus = paymentEdit;
-      }
-      if (notesEdit.trim() !== (order.notes || '')) {
-        payload.notes = notesEdit.trim();
-      }
-      if (Object.keys(payload).length === 0) return;
-
+      // 'Paid' means collect COD payment — only update paymentStatus, orderStatus stays 'Delivered'
+      const payload = confirmStatus === 'Paid'
+        ? { paymentStatus: 'paid' }
+        : { orderStatus: confirmStatus };
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${orderId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       }, 15000);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.message || errData.error || 'Update failed');
       }
-      const updated = await res.json();
-      setOrder((prev) => prev ? {
-        ...prev,
-        orderStatus: payload.orderStatus ?? prev.orderStatus,
-        paymentStatus: payload.paymentStatus ?? prev.paymentStatus,
-        notes: payload.notes ?? prev.notes,
-      } : null);
-      setIsEditingNotes(false);
+      setOrder(prev => {
+        if (!prev) return null;
+        if (confirmStatus === 'Paid') return { ...prev, paymentStatus: 'paid' };
+        return { ...prev, orderStatus: confirmStatus };
+      });
+      if (confirmStatus !== 'Paid') setSelectedStatus(confirmStatus);
       if (onStatusUpdated) onStatusUpdated();
-      setUpdateError(null);
     } catch (err) {
       setUpdateError(err.message || 'Failed to update status');
     } finally {
@@ -247,14 +206,15 @@ export default function OrderQuickViewModal({
   };
 
 
-  const handleAdminUploadDesign = async (file) => {
-    if (!file || !orderId) return;
+  const handleAdminUploadDesign = async (files) => {
+    const fileList = Array.isArray(files) ? files : [files];
+    if (!fileList.length || !orderId) return;
     setAdminDesignUploading(true);
     setAdminDesignError(null);
     setAdminDesignSuccess(false);
     try {
       const form = new FormData();
-      form.append('design', file);
+      fileList.forEach(f => form.append('design[]', f));
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${orderId}/upload-design`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -265,8 +225,9 @@ export default function OrderQuickViewModal({
         throw new Error(d.message || 'Upload failed');
       }
       const data = await res.json();
-      const adminDesignUrl = data.order?.adminDesignUrl ?? data.adminDesignUrl;
-      setOrder(prev => prev ? { ...prev, adminDesignUrl, orderStatus: 'proof_sent', designStatus: 'draft_ready' } : null);
+      const adminDesignUrl  = data.order?.adminDesignUrl  ?? data.adminDesignUrl;
+      const adminDesignUrls = data.order?.adminDesignUrls ?? data.adminDesignUrls ?? (adminDesignUrl ? [adminDesignUrl] : []);
+      setOrder(prev => prev ? { ...prev, adminDesignUrl, adminDesignUrls, orderStatus: 'proof_sent', designStatus: 'draft_ready' } : null);
       setAdminDesignSuccess(true);
       if (onStatusUpdated) onStatusUpdated();
     } catch (err) {
@@ -315,11 +276,10 @@ export default function OrderQuickViewModal({
     return lines;
   };
 
-  const availableStatuses = ORDER_STATUSES;
-
   if (!isOpen) return null;
 
   return (
+    <>
     <div
       className="modal-overlay"
       onClick={handleOverlayClick}
@@ -367,22 +327,17 @@ export default function OrderQuickViewModal({
             <span style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--white)' }}>
               #{String(orderId).slice(-8).toUpperCase()}
             </span>
-            {order && (
-              <span
-                style={{
-                  display: 'inline-block',
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  padding: '0.25rem 0.625rem',
-                  borderRadius: '999px',
-                  background: getStatusBadge(order.orderStatus).bg,
-                  color: getStatusBadge(order.orderStatus).color,
-                  border: `1px solid ${getStatusBadge(order.orderStatus).border}`,
-                }}
-              >
-                {order.orderStatus}
-              </span>
-            )}
+            {order && (() => {
+              const deliveredPaid = order.orderStatus === 'Delivered' && order.paymentStatus === 'paid';
+              const badge = deliveredPaid
+                ? { label: 'Delivered', color: '#4ade80', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.4)' }
+                : getStatusBadge(order.orderStatus);
+              return (
+                <span style={{ display: 'inline-block', fontSize: '0.7rem', fontWeight: 700, padding: '0.25rem 0.625rem', borderRadius: '999px', background: badge.bg, color: badge.color, border: `1px solid ${badge.border}` }}>
+                  {badge.label || order.orderStatus}
+                </span>
+              );
+            })()}
           </div>
           <button
             onClick={onClose}
@@ -571,100 +526,15 @@ export default function OrderQuickViewModal({
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Method:</span>
                       <span style={{ fontSize: '0.85rem', color: 'var(--white)' }}>
-                        {order.paymentMethod === 'cod' ? 'Cash on Delivery' : order.paymentMethod === 'online' ? 'Online Payment' : order.paymentMethod || '—'}
+                        {{ cod: 'Cash on Delivery', gcash: 'GCash', paymaya: 'Maya', card: 'Credit / Debit Card' }[order.paymentMethod] || order.paymentMethod || '—'}
                       </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Status:</span>
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          fontSize: '0.7rem',
-                          fontWeight: 700,
-                          padding: '0.2rem 0.5rem',
-                          borderRadius: '999px',
-                          background: getPaymentBadge(order.paymentStatus).bg,
-                          color: getPaymentBadge(order.paymentStatus).color,
-                          border: `1px solid ${getPaymentBadge(order.paymentStatus).border}`,
-                        }}
-                      >
-                        {order.paymentStatus}
+                      <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Payment:</span>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: order.paymentStatus === 'paid' ? '#22c55e' : 'var(--gold)' }}>
+                        {order.paymentStatus === 'paid' ? '✓ Paid' : (order.designFeePaid && order.paymentStatus !== 'paid') ? 'Design Fee ✓' : 'Unpaid'}
                       </span>
                     </div>
-                    {/* COD POS — B-14 */}
-                    {order.paymentMethod === 'COD' && order.paymentStatus !== 'paid' && (
-                      <div style={{
-                        marginTop: '0.75rem',
-                        padding: '0.75rem',
-                        borderRadius: '8px',
-                        background: 'rgba(250, 204, 21, 0.06)',
-                        border: '1px solid rgba(250, 204, 21, 0.2)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.5rem',
-                      }}>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                          COD Collection
-                        </span>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Amount Due:</span>
-                          <span style={{ fontSize: '0.85rem', color: 'var(--white)', fontWeight: 600 }}>
-                            ₱{parseFloat(order.totalAmount ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ fontSize: '0.85rem', color: 'var(--gray)', whiteSpace: 'nowrap' }}>Cash Received:</span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={cashReceived}
-                            onChange={e => { setCashReceived(e.target.value); setCodError(null); setCodSuccess(false); }}
-                            placeholder="0.00"
-                            style={{
-                              width: '120px',
-                              padding: '0.3rem 0.5rem',
-                              background: 'var(--dark)',
-                              border: '1px solid var(--border)',
-                              borderRadius: '6px',
-                              color: 'var(--white)',
-                              fontSize: '0.85rem',
-                              textAlign: 'right',
-                            }}
-                          />
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Change:</span>
-                          <span style={{ fontSize: '0.85rem', color: parseFloat(cashReceived) >= parseFloat(order.totalAmount ?? 0) ? '#4ade80' : 'var(--gray)', fontWeight: 600 }}>
-                            ₱{Math.max(0, parseFloat(cashReceived || 0) - parseFloat(order.totalAmount ?? 0)).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        {codError && (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--red)' }}>{codError}</span>
-                        )}
-                        {codSuccess && (
-                          <span style={{ fontSize: '0.75rem', color: '#4ade80', fontWeight: 600 }}>✓ Payment confirmed</span>
-                        )}
-                        <button
-                          onClick={handleConfirmCOD}
-                          disabled={isUpdating || !cashReceived || parseFloat(cashReceived) < parseFloat(order.totalAmount ?? 0)}
-                          style={{
-                            marginTop: '0.25rem',
-                            padding: '0.4rem 1rem',
-                            background: isUpdating || !cashReceived || parseFloat(cashReceived) < parseFloat(order.totalAmount ?? 0) ? 'var(--border)' : 'var(--gold)',
-                            border: 'none',
-                            borderRadius: '6px',
-                            color: isUpdating || !cashReceived || parseFloat(cashReceived) < parseFloat(order.totalAmount ?? 0) ? 'var(--gray)' : 'var(--dark)',
-                            fontSize: '0.85rem',
-                            fontWeight: 700,
-                            cursor: isUpdating || !cashReceived || parseFloat(cashReceived) < parseFloat(order.totalAmount ?? 0) ? 'not-allowed' : 'pointer',
-                            width: '100%',
-                          }}
-                        >
-                          {isUpdating ? 'Processing...' : 'Confirm Payment Received'}
-                        </button>
-                      </div>
-                    )}
                     {order.downPayment > 0 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Down Payment Paid:</span>
@@ -691,94 +561,6 @@ export default function OrderQuickViewModal({
                   </div>
                 </div>
 
-                {/* Admin Notes Section */}
-                <div>
-                  <h4
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      color: 'var(--gray)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '1px',
-                      marginBottom: '0.75rem',
-                    }}
-                  >
-                    Admin Notes
-                  </h4>
-                  <div style={{
-                    padding: '0.75rem',
-                    background: 'var(--dark)',
-                    borderRadius: '6px',
-                    border: '1px solid var(--border)',
-                  }}>
-                  {isEditingNotes ? (
-                    <div>
-                      <textarea
-                        value={notesEdit}
-                        onChange={e => setNotesEdit(e.target.value)}
-                        maxLength={1000}
-                        rows={3}
-                        disabled={isUpdating}
-                        style={{
-                          width: '100%',
-                          backgroundColor: 'var(--bg-tertiary)',
-                          border: '1px solid var(--gold-primary)',
-                          borderRadius: '6px',
-                          color: 'var(--text-primary)',
-                          fontSize: '13px',
-                          padding: '8px',
-                          resize: 'vertical',
-                          outline: 'none',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                      <button
-                        onClick={() => {
-                          setNotesEdit(order.notes || '');
-                          setIsEditingNotes(false);
-                        }}
-                        disabled={isUpdating}
-                        style={{
-                          marginTop: '4px',
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--text-secondary)',
-                          fontSize: '12px',
-                          cursor: isUpdating ? 'not-allowed' : 'pointer',
-                          padding: 0,
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                      <span style={{
-                        color: notesEdit ? 'var(--white)' : 'var(--gray)',
-                        fontSize: '14px',
-                        flex: 1,
-                      }}>
-                        {notesEdit || '—'}
-                      </span>
-                      <button
-                        onClick={() => setIsEditingNotes(true)}
-                        disabled={isUpdating}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--gold-primary)',
-                          fontSize: '12px',
-                          cursor: isUpdating ? 'not-allowed' : 'pointer',
-                          padding: '0 4px',
-                          flexShrink: 0,
-                        }}
-                      >
-                        Edit
-                      </button>
-                    </div>
-                  )}
-                  </div>
-                </div>
               </div>
 
               {/* RIGHT COLUMN */}
@@ -995,43 +777,70 @@ export default function OrderQuickViewModal({
                       Design Service
                     </h4>
                     <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(212,168,67,0.05)', border: '1px solid rgba(212,168,67,0.2)' }}>
-                      {order.adminDesignUrl ? (
+                      {order.adminDesignUrl && !adminDraftFile ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#4ade80', padding: '2px 8px', borderRadius: '999px', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.25)' }}>
-                              ✓ Draft Uploaded
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)', padding: '2px 8px', borderRadius: '999px', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.25)' }}>
+                              Draft Uploaded
                             </span>
                             <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>
                               {order.designStatus === 'draft_ready' ? '— Awaiting customer review' : order.designStatus === 'approved' ? '— Customer approved' : ''}
                             </span>
                           </div>
-                          <a href={order.adminDesignUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none' }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                            View Design Draft
-                          </a>
-                          <label style={{ cursor: adminDesignUploading ? 'not-allowed' : 'pointer', display: 'inline-block', marginTop: '0.25rem' }}>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--gray)', textDecoration: 'underline', cursor: 'inherit' }}>
-                              {adminDesignUploading ? 'Uploading...' : 'Replace draft'}
-                            </span>
-                            <input type="file" accept="image/*,.pdf,.ai,.psd,.svg" style={{ display: 'none' }} disabled={adminDesignUploading} onChange={e => { if (e.target.files?.[0]) handleAdminUploadDesign(e.target.files[0]); e.target.value = ''; }} />
+                          {(order.adminDesignUrls ?? [order.adminDesignUrl]).filter(Boolean).map((url, i, arr) => (
+                            <a key={i} href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none' }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                              {arr.length > 1 ? `File ${i + 1}` : 'View Design Draft'}
+                            </a>
+                          ))}
+                          <label style={{ cursor: 'pointer', display: 'inline-block', marginTop: '0.25rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--gray)', textDecoration: 'underline', cursor: 'pointer' }}>Replace draft</span>
+                            <input type="file" accept="image/*,video/*,.pdf,.ai,.psd,.svg" multiple style={{ display: 'none' }} onChange={e => { const files = Array.from(e.target.files ?? []).slice(0, 5); if (files.length) { setAdminDraftFile(files); setAdminDesignSuccess(false); } e.target.value = ''; }} />
                           </label>
+                        </div>
+                      ) : adminDraftFile?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {adminDraftFile.map((f, fi) => (
+                            <div key={fi} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                              {f.type.startsWith('video/') ? (
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                              ) : (
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                              )}
+                              <span style={{ fontSize: '0.78rem', color: 'var(--white)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                              <button type="button" onClick={() => setAdminDraftFile(prev => prev.filter((_, i) => i !== fi))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: '0.72rem', padding: '0', flexShrink: 0 }}>Remove</button>
+                            </div>
+                          ))}
+                          {adminDraftFile.length < 5 && (
+                            <label style={{ cursor: 'pointer' }}>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--gold)', textDecoration: 'underline' }}>+ Add more ({5 - adminDraftFile.length} remaining)</span>
+                              <input type="file" accept="image/*,video/*,.pdf,.ai,.psd,.svg" multiple style={{ display: 'none' }} onChange={e => { const more = Array.from(e.target.files ?? []).slice(0, 5 - adminDraftFile.length); setAdminDraftFile(prev => [...prev, ...more]); e.target.value = ''; }} />
+                            </label>
+                          )}
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button type="button" disabled={adminDesignUploading} onClick={() => { handleAdminUploadDesign(adminDraftFile); setAdminDraftFile(null); }} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '0.4rem 0.875rem', background: adminDesignUploading ? 'var(--border)' : 'var(--gold)', borderRadius: '6px', color: adminDesignUploading ? 'var(--gray)' : '#000', fontSize: '0.8rem', fontWeight: 700, cursor: adminDesignUploading ? 'not-allowed' : 'pointer', border: 'none' }}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+                              {adminDesignUploading ? 'Uploading...' : `Send ${adminDraftFile.length} File${adminDraftFile.length > 1 ? 's' : ''}`}
+                            </button>
+                            <button type="button" disabled={adminDesignUploading} onClick={() => setAdminDraftFile(null)} style={{ padding: '0.4rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--gray)', fontSize: '0.8rem', cursor: adminDesignUploading ? 'not-allowed' : 'pointer' }}>Cancel</button>
+                          </div>
                         </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                           <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
                             Customer requested design service. Upload the design draft when ready.
                           </div>
-                          <label style={{ cursor: adminDesignUploading ? 'not-allowed' : 'pointer', display: 'inline-block' }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '0.4rem 0.875rem', background: adminDesignUploading ? 'var(--border)' : 'var(--gold)', borderRadius: '6px', color: adminDesignUploading ? 'var(--gray)' : '#000', fontSize: '0.8rem', fontWeight: 700, cursor: 'inherit' }}>
+                          <label style={{ cursor: 'pointer', display: 'inline-block' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '0.4rem 0.875rem', background: 'var(--gold)', borderRadius: '6px', color: '#000', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-                              {adminDesignUploading ? 'Uploading...' : 'Upload Design Draft'}
+                              Upload Design Draft
                             </div>
-                            <input type="file" accept="image/*,.pdf,.ai,.psd,.svg" style={{ display: 'none' }} disabled={adminDesignUploading} onChange={e => { if (e.target.files?.[0]) handleAdminUploadDesign(e.target.files[0]); e.target.value = ''; }} />
+                            <input type="file" accept="image/*,video/*,.pdf,.ai,.psd,.svg" multiple style={{ display: 'none' }} onChange={e => { const files = Array.from(e.target.files ?? []).slice(0, 5); if (files.length) { setAdminDraftFile(files); setAdminDesignSuccess(false); } e.target.value = ''; }} />
                           </label>
                         </div>
                       )}
                       {adminDesignError && <div style={{ fontSize: '0.73rem', color: 'var(--red)', marginTop: '0.25rem' }}>{adminDesignError}</div>}
-                      {adminDesignSuccess && <div style={{ fontSize: '0.73rem', color: '#4ade80', marginTop: '0.25rem' }}>✓ Draft uploaded. Customer has been notified.</div>}
+                      {adminDesignSuccess && <div style={{ fontSize: '0.73rem', color: 'var(--gold)', marginTop: '0.25rem' }}>Draft uploaded. Customer has been notified.</div>}
                     </div>
                   </div>
                 )}
@@ -1245,24 +1054,6 @@ export default function OrderQuickViewModal({
                   </div>
                 )}
 
-                {/* Tracking Section */}
-                <div>
-                  <h4
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      color: 'var(--gray)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '1px',
-                      marginBottom: '0.75rem',
-                    }}
-                  >
-                    Tracking
-                  </h4>
-                  <div style={{ fontSize: '0.875rem', color: 'var(--white)' }}>
-                    {order.trackingNumber || '—'}
-                  </div>
-                </div>
               </div>
             </div>
           )}
@@ -1280,89 +1071,98 @@ export default function OrderQuickViewModal({
               background: 'var(--dark2)',
             }}
           >
-            {/* Payment status row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--gray)', fontWeight: 600, minWidth: '120px' }}>
-                Payment Status:
-              </span>
-              <button
-                onClick={() => setPaymentEdit(
-                paymentEdit === 'unpaid' ? 'paid' : 'unpaid'
-              )}
-              disabled={isUpdating}
-              style={{
-                padding: '4px 14px',
-                borderRadius: '6px',
-                border: '1px solid',
-                borderColor: paymentEdit === 'paid'
-                  ? 'var(--green, #4ade80)'
-                  : 'var(--border-color)',
-                backgroundColor: paymentEdit === 'paid'
-                  ? 'rgba(74,222,128,0.1)'
-                  : 'var(--bg-tertiary)',
-                color: paymentEdit === 'paid'
-                  ? 'var(--green, #4ade80)'
-                  : 'var(--text-secondary)',
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor: isUpdating ? 'not-allowed' : 'pointer',
-                opacity: isUpdating ? 0.6 : 1,
-                textTransform: 'capitalize',
-              }}
-            >
-              {paymentEdit === 'paid' ? '✓ Paid' : 'Unpaid'}
-              </button>
-            </div>
             {/* Order status row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--gray)', fontWeight: 600, minWidth: '120px' }}>
-                Order Status:
+            {['pending_design', 'revision_requested'].includes(order.orderStatus) ? (
+              <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic' }}>
+                Status updates via design draft upload above
               </span>
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              style={{
-                padding: '0.5rem 0.75rem',
-                background: 'var(--dark)',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                color: 'var(--white)',
-                fontSize: '0.875rem',
-                cursor: 'pointer',
-                minWidth: '140px',
-              }}
-            >
-              {availableStatuses.map((status) => (
-                <option key={status} value={status} style={{ background: 'var(--dark)', color: 'var(--white)' }}>
-                  {status}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={handleUpdateStatus}
-              disabled={isUpdating || selectedStatus === order?.orderStatus}
-              style={{
-                padding: '0.5rem 1.25rem',
-                background: isUpdating || selectedStatus === order?.orderStatus ? 'var(--border)' : 'var(--gold)',
-                border: 'none',
-                borderRadius: '6px',
-                color: isUpdating || selectedStatus === order?.orderStatus ? 'var(--gray)' : 'var(--dark)',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                cursor: isUpdating || selectedStatus === order?.orderStatus ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {isUpdating ? 'Updating...' : 'Update'}
-            </button>
+            ) : ['awaiting_payment', 'ready_for_delivery'].includes(order.orderStatus) ? (
+              <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic' }}>
+                Waiting for customer payment — status will advance automatically once paid
+              </span>
+            ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--gray)', fontWeight: 600, minWidth: '100px' }}>
+                Update Status:
+              </span>
+              {getAvailableStatuses(order).length > 0 ? (
+                <>
+                  <select
+                    value={selectedStatus}
+                    onChange={e => setSelectedStatus(e.target.value)}
+                    style={{ padding: '0.5rem 0.75rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', fontSize: '0.875rem', cursor: 'pointer', minWidth: '160px' }}
+                  >
+                    <option value={order.orderStatus} style={{ color: 'var(--gray)' }}>
+                      {getStatusBadge(order.orderStatus).label || order.orderStatus} (current)
+                    </option>
+                    {getAvailableStatuses(order).map(s => (
+                      <option key={s} value={s} style={{ background: 'var(--dark)', color: 'var(--white)' }}>
+                        {getStatusBadge(s).label || s}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => selectedStatus !== order.orderStatus && setConfirmStatus(selectedStatus)}
+                    disabled={isUpdating || selectedStatus === order.orderStatus}
+                    style={{ padding: '0.5rem 1.25rem', background: isUpdating || selectedStatus === order.orderStatus ? 'var(--border)' : 'var(--gold)', border: 'none', borderRadius: '6px', color: isUpdating || selectedStatus === order.orderStatus ? 'var(--gray)' : 'var(--dark)', fontSize: '0.875rem', fontWeight: 600, cursor: isUpdating || selectedStatus === order.orderStatus ? 'not-allowed' : 'pointer' }}
+                  >
+                    {isUpdating ? 'Updating...' : 'Update'}
+                  </button>
+                </>
+              ) : (
+                <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic' }}>
+                  {['Cancelled', 'Returned', 'Paid', 'Delivered', 'delivered'].includes(order.orderStatus) ? 'No further updates' : 'Managed via action buttons above'}
+                </span>
+              )}
             </div>
+            )}
             {updateError && (
-              <span style={{ fontSize: '0.75rem', color: 'var(--red)', marginLeft: 'auto' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--red)' }}>
                 {updateError}
-              </span>
+              </div>
             )}
           </div>
         )}
       </div>
     </div>
+
+    {/* Status update confirmation */}
+    {confirmStatus && (
+      <div
+        style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+        onClick={() => setConfirmStatus(null)}
+      >
+        <div
+          style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem', maxWidth: '380px', width: '100%' }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.5rem' }}>Update Order Status</div>
+          <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '1.25rem' }}>
+            Change status to{' '}
+            <span style={{ color: getStatusBadge(confirmStatus).color, fontWeight: 600 }}>
+              {getStatusBadge(confirmStatus).label || confirmStatus}
+            </span>
+            {confirmStatus === 'Paid' && '? This will also mark the order as paid.'}
+            {confirmStatus === 'Cancelled' && '? This action cannot be undone.'}
+            {!['Paid', 'Cancelled'].includes(confirmStatus) && '? Are you sure?'}
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => setConfirmStatus(null)}
+              style={{ padding: '0.5rem 1rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--gray)', fontSize: '0.875rem', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleUpdateStatus}
+              style={{ padding: '0.5rem 1.25rem', background: 'var(--gold)', border: 'none', borderRadius: '6px', color: 'var(--dark)', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer' }}
+            >
+              Confirm
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

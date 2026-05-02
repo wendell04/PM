@@ -67,8 +67,18 @@ export default function PaymentSuccessPage() {
         const fetched = data.data ?? data;
         setOrder(fetched);
 
-        if (!isCod && !isOrderRequest && fetched.paymentStatus !== 'paid' && attempt < 6) {
+        const isSettled = fetched.paymentStatus === 'paid' || fetched.designFeePaid === true;
+        if (!isCod && !isOrderRequest && !isSettled && attempt < 6) {
           setTimeout(() => fetchOrder(attempt + 1), 2000);
+        } else if (!isCod && !isOrderRequest && !isSettled) {
+          // Payment failed/expired — delete orphan order then redirect to failed page
+          if (token && orderId) {
+            fetch(`${API_URL}/api/payment/cancel-pending/${orderId}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+            }).catch(() => {});
+          }
+          router.replace(`/shop/payment-failed?id=${orderId}`);
         } else {
           setVerifying(false);
           setLoading(false);
@@ -127,7 +137,7 @@ export default function PaymentSuccessPage() {
           color: 'var(--white)',
           marginBottom: '8px',
         }}>
-          {isCod ? 'Order Placed!' : 'Payment Successful'}
+          {isCod ? 'Order Placed!' : (order?.designFeePaid && order?.paymentStatus !== 'paid') ? 'Design Fee Paid!' : 'Payment Successful'}
         </h1>
 
         <p style={{
@@ -138,7 +148,9 @@ export default function PaymentSuccessPage() {
         }}>
           {isCod
             ? "Thank you for your order. Our team will contact you to confirm delivery and payment details."
-            : "Thank you for your order. We've received your payment and will begin processing shortly."}
+            : (order?.designFeePaid && order?.paymentStatus !== 'paid')
+              ? "Your design fee has been received. Our designer will send you a proof via chat within 24–48 hours. The remaining order balance is due after you approve the design."
+              : "Thank you for your order. We've received your payment and will begin processing shortly."}
         </p>
 
         {verifying && (
@@ -223,27 +235,45 @@ export default function PaymentSuccessPage() {
 
             {/* Total + Status */}
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '8px', paddingTop: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.88rem' }}>
-                  {isCod ? 'Order Total' : 'Total Paid'}
-                </span>
-                <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.95rem' }}>
-                  ₱{Number(order.totalAmount ?? order.finalPrice ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>Payment Status</span>
-                <span style={{
-                  fontSize: '0.82rem', fontWeight: 700,
-                  color: (order.paymentStatus === 'paid' || (!isCod && !isOrderRequest)) ? '#4ade80' : 'var(--gold)',
-                }}>
-                  {order.paymentStatus === 'paid'
-                    ? 'Paid'
-                    : isCod
-                      ? 'Cash on Delivery'
-                      : 'Paid'}
-                </span>
-              </div>
+              {order.designFeePaid && order.paymentStatus !== 'paid' ? (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.88rem' }}>Design Fee Paid</span>
+                    <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.95rem' }}>
+                      ₱{Number((order.items ?? []).reduce((s, i) => s + (parseFloat(i.designFee) || 0), 0)).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>Order Total (due after approval)</span>
+                    <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>
+                      ₱{Number(order.totalAmount ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>Payment Status</span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f59e0b' }}>
+                      Design Fee Paid · Order Unpaid
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.88rem' }}>
+                      {isCod ? 'Order Total' : 'Total Paid'}
+                    </span>
+                    <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.95rem' }}>
+                      ₱{Number(order.totalAmount ?? order.finalPrice ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>Payment Status</span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: isCod ? 'var(--gold)' : '#4ade80' }}>
+                      {isCod ? 'Cash on Delivery' : 'Paid'}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

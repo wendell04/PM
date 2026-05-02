@@ -1240,7 +1240,7 @@ export default function ProductDetailPage() {
                 <p style={{ margin: '0 0 1.5rem', color: 'var(--gray)', fontSize: '0.9rem', lineHeight: 1.5 }}>
                   Your design file has been sent to us. We&apos;ll review it and reach out via chat if we need any clarifications.
                 </p>
-                <button onClick={() => { closeUploadModal(); router.push('/shop/orders'); }}
+                <button onClick={() => { closeUploadModal(); router.push('/shop/orders-history'); }}
                   style={{ background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '8px', padding: '0.75rem 1.5rem', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer' }}>
                   Track My Orders
                 </button>
@@ -1344,7 +1344,7 @@ export default function ProductDetailPage() {
                   Your custom order request has been sent. We&apos;ll review it and get back to you with a final price.
                 </p>
                 <button
-                  onClick={() => { closeRequestModal(); router.push('/shop/orders'); }}
+                  onClick={() => { closeRequestModal(); router.push('/shop/orders-history'); }}
                   style={{
                     background: 'var(--gold)', color: 'var(--black)',
                     border: 'none', borderRadius: '8px',

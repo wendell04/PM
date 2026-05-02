@@ -495,9 +495,11 @@ class PaymentController extends Controller
                 'designType'                  => 'nullable|string|in:upload,request',
                 'items.*.designRequested'     => 'nullable|boolean',
                 'items.*.designFee'           => 'nullable|numeric|min:0',
+                'isDesignFeeOnly'             => 'nullable|boolean',
             ]);
 
-            $paymentType = $validated['paymentType'];
+            $paymentType      = $validated['paymentType'];
+            $isDesignFeeOnly  = filter_var($request->input('isDesignFeeOnly', false), FILTER_VALIDATE_BOOLEAN);
 
             // ── Resolve prices + build order items ────────────────────
             $orderItems               = [];
@@ -547,16 +549,18 @@ class PaymentController extends Controller
                     : null;
 
                 $orderItems[] = [
-                    'productId'   => (string) $product->_id,
-                    'productName' => $product->name,
-                    'isCustom'    => (bool) $product->isCustom,
-                    'thumbnail'   => $thumb,
-                    'variantId'   => $variantId,
-                    'variantName' => $item['variantName'] ?? null,
-                    'qty'         => $qty,
-                    'unitPrice'   => $unitPrice,
-                    'lineTotal'   => $lineTotal,
-                    'flashSaleId' => $flashSaleId,
+                    'productId'       => (string) $product->_id,
+                    'productName'     => $product->name,
+                    'isCustom'        => (bool) $product->isCustom,
+                    'thumbnail'       => $thumb,
+                    'variantId'       => $variantId,
+                    'variantName'     => $item['variantName'] ?? null,
+                    'qty'             => $qty,
+                    'unitPrice'       => $unitPrice,
+                    'lineTotal'       => $lineTotal,
+                    'flashSaleId'     => $flashSaleId,
+                    'designRequested' => (bool) ($item['designRequested'] ?? false),
+                    'designFee'       => isset($item['designFee']) ? (float) $item['designFee'] : null,
                 ];
             }
 
@@ -643,6 +647,7 @@ class PaymentController extends Controller
                 'designNotes'     => isset($validated['design_notes']) ? htmlspecialchars(strip_tags(trim($validated['design_notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : null,
                 'isCustomOrder'   => filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN),
                 'designType'      => $request->input('designType'),
+                'isDesignFeeOnly' => $isDesignFeeOnly,
                 'statusHistory'   => [['status' => $this->resolveCustomOrderStatus($request), 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
@@ -666,7 +671,27 @@ class PaymentController extends Controller
             }
 
             $frontendUrl    = config('app.frontend_url', 'http://localhost:3000');
-            $amountCentavos = (int) round($totalAmount * 100);
+            $designFeeTotal = $isDesignFeeOnly
+                ? (float) collect($validated['items'])->sum(fn($i) => (float) ($i['designFee'] ?? 0))
+                : 0.0;
+
+            if ($isDesignFeeOnly && $designFeeTotal <= 0) {
+                // designFee not set on product — fall back to full amount
+                // This prevents charging ₱0 or wrong amount
+                Log::warning('initiatePayment: isDesignFeeOnly=true but designFeeTotal=0', [
+                    'orderId' => $orderId,
+                    'items'   => $validated['items'],
+                ]);
+                $order->delete(); // remove orphan order
+                return $this->errorResponse(
+                    'Design fee is not configured for this product. Please contact support.',
+                    422
+                );
+            }
+
+            $chargeAmount   = $isDesignFeeOnly ? $designFeeTotal : $totalAmount;
+            $amountCentavos = (int) round($chargeAmount * 100);
+
 
             // ── Create Payment Intent ─────────────────────────────────
             $intentRes = Http::withBasicAuth($this->secretKey, '')
@@ -745,7 +770,15 @@ class PaymentController extends Controller
             $order->save();
 
             if ($intentStatus === 'succeeded') {
-                $order->update(['paymentStatus' => 'paid']);
+                if ($isDesignFeeOnly) {
+                    $order->update([
+                        'paymentStatus'       => 'partial',
+                        'designFeePaid'       => true,
+                        'designFeePaidAmount' => $chargeAmount,
+                    ]);
+                } else {
+                    $order->update(['paymentStatus' => 'paid']);
+                }
                 return $this->successResponse('Payment completed.', [
                     'orderId' => $orderId, 'status' => 'succeeded', 'redirectUrl' => null,
                 ]);
@@ -1044,16 +1077,31 @@ class PaymentController extends Controller
                     ?? $paymentAttrs['external_reference_number']
                     ?? null;
 
-                $totalAmount = (float) ($order->totalAmount ?? 0);
-                $order->paymentStatus           = 'paid';
+                $orderTotal      = (float) ($order->totalAmount ?? 0);
+                $paidAmount      = round((float) ($paymentAttrs['amount'] ?? $paymentAttrs['net_amount'] ?? ($orderTotal * 100)) / 100, 2);
+                $isDesignFeeOnly = (bool) ($order->isDesignFeeOnly ?? false);
+
+                if ($isDesignFeeOnly) {
+                    $order->designFeePaid = true;
+                    $order->designFeePaidAmount = $paidAmount;
+                    // paymentStatus stays 'unpaid' — design fee is separate from order payment
+                } else {
+                    $order->paymentStatus = 'paid';
+                    $order->downPayment   = $orderTotal;
+                    $order->balance       = 0;
+                    if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
+                        $order->orderStatus = 'awaiting_production';
+                    }
+                    if ($order->isCustomOrder && $order->orderStatus === 'ready_for_delivery') {
+                        $order->orderStatus = 'for_delivery';
+                    }
+                }
                 $order->paymentDate             = now();
                 $order->paymentMethod           = $paymentMethod;
                 $order->paymongoPaymentId       = $paymentId;
                 $order->paymongoReferenceNumber = $referenceNum;
-                $order->downPayment             = $totalAmount;
-                $order->balance                 = 0;
                 $order->paymentHistory          = [[
-                    'amount'    => $totalAmount,
+                    'amount'    => $paidAmount,
                     'method'    => $paymentMethod ?? 'online',
                     'note'      => 'Online payment via PayMongo' . ($referenceNum ? " ({$referenceNum})" : ''),
                     'paidAt'    => now()->toDateTimeString(),
@@ -1096,7 +1144,7 @@ class PaymentController extends Controller
                             'paymentMethod' => $paymentMethod,
                             'paymentId'     => $paymentId,
                             'referenceNum'  => $referenceNum,
-                            'amount'        => $order->totalAmount,
+                            'amount'        => $paidAmount,
                         ],
                         'createdAt'        => now(),
                     ]);
@@ -1147,8 +1195,9 @@ class PaymentController extends Controller
 
             if (!$order) return $this->notFoundResponse('Order');
 
-            if ($order->paymentStatus === 'paid') {
-                return $this->successResponse('Already paid.', ['paymentStatus' => 'paid']);
+            if ($order->paymentStatus === 'paid' ||
+                ($order->paymentStatus === 'partial' && ($order->designFeePaid ?? false))) {
+                return $this->successResponse('Already paid.', ['paymentStatus' => $order->paymentStatus]);
             }
 
             $intentId = $order->paymongoIntentId ?? null;
@@ -1180,15 +1229,28 @@ class PaymentController extends Controller
             $payAttrs      = $latestPayment['attributes'] ?? [];
             $paymentMethod = $payAttrs['source']['type'] ?? $payAttrs['payment_method_type'] ?? $order->paymentMethod ?? 'online';
             $totalAmount   = (float) ($order->totalAmount ?? 0);
+            $paidAmount    = round((float) ($intentData['attributes']['amount'] ?? ($totalAmount * 100)) / 100, 2);
+            $isDesignFeeOnly = (bool) ($order->isDesignFeeOnly ?? false);
 
-            $order->paymentStatus           = 'paid';
-            $order->paymentDate             = now();
-            $order->paymentMethod           = $paymentMethod;
-            $order->paymongoPaymentId       = $paymentId;
-            $order->downPayment             = $totalAmount;
-            $order->balance                 = 0;
-            $order->paymentHistory          = [[
-                'amount' => $totalAmount,
+            if ($isDesignFeeOnly) {
+                $order->designFeePaid = true;
+                // paymentStatus stays 'unpaid' — design fee is separate from order payment
+            } else {
+                $order->paymentStatus = 'paid';
+                $order->downPayment   = $totalAmount;
+                $order->balance       = 0;
+                if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
+                    $order->orderStatus = 'awaiting_production';
+                }
+                if ($order->isCustomOrder && $order->orderStatus === 'ready_for_delivery') {
+                    $order->orderStatus = 'for_delivery';
+                }
+            }
+            $order->paymentDate       = now();
+            $order->paymentMethod     = $paymentMethod;
+            $order->paymongoPaymentId = $paymentId;
+            $order->paymentHistory    = [[
+                'amount' => $paidAmount,
                 'method' => $paymentMethod,
                 'note'   => 'Payment confirmed via PayMongo (' . $intentId . ')',
                 'paidAt' => now()->toDateTimeString(),
@@ -1377,7 +1439,7 @@ class PaymentController extends Controller
                                 'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}",
                                 'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}",
                             ],
-                            'cancel_url' => "{$frontendUrl}/shop/orders-history",
+                            'cancel_url' => "{$frontendUrl}/shop/orders-history?payment_cancelled=1",
                         ],
                     ],
                 ]);
