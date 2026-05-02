@@ -51,6 +51,10 @@ class User extends Authenticatable
         'two_factor_enabled',
         'unlock_requested_at',
         'last_seen_at',
+        'two_factor_method',        // 'email' | 'totp'
+        'totp_secret',
+        'totp_confirmed',
+        'totp_failed_attempts',
     ];
 
     protected $casts = [
@@ -67,6 +71,9 @@ class User extends Authenticatable
         'two_factor_enabled'     => 'boolean',
         'unlock_requested_at'    => 'datetime',
         'last_seen_at'           => 'datetime',
+        'two_factor_method'      => 'string',
+        'totp_confirmed'         => 'boolean',
+        'totp_failed_attempts'   => 'integer',
     ];
 
     protected $hidden = [
@@ -79,6 +86,7 @@ class User extends Authenticatable
         'reset_code',
         'reset_code_expires_at',
         'device_tokens',
+        'totp_secret',
     ];
 
     /**

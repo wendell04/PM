@@ -338,3 +338,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/payment/order-request-link',       [PaymentController::class, 'createOrderRequestLink']);
     Route::post('/payment/create-order-pay-link',    [PaymentController::class, 'createOrderPayLink']);
 });
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/2fa/send',            [TwoFactorController::class, 'sendOtp']);
+    Route::post('/2fa/verify',          [TwoFactorController::class, 'verifyOtp']);
+    Route::post('/2fa/remember-device', [TwoFactorController::class, 'rememberDevice']);
+    Route::post('/2fa/check-device',    [TwoFactorController::class, 'checkDevice']);
+    Route::post('/2fa/toggle',          [TwoFactorController::class, 'toggle']);
+    Route::post('/2fa/method',          [TwoFactorController::class, 'updateMethod']);
+    Route::delete('/2fa/device/{token}',[TwoFactorController::class, 'revokeDevice']);
+
+    // ── Google Authenticator (TOTP) ──────────────────────────────────────
+    Route::post('/2fa/totp/setup',      [TwoFactorController::class, 'setupTotp']);
+    Route::post('/2fa/totp/confirm',    [TwoFactorController::class, 'confirmTotp']);
+    Route::post('/2fa/totp/verify',     [TwoFactorController::class, 'verifyTotp']);
+    Route::delete('/2fa/totp',          [TwoFactorController::class, 'removeTotp']);
+});

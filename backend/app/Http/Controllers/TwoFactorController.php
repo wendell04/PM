@@ -42,7 +42,7 @@ class TwoFactorController extends Controller
             if ($existing) {
                 $secondsSinceSent = max(0, (int) now()->diffInSeconds($existing->created_at, true));
                 if ($secondsSinceSent < 2) {
-                    // Duplicate mount call (React Strict Mode) — OTP already sent, return silently
+                    // Duplicate mount call (React Strict Mode) â€” OTP already sent, return silently
                     return response()->json(['message' => 'OTP sent.'], 200);
                 }
                 if ($secondsSinceSent < 30) {
@@ -70,8 +70,8 @@ class TwoFactorController extends Controller
                 'used'       => false,
             ]);
 
-            // Route OTP email: admins/owners → admin inbox,
-            // customers → their own email
+            // Route OTP email: admins/owners â†’ admin inbox,
+            // customers â†’ their own email
             $mailRecipient = in_array($user->role, ['admin', 'owner'])
                 ? (env('ADMIN_NOTIFICATION_EMAIL') ?: config('mail.from.address'))
                 : $user->email;
@@ -271,4 +271,119 @@ class TwoFactorController extends Controller
             return response()->json(['message' => 'Failed to remove device.'], 500);
         }
     }
+
+    // ─── TOTP Setup ───────────────────────────────────────────────────────────
+    public function setupTotp(Request $request)
+    {
+        try {
+            $user      = $request->user();
+            $google2fa = new \PragmaRX\Google2FA\Google2FA();
+            $secret    = $google2fa->generateSecretKey();
+
+            $user->totp_secret    = $secret;
+            $user->totp_confirmed = false;
+            $user->save();
+
+            $appName = config('app.name', 'App');
+            $qrUrl   = $google2fa->getQRCodeUrl($appName, $user->email, $secret);
+
+            $renderer = new \BaconQrCode\Renderer\ImageRenderer(
+                new \BaconQrCode\Renderer\RendererStyle\RendererStyle(200),
+                new \BaconQrCode\Renderer\Image\SvgImageBackEnd()
+            );
+            $writer = new \BaconQrCode\Writer($renderer);
+            $qrSvg  = base64_encode($writer->writeString($qrUrl));
+
+            return response()->json([
+                'secret'  => $secret,
+                'qr_code' => 'data:image/svg+xml;base64,' . $qrSvg,
+            ], 200);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('TwoFactorController@setupTotp: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to setup authenticator.'], 500);
+        }
+    }
+
+    // ─── TOTP Confirm ─────────────────────────────────────────────────────────
+    public function confirmTotp(Request $request)
+    {
+        $request->validate(['code' => 'required|string|digits:6']);
+
+        try {
+            $user      = $request->user();
+            $google2fa = new \PragmaRX\Google2FA\Google2FA();
+
+            if (!$user->totp_secret) {
+                return response()->json(['message' => 'No authenticator setup found.'], 400);
+            }
+
+            if (!$google2fa->verifyKey($user->totp_secret, $request->input('code'), 1)) {
+                return response()->json(['message' => 'Invalid code.'], 422);
+            }
+
+            $user->totp_confirmed     = true;
+            $user->two_factor_enabled = true;
+            $user->two_factor_method  = 'totp';
+            $user->save();
+
+            return response()->json(['message' => 'Authenticator configured.', 'two_factor_method' => 'totp'], 200);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('TwoFactorController@confirmTotp: ' . $e->getMessage());
+            return response()->json(['message' => 'Confirmation failed.'], 500);
+        }
+    }
+
+    // ─── TOTP Verify ──────────────────────────────────────────────────────────
+    public function verifyTotp(Request $request)
+    {
+        $request->validate(['code' => 'required|string|digits:6']);
+
+        try {
+            $user      = $request->user();
+            $google2fa = new \PragmaRX\Google2FA\Google2FA();
+
+            if (!$user->totp_secret || !$user->totp_confirmed) {
+                return response()->json(['message' => 'Authenticator not set up.'], 400);
+            }
+
+            if (!$google2fa->verifyKey($user->totp_secret, $request->input('code'), 1)) {
+                return response()->json(['message' => 'Invalid code.'], 422);
+            }
+
+            return response()->json(['message' => 'OTP verified.', 'verified' => true], 200);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('TwoFactorController@verifyTotp: ' . $e->getMessage());
+            return response()->json(['message' => 'Verification failed.'], 500);
+        }
+    }
+
+    // ─── TOTP Remove ──────────────────────────────────────────────────────────
+    public function removeTotp(Request $request)
+    {
+        $request->validate(['password' => 'required|string']);
+
+        try {
+            $user = $request->user();
+
+            if (!\Illuminate\Support\Facades\Hash::check($request->input('password'), $user->password)) {
+                return response()->json(['message' => 'Incorrect password.'], 403);
+            }
+
+            $user->totp_secret        = null;
+            $user->totp_confirmed     = false;
+            $user->two_factor_method  = 'email';
+            $user->two_factor_enabled = false;
+            $user->save();
+
+            return response()->json(['message' => 'Authenticator removed.'], 200);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('TwoFactorController@removeTotp: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to remove authenticator.'], 500);
+        }
+    }
 }
+

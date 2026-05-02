@@ -3,10 +3,10 @@
  * Connects authentication to MongoDB backend via Laravel API
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 // Import timeout helper
-import { fetchWithTimeout } from './fetchWithTimeout';
+import { fetchWithTimeout } from "./fetchWithTimeout";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC AUTH ENDPOINTS
@@ -19,26 +19,30 @@ import { fetchWithTimeout } from './fetchWithTimeout';
  */
 export async function register(userData) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/register`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(userData),
       },
-      body: JSON.stringify(userData),
-    }, 15000); // 15 second timeout for registration
+      15000,
+    ); // 15 second timeout for registration
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       if (response.status === 422 && errorData.errors) {
         throw new Error(JSON.stringify(errorData.errors));
       }
-      throw new Error(errorData.message || 'Registration failed');
+      throw new Error(errorData.message || "Registration failed");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error registering user:', error);
+    console.error("Error registering user:", error);
     throw error;
   }
 }
@@ -50,29 +54,33 @@ export async function register(userData) {
  */
 export async function login(credentials) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/login`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(credentials),
       },
-      body: JSON.stringify(credentials),
-    }, 30000); // 30 second timeout
+      30000,
+    ); // 30 second timeout
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       if (response.status === 401) {
-        throw new Error('Invalid credentials');
+        throw new Error("Invalid credentials");
       }
       if (response.status === 422 && errorData.errors) {
         throw new Error(JSON.stringify(errorData.errors));
       }
-      throw new Error(errorData.message || 'Login failed');
+      throw new Error(errorData.message || "Login failed");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error logging in:', error);
+    console.error("Error logging in:", error);
     throw error;
   }
 }
@@ -84,23 +92,27 @@ export async function login(credentials) {
  */
 export async function logout(token) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/logout`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/logout`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       },
-    }, 5000); // 5 second timeout
+      5000,
+    ); // 5 second timeout
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Logout failed');
+      throw new Error(errorData.message || "Logout failed");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error logging out:', error);
+    console.error("Error logging out:", error);
     throw error;
   }
 }
@@ -112,23 +124,27 @@ export async function logout(token) {
  */
 export async function verifyEmail(data) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/verify-email`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/verify-email`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
       },
-      body: JSON.stringify(data),
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Email verification failed');
+      throw new Error(errorData.message || "Email verification failed");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error verifying email:', error);
+    console.error("Error verifying email:", error);
     throw error;
   }
 }
@@ -140,23 +156,29 @@ export async function verifyEmail(data) {
  */
 export async function resendVerificationEmail(data) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/resend-code`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/resend-code`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
       },
-      body: JSON.stringify(data),
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Failed to resend verification email');
+      throw new Error(
+        errorData.message || "Failed to resend verification email",
+      );
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error resending verification email:', error);
+    console.error("Error resending verification email:", error);
     throw error;
   }
 }
@@ -168,23 +190,27 @@ export async function resendVerificationEmail(data) {
  */
 export async function forgotPassword(data) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/forgot-password`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/forgot-password`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
       },
-      body: JSON.stringify(data),
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Failed to send reset link');
+      throw new Error(errorData.message || "Failed to send reset link");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error sending reset link:', error);
+    console.error("Error sending reset link:", error);
     throw error;
   }
 }
@@ -196,23 +222,27 @@ export async function forgotPassword(data) {
  */
 export async function verifyResetToken(data) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/verify-reset-token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/verify-reset-token`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
       },
-      body: JSON.stringify(data),
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Invalid reset token');
+      throw new Error(errorData.message || "Invalid reset token");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error verifying reset token:', error);
+    console.error("Error verifying reset token:", error);
     throw error;
   }
 }
@@ -224,23 +254,27 @@ export async function verifyResetToken(data) {
  */
 export async function sendResetCode(data) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/send-reset-code`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/send-reset-code`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
       },
-      body: JSON.stringify(data),
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Failed to send reset code');
+      throw new Error(errorData.message || "Failed to send reset code");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error sending reset code:', error);
+    console.error("Error sending reset code:", error);
     throw error;
   }
 }
@@ -252,23 +286,27 @@ export async function sendResetCode(data) {
  */
 export async function verifyResetCode(data) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/verify-reset-code`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/verify-reset-code`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
       },
-      body: JSON.stringify(data),
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Invalid reset code');
+      throw new Error(errorData.message || "Invalid reset code");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error verifying reset code:', error);
+    console.error("Error verifying reset code:", error);
     throw error;
   }
 }
@@ -280,23 +318,27 @@ export async function verifyResetCode(data) {
  */
 export async function resetPassword(data) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/reset-password`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/reset-password`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
       },
-      body: JSON.stringify(data),
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Failed to reset password');
+      throw new Error(errorData.message || "Failed to reset password");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error resetting password:', error);
+    console.error("Error resetting password:", error);
     throw error;
   }
 }
@@ -308,23 +350,27 @@ export async function resetPassword(data) {
  */
 export async function contact(data) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/contact`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/contact`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
       },
-      body: JSON.stringify(data),
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Failed to send message');
+      throw new Error(errorData.message || "Failed to send message");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error sending contact message:', error);
+    console.error("Error sending contact message:", error);
     throw error;
   }
 }
@@ -340,25 +386,29 @@ export async function contact(data) {
  */
 export async function getCurrentUser(token) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/user`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/user`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       },
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       if (response.status === 401) {
-        throw new Error('Unauthenticated');
+        throw new Error("Unauthenticated");
       }
-      throw new Error('Failed to fetch user');
+      throw new Error("Failed to fetch user");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error fetching current user:', error);
+    console.error("Error fetching current user:", error);
     throw error;
   }
 }
@@ -371,30 +421,34 @@ export async function getCurrentUser(token) {
  */
 export async function updateProfile(token, profileData) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/profile`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/profile`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(profileData),
       },
-      body: JSON.stringify(profileData),
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       if (response.status === 401) {
-        throw new Error('Unauthenticated');
+        throw new Error("Unauthenticated");
       }
       if (response.status === 422 && errorData.errors) {
         throw new Error(JSON.stringify(errorData.errors));
       }
-      throw new Error(errorData.message || 'Failed to update profile');
+      throw new Error(errorData.message || "Failed to update profile");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error updating profile:', error);
+    console.error("Error updating profile:", error);
     throw error;
   }
 }
@@ -407,30 +461,34 @@ export async function updateProfile(token, profileData) {
  */
 export async function updatePassword(token, passwordData) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/profile/password`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/profile/password`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(passwordData),
       },
-      body: JSON.stringify(passwordData),
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       if (response.status === 401) {
-        throw new Error('Unauthenticated');
+        throw new Error("Unauthenticated");
       }
       if (response.status === 422 && errorData.errors) {
         throw new Error(JSON.stringify(errorData.errors));
       }
-      throw new Error(errorData.message || 'Failed to update password');
+      throw new Error(errorData.message || "Failed to update password");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error updating password:', error);
+    console.error("Error updating password:", error);
     throw error;
   }
 }
@@ -446,17 +504,21 @@ export async function updatePassword(token, passwordData) {
  */
 export async function sendTwoFactorOtp(token) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/2fa/send`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/2fa/send`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       },
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const err = new Error(errorData.message || 'Failed to send OTP');
+      const err = new Error(errorData.message || "Failed to send OTP");
       err.status = response.status;
       err.retryAfter = errorData.retry_after ?? null;
       err.lockedUntil = errorData.locked_until ?? null;
@@ -466,7 +528,7 @@ export async function sendTwoFactorOtp(token) {
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error sending 2FA OTP:', error);
+    console.error("Error sending 2FA OTP:", error);
     throw error;
   }
 }
@@ -479,18 +541,22 @@ export async function sendTwoFactorOtp(token) {
  */
 export async function verifyTwoFactorOtp(token, payload) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/2fa/verify`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/2fa/verify`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
       },
-      body: JSON.stringify(payload),
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const err = new Error(errorData.message || 'OTP verification failed');
+      const err = new Error(errorData.message || "OTP verification failed");
       err.status = response.status;
       err.lockedUntil = errorData.locked_until ?? null;
       throw err;
@@ -499,9 +565,130 @@ export async function verifyTwoFactorOtp(token, payload) {
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error verifying 2FA OTP:', error);
+    console.error("Error verifying 2FA OTP:", error);
     throw error;
   }
+}
+
+/**
+ * Setup TOTP — get QR code and secret
+ * @param {string} token - Auth token
+ * @returns {Promise<Object>} { secret, qr_code, manual_entry }
+ */
+export async function setupTotp(token) {
+  const response = await fetchWithTimeout(
+    `${API_URL}/api/2fa/totp/setup`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    },
+    15000,
+  );
+  const data = await response.json();
+  if (!response.ok)
+    throw new Error(data.message || "Failed to setup authenticator.");
+  return data;
+}
+
+/**
+ * Confirm TOTP setup — verify first code after scanning
+ * @param {string} token - Auth token
+ * @param {string} code  - 6-digit code from authenticator app
+ */
+export async function confirmTotp(token, code) {
+  const response = await fetchWithTimeout(
+    `${API_URL}/api/2fa/totp/confirm`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ code }),
+    },
+    15000,
+  );
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || "Invalid code.");
+  return data;
+}
+
+/**
+ * Verify TOTP code at login
+ * @param {string} token - Auth token
+ * @param {string} code  - 6-digit code from authenticator app
+ */
+export async function verifyTotp(token, code) {
+  const response = await fetchWithTimeout(
+    `${API_URL}/api/2fa/totp/verify`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ code }),
+    },
+    15000,
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    const err = new Error(data.message || "Invalid code.");
+    err.status = response.status;
+    err.lockedUntil = data.locked_until ?? null;
+    throw err;
+  }
+  return data;
+}
+
+/**
+ * Remove TOTP — requires password confirmation
+ * @param {string} token    - Auth token
+ * @param {string} password - Current account password
+ */
+export async function removeTotp(token, password) {
+  const response = await fetchWithTimeout(
+    `${API_URL}/api/2fa/totp`,
+    {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ password }),
+    },
+    15000,
+  );
+  const data = await response.json();
+  if (!response.ok)
+    throw new Error(data.message || "Failed to remove authenticator.");
+  return data;
+}
+
+/**
+ * Update 2FA method — 'email' or 'totp'
+ * @param {string} token  - Auth token
+ * @param {string} method - 'email' | 'totp'
+ */
+export async function updateTwoFactorMethod(token, method) {
+  const response = await fetchWithTimeout(
+    `${API_URL}/api/2fa/method`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ method }),
+    },
+    15000,
+  );
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || "Failed to update method.");
+  return data;
 }
 
 /**
@@ -511,23 +698,27 @@ export async function verifyTwoFactorOtp(token, payload) {
  */
 export async function rememberDevice(token) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/2fa/remember-device`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/2fa/remember-device`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       },
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Failed to remember device');
+      throw new Error(errorData.message || "Failed to remember device");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error remembering device:', error);
+    console.error("Error remembering device:", error);
     throw error;
   }
 }
@@ -540,24 +731,28 @@ export async function rememberDevice(token) {
  */
 export async function checkDevice(token, payload) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/2fa/check-device`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+    const response = await fetchWithTimeout(
+      `${API_URL}/api/2fa/check-device`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
       },
-      body: JSON.stringify(payload),
-    }, 30000);
+      30000,
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Device check failed');
+      throw new Error(errorData.message || "Device check failed");
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Error checking device:', error);
+    console.error("Error checking device:", error);
     throw error;
   }
 }
