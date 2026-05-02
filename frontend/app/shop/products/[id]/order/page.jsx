@@ -100,7 +100,7 @@ export default function CustomOrderPage() {
   const [selectedAddressId, setSelectedAddressId] = useState(null);
   const [addressLoading, setAddressLoading] = useState(false);
 
-  const [paymentMethod, setPaymentMethod] = useState('gcash');
+  const [paymentMethod, setPaymentMethod] = useState(null);
   const [eWalletPhone, setEWalletPhone] = useState('');
   const [showEWalletPhone, setShowEWalletPhone] = useState(false);
   const [cardNumber, setCardNumber] = useState('');
@@ -275,12 +275,11 @@ export default function CustomOrderPage() {
       setSubmitError(uploading ? 'Design is still uploading, please wait.' : 'Please upload your design file.');
       return;
     }
-    if (designMode === 'request' && !selectedAddress) {
+    if (!selectedAddress) {
       setSubmitError('Please select a delivery address.'); return;
     }
-    if (designMode === 'request' && paymentMethod === 'cod') {
-      setSubmitError('Cash on Delivery is not available for design requests. The design fee must be paid upfront via GCash, Maya, or Card.');
-      return;
+    if (designMode === 'request' && !paymentMethod) {
+      setSubmitError('Please select a payment method.'); return;
     }
     if (designMode === 'request' && paymentMethod === 'card') {
       const num = cardNumber.replace(/\s/g,'');
@@ -308,11 +307,24 @@ export default function CustomOrderPage() {
       };
 
       if (designMode === 'upload') {
+        const deliveryAddress = {
+          label: selectedAddress.label,
+          house_number: selectedAddress.house_number,
+          street: selectedAddress.street,
+          subdivision: selectedAddress.subdivision,
+          barangay: selectedAddress.barangay,
+          city: selectedAddress.city,
+          province: selectedAddress.province,
+          zip: selectedAddress.zip,
+          phone: selectedAddress.phone,
+        };
         const res = await fetchWithTimeout(`${API_URL}/api/orders`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             items: [orderItem],
+            deliveryAddress,
+            shippingFee: shippingFeeAmt ?? 0,
             isCustomOrder: true,
             designType: 'upload',
             designNotes: designNotes.trim() || null,
@@ -601,9 +613,8 @@ export default function CustomOrderPage() {
               )}
             </section>
 
-            {/* Steps 3 & 4 only needed for Request Design (Upload submits without payment) */}
-            {/* Step 3: Delivery */}
-            {designMode === 'request' && <section style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
+            {/* Step 3: Delivery — shown for both upload and request */}
+            {(designMode === 'upload' || designMode === 'request') && <section style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
               <h2 style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>3 — Delivery Address</h2>
               {addressLoading ? (
                 <p style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Loading addresses...</p>
