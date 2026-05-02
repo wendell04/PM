@@ -2714,7 +2714,7 @@ function ProductExpandRow({ product, inv, boms = [], inventoryList = [] }) {
               return (
                 <div key={i} style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                    <span style={{ fontSize: "0.8rem", color: "#E5E2E1", fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "200px" }}>{v.label}</span>
+                    <span style={{ fontSize: "0.8rem", color: "var(--white)", fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "200px" }}>{v.label}</span>
                     {storefrontStock != null && !product.isMadeToOrder && (
                       <span style={{ fontSize: "0.75rem", fontWeight: 700, color: storefrontStock === 0 ? "#ef4444" : storefrontStock <= 10 ? "#f59e0b" : "#22c55e", flexShrink: 0 }}>
                         {storefrontStock === 0 ? "Out of stock" : `${storefrontStock} in stock`}
@@ -2768,7 +2768,7 @@ function ProductExpandRow({ product, inv, boms = [], inventoryList = [] }) {
           <div style={{ display: "flex", flexDirection: "column", gap: "0.22rem" }}>
             {allMaterials.map((mat, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.76rem" }}>
-                <span style={{ flex: 1, color: "rgba(229,226,225,0.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mat.name}</span>
+                <span style={{ flex: 1, color: "var(--gray-light)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mat.name}</span>
                 <span style={{ fontWeight: 700, flexShrink: 0, color: mat.stockQty === 0 ? "#ef4444" : mat.stockQty <= 10 ? "#f59e0b" : "#22c55e" }}>
                   {mat.stockQty} {mat.uom}
                 </span>
@@ -2796,8 +2796,8 @@ function Stepper({ current, steps }) {
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.35rem", flexShrink: 0 }}>
             <div style={{
               width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-              background: i < current - 1 ? "#D4A843" : i === current - 1 ? "#D4A843" : "rgba(255,255,255,0.06)",
-              border: i === current - 1 ? "2px solid #D4A843" : "1px solid rgba(255,255,255,0.08)",
+              background: i < current - 1 ? "#D4A843" : i === current - 1 ? "#D4A843" : "var(--dark3)",
+              border: i === current - 1 ? "2px solid #D4A843" : "1px solid var(--border)",
               fontSize: "0.72rem", fontWeight: 800,
               color: i <= current - 1 ? "#000" : "rgba(229,226,225,0.3)",
               transition: "all 0.2s",
@@ -2811,7 +2811,7 @@ function Stepper({ current, steps }) {
             </span>
           </div>
           {i < steps.length - 1 && (
-            <div style={{ flex: 1, height: 1, background: i < current - 1 ? "#D4A843" : "rgba(255,255,255,0.08)", margin: "14px 0.5rem 0", transition: "background 0.3s" }} />
+            <div style={{ flex: 1, height: 1, background: i < current - 1 ? "#D4A843" : "var(--border)", margin: "14px 0.5rem 0", transition: "background 0.3s" }} />
           )}
         </React.Fragment>
       ))}
@@ -2823,7 +2823,7 @@ function Stepper({ current, steps }) {
 function ProductCardPreview({ name, category, priceRange, variantCount, maxProducible, thumbnail, isRequestQuote }) {
   return (
     <div style={{ position: "sticky", top: "1rem" }}>
-      <div style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.15em", color: "rgba(229,226,225,0.3)", marginBottom: "0.75rem" }}>
+      <div style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.15em", color: "var(--gray)", marginBottom: "0.75rem" }}>
         Storefront Preview
       </div>
       <div style={{ background: "#19171580", border: "1px solid rgba(212,168,67,0.18)", borderRadius: "16px", overflow: "hidden", maxWidth: "240px", boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
@@ -2838,7 +2838,7 @@ function ProductCardPreview({ name, category, priceRange, variantCount, maxProdu
                 <circle cx="8.5" cy="8.5" r="1.5" />
                 <path d="M21 15l-5-5L5 21" />
               </svg>
-              <span style={{ fontSize: "0.6rem", color: "rgba(229,226,225,0.2)", letterSpacing: "0.06em" }}>Upload image in Details</span>
+              <span style={{ fontSize: "0.6rem", color: "var(--gray)", letterSpacing: "0.06em" }}>Upload image in Details</span>
             </div>
           )}
           {category && (
@@ -2853,25 +2853,25 @@ function ProductCardPreview({ name, category, priceRange, variantCount, maxProdu
             {"★★★★★".split("").map((s, i) => (
               <span key={i} style={{ color: "#D4A843", fontSize: "0.65rem", opacity: 0.35 }}>{s}</span>
             ))}
-            <span style={{ fontSize: "0.58rem", color: "rgba(229,226,225,0.22)", marginLeft: "0.25rem" }}>New</span>
+            <span style={{ fontSize: "0.58rem", color: "var(--gray)", marginLeft: "0.25rem" }}>New</span>
           </div>
-          <div style={{ fontSize: "0.875rem", fontWeight: 700, color: "#E5E2E1", marginBottom: "0.4rem", lineHeight: 1.3 }}>
-            {name || <span style={{ color: "rgba(229,226,225,0.22)", fontStyle: "italic", fontWeight: 400 }}>Product name</span>}
+          <div style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--white)", marginBottom: "0.4rem", lineHeight: 1.3 }}>
+            {name || <span style={{ color: "var(--gray)", fontStyle: "italic", fontWeight: 400 }}>Product name</span>}
           </div>
           <div style={{ fontSize: "1rem", fontWeight: 800, color: "#D4A843", marginBottom: "0.25rem" }}>
-            {priceRange || <span style={{ fontSize: "0.72rem", color: "rgba(229,226,225,0.28)", fontWeight: 400 }}>Set price in Step 3</span>}
+            {priceRange || <span style={{ fontSize: "0.72rem", color: "var(--gray)", fontWeight: 400 }}>Set price in Step 3</span>}
           </div>
           {isRequestQuote && (
             <div style={{ fontSize: "0.62rem", color: "rgba(139,92,246,0.9)", marginBottom: "0.35rem", fontStyle: "italic" }}>+ Request a custom quote</div>
           )}
           {variantCount > 1 && (
-            <div style={{ fontSize: "0.65rem", color: "rgba(229,226,225,0.38)", marginBottom: "0.5rem" }}>
+            <div style={{ fontSize: "0.65rem", color: "var(--gray)", marginBottom: "0.5rem" }}>
               {variantCount} options available
             </div>
           )}
           <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.75rem" }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: maxProducible > 0 ? "#22c55e" : "#ef4444", flexShrink: 0 }} />
-            <span style={{ fontSize: "0.62rem", color: "rgba(229,226,225,0.38)" }}>
+            <span style={{ fontSize: "0.62rem", color: "var(--gray)" }}>
               {maxProducible > 0 ? "In stock" : "Out of stock"}
             </span>
           </div>
@@ -3163,8 +3163,8 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
   );
 
   // ── UI ──
-  const secTitle = { fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: "rgba(229,226,225,0.5)", margin: "0 0 1rem 0" };
-  const inputSt = { width: "100%", background: "rgba(255,255,255,0.06)", border: "none", borderRadius: "10px", padding: "0.75rem 1rem", color: "#E5E2E1", fontSize: "0.875rem", outline: "none", boxSizing: "border-box" };
+  const secTitle = { fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: "var(--gray-light)", margin: "0 0 1rem 0" };
+  const inputSt = { width: "100%", background: "var(--dark3)", border: "1px solid var(--border)", borderRadius: "10px", padding: "0.75rem 1rem", color: "var(--white)", fontSize: "0.875rem", outline: "none", boxSizing: "border-box" };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -3226,8 +3226,8 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
                   return Object.entries(groups).map(([groupName, items]) => (
                     <div key={groupName} style={{ marginBottom: "1.5rem" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
-                        <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(229,226,225,0.45)" }}>{groupName}</span>
-                        <span style={{ fontSize: "0.6rem", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "20px", padding: "0.1rem 0.4rem", color: "var(--gray)" }}>{items.length}</span>
+                        <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--gray)" }}>{groupName}</span>
+                        <span style={{ fontSize: "0.6rem", background: "var(--dark3)", border: "1px solid var(--border)", borderRadius: "20px", padding: "0.1rem 0.4rem", color: "var(--gray)" }}>{items.length}</span>
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))", gap: "0.625rem" }}>
                         {items.map((b) => {
@@ -3239,7 +3239,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
                               key={b.id}
                               type="button"
                               onClick={() => setSelectedBoms(isPrimary ? [] : [{ bom: b, label: "" }])}
-                              style={{ background: isPrimary ? "rgba(212,168,67,0.09)" : isVariant ? "rgba(99,102,241,0.07)" : "rgba(255,255,255,0.03)", border: `1px solid ${isPrimary ? "#D4A843" : isVariant ? "rgba(99,102,241,0.45)" : "rgba(255,255,255,0.1)"}`, borderRadius: "12px", padding: "0.875rem", textAlign: "left", cursor: "pointer", position: "relative", transition: "border-color 0.15s, background 0.15s" }}
+                              style={{ background: isPrimary ? "rgba(212,168,67,0.09)" : isVariant ? "rgba(99,102,241,0.07)" : "var(--dark3)", border: `1px solid ${isPrimary ? "#D4A843" : isVariant ? "rgba(99,102,241,0.45)" : "var(--border)"}`, borderRadius: "12px", padding: "0.875rem", textAlign: "left", cursor: "pointer", position: "relative", transition: "border-color 0.15s, background 0.15s" }}
                             >
                               {isPrimary && (
                                 <div style={{ position: "absolute", top: "0.5rem", right: "0.5rem", width: 18, height: 18, borderRadius: "50%", background: "#D4A843", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -3252,7 +3252,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
                               <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "#D4A843", marginBottom: "0.25rem" }}>
                                 ₱{(b.totalCost || 0).toFixed(2)}
                               </div>
-                              <div style={{ fontSize: "0.62rem", color: "rgba(229,226,225,0.4)", marginBottom: "0.3rem" }}>
+                              <div style={{ fontSize: "0.62rem", color: "var(--gray)", marginBottom: "0.3rem" }}>
                                 {b.components?.length || 0} material{b.components?.length !== 1 ? "s" : ""}
                               </div>
                               {mp !== undefined && (
@@ -3306,7 +3306,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
                         const idx = rawIdx + 1;
                         return (
                           <div key={bom.id} style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.4rem" }}>
-                            <div style={{ flex: 1, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.25)", borderRadius: "8px", padding: "0.4rem 0.75rem", fontSize: "0.8rem", color: "#E5E2E1" }}>{bom.productName}</div>
+                            <div style={{ flex: 1, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.25)", borderRadius: "8px", padding: "0.4rem 0.75rem", fontSize: "0.8rem", color: "var(--white)" }}>{bom.productName}</div>
                             <button type="button" onClick={() => setSelectedBoms((p) => p.filter((_, j) => j !== idx))}
                               style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer", padding: "0.25rem" }}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
@@ -3321,7 +3321,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
                   <div style={{ padding: "0.75rem 1rem", position: "relative" }}>
                     <button type="button"
                       onClick={() => setVariantOpens((p) => ({ ...p, new: !p.new }))}
-                      style={{ display: "flex", alignItems: "center", gap: "0.4rem", background: "none", border: "1px dashed rgba(255,255,255,0.12)", borderRadius: "8px", padding: "0.45rem 0.875rem", color: "var(--gray)", fontSize: "0.75rem", cursor: "pointer", width: "100%" }}>
+                      style={{ display: "flex", alignItems: "center", gap: "0.4rem", background: "none", border: "1px dashed var(--border)", borderRadius: "8px", padding: "0.45rem 0.875rem", color: "var(--gray)", fontSize: "0.75rem", cursor: "pointer", width: "100%" }}>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
                       Add size / finish variant
                     </button>
@@ -3344,8 +3344,8 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
                                 setVariantOpens((p) => ({ ...p, new: false }));
                                 setVariantSearches((p) => ({ ...p, new: "" }));
                               }}
-                              style={{ width: "100%", textAlign: "left", background: "none", border: "none", padding: "0.6rem 1rem", color: "#E5E2E1", fontSize: "0.82rem", cursor: "pointer" }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+                              style={{ width: "100%", textAlign: "left", background: "none", border: "none", padding: "0.6rem 1rem", color: "var(--white)", fontSize: "0.82rem", cursor: "pointer" }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = "var(--dark3)"}
                               onMouseLeave={(e) => e.currentTarget.style.background = "none"}
                             >
                               {b.productName}
@@ -3381,13 +3381,13 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
                       <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--dark2,#1a1a1a)", border: "1px solid var(--border)", borderRadius: "10px", zIndex: 100, maxHeight: "160px", overflowY: "auto" }}>
                         {existingCategories.filter((c) => c.toLowerCase().includes(category.toLowerCase())).map((c) => (
                           <button key={c} type="button" onClick={() => { setCategory(c); setCatOpen(false); }}
-                            style={{ width: "100%", textAlign: "left", background: "none", border: "none", padding: "0.6rem 1rem", color: "#E5E2E1", fontSize: "0.85rem", cursor: "pointer" }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+                            style={{ width: "100%", textAlign: "left", background: "none", border: "none", padding: "0.6rem 1rem", color: "var(--white)", fontSize: "0.85rem", cursor: "pointer" }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dark3)"}
                             onMouseLeave={(e) => e.currentTarget.style.background = "none"}>{c}</button>
                         ))}
                         {category && !existingCategories.find((c) => c.toLowerCase() === category.toLowerCase()) && (
                           <button type="button" onClick={() => setCatOpen(false)}
-                            style={{ width: "100%", textAlign: "left", background: "none", border: "none", borderTop: "1px solid rgba(255,255,255,0.06)", padding: "0.6rem 1rem", color: "#D4A843", fontSize: "0.78rem", cursor: "pointer", fontWeight: 700 }}
+                            style={{ width: "100%", textAlign: "left", background: "none", border: "none", borderTop: "1px solid var(--border)", padding: "0.6rem 1rem", color: "#D4A843", fontSize: "0.78rem", cursor: "pointer", fontWeight: 700 }}
                             onMouseEnter={(e) => e.currentTarget.style.background = "rgba(212,168,67,0.06)"}
                             onMouseLeave={(e) => e.currentTarget.style.background = "none"}>
                             + Use &ldquo;{category}&rdquo;
@@ -3453,7 +3453,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
                           const margin = hasP ? price - cost : null;
                           return (
                             <tr key={bom.id}>
-                              <td style={{ fontWeight: 600, color: "#E5E2E1" }}>{label || bom.productName}</td>
+                              <td style={{ fontWeight: 600, color: "var(--white)" }}>{label || bom.productName}</td>
                               <td style={{ color: "#D4A843", fontWeight: 700 }}>₱{cost.toFixed(2)}</td>
                               <td>
                                 <div className="tier-price-cell">
@@ -3541,9 +3541,9 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
               )}
 
               {/* Request Quote toggle */}
-              <div style={{ marginTop: "1.25rem", padding: "0.875rem 1rem", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", borderRadius: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ marginTop: "1.25rem", padding: "0.875rem 1rem", background: "var(--dark3)", border: "1px solid var(--border)", borderRadius: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <div style={{ fontWeight: 700, color: "#E5E2E1", fontSize: "0.875rem" }}>Request Quote</div>
+                  <div style={{ fontWeight: 700, color: "var(--white)", fontSize: "0.875rem" }}>Request Quote</div>
                   <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.15rem" }}>
                     {isRequestQuote
                       ? "Customers see the price as a reference and submit a quote request. Inquiry goes to Orders."
@@ -3562,9 +3562,9 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
           {step === 4 && (
             <div>
               {/* Made to Order toggle */}
-              <div style={{ marginBottom: "1.25rem", padding: "0.875rem 1rem", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", borderRadius: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ marginBottom: "1.25rem", padding: "0.875rem 1rem", background: "var(--dark3)", border: "1px solid var(--border)", borderRadius: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <div style={{ fontWeight: 700, color: "#E5E2E1", fontSize: "0.875rem" }}>Made to Order</div>
+                  <div style={{ fontWeight: 700, color: "var(--white)", fontSize: "0.875rem" }}>Made to Order</div>
                   <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.15rem" }}>
                     {isMadeToOrder ? "Published with 0 stock — fulfil orders on demand." : "Stock is capped to what you can currently produce."}
                   </div>
@@ -3582,7 +3582,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
                   {isStandalone ? (
                     <div>
                       <div style={{ fontSize: "0.8rem", color: "var(--gray)", marginBottom: "0.75rem" }}>
-                        Max producible from current stock: <strong style={{ color: "#E5E2E1" }}>{maxProducible[primaryBom?.id] ?? 0} units</strong>
+                        Max producible from current stock: <strong style={{ color: "var(--white)" }}>{maxProducible[primaryBom?.id] ?? 0} units</strong>
                       </div>
                       <label className="form-label">Storefront Stock</label>
                       <NumberInput className="form-input"
@@ -3601,7 +3601,7 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
                         <tbody>
                           {selectedBoms.map(({ bom, label }) => (
                             <tr key={bom.id}>
-                              <td style={{ fontWeight: 600, color: "#E5E2E1" }}>{label || bom.productName}</td>
+                              <td style={{ fontWeight: 600, color: "var(--white)" }}>{label || bom.productName}</td>
                               <td style={{ color: maxProducible[bom.id] === 0 ? "#ef4444" : "var(--gray)" }}>{maxProducible[bom.id]} units</td>
                               <td>
                                 <NumberInput className="tier-input"
@@ -3670,9 +3670,9 @@ function AddProductModal({ boms, inventoryList, products, onClose, onSave, onPri
               </div>
 
               {/* Publish toggle */}
-              <div style={{ marginTop: "1.5rem", padding: "1rem", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", borderRadius: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ marginTop: "1.5rem", padding: "1rem", background: "var(--dark3)", border: "1px solid var(--border)", borderRadius: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <div style={{ fontWeight: 700, color: "#E5E2E1", fontSize: "0.875rem" }}>Publish immediately</div>
+                  <div style={{ fontWeight: 700, color: "var(--white)", fontSize: "0.875rem" }}>Publish immediately</div>
                   <div style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.15rem" }}>
                     {isPublished ? "Product will be visible to customers on save." : "Product will be saved as a draft."}
                   </div>
@@ -3996,7 +3996,7 @@ function AddProductModal_OLD_UNUSED({ boms, inventoryList, products, onClose, on
                 </div>
 
                 {/* Table header */}
-                <div style={{ display: 'grid', gridTemplateColumns: hasVariants ? '1.2fr 2fr 90px 90px 1fr' : '2fr 90px 90px 1fr', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.15)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: hasVariants ? '1.2fr 2fr 90px 90px 1fr' : '2fr 90px 90px 1fr', borderBottom: '1px solid var(--border)', background: 'var(--dark3)' }}>
                   {hasVariants && <div style={{ padding: '0.45rem 0.75rem', fontSize: '0.62rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>Variant</div>}
                   <div style={{ padding: '0.45rem 0.75rem', fontSize: '0.62rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>Components</div>
                   <div style={{ padding: '0.45rem 0.75rem', fontSize: '0.62rem', color: 'var(--gray)', textTransform: 'uppercase', fontWeight: 700 }}>BOM Cost</div>
@@ -4005,7 +4005,7 @@ function AddProductModal_OLD_UNUSED({ boms, inventoryList, products, onClose, on
                 </div>
 
                 {variants.map((bom, i) => (
-                  <div key={bom.id} style={{ display: 'grid', gridTemplateColumns: hasVariants ? '1.2fr 2fr 90px 90px 1fr' : '2fr 90px 90px 1fr', borderBottom: i < variants.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', alignItems: 'start' }}>
+                  <div key={bom.id} style={{ display: 'grid', gridTemplateColumns: hasVariants ? '1.2fr 2fr 90px 90px 1fr' : '2fr 90px 90px 1fr', borderBottom: i < variants.length - 1 ? '1px solid var(--border)' : 'none', alignItems: 'start' }}>
                     {hasVariants && (
                       <div style={{ padding: '0.7rem 0.75rem', fontWeight: 600, color: 'var(--white)', fontSize: '0.85rem' }}>{bom.variantName}</div>
                     )}
@@ -5231,9 +5231,9 @@ export default function ProductListPage() {
               )}
             </div>
           ) : (
-            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+            <div style={{ background: "var(--dark2)", border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
               {/* Table header */}
-              <div style={{ display: "grid", gridTemplateColumns: "40px 52px 1.4fr 90px 1.6fr 100px minmax(0,130px) 100px", alignItems: "center", padding: "0.5rem 1rem", background: "rgba(255,255,255,0.03)", borderBottom: "1px solid var(--border)" }} ref={bulkSelectRef}>
+              <div style={{ display: "grid", gridTemplateColumns: "40px 52px 1.4fr 90px 1.6fr 100px minmax(0,130px) 100px", alignItems: "center", padding: "0.5rem 1rem", background: "var(--dark3)", borderBottom: "1px solid var(--border)" }} ref={bulkSelectRef}>
                 <div style={{ position: "relative" }}>
                   <input
                     type="checkbox"
@@ -5257,7 +5257,7 @@ export default function ProductListPage() {
                 </div>
                 <div />
                 {["Product", "Status", "Inventory", "Price", "Category", ""].map((h) => (
-                  <span key={h} style={{ fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(229,226,225,0.35)" }}>{h}</span>
+                  <span key={h} style={{ fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--gray)" }}>{h}</span>
                 ))}
               </div>
 
@@ -5285,7 +5285,7 @@ export default function ProductListPage() {
                       {product.thumbnail ? (
                         <img src={product.thumbnail} alt="" style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover" }} />
                       ) : (
-                        <div style={{ width: 40, height: 40, borderRadius: 6, background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--gray)" }}>
+                        <div style={{ width: 40, height: 40, borderRadius: 6, background: "var(--dark3)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--gray)" }}>
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                             <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
                           </svg>
@@ -5295,7 +5295,7 @@ export default function ProductListPage() {
                       {/* Product name + badges */}
                       <div style={{ paddingLeft: "0.75rem", minWidth: 0 }}>
                         <div onClick={() => !isInventoryArchived && handleEdit(product)}
-                          style={{ fontWeight: 600, color: "#E5E2E1", fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: isInventoryArchived ? "default" : "pointer", textDecoration: "none" }}
+                          style={{ fontWeight: 600, color: "var(--white)", fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: isInventoryArchived ? "default" : "pointer", textDecoration: "none" }}
                           onMouseEnter={(e) => { if (!isInventoryArchived) e.currentTarget.style.textDecoration = "underline"; }}
                           onMouseLeave={(e) => { e.currentTarget.style.textDecoration = "none"; }}>
                           {product.productName || product.subCategoryName || "Unnamed"}
@@ -5311,7 +5311,7 @@ export default function ProductListPage() {
                       {/* Status */}
                       <div>
                         {product.isArchived ? (
-                          <span style={{ fontSize: "0.68rem", color: "var(--gray)", background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", borderRadius: "20px", padding: "0.15rem 0.6rem" }}>Archived</span>
+                          <span style={{ fontSize: "0.68rem", color: "var(--gray)", background: "var(--dark3)", border: "1px solid var(--border)", borderRadius: "20px", padding: "0.15rem 0.6rem" }}>Archived</span>
                         ) : (
                           <span style={{ fontSize: "0.68rem", fontWeight: 700, background: product.isPublished ? "rgba(34,197,94,0.1)" : "rgba(212,168,67,0.1)", border: `1px solid ${product.isPublished ? "rgba(34,197,94,0.3)" : "rgba(212,168,67,0.3)"}`, borderRadius: "20px", padding: "0.15rem 0.6rem", color: product.isPublished ? "#22c55e" : "#facc15" }}>
                             {product.isPublished ? "Active" : "Draft"}

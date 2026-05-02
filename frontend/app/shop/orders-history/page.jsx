@@ -71,6 +71,7 @@ const ONLINE_TRACK_STEPS = [
 ];
 
 const STATUS_ACCENT = {
+  'awaiting_payment': '#d4a843',
   'Pending':      '#d4a843',
   'Processing':   '#d4a843',
   'For Delivery': '#d4a843',
@@ -174,7 +175,7 @@ function OrderTracker({ status, paymentMethod, paymentStatus, statusHistory = []
 }
 
 // ─── CustomOrderTracker ─────────────────────────────────
-function CustomOrderTracker({ orderStatus, designType }) {
+function CustomOrderTracker({ orderStatus, designType, designStatus }) {
   const steps = designType === 'upload' ? UPLOAD_STEPS : REQUEST_STEPS;
   const isTerminal = orderStatus === 'Cancelled' || orderStatus === 'Returned';
   const statusLabel = CUSTOM_STATUS_LABEL[orderStatus] || orderStatus;
@@ -188,7 +189,13 @@ function CustomOrderTracker({ orderStatus, designType }) {
     }
     return idx;
   }
-  const currentIdx = getStepIdx(orderStatus);
+
+  const rawIdx = getStepIdx(orderStatus);
+  // If design is already approved, visually advance to at least design_approved step
+  const approvedIdx = (designStatus === 'approved' || designStatus === 'revision_requested')
+    ? steps.findIndex(s => s.key === 'design_approved')
+    : -1;
+  const currentIdx = Math.max(rawIdx, approvedIdx);
 
   const isDelivered = orderStatus === 'delivered' || orderStatus === 'Delivered';
 
@@ -229,14 +236,20 @@ function CustomOrderTracker({ orderStatus, designType }) {
               {idx < steps.length - 1 && (
                 <div style={{ position: 'absolute', top: '12px', right: 0, width: '50%', height: '2px', background: idx < currentIdx ? 'var(--gold)' : 'var(--border)' }} />
               )}
-              <div style={{ width: '24px', height: '24px', borderRadius: '50%', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isCurrent ? (isDelivered && idx === steps.length - 1 ? '#22c55e' : 'var(--gold)') : isDone ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.04)', border: isCurrent || isDone ? '2px solid var(--gold)' : '2px solid var(--border)', boxShadow: isCurrent ? '0 0 0 3px rgba(212,168,67,0.15)' : 'none', flexShrink: 0 }}>
-                {isDone
-                  ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                  : isCurrent
-                  ? <span style={{ color: '#000', display: 'flex' }}>{step.icon}</span>
-                  : <span style={{ color: 'var(--gray)', display: 'flex', opacity: 0.6 }}>{step.icon}</span>
-                }
-              </div>
+              {(() => {
+                const isApprovalCurrent = isCurrent && step.key === 'design_approved';
+                const showCheck = isDone || isApprovalCurrent;
+                return (
+                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isCurrent ? (isDelivered && idx === steps.length - 1 ? '#22c55e' : isApprovalCurrent ? 'rgba(212,168,67,0.15)' : 'var(--gold)') : isDone ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.04)', border: isCurrent || isDone ? '2px solid var(--gold)' : '2px solid var(--border)', boxShadow: isCurrent && !isApprovalCurrent ? '0 0 0 3px rgba(212,168,67,0.15)' : 'none', flexShrink: 0 }}>
+                    {showCheck
+                      ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      : isCurrent
+                      ? <span style={{ color: '#000', display: 'flex' }}>{step.icon}</span>
+                      : <span style={{ color: 'var(--gray)', display: 'flex', opacity: 0.6 }}>{step.icon}</span>
+                    }
+                  </div>
+                );
+              })()}
               <div style={{ marginTop: '5px', fontSize: isCurrent ? '0.64rem' : '0.6rem', textAlign: 'center', lineHeight: 1.3, maxWidth: '50px', fontWeight: isCurrent ? 700 : 500, color: isCurrent ? 'var(--gold)' : isDone ? 'var(--white)' : 'var(--gray)' }}>
                 {step.label}
               </div>
@@ -427,6 +440,18 @@ export default function OrdersHistoryPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    if (params.get('payment_return') === '1') {
+      const returnId = params.get('id') ?? sessionStorage.getItem('pending_paynow_order_id');
+      router.replace('/shop/orders-history', { scroll: false });
+      if (returnId) {
+        sessionStorage.removeItem('pending_paynow_order_id');
+        setPayNowVerifyId(returnId);
+        setPayNowVerifying(true);
+      }
+      return;
+    }
+
     if (params.get('payment_cancelled') === '1') {
       router.replace('/shop/orders-history', { scroll: false });
       const pendingId = sessionStorage.getItem('pending_paynow_order_id');
@@ -650,8 +675,9 @@ export default function OrdersHistoryPage() {
   const isStaleUnpaidOnline = (o) => {
     if (o.paymentStatus !== 'unpaid') return false;
     if ((o.paymentMethod || '').toLowerCase() === 'cod') return false;
+    if (o.isCustomOrder) return false;
     const age = Date.now() - new Date(o.createdAt).getTime();
-    return age < 30 * 60 * 1000; // hide if < 30 min old and still unpaid online
+    return age < 30 * 60 * 1000;
   };
 
   const visibleOrders = orders.filter(o => !isStaleUnpaidOnline(o));
@@ -903,7 +929,7 @@ export default function OrdersHistoryPage() {
                     {/* Tracker */}
                     <div style={{ padding: '18px', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
                       {selectedOrder.isCustomOrder ? (
-                        <CustomOrderTracker orderStatus={selectedOrder.orderStatus} designType={selectedOrder.designType} />
+                        <CustomOrderTracker orderStatus={selectedOrder.orderStatus} designType={selectedOrder.designType} designStatus={selectedOrder.designStatus} />
                       ) : (
                         <OrderTracker status={selectedOrder.orderStatus} paymentMethod={selectedOrder.paymentMethod} paymentStatus={selectedOrder.paymentStatus} statusHistory={selectedOrder.statusHistory} />
                       )}
@@ -915,7 +941,7 @@ export default function OrdersHistoryPage() {
                       <div style={{ background: 'rgba(0,0,0,0.15)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', overflow: 'hidden' }}>
                         {[
                           ['Placed', formatDate(selectedOrder.createdAt)],
-                          selectedOrder.paymentMethod
+                          (selectedOrder.paymentMethod && !(selectedOrder.paymentStatus === 'unpaid' && selectedOrder.orderStatus === 'awaiting_payment'))
                             ? ['Method', { cod: 'Cash on Delivery', gcash: 'GCash', paymaya: 'Maya', card: 'Credit / Debit Card' }[selectedOrder.paymentMethod] ?? selectedOrder.paymentMethod]
                             : null,
                           ['Status', <StatusBadge key="s" status={selectedOrder.orderStatus} />],
@@ -966,7 +992,7 @@ export default function OrdersHistoryPage() {
                               <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '6px' }}>File (JPG, PNG, PDF, AI, PSD, SVG — max 10MB)</div>
                               <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.ai,.psd,.svg" onChange={e => setReuploadFile(e.target.files?.[0] || null)} style={{ fontSize: '0.8rem', color: 'var(--white)', width: '100%' }} />
                             </div>
-                            <textarea placeholder="Updated design notes (optional)" value={reuploadNotes} onChange={e => setReuploadNotes(e.target.value)} maxLength={2000} rows={3} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.8rem', padding: '8px 12px', resize: 'vertical', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+                            <textarea placeholder="Updated design notes (Use a Different number?)" value={reuploadNotes} onChange={e => setReuploadNotes(e.target.value)} maxLength={2000} rows={3} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.8rem', padding: '8px 12px', resize: 'vertical', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
                             {reuploadError && <div style={{ color: 'var(--red)', fontSize: '0.78rem' }}>{reuploadError}</div>}
                             <div style={{ display: 'flex', gap: '8px' }}>
                               <button onClick={handleReupload} disabled={reuploadLoading || (!reuploadFile && !reuploadNotes.trim())} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: (reuploadLoading || (!reuploadFile && !reuploadNotes.trim())) ? 'var(--border)' : 'var(--gold)', color: '#000', fontSize: '0.8rem', fontWeight: 700, cursor: (reuploadLoading || (!reuploadFile && !reuploadNotes.trim())) ? 'not-allowed' : 'pointer' }}>
@@ -1206,12 +1232,10 @@ export default function OrdersHistoryPage() {
                           <span style={{ fontSize: '0.8rem', color: 'var(--white)' }}>{formatPeso(selectedOrder.subtotal)}</span>
                         </div>
                       )}
-                      {selectedOrder.shippingFee > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Shipping</span>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee)}</span>
-                        </div>
-                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Shipping</span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee ?? 0)}</span>
+                      </div>
                       {selectedOrder.discountAmount > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Discount</span>
@@ -1262,12 +1286,10 @@ export default function OrdersHistoryPage() {
                                 <span style={{ color: 'var(--white)', flexShrink: 0 }}>{formatPeso(item.lineTotal || (item.unitPrice || 0) * (item.qty || 1))}</span>
                               </div>
                             ))}
-                            {selectedOrder.shippingFee > 0 && (
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                                <span style={{ color: 'var(--gray)' }}>Shipping</span>
-                                <span style={{ color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee)}</span>
-                              </div>
-                            )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
+                              <span style={{ color: 'var(--gray)' }}>Shipping</span>
+                              <span style={{ color: 'var(--white)' }}>{formatPeso(selectedOrder.shippingFee ?? 0)}</span>
+                            </div>
                             {selectedOrder.downPayment > 0 && (
                               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
                                 <span style={{ color: '#22c55e' }}>DP Paid</span>
@@ -1310,9 +1332,13 @@ export default function OrdersHistoryPage() {
                           const isSelected = payMethod === opt.id;
                           const isEWallet  = opt.id === 'gcash' || opt.id === 'paymaya';
                           const showPanel  = isEWallet && isSelected;
+                          // Auto-show the phone input when this eWallet is selected
+                          if (isEWallet && isSelected && !payNowShowEWalletPhone) {
+                            // handled by auto-show below
+                          }
                           return (
                             <div key={opt.id}>
-                              <div onClick={() => { setPayMethod(opt.id); setPayNowEWalletPhone(''); setPayNowShowEWalletPhone(false); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', borderRadius: '8px', cursor: 'pointer', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.07)'}`, background: isSelected ? `${opt.accent}12` : 'rgba(255,255,255,0.02)', transition: 'all 0.15s' }}>
+                              <div onClick={() => { setPayMethod(opt.id); setPayNowEWalletPhone(''); setPayNowShowEWalletPhone(true); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', borderRadius: '8px', cursor: 'pointer', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.07)'}`, background: isSelected ? `${opt.accent}12` : 'rgba(255,255,255,0.02)', transition: 'all 0.15s' }}>
                                 <div style={{ width: '28px', height: '28px', borderRadius: '6px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.06)'}`, background: isSelected ? `${opt.accent}20` : 'rgba(255,255,255,0.03)' }}>
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img src={opt.logo} alt={opt.label} style={{ width: 20, height: 20, objectFit: 'contain', ...(opt.filterImg ? { filter: 'brightness(0) invert(1)', opacity: isSelected ? 1 : 0.5 } : {}) }} />
@@ -1325,23 +1351,13 @@ export default function OrdersHistoryPage() {
                               </div>
                               {showPanel && (
                                 <div style={{ marginTop: '3px', marginBottom: '6px', padding: '10px 12px', borderRadius: '8px', background: opt.id === 'gcash' ? 'rgba(0,102,255,0.04)' : 'rgba(0,177,79,0.04)', border: `1px solid ${opt.id === 'gcash' ? 'rgba(0,102,255,0.18)' : 'rgba(0,177,79,0.18)'}` }}>
-                                  {!payNowShowEWalletPhone ? (
-                                    <button type="button" onClick={() => setPayNowShowEWalletPhone(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '0.4rem', color: opt.id === 'gcash' ? '#0066FF' : '#00B14F', fontSize: '0.75rem', fontWeight: 600 }}>
-                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-                                      Use a different {opt.id === 'gcash' ? 'GCash' : 'Maya'} number for billing reference
-                                    </button>
-                                  ) : (
-                                    <>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: opt.id === 'gcash' ? '#0066FF' : '#00B14F', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{opt.id === 'gcash' ? 'GCash' : 'Maya'} number</span>
-                                        <button type="button" onClick={() => { setPayNowShowEWalletPhone(false); setPayNowEWalletPhone(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: '0.72rem', padding: 0 }}>Cancel</button>
-                                      </div>
-                                      <div style={{ display: 'flex', alignItems: 'center', background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '7px', overflow: 'hidden' }} onFocusCapture={e => { e.currentTarget.style.borderColor = opt.id === 'gcash' ? '#0066FF' : '#00B14F'; }} onBlurCapture={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}>
-                                        <span style={{ padding: '0.55rem 0.65rem', fontSize: '0.85rem', fontFamily: 'monospace', color: 'var(--gray)', borderRight: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>+63</span>
-                                        <input type="tel" inputMode="numeric" placeholder="9XX XXX XXXX" maxLength={12} value={fmtPHPhone(payNowEWalletPhone)} autoFocus onChange={e => setPayNowEWalletPhone(e.target.value.replace(/\D/g,'').slice(0,10))} style={{ flex: 1, background: 'transparent', border: 'none', padding: '0.55rem 0.75rem', color: 'var(--white)', fontSize: '0.85rem', outline: 'none', fontFamily: 'monospace' }} />
-                                      </div>
-                                    </>
-                                  )}
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: opt.id === 'gcash' ? '#0066FF' : '#00B14F', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{opt.id === 'gcash' ? 'GCash' : 'Maya'} number <span style={{ fontSize: '0.62rem', fontWeight: 400, color: 'var(--gray)', textTransform: 'none', letterSpacing: 0 }}>(Use a Different number?)</span></span>
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '7px', overflow: 'hidden' }} onFocusCapture={e => { e.currentTarget.style.borderColor = opt.id === 'gcash' ? '#0066FF' : '#00B14F'; }} onBlurCapture={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}>
+                                    <span style={{ padding: '0.55rem 0.65rem', fontSize: '0.85rem', fontFamily: 'monospace', color: 'var(--gray)', borderRight: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>+63</span>
+                                    <input type="tel" inputMode="numeric" placeholder="9XX XXX XXXX" maxLength={12} value={fmtPHPhone(payNowEWalletPhone)} onChange={e => setPayNowEWalletPhone(e.target.value.replace(/\D/g,'').slice(0,10))} style={{ flex: 1, background: 'transparent', border: 'none', padding: '0.55rem 0.75rem', color: 'var(--white)', fontSize: '0.85rem', outline: 'none', fontFamily: 'monospace' }} />
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -1362,8 +1378,8 @@ export default function OrdersHistoryPage() {
                               {cardBrand(payNowCardNumber) && <span style={{ position: 'absolute', right: '0.45rem', top: '50%', transform: 'translateY(-50%)', fontSize: '0.5rem', fontWeight: 900, color: '#9C7BE8', background: 'rgba(156,123,232,0.12)', padding: '2px 4px', borderRadius: '3px' }}>{cardBrand(payNowCardNumber)}</span>}
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem', marginBottom: '0.45rem' }}>
-                              <input type="text" inputMode="numeric" placeholder="MM / YY" value={payNowCardExpiry} onChange={e => setPayNowCardExpiry(fmtExpiry(e.target.value))} style={{ background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '0.45rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
-                              <input type="text" inputMode="numeric" placeholder="CVC" maxLength={4} value={payNowCardCvc} onChange={e => setPayNowCardCvc(e.target.value.replace(/\D/g,'').slice(0,4))} style={{ background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '0.45rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
+                              <input type="text" inputMode="numeric" placeholder="MM / YY" value={payNowCardExpiry} onChange={e => setPayNowCardExpiry(fmtExpiry(e.target.value))} style={{ width: '100%', background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '0.45rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
+                              <input type="text" inputMode="numeric" placeholder="CVC" maxLength={4} value={payNowCardCvc} onChange={e => setPayNowCardCvc(e.target.value.replace(/\D/g,'').slice(0,4))} style={{ width: '100%', background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '0.45rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem', outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
                             </div>
                             <input type="text" placeholder="Name on card" value={payNowCardName} onChange={e => setPayNowCardName(e.target.value)} style={{ width: '100%', background: 'var(--dark2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '0.45rem 0.6rem', color: 'var(--white)', fontSize: '0.78rem', outline: 'none', boxSizing: 'border-box' }} onFocus={e => { e.target.style.borderColor='#9C7BE8'; }} onBlur={e => { e.target.style.borderColor='rgba(255,255,255,0.1)'; }} />
                           </div>

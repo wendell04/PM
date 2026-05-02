@@ -225,9 +225,10 @@ export default function OrderQuickViewModal({
         throw new Error(d.message || 'Upload failed');
       }
       const data = await res.json();
-      const adminDesignUrl  = data.order?.adminDesignUrl  ?? data.adminDesignUrl;
+      const adminDesignUrl  = data.order?.adminDesignUrl  ?? data.adminDesignUrl ?? null;
       const adminDesignUrls = data.order?.adminDesignUrls ?? data.adminDesignUrls ?? (adminDesignUrl ? [adminDesignUrl] : []);
       setOrder(prev => prev ? { ...prev, adminDesignUrl, adminDesignUrls, orderStatus: 'proof_sent', designStatus: 'draft_ready' } : null);
+      setAdminDraftFile(null); // ← moved here: clear files only after confirmed success
       setAdminDesignSuccess(true);
       if (onStatusUpdated) onStatusUpdated();
     } catch (err) {
@@ -772,34 +773,57 @@ export default function OrderQuickViewModal({
 
                 {/* Admin Design Service Upload */}
                 {mode === 'admin' && (order.items?.some(i => i.designRequested) || (order.isCustomOrder && order.designType === 'request')) && (
-                  <div>
-                    <h4 style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.75rem' }}>
-                      Design Service
-                    </h4>
-                    <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(212,168,67,0.05)', border: '1px solid rgba(212,168,67,0.2)' }}>
-                      {order.adminDesignUrl && !adminDraftFile ? (
+                  <div style={{ borderRadius: '12px', border: '1px solid rgba(212,168,67,0.25)', overflow: 'hidden' }}>
+                    {/* Header bar */}
+                    <div style={{ padding: '10px 14px', background: 'rgba(212,168,67,0.08)', borderBottom: '1px solid rgba(212,168,67,0.15)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Design Service</span>
+                    </div>
+                    <div style={{ padding: '0.75rem', background: 'rgba(212,168,67,0.02)' }}>
+                      {/* Already has uploaded draft — show links + replace option */}
+                      {(order.adminDesignUrl || adminDesignSuccess) && !adminDraftFile?.length ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gold)', padding: '2px 8px', borderRadius: '999px', background: 'rgba(212,168,67,0.1)', border: '1px solid rgba(212,168,67,0.25)' }}>
                               Draft Uploaded
                             </span>
                             <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>
-                              {order.designStatus === 'draft_ready' ? '— Awaiting customer review' : order.designStatus === 'approved' ? '— Customer approved' : ''}
+                              {order.designStatus === 'draft_ready' ? '— Awaiting customer review'
+                                : order.designStatus === 'approved' ? '— Customer approved'
+                                : adminDesignSuccess ? '— Customer has been notified'
+                                : ''}
                             </span>
                           </div>
-                          {(order.adminDesignUrls ?? [order.adminDesignUrl]).filter(Boolean).map((url, i, arr) => (
-                            <a key={i} href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none' }}>
+                          {(order.adminDesignUrls ?? (order.adminDesignUrl ? [order.adminDesignUrl] : [])).filter(Boolean).map((url, i, arr) => (
+                            <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gold)', textDecoration: 'none' }}>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                               {arr.length > 1 ? `File ${i + 1}` : 'View Design Draft'}
                             </a>
                           ))}
+                          {/* Replace draft — file picker only, no immediate upload */}
                           <label style={{ cursor: 'pointer', display: 'inline-block', marginTop: '0.25rem' }}>
                             <span style={{ fontSize: '0.75rem', color: 'var(--gray)', textDecoration: 'underline', cursor: 'pointer' }}>Replace draft</span>
-                            <input type="file" accept="image/*,video/*,.pdf,.ai,.psd,.svg" multiple style={{ display: 'none' }} onChange={e => { const files = Array.from(e.target.files ?? []).slice(0, 5); if (files.length) { setAdminDraftFile(files); setAdminDesignSuccess(false); } e.target.value = ''; }} />
+                            <input
+                              type="file"
+                              accept="image/*,video/*,.pdf,.ai,.psd,.svg"
+                              multiple
+                              style={{ display: 'none' }}
+                              onChange={e => {
+                                const files = Array.from(e.target.files ?? []).slice(0, 5);
+                                if (files.length) { setAdminDraftFile(files); setAdminDesignSuccess(false); }
+                                e.target.value = '';
+                              }}
+                            />
                           </label>
                         </div>
+
                       ) : adminDraftFile?.length > 0 ? (
+                        /* Files selected — show list + Send button */
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>
+                            {adminDraftFile.length} file{adminDraftFile.length > 1 ? 's' : ''} selected
+                          </div>
                           {adminDraftFile.map((f, fi) => (
                             <div key={fi} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: '6px', border: '1px solid var(--border)' }}>
                               {f.type.startsWith('video/') ? (
@@ -808,39 +832,102 @@ export default function OrderQuickViewModal({
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                               )}
                               <span style={{ fontSize: '0.78rem', color: 'var(--white)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                              <button type="button" onClick={() => setAdminDraftFile(prev => prev.filter((_, i) => i !== fi))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: '0.72rem', padding: '0', flexShrink: 0 }}>Remove</button>
+                              <button
+                                type="button"
+                                onClick={() => setAdminDraftFile(prev => prev.filter((_, i) => i !== fi))}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', fontSize: '0.72rem', padding: '0', flexShrink: 0 }}
+                              >
+                                Remove
+                              </button>
                             </div>
                           ))}
                           {adminDraftFile.length < 5 && (
                             <label style={{ cursor: 'pointer' }}>
-                              <span style={{ fontSize: '0.72rem', color: 'var(--gold)', textDecoration: 'underline' }}>+ Add more ({5 - adminDraftFile.length} remaining)</span>
-                              <input type="file" accept="image/*,video/*,.pdf,.ai,.psd,.svg" multiple style={{ display: 'none' }} onChange={e => { const more = Array.from(e.target.files ?? []).slice(0, 5 - adminDraftFile.length); setAdminDraftFile(prev => [...prev, ...more]); e.target.value = ''; }} />
+                              <span style={{ fontSize: '0.72rem', color: 'var(--gold)', textDecoration: 'underline' }}>
+                                + Add more ({5 - adminDraftFile.length} remaining)
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/*,video/*,.pdf,.ai,.psd,.svg"
+                                multiple
+                                style={{ display: 'none' }}
+                                onChange={e => {
+                                  const more = Array.from(e.target.files ?? []).slice(0, 5 - adminDraftFile.length);
+                                  setAdminDraftFile(prev => [...prev, ...more]);
+                                  e.target.value = '';
+                                }}
+                              />
                             </label>
                           )}
-                          <div style={{ display: 'flex', gap: '6px' }}>
-                            <button type="button" disabled={adminDesignUploading} onClick={() => { handleAdminUploadDesign(adminDraftFile); setAdminDraftFile(null); }} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '0.4rem 0.875rem', background: adminDesignUploading ? 'var(--border)' : 'var(--gold)', borderRadius: '6px', color: adminDesignUploading ? 'var(--gray)' : '#000', fontSize: '0.8rem', fontWeight: 700, cursor: adminDesignUploading ? 'not-allowed' : 'pointer', border: 'none' }}>
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-                              {adminDesignUploading ? 'Uploading...' : `Send ${adminDraftFile.length} File${adminDraftFile.length > 1 ? 's' : ''}`}
+                          <div style={{ display: 'flex', gap: '6px', marginTop: '0.25rem' }}>
+                            {/* SEND button — this is the action trigger */}
+                            <button
+                              type="button"
+                              disabled={adminDesignUploading}
+                              onClick={() => handleAdminUploadDesign(adminDraftFile)}
+                              style={{
+                                flex: 1,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                padding: '0.5rem 0.875rem',
+                                background: adminDesignUploading ? 'var(--border)' : 'var(--gold)',
+                                borderRadius: '6px',
+                                color: adminDesignUploading ? 'var(--gray)' : '#000',
+                                fontSize: '0.82rem',
+                                fontWeight: 700,
+                                cursor: adminDesignUploading ? 'not-allowed' : 'pointer',
+                                border: 'none',
+                              }}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                              </svg>
+                              {adminDesignUploading
+                                ? 'Sending...'
+                                : `Send ${adminDraftFile.length} File${adminDraftFile.length > 1 ? 's' : ''} to Customer`}
                             </button>
-                            <button type="button" disabled={adminDesignUploading} onClick={() => setAdminDraftFile(null)} style={{ padding: '0.4rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--gray)', fontSize: '0.8rem', cursor: adminDesignUploading ? 'not-allowed' : 'pointer' }}>Cancel</button>
+                            <button
+                              type="button"
+                              disabled={adminDesignUploading}
+                              onClick={() => setAdminDraftFile(null)}
+                              style={{ padding: '0.5rem 0.75rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--gray)', fontSize: '0.8rem', cursor: adminDesignUploading ? 'not-allowed' : 'pointer' }}
+                            >
+                              Cancel
+                            </button>
                           </div>
                         </div>
+
                       ) : (
+                        /* No files selected, no draft yet — show initial picker */
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                           <div style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
                             Customer requested design service. Upload the design draft when ready.
                           </div>
                           <label style={{ cursor: 'pointer', display: 'inline-block' }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '0.4rem 0.875rem', background: 'var(--gold)', borderRadius: '6px', color: '#000', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '0.4rem 0.875rem', background: 'transparent', border: '1px solid rgba(212,168,67,0.5)', borderRadius: '6px', color: 'var(--gold)', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-                              Upload Design Draft
+                              Choose Files
                             </div>
-                            <input type="file" accept="image/*,video/*,.pdf,.ai,.psd,.svg" multiple style={{ display: 'none' }} onChange={e => { const files = Array.from(e.target.files ?? []).slice(0, 5); if (files.length) { setAdminDraftFile(files); setAdminDesignSuccess(false); } e.target.value = ''; }} />
+                            <input
+                              type="file"
+                              accept="image/*,video/*,.pdf,.ai,.psd,.svg"
+                              multiple
+                              style={{ display: 'none' }}
+                              onChange={e => {
+                                const files = Array.from(e.target.files ?? []).slice(0, 5);
+                                if (files.length) { setAdminDraftFile(files); setAdminDesignSuccess(false); }
+                                e.target.value = '';
+                              }}
+                            />
                           </label>
                         </div>
                       )}
-                      {adminDesignError && <div style={{ fontSize: '0.73rem', color: 'var(--red)', marginTop: '0.25rem' }}>{adminDesignError}</div>}
-                      {adminDesignSuccess && <div style={{ fontSize: '0.73rem', color: 'var(--gold)', marginTop: '0.25rem' }}>Draft uploaded. Customer has been notified.</div>}
+
+                      {adminDesignError && (
+                        <div style={{ fontSize: '0.73rem', color: 'var(--red)', marginTop: '0.5rem' }}>{adminDesignError}</div>
+                      )}
                     </div>
                   </div>
                 )}

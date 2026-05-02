@@ -113,6 +113,7 @@ class OrderController extends Controller
             $orderItems               = [];
             $totalAmount              = 0;
             $pendingFlashSaleIncrements = [];
+            $firstProduct             = null;
 
             foreach ($validated['items'] as $item) {
                 $product = Product::where('_id', $item['productId'])
@@ -122,6 +123,8 @@ class OrderController extends Controller
                 if (!$product) {
                     throw new \Exception("Product '{$item['productId']}' not found or unavailable.");
                 }
+
+                if (!$firstProduct) $firstProduct = $product;
 
                 $qty              = (int) $item['qty'];
                 $variantId        = $item['variantId'] ?? null;
@@ -179,6 +182,9 @@ class OrderController extends Controller
                     'designNotes' => $item['designNotes'] ?? null,
                 ];
             }
+
+            $requiresDownpayment = (bool) ($firstProduct?->requiresDownpayment ?? false);
+            $orderDownpaymentPct = $requiresDownpayment ? (int) ($firstProduct?->downpaymentPercent ?? 0) : 0;
 
             // Add shipping fee to total
             $shippingFee  = (float) ($validated['shippingFee'] ?? 0);
@@ -322,9 +328,11 @@ class OrderController extends Controller
                     : null,
                 'designFilePath'  => $designFilePath,
                 'designStatus'    => $designFilePath ? 'pending_review' : null,
-                'isCustomOrder'   => filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN),
-                'designType'      => $request->input('designType'),
-                'statusHistory'   => [['status' => $this->resolveInitialStatus($request), 'at' => now()->toISOString()]],
+                'isCustomOrder'        => filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN),
+                'designType'           => $request->input('designType'),
+                'requiresDownpayment'  => $requiresDownpayment,
+                'downpaymentPercent'   => $orderDownpaymentPct > 0 ? $orderDownpaymentPct : null,
+                'statusHistory'        => [['status' => $this->resolveInitialStatus($request), 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);

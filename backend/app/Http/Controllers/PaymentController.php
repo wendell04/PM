@@ -505,6 +505,7 @@ class PaymentController extends Controller
             $orderItems               = [];
             $totalAmount              = 0;
             $pendingFlashSaleIncrements = [];
+            $firstProduct             = null;
 
             foreach ($validated['items'] as $item) {
                 $product = Product::where('_id', $item['productId'])
@@ -514,6 +515,8 @@ class PaymentController extends Controller
                 if (!$product) {
                     return $this->errorResponse("Product '{$item['productId']}' not found or unavailable.", 422);
                 }
+
+                if (!$firstProduct) $firstProduct = $product;
 
                 $qty         = (int) $item['qty'];
                 $variantId   = $item['variantId'] ?? null;
@@ -563,6 +566,9 @@ class PaymentController extends Controller
                     'designFee'       => isset($item['designFee']) ? (float) $item['designFee'] : null,
                 ];
             }
+
+            $requiresDownpayment = (bool) ($firstProduct?->requiresDownpayment ?? false);
+            $orderDownpaymentPct = $requiresDownpayment ? (int) ($firstProduct?->downpaymentPercent ?? 0) : 0;
 
             $shippingFee  = (float) ($validated['shippingFee'] ?? 0);
             $totalAmount += $shippingFee;
@@ -645,10 +651,12 @@ class PaymentController extends Controller
                 'notes'           => htmlspecialchars(strip_tags(trim($validated['notes'] ?? '')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
                 'deliveryAddress' => $validated['deliveryAddress'] ?? null,
                 'designNotes'     => isset($validated['design_notes']) ? htmlspecialchars(strip_tags(trim($validated['design_notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : null,
-                'isCustomOrder'   => filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN),
-                'designType'      => $request->input('designType'),
-                'isDesignFeeOnly' => $isDesignFeeOnly,
-                'statusHistory'   => [['status' => $this->resolveCustomOrderStatus($request), 'at' => now()->toISOString()]],
+                'isCustomOrder'        => filter_var($request->input('isCustomOrder', false), FILTER_VALIDATE_BOOLEAN),
+                'designType'           => $request->input('designType'),
+                'isDesignFeeOnly'      => $isDesignFeeOnly,
+                'requiresDownpayment'  => $requiresDownpayment,
+                'downpaymentPercent'   => $orderDownpaymentPct > 0 ? $orderDownpaymentPct : null,
+                'statusHistory'        => [['status' => $this->resolveCustomOrderStatus($request), 'at' => now()->toISOString()]],
                 'createdAt'       => now(),
                 'updatedAt'       => now(),
             ]);
@@ -772,7 +780,6 @@ class PaymentController extends Controller
             if ($intentStatus === 'succeeded') {
                 if ($isDesignFeeOnly) {
                     $order->update([
-                        'paymentStatus'       => 'partial',
                         'designFeePaid'       => true,
                         'designFeePaidAmount' => $chargeAmount,
                     ]);
@@ -1085,6 +1092,16 @@ class PaymentController extends Controller
                     $order->designFeePaid = true;
                     $order->designFeePaidAmount = $paidAmount;
                     // paymentStatus stays 'unpaid' — design fee is separate from order payment
+                } elseif (($order->pendingPaymentType ?? null) === 'downpayment') {
+                    $dpAmt = (float) ($order->pendingPaymentAmount ?? $paidAmount);
+                    $order->paymentStatus        = 'partial';
+                    $order->downPayment          = $dpAmt;
+                    $order->balance              = round($orderTotal - $dpAmt, 2);
+                    $order->pendingPaymentType   = null;
+                    $order->pendingPaymentAmount = null;
+                    if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
+                        $order->orderStatus = 'awaiting_production';
+                    }
                 } else {
                     $order->paymentStatus = 'paid';
                     $order->downPayment   = $orderTotal;
@@ -1195,14 +1212,111 @@ class PaymentController extends Controller
 
             if (!$order) return $this->notFoundResponse('Order');
 
-            if ($order->paymentStatus === 'paid' ||
-                ($order->paymentStatus === 'partial' && ($order->designFeePaid ?? false))) {
-                return $this->successResponse('Already paid.', ['paymentStatus' => $order->paymentStatus]);
+            if ($order->paymentStatus === 'paid') {
+                return $this->successResponse('Already paid.', ['paymentStatus' => 'paid']);
             }
 
-            $intentId = $order->paymongoIntentId ?? null;
-            if (!$intentId) {
-                return $this->errorResponse('No payment intent on this order.', 422);
+            $intentId  = $order->paymongoIntentId ?? null;
+            $sessionId = $order->paymongoLinkId   ?? null;
+
+            if (!$intentId && !$sessionId) {
+                return $this->errorResponse('No payment reference on this order.', 422);
+            }
+
+            // ── Checkout session verification path ────────────────────────────
+            if (!$intentId && $sessionId) {
+                $res = Http::withBasicAuth($this->secretKey, '')
+                    ->get("{$this->baseUrl}/checkout_sessions/{$sessionId}");
+
+                if (!$res->successful()) {
+                    Log::warning('verifyIntent: checkout session fetch failed', [
+                        'order_id' => $validated['orderId'],
+                        'status'   => $res->status(),
+                    ]);
+                    return $this->errorResponse('Could not reach payment gateway.', 502);
+                }
+
+                $sessionData   = $res->json()['data'] ?? [];
+                $sessionStatus = $sessionData['attributes']['status'] ?? null;
+                $payments      = $sessionData['attributes']['payments'] ?? [];
+
+                if ($sessionStatus !== 'completed' || empty($payments)) {
+                    return $this->successResponse('Payment not yet confirmed.', ['paymentStatus' => $sessionStatus]);
+                }
+
+                $latestPayment   = $payments[0];
+                $paymentId       = $latestPayment['id'] ?? null;
+                $payAttrs        = $latestPayment['attributes'] ?? [];
+                $paymentMethod   = $payAttrs['source']['type'] ?? $payAttrs['payment_method_type'] ?? 'online';
+                $paidAmount      = round((float) ($payAttrs['amount'] ?? $payAttrs['net_amount'] ?? 0) / 100, 2);
+                $totalAmount     = (float) ($order->totalAmount ?? 0);
+                $isDesignFeeOnly = (bool) ($order->isDesignFeeOnly ?? false);
+
+                if ($isDesignFeeOnly && ($order->designFeePaid ?? false)) {
+                    return $this->successResponse('Design fee already confirmed.', [
+                        'paymentStatus' => $order->paymentStatus,
+                        'designFeePaid' => true,
+                    ]);
+                }
+
+                if ($isDesignFeeOnly) {
+                    $order->designFeePaid       = true;
+                    $order->designFeePaidAmount = $paidAmount;
+                } elseif (($order->pendingPaymentType ?? null) === 'downpayment') {
+                    $dpAmt = (float) ($order->pendingPaymentAmount ?? $paidAmount);
+                    $order->paymentStatus        = 'partial';
+                    $order->downPayment          = $dpAmt;
+                    $order->balance              = round($totalAmount - $dpAmt, 2);
+                    $order->pendingPaymentType   = null;
+                    $order->pendingPaymentAmount = null;
+                    if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
+                        $order->orderStatus = 'awaiting_production';
+                    }
+                } else {
+                    $order->paymentStatus = 'paid';
+                    $order->downPayment   = $totalAmount;
+                    $order->balance       = 0;
+                    if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
+                        $order->orderStatus = 'awaiting_production';
+                    }
+                    if ($order->isCustomOrder && $order->orderStatus === 'ready_for_delivery') {
+                        $order->orderStatus = 'for_delivery';
+                    }
+                }
+                $history   = $order->paymentHistory ?? [];
+                $history[] = ['amount' => $paidAmount, 'method' => $paymentMethod, 'note' => 'Payment confirmed via PayMongo Checkout Session (' . $sessionId . ')', 'paidAt' => now()->toDateTimeString()];
+                $order->paymentDate       = now();
+                $order->paymentMethod     = $paymentMethod;
+                $order->paymongoPaymentId = $paymentId;
+                $order->paymentHistory    = $history;
+                $order->updatedAt = now();
+                $order->save();
+
+                try {
+                    $admin = User::where('role', 'admin')->first();
+                    if ($admin) {
+                        Notification::create([
+                            'user_id'    => (string) $admin->_id,
+                            'type'       => 'new_order',
+                            'title'      => 'Payment Received',
+                            'message'    => 'Order #' . strtoupper(substr((string) $order->_id, -8)) .
+                                            ' paid by ' . ($order->userSnapshot['name'] ?? 'Unknown') .
+                                            " via {$paymentMethod}.",
+                            'is_read'    => false,
+                            'data'       => ['orderId' => (string) $order->_id],
+                            'created_at' => now(),
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('verifyIntent: admin notification failed', ['error' => $e->getMessage()]);
+                }
+
+                Log::info('verifyIntent: order marked paid via checkout session', [
+                    'orderId'   => (string) $order->_id,
+                    'sessionId' => $sessionId,
+                ]);
+
+                return $this->successResponse('Payment verified and order marked paid.', ['paymentStatus' => 'paid']);
             }
 
             $res = Http::withBasicAuth($this->secretKey, '')
@@ -1232,9 +1346,26 @@ class PaymentController extends Controller
             $paidAmount    = round((float) ($intentData['attributes']['amount'] ?? ($totalAmount * 100)) / 100, 2);
             $isDesignFeeOnly = (bool) ($order->isDesignFeeOnly ?? false);
 
+            if ($isDesignFeeOnly && ($order->designFeePaid ?? false)) {
+                return $this->successResponse('Design fee already confirmed.', [
+                    'paymentStatus' => $order->paymentStatus,
+                    'designFeePaid' => true,
+                ]);
+            }
+
             if ($isDesignFeeOnly) {
                 $order->designFeePaid = true;
                 // paymentStatus stays 'unpaid' — design fee is separate from order payment
+            } elseif (($order->pendingPaymentType ?? null) === 'downpayment') {
+                $dpAmt = (float) ($order->pendingPaymentAmount ?? $paidAmount);
+                $order->paymentStatus        = 'partial';
+                $order->downPayment          = $dpAmt;
+                $order->balance              = round($totalAmount - $dpAmt, 2);
+                $order->pendingPaymentType   = null;
+                $order->pendingPaymentAmount = null;
+                if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
+                    $order->orderStatus = 'awaiting_production';
+                }
             } else {
                 $order->paymentStatus = 'paid';
                 $order->downPayment   = $totalAmount;
@@ -1246,15 +1377,12 @@ class PaymentController extends Controller
                     $order->orderStatus = 'for_delivery';
                 }
             }
+            $history   = $order->paymentHistory ?? [];
+            $history[] = ['amount' => $paidAmount, 'method' => $paymentMethod, 'note' => 'Payment confirmed via PayMongo (' . $intentId . ')', 'paidAt' => now()->toDateTimeString()];
             $order->paymentDate       = now();
             $order->paymentMethod     = $paymentMethod;
             $order->paymongoPaymentId = $paymentId;
-            $order->paymentHistory    = [[
-                'amount' => $paidAmount,
-                'method' => $paymentMethod,
-                'note'   => 'Payment confirmed via PayMongo (' . $intentId . ')',
-                'paidAt' => now()->toDateTimeString(),
-            ]];
+            $order->paymentHistory    = $history;
             $order->updatedAt = now();
             $order->save();
 
@@ -1383,21 +1511,21 @@ class PaymentController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user) {
-                return $this->unauthorizedResponse();
-            }
+            if (!$user) return $this->unauthorizedResponse();
 
             $validated = $request->validate([
-                'orderId' => 'required|string|regex:/^[a-f0-9]{24}$/i',
+                'orderId'         => 'required|string|regex:/^[a-f0-9]{24}$/i',
+                'paymentMethod'   => 'nullable|string|in:gcash,paymaya,card',
+                'paymentMethodId' => 'nullable|string',
+                'eWalletPhone'    => 'nullable|string|max:20',
+                'payFull'         => 'nullable|boolean',
             ]);
 
             $order = Order::where('_id', $validated['orderId'])
                           ->where('userId', (string) $user->_id)
                           ->first();
 
-            if (!$order) {
-                return $this->notFoundResponse('Order');
-            }
+            if (!$order) return $this->notFoundResponse('Order');
 
             if ($order->paymentStatus === 'paid') {
                 return $this->errorResponse('This order has already been fully paid.', 422);
@@ -1410,38 +1538,175 @@ class PaymentController extends Controller
                 return $this->errorResponse('No outstanding balance on this order.', 422);
             }
 
-            $orderId          = (string) $order->_id;
-            $orderShortId     = strtoupper(substr($orderId, -8));
-            $amountInCentavos = (int) round($amountDue * 100);
-            $frontendUrl      = rtrim(config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000')), '/');
+            $orderId        = (string) $order->_id;
+            $frontendUrl    = rtrim(config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000')), '/');
+            $paymentType    = $validated['paymentMethod'] ?? null;
+            $payFull        = filter_var($validated['payFull'] ?? true, FILTER_VALIDATE_BOOLEAN);
+            $isDP           = false;
+            $dpAmount       = 0.0;
+
+            // ── Downpayment vs full-payment resolution ────────────────────
+            if (!$payFull && $order->paymentStatus === 'unpaid') {
+                $dpPercent = (int) ($order->downpaymentPercent ?? 0);
+                if ($dpPercent <= 0) {
+                    $firstProdId = $order->items[0]['productId'] ?? null;
+                    if ($firstProdId) {
+                        $prod = Product::find($firstProdId);
+                        $dpPercent = ($prod && $prod->requiresDownpayment) ? (int) ($prod->downpaymentPercent ?? 0) : 0;
+                    }
+                }
+                if ($dpPercent > 0) {
+                    $dpAmount = round((float) ($order->totalAmount ?? 0) * $dpPercent / 100, 2);
+                    $isDP     = true;
+                }
+            }
+
+            $chargeAmount   = $isDP ? $dpAmount : $amountDue;
+            $amountCentavos = (int) round($chargeAmount * 100);
+
+            if ($isDP) {
+                $order->pendingPaymentType   = 'downpayment';
+                $order->pendingPaymentAmount = $dpAmount;
+                $order->save();
+            }
+
+            // ── Payment Intent flow (GCash, Maya, Card) ──────────────────
+            if ($paymentType && in_array($paymentType, ['gcash', 'paymaya', 'card'])) {
+
+                $intentRes = Http::withBasicAuth($this->secretKey, '')
+                    ->post("{$this->baseUrl}/payment_intents", [
+                        'data' => ['attributes' => [
+                            'amount'                 => $amountCentavos,
+                            'payment_method_allowed' => [$paymentType],
+                            'payment_method_options' => ['card' => ['request_three_d_secure' => 'any']],
+                            'currency'               => 'PHP',
+                            'capture_type'           => 'automatic',
+                            'description'            => 'Order #' . strtoupper(substr($orderId, -8)),
+                            'metadata'               => ['order_id' => $orderId],
+                        ]]
+                    ]);
+
+                if (!$intentRes->successful()) {
+                    Log::error('createOrderPayLink: intent failed', ['order_id' => $orderId, 'body' => $intentRes->body()]);
+                    return $this->errorResponse('Payment gateway error. Please try again.', 502);
+                }
+
+                $intentId        = $intentRes->json()['data']['id'];
+                $paymentMethodId = $validated['paymentMethodId'] ?? null;
+
+                if ($paymentType !== 'card') {
+                    $rawPhone = !empty($validated['eWalletPhone'])
+                        ? $validated['eWalletPhone']
+                        : ($user->phoneNumber ?? '');
+                    $phone = ltrim(preg_replace('/^\+?63/', '', preg_replace('/\s+/', '', $rawPhone)), '0');
+
+                    $pmRes = Http::withBasicAuth($this->secretKey, '')
+                        ->post("{$this->baseUrl}/payment_methods", [
+                            'data' => ['attributes' => [
+                                'type'    => $paymentType,
+                                'billing' => [
+                                    'name'  => trim("{$user->firstName} {$user->lastName}"),
+                                    'email' => $user->email,
+                                    'phone' => $phone,
+                                ],
+                            ]]
+                        ]);
+
+                    if (!$pmRes->successful()) {
+                        return $this->errorResponse('Failed to initialize payment method.', 502);
+                    }
+                    $paymentMethodId = $pmRes->json()['data']['id'];
+                }
+
+                if (!$paymentMethodId) {
+                    return $this->errorResponse('Card payment method ID is required.', 422);
+                }
+
+                $attachRes = Http::withBasicAuth($this->secretKey, '')
+                    ->post("{$this->baseUrl}/payment_intents/{$intentId}/attach", [
+                        'data' => ['attributes' => [
+                            'payment_method' => $paymentMethodId,
+                            'return_url'     => "{$frontendUrl}/shop/payment-success?id={$orderId}",
+                        ]]
+                    ]);
+
+                if (!$attachRes->successful()) {
+                    Log::error('createOrderPayLink: attach failed', ['order_id' => $orderId, 'body' => $attachRes->body()]);
+                    return $this->errorResponse('Failed to attach payment. Please try again.', 502);
+                }
+
+                $attachData   = $attachRes->json()['data'];
+                $intentStatus = $attachData['attributes']['status'];
+                $redirectUrl  = $attachData['attributes']['next_action']['redirect']['url'] ?? null;
+
+                $order->paymongoIntentId = $intentId;
+                $order->save();
+
+                if ($intentStatus === 'succeeded') {
+                    $updates = [
+                        'paymentMethod' => $paymentType,
+                        'paymentDate'   => now(),
+                    ];
+                    if ($isDP) {
+                        $updates['paymentStatus']         = 'partial';
+                        $updates['downPayment']           = $dpAmount;
+                        $updates['balance']               = round((float) $order->totalAmount - $dpAmount, 2);
+                        $updates['pendingPaymentType']    = null;
+                        $updates['pendingPaymentAmount']  = null;
+                        if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
+                            $updates['orderStatus'] = 'awaiting_production';
+                        }
+                    } else {
+                        $updates['paymentStatus'] = 'paid';
+                        if ($order->isCustomOrder && $order->orderStatus === 'awaiting_payment') {
+                            $updates['orderStatus'] = 'awaiting_production';
+                        }
+                        if ($order->isCustomOrder && $order->orderStatus === 'ready_for_delivery') {
+                            $updates['orderStatus'] = 'for_delivery';
+                        }
+                    }
+                    $order->update($updates);
+                    return $this->successResponse('Payment completed.', [
+                        'orderId' => $orderId,
+                        'status'  => 'succeeded',
+                    ]);
+                }
+
+                return $this->successResponse('Payment initiated.', [
+                    'orderId'     => $orderId,
+                    'status'      => $intentStatus,
+                    'checkoutUrl' => $redirectUrl,
+                ]);
+            }
+
+            // ── Fallback: hosted checkout (no paymentMethod specified) ────
+            $orderShortId = strtoupper(substr($orderId, -8));
 
             $pmResponse = Http::withBasicAuth($this->secretKey, '')
                 ->post("{$this->baseUrl}/checkout_sessions", [
-                    'data' => [
-                        'attributes' => [
-                            'billing' => [
-                                'name'  => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')),
-                                'email' => $user->email ?? '',
-                                'phone' => $user->phoneNumber ?? $user->phone ?? '',
-                            ],
-                            'send_email_receipt'   => true,
-                            'show_description'     => true,
-                            'show_line_items'      => true,
-                            'reference_number'     => $orderId,
-                            'payment_method_types' => ['gcash', 'paymaya', 'card'],
-                            'line_items' => [[
-                                'currency' => 'PHP',
-                                'amount'   => $amountInCentavos,
-                                'name'     => "Order #{$orderShortId}",
-                                'quantity' => 1,
-                            ]],
-                            'redirect' => [
-                                'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}",
-                                'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}",
-                            ],
-                            'cancel_url' => "{$frontendUrl}/shop/orders-history?payment_cancelled=1",
+                    'data' => ['attributes' => [
+                        'billing' => [
+                            'name'  => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')),
+                            'email' => $user->email ?? '',
+                            'phone' => $user->phoneNumber ?? $user->phone ?? '',
                         ],
-                    ],
+                        'send_email_receipt'   => true,
+                        'show_description'     => true,
+                        'show_line_items'      => true,
+                        'reference_number'     => $orderId,
+                        'payment_method_types' => ['gcash', 'paymaya', 'card'],
+                        'line_items' => [[
+                            'currency' => 'PHP',
+                            'amount'   => $amountCentavos,
+                            'name'     => "Order #{$orderShortId}",
+                            'quantity' => 1,
+                        ]],
+                        'redirect' => [
+                            'success' => "{$frontendUrl}/shop/payment-success?id={$orderId}",
+                            'failed'  => "{$frontendUrl}/shop/payment-failed?id={$orderId}",
+                        ],
+                        'cancel_url' => "{$frontendUrl}/shop/orders-history?payment_cancelled=1",
+                    ]],
                 ]);
 
             if (!$pmResponse->successful()) {
@@ -1452,9 +1717,16 @@ class PaymentController extends Controller
                 return $this->errorResponse('Failed to create payment session. Please try again.', 502);
             }
 
-            $checkoutUrl = data_get($pmResponse->json(), 'data.attributes.checkout_url');
+            $pmJson      = $pmResponse->json();
+            $checkoutUrl = data_get($pmJson, 'data.attributes.checkout_url');
             if (!$checkoutUrl) {
                 return $this->errorResponse('Payment session created but checkout URL is missing.', 502);
+            }
+
+            $sessionId = data_get($pmJson, 'data.id');
+            if ($sessionId) {
+                $order->paymongoLinkId = $sessionId;
+                $order->save();
             }
 
             return $this->successResponse('Payment link created.', [

@@ -67,7 +67,7 @@ export default function PaymentSuccessPage() {
         const fetched = data.data ?? data;
         setOrder(fetched);
 
-        const isSettled = fetched.paymentStatus === 'paid' || fetched.designFeePaid === true;
+        const isSettled = fetched.paymentStatus === 'paid' || fetched.paymentStatus === 'partial' || fetched.designFeePaid === true;
         if (!isCod && !isOrderRequest && !isSettled && attempt < 6) {
           setTimeout(() => fetchOrder(attempt + 1), 2000);
         } else if (!isCod && !isOrderRequest && !isSettled) {
@@ -137,7 +137,7 @@ export default function PaymentSuccessPage() {
           color: 'var(--white)',
           marginBottom: '8px',
         }}>
-          {isCod ? 'Order Placed!' : (order?.designFeePaid && order?.paymentStatus !== 'paid') ? 'Design Fee Paid!' : 'Payment Successful'}
+          {isCod ? 'Order Placed!' : order?.paymentStatus === 'partial' ? 'Downpayment Received!' : (order?.designFeePaid && order?.paymentStatus !== 'paid') ? 'Design Fee Paid!' : 'Payment Successful'}
         </h1>
 
         <p style={{
@@ -148,9 +148,11 @@ export default function PaymentSuccessPage() {
         }}>
           {isCod
             ? "Thank you for your order. Our team will contact you to confirm delivery and payment details."
-            : (order?.designFeePaid && order?.paymentStatus !== 'paid')
-              ? "Your design fee has been received. Our designer will send you a proof via chat within 24–48 hours. The remaining order balance is due after you approve the design."
-              : "Thank you for your order. We've received your payment and will begin processing shortly."}
+            : order?.paymentStatus === 'partial'
+              ? `Your downpayment of ₱${Number(order?.downPayment ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} has been received. The remaining balance of ₱${Number(order?.balance ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })} is due before delivery.`
+              : (order?.designFeePaid && order?.paymentStatus !== 'paid')
+                ? "Your design fee has been received. Our designer will send you a proof via chat within 24–48 hours. The remaining order balance is due after you approve the design."
+                : "Thank you for your order. We've received your payment and will begin processing shortly."}
         </p>
 
         {verifying && (
@@ -235,7 +237,28 @@ export default function PaymentSuccessPage() {
 
             {/* Total + Status */}
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '8px', paddingTop: '10px' }}>
-              {order.designFeePaid && order.paymentStatus !== 'paid' ? (
+              {order.paymentStatus === 'partial' ? (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.88rem' }}>Downpayment Paid</span>
+                    <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.95rem' }}>
+                      ₱{Number(order.downPayment ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>Remaining Balance</span>
+                    <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>
+                      ₱{Number(order.balance ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>Payment Status</span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f59e0b' }}>
+                      Downpayment Paid · Balance Due
+                    </span>
+                  </div>
+                </>
+              ) : order.designFeePaid && order.paymentStatus !== 'paid' ? (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                     <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '0.88rem' }}>Design Fee Paid</span>

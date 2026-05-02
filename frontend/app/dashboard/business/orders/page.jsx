@@ -518,33 +518,6 @@ export default function OrdersPage() {
                             
                             {/* Payment Breakdown */}
                             <div>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Payment</div>
-                                {!['Delivered','Cancelled','Returned'].includes(o.orderStatus) && (
-                                  <button
-                                    onClick={() => {
-                                      setPaymentTarget(o);
-                                      setPaymentAmount('');
-                                      setPaymentMethod('cash');
-                                      setPaymentNote('');
-                                      setPaymentError('');
-                                      setShowPaymentModal(true);
-                                    }}
-                                    style={{
-                                      fontSize: '0.68rem',
-                                      padding: '0.2rem 0.5rem',
-                                      background: 'rgba(250,204,21,0.12)',
-                                      border: '1px solid rgba(250,204,21,0.4)',
-                                      borderRadius: '4px',
-                                      color: 'var(--gold)',
-                                      cursor: 'pointer',
-                                      fontWeight: 600,
-                                    }}
-                                  >
-                                    + Record Payment
-                                  </button>
-                                )}
-                              </div>
                               <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.7 }}>
                                 {Number(o.discountAmount) > 0 && (
                                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
