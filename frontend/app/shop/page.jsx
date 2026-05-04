@@ -735,7 +735,7 @@ export default function ShopPage() {
                           const unlimited = !quickAddProduct.trackInventory || quickAddProduct.isMadeToOrder || quickAddProduct.stockStatus === 'upon-order' || !!quickAddProduct.variantBackorder?.[combo.id];
                           if (!unlimited) {
                             const vqty = quickAddProduct.variantStock?.[combo.id];
-                            const cap = vqty != null ? Number(vqty) : (quickAddProduct.stock ?? 9999);
+                            const cap = vqty != null ? Number(vqty) : (quickAddProduct.availableQty ?? quickAddProduct.stock ?? 9999);
                             setQuickQty(q => Math.min(q, Math.max(quickAddProduct.minOrderQty || 1, cap)));
                           }
                         }}

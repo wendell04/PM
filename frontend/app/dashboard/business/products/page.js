@@ -113,6 +113,7 @@ const EMPTY_NEW_PRODUCT = {
   trackInventory: true,
   stock: "",
   inventoryId: "",
+  storeStockCap: "",
   price: "",
   variantPrices: {},
   tiers: [{ id: 1, minQty: 1, maxQty: 20, prices: { __base__: "" } }],
@@ -776,6 +777,7 @@ function EditProductModal({
         ? String(product.stock)
         : "",
     inventoryId: product.inventoryId || "",
+    storeStockCap: product.storeStockCap != null ? String(product.storeStockCap) : "",
   });
 
   const [fixedPrice, setFixedPrice] = useState(product.price || "");
@@ -1361,6 +1363,7 @@ function EditProductModal({
         images: galleryUrls,
         trackInventory: formData.trackInventory,
         stock: stockVal,
+        storeStockCap: formData.storeStockCap !== "" ? parseInt(formData.storeStockCap) || null : null,
         updatedAt: new Date().toISOString(),
       };
       onSave(updatedProduct);
@@ -1619,6 +1622,31 @@ function EditProductModal({
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* ── STOREFRONT CAP ── */}
+            <div className="form-section">
+              <h2 className="form-section-title">Storefront Cap</h2>
+              <div
+                className="stock-qty-input-wrap"
+                style={{ marginTop: "0.5rem" }}
+              >
+                <label className="form-label">Max Sellable Qty (optional)</label>
+                <NumberInput
+                  className="form-input"
+                  value={formData.storeStockCap}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "" || parseInt(val) >= 0)
+                      setFormData((prev) => ({ ...prev, storeStockCap: val }));
+                  }}
+                  placeholder="Leave blank for unlimited"
+                  min={0}
+                />
+                <p className="form-hint" style={{ marginTop: "0.5rem", color: "var(--gray)" }}>
+                  Caps how many units customers can order even if inventory allows more. Leave blank to use live inventory / can-produce count.
+                </p>
+              </div>
             </div>
 
             {/* ── VARIANTS ── */}
@@ -2708,17 +2736,21 @@ function ProductExpandRow({ product, inv, boms = [], inventoryList = [] }) {
           <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
             {variantAvailability.map((v, i) => {
               const bom = productBoms[i];
-              const storefrontStock = bom ? (product.variantStock?.[bom.id] ?? null) : null;
+              const storefrontCap = bom && product.variantStock?.[bom.id] > 0 ? product.variantStock[bom.id] : null;
               const backorderOn = bom ? (product.variantBackorder?.[bom.id] ?? false) : false;
-              const stockOverMax = backorderOn && storefrontStock != null && storefrontStock > v.available;
+              const effectiveStorefront = backorderOn ? 9999 : (storefrontCap != null ? Math.min(v.available, storefrontCap) : v.available);
+              const stockOverMax = backorderOn && storefrontCap != null && storefrontCap > v.available;
               return (
                 <div key={i} style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                     <span style={{ fontSize: "0.8rem", color: "var(--white)", fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "200px" }}>{v.label}</span>
-                    {storefrontStock != null && !product.isMadeToOrder && (
-                      <span style={{ fontSize: "0.75rem", fontWeight: 700, color: storefrontStock === 0 ? "#ef4444" : storefrontStock <= 10 ? "#f59e0b" : "#22c55e", flexShrink: 0 }}>
-                        {storefrontStock === 0 ? "Out of stock" : `${storefrontStock} in stock`}
+                    {!product.isMadeToOrder && (
+                      <span style={{ fontSize: "0.75rem", fontWeight: 700, color: effectiveStorefront === 0 ? "#ef4444" : effectiveStorefront <= 10 ? "#f59e0b" : "#22c55e", flexShrink: 0 }}>
+                        {effectiveStorefront === 0 ? "Out of stock" : backorderOn ? "Backorder" : `${effectiveStorefront} in stock`}
                       </span>
+                    )}
+                    {storefrontCap != null && !backorderOn && (
+                      <span style={{ fontSize: "0.6rem", color: "var(--gray)", flexShrink: 0 }}>cap: {storefrontCap}</span>
                     )}
                     {backorderOn && (
                       <span style={{ fontSize: "0.6rem", fontWeight: 700, background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: "4px", padding: "0.05rem 0.35rem", color: "#818cf8", flexShrink: 0 }}>
@@ -4535,8 +4567,9 @@ export default function ProductListPage() {
   const getProductInventoryDisplay = (product) => {
     if (product.isMadeToOrder) return { text: "Made to Order", color: "#D4A843" };
 
-    // Prefer saved storefront stock over BOM max producible
-    if (product.variantStock && Object.keys(product.variantStock).length) {
+    const hasBom = product.bomId || product.bomGroupName;
+    // Prefer saved storefront stock over BOM max producible (skip for BOM products — variantStock is a cap, not actual availability)
+    if (!hasBom && product.variantStock && Object.keys(product.variantStock).length) {
       const total = Object.values(product.variantStock).reduce((s, v) => s + (Number(v) || 0), 0);
       const variantCount = Object.keys(product.variantStock).length;
       const allZero = Object.values(product.variantStock).every((v) => Number(v) === 0);
@@ -4545,7 +4578,7 @@ export default function ProductListPage() {
         color: allZero ? "#ef4444" : total <= 10 ? "#f59e0b" : "#22c55e",
       };
     }
-    if (product.stock != null && product.trackInventory) {
+    if (!hasBom && product.stock != null && product.trackInventory) {
       const s = Number(product.stock) || 0;
       return {
         text: s === 0 ? "Out of stock" : `${s} in stock`,
@@ -4609,7 +4642,8 @@ export default function ProductListPage() {
     });
 
     const sumExclusive = perVariantUnits.reduce((s, u) => s + u, 0);
-    const totalUnits = sharedCap === Infinity ? sumExclusive : Math.min(sumExclusive, sharedCap);
+    // If shared materials exist, the cap IS the total (can't sum variants — they compete for the same pool)
+    const totalUnits = sharedCap === Infinity ? sumExclusive : sharedCap;
     const variantCount = productBoms.length;
 
     const extraNames = sharedNames.size > 0 ? sharedNames : (() => {
@@ -4623,7 +4657,12 @@ export default function ProductListPage() {
       return s;
     })();
     const extraText = extraNames.size > 0 ? ` w/ ${[...extraNames].join(", ")}` : "";
-    const variantText = variantCount > 1 ? ` for ${variantCount} variants${extraText}` : extraText;
+    const variantsWithStock = perVariantUnits.filter((u) => u > 0).length;
+    const variantText = variantCount > 1
+      ? variantsWithStock === variantCount
+        ? ` for ${variantCount} variants${extraText}`
+        : ` for ${variantsWithStock}/${variantCount} variants${extraText}`
+      : extraText;
 
     return {
       text: `${totalUnits} in stock${variantText}`,

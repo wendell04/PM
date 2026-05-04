@@ -156,15 +156,6 @@ export default function OrdersPage() {
       <div className="page-content-wrapper">
       {/* Page Header */}
       <div className="page-header">
-        <div className="page-header-content">
-          <div>
-            <h1 className="page-title">Orders</h1>
-            <p className="page-subtitle">Manage customer orders and design approvals.</p>
-          </div>
-          <button className="btn-primary" onClick={() => setShowJOQueuing(true)}>
-            Job Schedule
-          </button>
-        </div>
 
         {/* Stats */}
         <div className="inventory-summary">

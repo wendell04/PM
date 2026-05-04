@@ -152,8 +152,13 @@ export default function CartPage() {
         downpaymentMinQty:   item.downpaymentMinQty ?? null,
       },
       stockCap: (() => {
-        const tracked = item.trackInventory && item.stockStatus !== 'upon-order';
-        return tracked ? Math.max(item.stock ?? 99, 1) : 99;
+        if (!item.trackInventory || item.stockStatus === 'upon-order') return 99;
+        if (item.variantId && item.product?.variantAvailableQty?.[item.variantId] != null)
+          return Math.max(item.product.variantAvailableQty[item.variantId], 1);
+        if (item.product?.canProduce != null) return Math.max(item.product.availableQty ?? 0, 1);
+        if (item.variantId && item.product?.variantStock?.[item.variantId] != null)
+          return Math.max(Number(item.product.variantStock[item.variantId]), 1);
+        return Math.max(item.product?.availableQty ?? item.stock ?? 99, 1);
       })(),
     };
   }), [cartItems]);

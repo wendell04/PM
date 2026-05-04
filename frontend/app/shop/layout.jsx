@@ -1025,9 +1025,15 @@ export default function ShopLayout({ children }) {
       if (exists) {
         return prev.map(i => {
           if (`${(i.product.id ?? i.product._id)}_${i.variantId ?? 'none'}` !== key) return i;
-          const stockCap = i.trackInventory && i.stockStatus !== 'upon-order'
-            ? Math.max(i.stock ?? 99, 1)
-            : 99;
+          const stockCap = (() => {
+            if (!i.trackInventory || i.stockStatus === 'upon-order') return 99;
+            if (i.variantId && i.product?.variantAvailableQty?.[i.variantId] != null)
+              return Math.max(i.product.variantAvailableQty[i.variantId], 1);
+            if (i.product?.canProduce != null) return Math.max(i.product.availableQty ?? 0, 1);
+            if (i.variantId && i.product?.variantStock?.[i.variantId] != null)
+              return Math.max(Number(i.product.variantStock[i.variantId]), 1);
+            return Math.max(i.product?.availableQty ?? i.stock ?? 99, 1);
+          })();
           const newQty = Math.min(i.qty + qty, stockCap);
           return { ...i, qty: newQty, lineTotal: newQty * i.unitPrice };
         });

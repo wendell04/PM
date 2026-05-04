@@ -66,7 +66,7 @@ class ReviewController extends Controller
             $order = Order::where('_id', $orderId)->where('userId', (string) $user->_id)->first();
             if (!$order) return $this->notFoundResponse('Order');
 
-            if ($order->orderStatus !== 'Delivered') {
+            if (strtolower($order->orderStatus) !== 'delivered') {
                 return $this->errorResponse('You can only review delivered orders.', 422);
             }
 

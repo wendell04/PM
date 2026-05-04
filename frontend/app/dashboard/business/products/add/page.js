@@ -464,7 +464,7 @@ export default function AddProductPage() {
   useEffect(() => {
     if (editHydrated) return; // skip resets while hydrating from existing product
     const initPrices = {}, initStock = {}, initTierPrices = {}, initBo = {};
-    selectedBoms.forEach(({ bom }) => { initPrices[bom.id] = ""; initStock[bom.id] = String(maxProducible[bom.id] ?? 0); initTierPrices[bom.id] = ""; initBo[bom.id] = false; });
+    selectedBoms.forEach(({ bom }) => { initPrices[bom.id] = ""; initStock[bom.id] = ""; initTierPrices[bom.id] = ""; initBo[bom.id] = false; });
     setVariantPrices(initPrices);
     setStockMap(initStock);
     setBackorderMap(initBo);
@@ -472,23 +472,8 @@ export default function AddProductPage() {
     setTiers([{ id: 1, minQty: 1, maxQty: 20, prices: priceKey }]);
   }, [selectedBoms.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync stockMap from maxProducible when inventory loads or boms change.
-  // Also applies in edit mode when the saved value is 0 (never intentionally set).
-  useEffect(() => {
-    setStockMap((prev) => {
-      const updated = { ...prev };
-      let changed = false;
-      selectedBoms.forEach(({ bom }) => {
-        const cur = prev[bom.id];
-        const isUnset = cur === "" || cur === undefined || cur === "0" || cur === 0;
-        if (isUnset) {
-          const mp = String(maxProducible[bom.id] ?? 0);
-          if (updated[bom.id] !== mp) { updated[bom.id] = mp; changed = true; }
-        }
-      });
-      return changed ? updated : prev;
-    });
-  }, [maxProducible]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Storefront cap (stockMap) intentionally NOT auto-filled from maxProducible.
+  // Blank = live canProduce from inventory. Admin sets a value only to cap it.
 
   useEffect(() => {
     if (primaryBom && !storefrontName) setStorefrontName(primaryBom.productName || "");
@@ -1074,9 +1059,9 @@ export default function AddProductPage() {
                   <div style={{ fontSize: "0.8rem", color: "var(--gray)", marginBottom: "0.75rem" }}>
                     Max producible from current stock: <strong style={{ color: "#E5E2E1" }}>{maxProducible[primaryBom?.id] ?? 0} units</strong>
                   </div>
-                  <label style={{ fontSize: "0.78rem", fontWeight: 600, color: "rgba(229,226,225,0.7)", display: "block", marginBottom: "0.4rem" }}>Storefront Stock</label>
+                  <label style={{ fontSize: "0.78rem", fontWeight: 600, color: "rgba(229,226,225,0.7)", display: "block", marginBottom: "0.4rem" }}>Storefront Cap <span style={{ fontWeight: 400, color: "var(--gray)" }}>(optional — blank = live canProduce)</span></label>
                   <NumberInput className="form-input"
-                    value={stockMap[primaryBom?.id] ?? String(maxProducible[primaryBom?.id] ?? 0)}
+                    value={stockMap[primaryBom?.id] ?? ""}
                     onChange={(e) => {
                       const val = e.target.value;
                       const boOn = backorderMap[primaryBom?.id] ?? false;
@@ -1084,7 +1069,7 @@ export default function AddProductPage() {
                       if (val !== "" && parseInt(val) > hard) return;
                       setStockMap((p) => ({ ...p, [primaryBom.id]: val }));
                     }}
-                    placeholder="0" min={0} max={(backorderMap[primaryBom?.id] ?? false) ? 99999 : (maxProducible[primaryBom?.id] ?? 0)} />
+                    placeholder="Leave blank for live count" min={0} max={(backorderMap[primaryBom?.id] ?? false) ? 99999 : (maxProducible[primaryBom?.id] ?? 0)} />
                 </div>
               ) : (
                 <div className="tier-table-wrap">
@@ -1093,7 +1078,7 @@ export default function AddProductPage() {
                       <tr>
                         <th>Variant</th>
                         <th>Max Producible</th>
-                        <th>Storefront Stock</th>
+                        <th>Storefront Cap</th>
                         <th style={{ whiteSpace: "nowrap" }}>Allow Backorder</th>
                       </tr>
                     </thead>
@@ -1115,7 +1100,7 @@ export default function AddProductPage() {
                                   if (val !== "" && parseInt(val) > hard) return;
                                   setStockMap((p) => ({ ...p, [bom.id]: val }));
                                 }}
-                                placeholder="0" min={0} max={boOn ? 99999 : mp} />
+                                placeholder="Blank = live" min={0} max={boOn ? 99999 : mp} />
                               {boOn && curStock > mp && (
                                 <div style={{ fontSize: "0.65rem", color: "#f59e0b", marginTop: "0.2rem" }}>
                                   ⚠ {curStock - mp} above current stock — needs restock

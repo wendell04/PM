@@ -66,7 +66,7 @@ function OrderExpandRow({ order, colSpan }) {
           <span style={{ fontWeight: 600, color: 'var(--gold)' }}>{formatPrice(order.totalPrice || 0)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-          <span style={{ color: 'var(--gray)' }}>Downpayment (50%):</span>
+          <span style={{ color: 'var(--gray)' }}>Downpayment:</span>
           <span style={{ fontWeight: 600, color: 'var(--green)' }}>{formatPrice(order.downPayment || 0)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
@@ -94,7 +94,7 @@ function OrderExpandRow({ order, colSpan }) {
       </div>
       <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
         <div>Order Date: {new Date(order.orderDate).toLocaleDateString()}</div>
-        <div>Due Date: {new Date(order.dueDate).toLocaleDateString()}</div>
+        <div>Due Date: {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : '—'}</div>
         {order.source && (
           <div style={{ color: 'var(--gold)', marginTop: '0.25rem' }}>
             Source: {order.source === 'manual' ? 'Outside System (Manual Sale)' : 'Online Storefront'}
@@ -129,63 +129,69 @@ export default function SalesListPage() {
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const YEARS = [2025, 2026, 2027, 2028];
 
-  // Load sales and inventory from backend API on mount
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+  function orderToRow(o) {
+    const id = o._id || o.id;
+    const ps = o.paymentStatus || 'unpaid';
+    const total = Number(o.totalAmount ?? o.totalPrice ?? 0);
+    const dp    = Number(o.downPayment ?? 0);
+    const bal   = Number(o.balance ?? total);
+    const isCancelled = (o.orderStatus || '').toLowerCase() === 'cancelled' || o.status === 'cancelled';
+    return {
+      id,
+      orderNumber: o.orderId || o.orderNumber || id?.slice?.(-8) || '—',
+      customerName: o.userSnapshot?.name || o.customerName || '—',
+      customerContact: o.userSnapshot?.phone || o.customerContact || null,
+      customerEmail: o.userSnapshot?.email || o.customerEmail || null,
+      items: (o.items || []).map(item => ({
+        productId: item.productId,
+        productName: item.productName,
+        variant: item.variantName,
+        quantity: item.qty ?? item.quantity ?? 1,
+        unitPrice: item.unitPrice ?? 0,
+      })),
+      quantity: (o.items || []).reduce((s, i) => s + (i.qty ?? i.quantity ?? 0), 0),
+      orderDate: o.createdAt || o.orderDate || new Date().toISOString(),
+      dueDate: o.dueDate || null,
+      totalPrice: total,
+      downPayment: dp,
+      downpaymentPercent: o.downpaymentPercent ?? null,
+      balance: bal,
+      status: isCancelled ? 'cancelled' : (ps === 'paid' || bal === 0 ? 'paid' : 'pending'),
+      paymentStatus: ps,
+      source: o.source || 'online',
+      notes: o.notes || '',
+    };
+  }
+
+  // Load orders (source of truth for sales — Sale records are only created at delivery)
   useEffect(() => {
     async function loadData() {
       if (!token) {
-        console.error('No auth token. Cannot load sales.');
-        setIsLoading(false);
         setError('Unable to load sales. Please refresh or log in again.');
+        setIsLoading(false);
         return;
       }
-
       setIsLoading(true);
       setError(null);
       try {
-        // Fetch sales from API
-        const salesResponse = await fetchSales({ limit: 50 }, token);
-        const salesData = Array.isArray(salesResponse)
-          ? salesResponse : [];
-
-        // Fetch inventory from API (for cost calculation)
-        const inventoryResponse = await fetchInventory(token);
-        const inventoryData = Array.isArray(inventoryResponse)
-          ? inventoryResponse : [];
-
-        // Process sales with cost from inventory for manual sales
-        const processedSales = salesData.map(sale => {
-          const saleWithDate = {
-            ...sale,
-            orderDate: sale.orderDate || sale.saleDate || sale.createdAt || new Date().toISOString()
-          };
-
-          // Calculate cost from inventory if not present
-          if (saleWithDate.source === 'manual' && (!saleWithDate.cost || saleWithDate.cost === 0) && saleWithDate.inventoryId) {
-            const invItem = inventoryData.find(inv => inv.id === saleWithDate.inventoryId);
-            if (invItem) {
-              const avgCost = invItem.averageCost || invItem.lastUnitCost || 0;
-              return {
-                ...saleWithDate,
-                cost: avgCost * (saleWithDate.quantity || 1)
-              };
-            }
-          }
-          return saleWithDate;
+        const res = await fetch(`${API_URL}/api/admin/orders`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         });
-
-        setSales(processedSales);
-        setInventory(inventoryData);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || data.error || 'Failed to load orders');
+        const list = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+        setSales(list.map(orderToRow));
       } catch (err) {
         console.error('Failed to load sales data:', err);
         setError(err.message || 'Failed to load sales data');
         setSales([]);
-        setInventory([]);
       } finally {
         setIsLoaded(true);
         setIsLoading(false);
       }
     }
-
     loadData();
   }, [token]);
 
@@ -198,23 +204,13 @@ export default function SalesListPage() {
   };
 
   const getStatusBadge = (order) => {
-    if (order.status === 'cancelled') {
-      return { label: 'Cancelled', color: 'var(--red)', bg: 'rgba(248, 113, 113, 0.15)', border: 'rgba(248, 113, 113, 0.4)' };
-    }
-    
-    if (order.source === 'manual') {
-      return { label: 'Outside System', color: 'var(--orange)', bg: 'rgba(249, 115, 22, 0.15)', border: 'rgba(249, 115, 22, 0.4)' };
-    }
-    
-    if (order.balance === 0) {
-      return { label: 'Paid', color: 'var(--green)', bg: 'rgba(74, 222, 128, 0.15)', border: 'rgba(74, 222, 128, 0.4)' };
-    }
-    
-    if (order.downPayment > 0 && order.balance > 0) {
-      return { label: 'Pending 50%', color: 'var(--gold)', bg: 'rgba(250, 204, 21, 0.15)', border: 'rgba(250, 204, 21, 0.4)' };
-    }
-    
-    return { label: 'Pending', color: 'var(--gold)', bg: 'rgba(250, 204, 21, 0.15)', border: 'rgba(250, 204, 21, 0.4)' };
+    if (order.status === 'cancelled')
+      return { label: 'Cancelled', color: 'var(--red)', bg: 'rgba(248,113,113,0.15)', border: 'rgba(248,113,113,0.4)' };
+    if (order.paymentStatus === 'paid' || order.balance === 0)
+      return { label: 'Paid', color: 'var(--green)', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.4)' };
+    if (order.paymentStatus === 'partial' || (order.downPayment > 0 && order.balance > 0))
+      return { label: 'Partial DP', color: 'var(--gold)', bg: 'rgba(250,204,21,0.15)', border: 'rgba(250,204,21,0.4)' };
+    return { label: 'Pending', color: 'var(--gold)', bg: 'rgba(250,204,21,0.15)', border: 'rgba(250,204,21,0.4)' };
   };
 
   useEffect(() => { setSPage(1); }, [searchQuery, paymentFilter, dateFilter, customDateRange]);
@@ -227,9 +223,9 @@ export default function SalesListPage() {
       
       let matchesPayment = true;
       if (paymentFilter === 'paid') {
-        matchesPayment = order.status !== 'cancelled' && order.balance === 0 && order.source !== 'manual';
+        matchesPayment = order.status !== 'cancelled' && (order.paymentStatus === 'paid' || order.balance === 0);
       } else if (paymentFilter === 'pending-50') {
-        matchesPayment = order.status !== 'cancelled' && order.downPayment > 0 && order.balance > 0 && order.source !== 'manual';
+        matchesPayment = order.status !== 'cancelled' && order.downPayment > 0 && order.balance > 0;
       } else if (paymentFilter === 'outside-system') {
         matchesPayment = order.source === 'manual';
       } else if (paymentFilter === 'cancelled') {
@@ -266,75 +262,25 @@ export default function SalesListPage() {
   const sTotalPages = Math.max(1, Math.ceil(filteredSales.length / sRpp));
   const pagedSales = filteredSales.slice((sPage - 1) * sRpp, sPage * sRpp);
 
-  // Calculate summary metrics (based on ALL sales, not filtered)
   const summaryMetrics = useMemo(() => {
-    const allSalesForMetrics = sales; // Use ALL sales data, not filtered
-
-    const totalSales = allSalesForMetrics.filter(o => o.status !== 'cancelled').length;
-    
-    // Include manual (outside system) orders in paid calculation
-    // A sale is considered paid if: balance === 0 OR status === 'completed' OR (no balance field and source === 'manual')
-    const paidOrders = allSalesForMetrics.filter(o => {
-      if (o.status === 'cancelled') return false;
-      if (o.balance === 0) return true;
-      if (o.status === 'completed') return true;
-      // For manual sales without balance field, consider them paid
-      if (o.source === 'manual' && (o.balance === undefined || o.balance === null)) return true;
-      return false;
-    });
-    
-    const pending50Orders = allSalesForMetrics.filter(o =>
-      o.status !== 'cancelled' && o.downPayment > 0 && o.balance > 0 && o.source !== 'manual'
-    );
-    const outsideSystemOrders = allSalesForMetrics.filter(o => o.source === 'manual');
-    const cancelledOrders = allSalesForMetrics.filter(o => o.status === 'cancelled');
-
-    // Include ALL paid orders (including manual/outside system)
-    const totalRevenue = paidOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-
-    // Calculate total cost - use cost from sale if available, otherwise calculate from inventory
-    const totalCost = paidOrders.reduce((sum, o) => {
-      if (o.cost && o.cost > 0) {
-        return sum + o.cost;
-      }
-      // For sales without cost, try to calculate from inventory
-      if (o.inventoryId && inventory.length > 0) {
-        const invItem = inventory.find(inv => inv.id === o.inventoryId);
-        if (invItem) {
-          const avgCost = invItem.averageCost || invItem.lastUnitCost || 0;
-          return sum + (avgCost * (o.quantity || 1));
-        }
-      }
-      return sum;
-    }, 0);
-
-    const totalProfit = totalRevenue - totalCost;
-
-    // Count unique products sold
-    const productsSold = new Set();
-    allSalesForMetrics.forEach(order => {
-      if (order.status !== 'cancelled' && order.items) {
-        order.items.forEach(item => {
-          if (item.productId) {
-            productsSold.add(item.productId);
-          }
-        });
-      }
-    });
-
+    const active      = sales.filter(o => o.status !== 'cancelled');
+    const paid        = active.filter(o => o.paymentStatus === 'paid' || o.balance === 0);
+    const partial     = active.filter(o => o.downPayment > 0 && o.balance > 0);
+    const cancelled   = sales.filter(o => o.status === 'cancelled');
+    const totalRevenue  = active.reduce((s, o) => s + (o.totalPrice || 0), 0);
+    const outstanding   = active.reduce((s, o) => s + (o.balance || 0), 0);
+    const productsSold  = new Set();
+    active.forEach(o => o.items?.forEach(i => { if (i.productId) productsSold.add(i.productId); }));
     return {
-      totalSales,
-      paid: paidOrders.length,
-      pending50: pending50Orders.length,
-      outsideSystem: outsideSystemOrders.length,
-      cancelled: cancelledOrders.length,
+      totalSales: active.length,
+      paid: paid.length,
+      pending50: partial.length,
+      cancelled: cancelled.length,
       revenue: totalRevenue,
-      profit: totalProfit,
-      totalCost,
-      paidOrders, // For displaying count in cards
+      outstanding,
       topProductsCount: productsSold.size,
     };
-  }, [sales, inventory]);
+  }, [sales]);
 
   if (isLoading) {
     return (
@@ -388,13 +334,6 @@ export default function SalesListPage() {
       
       {/* Page Header */}
       <div className="page-header">
-        <div className="page-header-content">
-          <div>
-            <h1 className="page-title">Sales</h1>
-            <p className="page-subtitle">View all sales transactions from the system.</p>
-          </div>
-          {/* NO Create button - Sales are auto-generated */}
-        </div>
 
         {/* Payment Status Filter Cards */}
         <div className="inventory-summary">
@@ -415,14 +354,7 @@ export default function SalesListPage() {
             onClick={() => setPaymentFilter(paymentFilter === 'pending-50' ? '' : 'pending-50')} style={{ cursor: 'pointer' }}>
             <div className="summary-content">
               <span className="summary-value">{summaryMetrics.pending50}</span>
-              <span className="summary-label">Pending 50%</span>
-            </div>
-          </div>
-          <div className={`summary-card${paymentFilter === 'outside-system' ? ' active' : ''}`}
-            onClick={() => setPaymentFilter(paymentFilter === 'outside-system' ? '' : 'outside-system')} style={{ cursor: 'pointer', background: 'rgba(249, 115, 22, 0.08)', borderColor: 'rgba(249, 115, 22, 0.3)' }}>
-            <div className="summary-content">
-              <span className="summary-value" style={{ color: 'var(--orange)' }}>{summaryMetrics.outsideSystem}</span>
-              <span className="summary-label" style={{ color: 'var(--orange)' }}>Outside System</span>
+              <span className="summary-label">Partial DP</span>
             </div>
           </div>
           <div className={`summary-card summary-card-danger${paymentFilter === 'cancelled' ? ' active' : ''}`}
@@ -474,11 +406,11 @@ export default function SalesListPage() {
                 ₱{summaryMetrics.revenue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.5rem' }}>
-                From completed orders
+                Total order value (excl. cancelled)
               </div>
             </div>
             
-            {/* Total Profit Card */}
+            {/* Outstanding Balance Card */}
             <div style={{
               background: 'rgba(212, 168, 67, 0.1)',
               border: '1px solid rgba(212, 168, 67, 0.3)',
@@ -486,13 +418,13 @@ export default function SalesListPage() {
               padding: '1.25rem',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--gold)', textTransform: 'uppercase', fontWeight: 700 }}>Total Profit</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--gold)', textTransform: 'uppercase', fontWeight: 700 }}>Outstanding Balance</span>
               </div>
               <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--gold)' }}>
-                ₱{summaryMetrics.profit.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ₱{(summaryMetrics.outstanding ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '0.5rem' }}>
-                Revenue minus cost
+                Total unpaid balance
               </div>
             </div>
             
@@ -580,7 +512,7 @@ export default function SalesListPage() {
         color: 'var(--gray)'
       }}>
         <span style={{ marginRight: '0.5rem', fontWeight: 'bold', color: 'var(--primary)' }}>ℹ</span>
-        <strong>Quick Guide:</strong> Click row to view order details - All sales are auto-generated from orders - 50% downpayment required
+        <strong>Quick Guide:</strong> Click row to view order details - All orders are shown here - Downpayment per product varies
       </div>
 
       {/* Table */}
@@ -620,7 +552,7 @@ export default function SalesListPage() {
                 <th className="table-col-stock">Items</th>
                 <th className="table-col-min">Date</th>
                 <th className="table-col-min">Total Price</th>
-                <th className="table-col-min">Downpayment (50%)</th>
+                <th className="table-col-min">Downpayment</th>
                 <th className="table-col-min">Balance</th>
                 <th className="table-col-status">Payment Status</th>
               </tr>
@@ -699,9 +631,9 @@ export default function SalesListPage() {
                         <span style={{ fontWeight: 600, color: order.downPayment > 0 ? 'var(--green)' : 'var(--gray)', fontSize: '0.875rem' }}>
                           {order.downPayment > 0 ? formatPrice(order.downPayment) : '—'}
                         </span>
-                        {order.downPayment > 0 && (
+                        {order.downPayment > 0 && order.downpaymentPercent && (
                           <div style={{ fontSize: '0.65rem', color: 'var(--green)', marginTop: '0.1rem' }}>
-                            50% DP
+                            {order.downpaymentPercent}% DP
                           </div>
                         )}
                       </td>

@@ -46,6 +46,7 @@ class Product extends Model
         'requiresDownpayment',
         'downpaymentPercent',
         'weightGrams',
+        'storeStockCap',
         'createdAt',
         'updatedAt',
     ];
@@ -60,6 +61,7 @@ class Product extends Model
         'requiresDownpayment' => 'boolean',
         'downpaymentPercent'  => 'integer',
         'weightGrams'         => 'integer',
+        'storeStockCap'       => 'integer',
         'price'               => 'float',
         'flatPrice'      => 'float',
         'trackInventory' => 'boolean',

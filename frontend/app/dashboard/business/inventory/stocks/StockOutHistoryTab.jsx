@@ -20,31 +20,17 @@ const thStyle = {
 
 function IssueTypeBadge({ type }) {
   const ISSUE_TYPES = {
-    manual_sale: {
-      label: "Manual Sale",
-      color: "#22c55e",
-      bg: "rgba(34,197,94,0.1)",
-      border: "rgba(34,197,94,0.2)",
-    },
-    sale: {
-      label: "Manual Sale",
-      color: "#22c55e",
-      bg: "rgba(34,197,94,0.1)",
-      border: "rgba(34,197,94,0.2)",
-    },
-    writeoff: {
-      label: "Write-Off",
-      color: "#ef4444",
-      bg: "rgba(239,68,68,0.1)",
-      border: "rgba(239,68,68,0.2)",
-    },
+    manual_sale: { label: "Manual Sale",  color: "#22c55e", bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.2)"   },
+    sale:        { label: "Manual Sale",  color: "#22c55e", bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.2)"   },
+    order_sale:  { label: "Sale",         color: "#22c55e", bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.2)"   },
+    damage:      { label: "Damaged",      color: "#ef4444", bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.2)"   },
+    writeoff:    { label: "Write-Off",    color: "#ef4444", bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.2)"   },
+    scrap:       { label: "Scrap",        color: "#f97316", bg: "rgba(249,115,22,0.1)",  border: "rgba(249,115,22,0.2)"  },
+    production:  { label: "Production",   color: "#8b5cf6", bg: "rgba(139,92,246,0.1)", border: "rgba(139,92,246,0.2)"  },
+    lost:        { label: "Lost",         color: "#6b7280", bg: "rgba(107,114,128,0.1)", border: "rgba(107,114,128,0.2)" },
+    adjustment:  { label: "Adjustment",   color: "#6b7280", bg: "rgba(107,114,128,0.1)", border: "rgba(107,114,128,0.2)" },
   };
-  const fallback = {
-    label: "Damaged",
-    color: "#ef4444",
-    bg: "rgba(239,68,68,0.1)",
-    border: "rgba(239,68,68,0.2)",
-  };
+  const fallback = { label: "Other", color: "#6b7280", bg: "rgba(107,114,128,0.1)", border: "rgba(107,114,128,0.2)" };
   const cfg = ISSUE_TYPES[type] || fallback;
   return (
     <span
@@ -142,10 +128,9 @@ function StockOutHistoryTab({ stockOuts, materials }) {
     () => ({
       totalRecords: filtered.length,
       totalQty: filtered.reduce((s, so) => s + Math.abs(so.quantity || 0), 0),
-      // Sales are revenue, not loss — only count actual losses (damage, scrap, lost, adjustment)
       totalLoss: filtered
         .filter(
-          (so) => so.issueType !== "manual_sale" && so.issueType !== "sale",
+          (so) => so.issueType !== "manual_sale" && so.issueType !== "sale" && so.issueType !== "order_sale",
         )
         .reduce((s, so) => s + (so.totalLoss || 0), 0),
     }),
@@ -263,10 +248,15 @@ function StockOutHistoryTab({ stockOuts, materials }) {
             value={typeFilter}
             onChange={setTypeFilter}
             options={[
-              { value: "", label: "All Types" },
-              { value: "manual_sale", label: "Manual Sale" },
-              { value: "damage", label: "Damaged" },
-              { value: "writeoff", label: "Write-Off" },
+              { value: "",           label: "All Types"   },
+              { value: "order_sale", label: "Sale"        },
+              { value: "manual_sale",label: "Manual Sale" },
+              { value: "damage",     label: "Damaged"     },
+              { value: "writeoff",   label: "Write-Off"   },
+              { value: "scrap",      label: "Scrap"       },
+              { value: "production", label: "Production"  },
+              { value: "lost",       label: "Lost"        },
+              { value: "adjustment", label: "Adjustment"  },
             ]}
             placeholder="All Types"
             style={{ minWidth: "140px" }}
@@ -478,7 +468,7 @@ function StockOutHistoryTab({ stockOuts, materials }) {
                         padding: "0.75rem 1rem",
                         textAlign: "right",
                         fontWeight: 700,
-                        color: (so.issueType === "manual_sale" || so.issueType === "sale") ? "#22c55e" : "#ef4444",
+                        color: (so.issueType === "manual_sale" || so.issueType === "sale" || so.issueType === "order_sale") ? "#22c55e" : "#ef4444",
                         fontFamily: "monospace",
                       }}
                     >

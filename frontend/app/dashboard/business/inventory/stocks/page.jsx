@@ -1515,6 +1515,7 @@ export default function StocksPage() {
       const history = await fetchAllStockHistory(ids, token);
       const reasonToIssueType = (r) => {
         if (r === "sales-outside" || r === "sale") return "manual_sale";
+        if (r === "sale_reserved" || r === "bom_deduction") return "order_sale";
         if (r === "damaged") return "damage";
         if (r === "writeoff") return "writeoff";
         if (r === "scrap") return "scrap";
@@ -1655,7 +1656,7 @@ export default function StocksPage() {
     borderRadius: "8px",
     border: "none",
     background: activeTab === tab ? "var(--gold)" : "transparent",
-    color: activeTab === tab ? "#000" : "var(--gray)",
+    color: activeTab === tab ? "#000" : "var(--white)",
     transition: "all 0.15s",
   });
 
@@ -1669,7 +1670,7 @@ export default function StocksPage() {
             style={{
               display: "flex",
               gap: "0.25rem",
-              background: "rgba(255,255,255,0.04)",
+              background: "var(--dark3)",
               borderRadius: "10px",
               padding: "0.25rem",
               width: "fit-content",

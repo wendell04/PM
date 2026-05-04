@@ -16,6 +16,88 @@ class ProductController extends Controller
     // ─── Public ───────────────────────────────────────────────────────────────
 
     /**
+     * Calculate live availability for a product.
+     * BOM products: min producible across all components, capped by storeStockCap.
+     * Non-BOM products: product.stock capped by storeStockCap.
+     */
+    private function computeAvailability(Product $product): array
+    {
+        $canProduce       = null;
+        $variantCanProduce  = null;
+        $variantAvailableQty = null;
+
+        // ── Multi-variant BOM product ─────────────────────────────────────────
+        if (!empty($product->bomGroupName)) {
+            try {
+                $boms = \App\Models\BillOfMaterial::where('productGroupName', $product->bomGroupName)->get();
+                $variantCanProduce  = [];
+                $variantAvailableQty = [];
+
+                foreach ($boms as $bom) {
+                    $bomId = (string) $bom->_id;
+                    $min   = PHP_INT_MAX;
+                    foreach ($bom->components ?? [] as $component) {
+                        $inv = Inventory::find($component['inventoryId'] ?? null);
+                        if (!$inv || $inv->isOnDemand) continue;
+                        $qpu = (float) ($component['qty'] ?? 0);
+                        if ($qpu <= 0) continue;
+                        $min = min($min, (int) floor(($inv->stockQty ?? 0) / $qpu));
+                    }
+                    $cp = $min === PHP_INT_MAX ? 0 : $min;
+                    $variantCanProduce[$bomId] = $cp;
+
+                    $backorder = (bool) ($product->variantBackorder[$bomId] ?? false);
+                    if ($backorder) {
+                        $variantAvailableQty[$bomId] = 9999;
+                    } else {
+                        $manualCap = isset($product->variantStock[$bomId]) && (int) $product->variantStock[$bomId] > 0
+                            ? (int) $product->variantStock[$bomId]
+                            : null;
+                        $variantAvailableQty[$bomId] = $manualCap !== null ? min($cp, $manualCap) : $cp;
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('computeAvailability variant BOM failed', ['productId' => (string) $product->_id, 'error' => $e->getMessage()]);
+            }
+        }
+        // ── Single BOM product ────────────────────────────────────────────────
+        elseif (!empty($product->bomId)) {
+            try {
+                $bom = \App\Models\BillOfMaterial::find($product->bomId);
+                if ($bom && !empty($bom->components)) {
+                    $min = PHP_INT_MAX;
+                    foreach ($bom->components as $component) {
+                        $inv = Inventory::find($component['inventoryId'] ?? null);
+                        if (!$inv || $inv->isOnDemand) continue;
+                        $qpu = (float) ($component['qty'] ?? 0);
+                        if ($qpu <= 0) continue;
+                        $min = min($min, (int) floor(($inv->stockQty ?? 0) / $qpu));
+                    }
+                    $canProduce = $min === PHP_INT_MAX ? 0 : $min;
+                }
+            } catch (\Exception $e) {
+                Log::warning('computeAvailability single BOM failed', ['productId' => (string) $product->_id, 'error' => $e->getMessage()]);
+            }
+        }
+
+        $cap = $product->storeStockCap !== null ? (int) $product->storeStockCap : null;
+
+        if ($canProduce !== null) {
+            $availableQty = $cap !== null ? min($canProduce, $cap) : $canProduce;
+        } else {
+            $base = (int) ($product->stock ?? 0);
+            $availableQty = $cap !== null ? min($base, $cap) : $base;
+        }
+
+        return [
+            'canProduce'          => $canProduce,
+            'availableQty'        => $availableQty,
+            'variantCanProduce'   => $variantCanProduce,
+            'variantAvailableQty' => $variantAvailableQty,
+        ];
+    }
+
+    /**
      * GET /api/products
      * Returns all active published products for storefront
      */
@@ -42,7 +124,9 @@ class ProductController extends Controller
 
             $products = $query->orderBy('createdAt', 'desc')->get();
 
-            return $this->successResponse('Products fetched successfully.', $products);
+            $data = $products->map(fn($p) => array_merge($p->toArray(), $this->computeAvailability($p)))->values();
+
+            return $this->successResponse('Products fetched successfully.', $data);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching products.');
         }
@@ -64,7 +148,9 @@ class ProductController extends Controller
                 return $this->notFoundResponse('Product');
             }
 
-            return $this->successResponse('Product fetched successfully.', $product);
+            $data = array_merge($product->toArray(), $this->computeAvailability($product));
+
+            return $this->successResponse('Product fetched successfully.', $data);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching the product.');
         }
@@ -208,6 +294,7 @@ class ProductController extends Controller
                 'requiresDownpayment' => 'nullable|boolean',
                 'downpaymentPercent'  => 'nullable|integer|min:1|max:100',
                 'weightGrams'         => 'nullable|integer|min:1|max:99999',
+                'storeStockCap'       => 'nullable|integer|min:0',
             ]);
 
             // Check for duplicate (same category + subCategoryName)
@@ -362,6 +449,7 @@ class ProductController extends Controller
                 'requiresDownpayment' => 'nullable|boolean',
                 'downpaymentPercent'  => 'nullable|integer|min:1|max:100',
                 'weightGrams'         => 'nullable|integer|min:1|max:99999',
+                'storeStockCap'       => 'nullable|integer|min:0',
             ]);
 
             // Check for duplicate if category/subCategory changed

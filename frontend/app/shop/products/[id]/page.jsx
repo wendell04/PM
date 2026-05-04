@@ -393,11 +393,18 @@ export default function ProductDetailPage() {
   const effectiveMaxQty = (() => {
     if (!product?.trackInventory || product?.stockStatus === 'upon-order') return 9999;
     const comboId = resolveCombinationId(selectedVariants);
+    // Multi-variant BOM: use live per-variant availableQty from server
+    if (product?.variantAvailableQty && comboId != null && product.variantAvailableQty[comboId] != null) {
+      return Math.max(product.variantAvailableQty[comboId], 0);
+    }
+    // Single BOM product
+    if (product?.canProduce != null) return Math.max(product.availableQty ?? 0, 0);
+    // Variant product (no BOM)
     if (comboId != null && product?.variantBackorder?.[comboId]) return 9999;
     if (comboId != null && product?.variantStock?.[comboId] != null) {
       return Math.max(Number(product.variantStock[comboId]), 0);
     }
-    return Math.max(product?.stock ?? 0, 0);
+    return Math.max(product?.availableQty ?? product?.stock ?? 0, 0);
   })();
 
   const isOutOfStock = effectiveMaxQty === 0 && !product?.isMadeToOrder;

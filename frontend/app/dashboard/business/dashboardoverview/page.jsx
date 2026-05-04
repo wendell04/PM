@@ -36,14 +36,11 @@ export default function DashboardOverviewPage() {
       };
 
       const settled = await Promise.allSettled([
-        fetchWithTimeout(`${API_URL}/api/admin/orders/stats`,              { headers }, 30000),
-        fetchWithTimeout(`${API_URL}/api/admin/sales/summary`,             { headers }, 30000),
-        fetchWithTimeout(`${API_URL}/api/admin/inventory`,                  { headers }, 30000),
-        fetchWithTimeout(`${API_URL}/api/admin/orders`,                     { headers }, 30000),
-        fetchWithTimeout(`${API_URL}/api/admin/banners`,                    { headers }, 30000),
-        fetchWithTimeout(`${API_URL}/api/admin/returns/stats`,              { headers }, 30000),
-        fetchWithTimeout(`${API_URL}/api/admin/sales/top-products`,         { headers }, 30000),
-        fetchWithTimeout(`${API_URL}/api/admin/inventory/recent-movements`, { headers }, 30000),
+        fetchWithTimeout(`${API_URL}/api/admin/orders?limit=2000`,          { headers }, 30000),
+        fetchWithTimeout(`${API_URL}/api/admin/inventory`,                   { headers }, 30000),
+        fetchWithTimeout(`${API_URL}/api/admin/banners`,                     { headers }, 30000),
+        fetchWithTimeout(`${API_URL}/api/admin/returns/stats`,               { headers }, 30000),
+        fetchWithTimeout(`${API_URL}/api/admin/inventory/recent-movements`,  { headers }, 30000),
       ]);
 
       const safeJson = async (result) => {
@@ -53,39 +50,70 @@ export default function DashboardOverviewPage() {
         return res.json().catch(() => null);
       };
 
-      const [
-        statsJson,
-        salesJson,
-        inventoryJson,
-        ordersJson,
-        bannersJson,
-        returnsJson,
-        topProductsJson,
-        movementsJson,
-      ] = await Promise.all(settled.map(safeJson));
+      const [ordersJson, inventoryJson, bannersJson, returnsJson, movementsJson] =
+        await Promise.all(settled.map(safeJson));
 
-      const inventory = inventoryJson?.data ?? inventoryJson ?? [];
-      const orders    = ordersJson?.data?.orders ?? ordersJson?.data ?? ordersJson?.orders ?? [];
+      const inventory  = inventoryJson?.data ?? inventoryJson ?? [];
+      const allOrders  = ordersJson?.data?.orders ?? ordersJson?.data ?? ordersJson?.orders ?? ordersJson ?? [];
+      const orders     = Array.isArray(allOrders) ? allOrders : [];
+
+      // Compute order stats locally from fetched orders — avoids dependency on separate stats endpoint
+      const isDelivered  = (o) => ['Delivered', 'delivered'].includes(o.orderStatus);
+      const isCancelled  = (o) => ['Cancelled', 'cancelled'].includes(o.orderStatus);
+      const isPending    = (o) => !isDelivered(o) && !isCancelled(o);
+
+      const deliveredOrders = orders.filter(isDelivered);
+      const totalRevenue    = deliveredOrders.reduce((s, o) => s + Number(o.totalAmount ?? o.totalPrice ?? 0), 0);
+      const totalPaid       = orders.reduce((s, o) => s + Number(o.downPayment ?? 0), 0);
+
+      const computedOrderStats = {
+        totalOrders:      orders.length,
+        pendingOrders:    orders.filter(isPending).length,
+        completedOrders:  deliveredOrders.length,
+        cancelledOrders:  orders.filter(isCancelled).length,
+        totalRevenue,
+        cancellationRate: orders.length > 0
+          ? Math.round((orders.filter(isCancelled).length / orders.length) * 10000) / 100
+          : 0,
+      };
+
+      const computedSalesSummary = {
+        totalSales:   deliveredOrders.length,
+        totalRevenue,
+        totalCost:    0,
+        totalProfit:  totalPaid,
+        manualSales:  orders.filter(o => o.source === 'manual').reduce((s, o) => s + Number(o.totalAmount ?? 0), 0),
+        onlineSales:  orders.filter(o => o.source !== 'manual').reduce((s, o) => s + Number(o.totalAmount ?? 0), 0),
+      };
+
+      // Top products from all non-cancelled orders
+      const prodMap = {};
+      orders.filter(o => !isCancelled(o)).forEach(o => {
+        (o.items || []).forEach(item => {
+          const key = item.productId || item.productName || 'unknown';
+          if (!prodMap[key]) prodMap[key] = { productName: item.productName || '—', category: item.category || '', totalQty: 0, totalRevenue: 0 };
+          prodMap[key].totalQty     += Number(item.qty ?? item.quantity ?? 0);
+          prodMap[key].totalRevenue += Number(item.lineTotal ?? 0);
+        });
+      });
+      const computedTopProducts = Object.values(prodMap).sort((a, b) => b.totalQty - a.totalQty).slice(0, 5);
 
       const banners = bannersJson?.data ?? [];
-      const activeBanners = Array.isArray(banners)
-        ? banners.filter(b => b.isVisible === true || b.status === 'live').length
-        : 0;
-      const pendingReturns   = returnsJson?.data?.pendingCount ?? 0;
-      const topProducts      = topProductsJson?.data?.products  ?? [];
-      const recentMovements  = movementsJson?.data?.movements   ?? [];
+      const activeBanners   = Array.isArray(banners) ? banners.filter(b => b.isVisible === true || b.status === 'live').length : 0;
+      const pendingReturns  = returnsJson?.data?.pendingCount ?? 0;
+      const recentMovements = movementsJson?.data?.movements ?? [];
 
       setData({
-        orderStats:       statsJson?.data   ?? null,
-        salesSummary:     salesJson?.data   ?? null,
-        inventory:        Array.isArray(inventory) ? inventory : [],
-        recentOrders:     Array.isArray(orders)    ? orders.slice(0, 5) : [],
+        orderStats:    computedOrderStats,
+        salesSummary:  computedSalesSummary,
+        inventory:     Array.isArray(inventory) ? inventory : [],
+        recentOrders:  orders.slice(0, 5),
         activeBanners,
         pendingReturns,
-        topProducts,
+        topProducts:   computedTopProducts,
         recentMovements,
-        loading:          false,
-        error:            null,
+        loading:       false,
+        error:         null,
       });
     } catch (err) {
       setData(prev => ({ ...prev, loading: false, error: err.message }));

@@ -279,7 +279,20 @@ export default function PaymentsPage() {
                           textTransform: 'uppercase', letterSpacing: '0.04em',
                         }}>{badge.label}</span>
                       </div>
-                      <div style={{ display: 'flex', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {canRecord && (
+                          <button
+                            type="button"
+                            onClick={() => openRecordPayment(o)}
+                            style={{
+                              padding: '5px 10px', borderRadius: '6px', border: 'none',
+                              background: 'var(--gold)', color: 'var(--black)', cursor: 'pointer',
+                              fontSize: '0.72rem', fontWeight: 700,
+                            }}
+                          >
+                            Record
+                          </button>
+                        )}
                         {(o.paymentHistory?.length > 0) && (
                           <button
                             type="button"
@@ -295,17 +308,6 @@ export default function PaymentsPage() {
                               <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                             </svg>
                           </button>
-                        )}
-                        {canRecord && (
-                          <button
-                            type="button"
-                            onClick={() => openRecordPayment(o)}
-                            style={{
-                              padding: '5px 10px', borderRadius: '6px',
-                              border: 'none', background: 'var(--gold)',
-                              color: 'var(--black)', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem',
-                            }}
-                          >+ Pay</button>
                         )}
                       </div>
                     </div>

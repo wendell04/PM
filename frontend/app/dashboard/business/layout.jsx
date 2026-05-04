@@ -379,13 +379,23 @@ export default function BusinessDashboardLayout({ children }) {
     };
   }, [token]);
 
-  // Suppress DOM-Event unhandled rejections (Pusher/WebSocket internals)
+  // Suppress DOM-Event unhandled rejections and errors (Pusher/WebSocket internals)
   useEffect(() => {
-    const handler = (e) => {
-      if (e.reason instanceof Event) e.preventDefault();
+    const rejectionHandler = (e) => {
+      if (e.reason instanceof Event || String(e.reason) === '[object Event]') e.preventDefault();
     };
-    window.addEventListener('unhandledrejection', handler);
-    return () => window.removeEventListener('unhandledrejection', handler);
+    const errorHandler = (e) => {
+      if (e.error instanceof Event || String(e.message) === '[object Event]') {
+        e.preventDefault();
+        return true;
+      }
+    };
+    window.addEventListener('unhandledrejection', rejectionHandler);
+    window.addEventListener('error', errorHandler, true);
+    return () => {
+      window.removeEventListener('unhandledrejection', rejectionHandler);
+      window.removeEventListener('error', errorHandler, true);
+    };
   }, []);
 
   // Close notification panel on outside click

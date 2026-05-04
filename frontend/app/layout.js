@@ -18,7 +18,7 @@ const themeScript = `(function(){var t=localStorage.getItem('pmp-theme')||'dark'
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

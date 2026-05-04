@@ -243,6 +243,40 @@ class PaymentController extends Controller
                 }
             }
 
+            // ── Pre-validate BOM products ──────────────────────────────
+            foreach ($orderItems as $item) {
+                $bomProd   = \App\Models\Product::find($item['productId'] ?? null);
+                $itemQty   = (int) ($item['qty'] ?? 1);
+                $variantId = $item['variantId'] ?? null;
+                if (!$bomProd) continue;
+                $bom = null;
+                if (!empty($bomProd->bomGroupName) && $variantId) {
+                    $bom = \App\Models\BillOfMaterial::where('productGroupName', $bomProd->bomGroupName)
+                                                      ->where('_id', $variantId)->first();
+                } elseif (!empty($bomProd->bomId)) {
+                    $bom = \App\Models\BillOfMaterial::find($bomProd->bomId);
+                }
+                if (!$bom || empty($bom->components)) continue;
+                if (!empty($bomProd->bomGroupName) && $variantId) {
+                    $variantCap = isset($bomProd->variantStock[$variantId]) && (int) $bomProd->variantStock[$variantId] > 0
+                        ? (int) $bomProd->variantStock[$variantId] : null;
+                    if ($variantCap !== null && $itemQty > $variantCap)
+                        return $this->errorResponse("\"{$bomProd->name}\" has a storefront cap of {$variantCap} unit(s) for that variant.", 422);
+                } elseif ($bomProd->storeStockCap !== null && $itemQty > (int) $bomProd->storeStockCap) {
+                    return $this->errorResponse("\"{$bomProd->name}\" has a storefront limit of {$bomProd->storeStockCap} unit(s).", 422);
+                }
+                $canProduce = PHP_INT_MAX;
+                foreach ($bom->components as $component) {
+                    $rawInv = Inventory::find($component['inventoryId'] ?? null);
+                    if (!$rawInv || $rawInv->isOnDemand) continue;
+                    $qpu = (float) ($component['qty'] ?? 0);
+                    if ($qpu <= 0) continue;
+                    $canProduce = min($canProduce, (int) floor(($rawInv->stockQty ?? 0) / $qpu));
+                }
+                if ($canProduce !== PHP_INT_MAX && $itemQty > $canProduce)
+                    return $this->errorResponse("\"{$bomProd->name}\" can only produce {$canProduce} unit(s) with current materials.", 422);
+            }
+
             // ── Atomic stock reservation BEFORE order creation ──────────
             $stockReservations = [];
             foreach ($orderItems as $item) {
@@ -338,6 +372,42 @@ class PaymentController extends Controller
                     ]);
                 } catch (\Exception $e) {
                     Log::warning('createLink: StockHistory write failed', ['error' => $e->getMessage()]);
+                }
+            }
+
+            // BOM material deduction at order creation
+            foreach ($orderItems as $item) {
+                $bomProd = \App\Models\Product::find($item['productId'] ?? null);
+                if (!$bomProd || empty($bomProd->bomId)) continue;
+                try {
+                    $bom = \App\Models\BillOfMaterial::find($bomProd->bomId);
+                    if ($bom && !empty($bom->components)) {
+                        foreach ($bom->components as $component) {
+                            $rawInv = Inventory::find($component['inventoryId'] ?? null);
+                            if (!$rawInv || $rawInv->isOnDemand) continue;
+                            $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
+                            if ($deductQty <= 0) continue;
+                            $updatedRaw = DB::connection('mongodb')->getCollection('inventories')
+                                ->findOneAndUpdate(
+                                    ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],
+                                    ['$inc' => ['stockQty' => -$deductQty]],
+                                    ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                                );
+                            $newRawQty = (int) ($updatedRaw->stockQty ?? max(0, ($rawInv->stockQty ?? 0) - $deductQty));
+                            StockHistory::create([
+                                'inventoryId' => (string) $rawInv->_id, 'quantity' => $deductQty,
+                                'remainingQty' => $newRawQty, 'unitCost' => $rawInv->averageCost ?? 0,
+                                'totalCost' => 0, 'reason' => 'sale_reserved', 'type' => 'deduction',
+                                'performedBy' => 'system', 'remarks' => 'Order: ' . (string) $order->_id,
+                                'createdAt' => now(),
+                            ]);
+                        }
+                    }
+                } catch (\Exception $bomErr) {
+                    Log::warning('createLink: BOM deduction failed', [
+                        'orderId' => (string) $order->_id, 'productId' => $item['productId'],
+                        'error' => $bomErr->getMessage(),
+                    ]);
                 }
             }
 
@@ -607,7 +677,40 @@ class PaymentController extends Controller
                 }
             }
 
-            // ── Atomic stock reservation ──────────────────────────────
+            // ── Pre-validate BOM products ──────────────────────────────
+            foreach ($orderItems as $item) {
+                $bomProd   = \App\Models\Product::find($item['productId'] ?? null);
+                $itemQty   = (int) ($item['qty'] ?? 1);
+                $variantId = $item['variantId'] ?? null;
+                if (!$bomProd) continue;
+                $bom = null;
+                if (!empty($bomProd->bomGroupName) && $variantId) {
+                    $bom = \App\Models\BillOfMaterial::where('productGroupName', $bomProd->bomGroupName)
+                                                      ->where('_id', $variantId)->first();
+                } elseif (!empty($bomProd->bomId)) {
+                    $bom = \App\Models\BillOfMaterial::find($bomProd->bomId);
+                }
+                if (!$bom || empty($bom->components)) continue;
+                if (!empty($bomProd->bomGroupName) && $variantId) {
+                    $variantCap = isset($bomProd->variantStock[$variantId]) && (int) $bomProd->variantStock[$variantId] > 0
+                        ? (int) $bomProd->variantStock[$variantId] : null;
+                    if ($variantCap !== null && $itemQty > $variantCap)
+                        return $this->errorResponse("\"{$bomProd->name}\" has a storefront cap of {$variantCap} unit(s) for that variant.", 422);
+                } elseif ($bomProd->storeStockCap !== null && $itemQty > (int) $bomProd->storeStockCap) {
+                    return $this->errorResponse("\"{$bomProd->name}\" has a storefront limit of {$bomProd->storeStockCap} unit(s).", 422);
+                }
+                $canProduce = PHP_INT_MAX;
+                foreach ($bom->components as $component) {
+                    $rawInv = Inventory::find($component['inventoryId'] ?? null);
+                    if (!$rawInv || $rawInv->isOnDemand) continue;
+                    $qpu = (float) ($component['qty'] ?? 0);
+                    if ($qpu <= 0) continue;
+                    $canProduce = min($canProduce, (int) floor(($rawInv->stockQty ?? 0) / $qpu));
+                }
+                if ($canProduce !== PHP_INT_MAX && $itemQty > $canProduce)
+                    return $this->errorResponse("\"{$bomProd->name}\" can only produce {$canProduce} unit(s) with current materials.", 422);
+            }
+
             $stockReservations = [];
             foreach ($orderItems as $item) {
                 $prod = Product::find($item['productId'] ?? null);
@@ -675,6 +778,42 @@ class PaymentController extends Controller
                     ]);
                 } catch (\Exception $e) {
                     Log::warning('initiatePayment: StockHistory failed', ['error' => $e->getMessage()]);
+                }
+            }
+
+            // BOM material deduction at order creation
+            foreach ($orderItems as $item) {
+                $bomProd = \App\Models\Product::find($item['productId'] ?? null);
+                if (!$bomProd || empty($bomProd->bomId)) continue;
+                try {
+                    $bom = \App\Models\BillOfMaterial::find($bomProd->bomId);
+                    if ($bom && !empty($bom->components)) {
+                        foreach ($bom->components as $component) {
+                            $rawInv = Inventory::find($component['inventoryId'] ?? null);
+                            if (!$rawInv || $rawInv->isOnDemand) continue;
+                            $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
+                            if ($deductQty <= 0) continue;
+                            $updatedRaw = DB::connection('mongodb')->getCollection('inventories')
+                                ->findOneAndUpdate(
+                                    ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],
+                                    ['$inc' => ['stockQty' => -$deductQty]],
+                                    ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                                );
+                            $newRawQty = (int) ($updatedRaw->stockQty ?? max(0, ($rawInv->stockQty ?? 0) - $deductQty));
+                            StockHistory::create([
+                                'inventoryId' => (string) $rawInv->_id, 'quantity' => $deductQty,
+                                'remainingQty' => $newRawQty, 'unitCost' => $rawInv->averageCost ?? 0,
+                                'totalCost' => 0, 'reason' => 'sale_reserved', 'type' => 'deduction',
+                                'performedBy' => 'system', 'remarks' => 'Order: ' . (string) $order->_id,
+                                'createdAt' => now(),
+                            ]);
+                        }
+                    }
+                } catch (\Exception $bomErr) {
+                    Log::warning('initiatePayment: BOM deduction failed', [
+                        'orderId' => (string) $order->_id, 'productId' => $item['productId'],
+                        'error' => $bomErr->getMessage(),
+                    ]);
                 }
             }
 

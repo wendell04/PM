@@ -109,10 +109,10 @@ function InventoryReports({ materials, stockOuts }) {
     );
     // Sales are revenue, not loss
     const totalLoss = filteredStockOuts
-      .filter((so) => so.issueType !== "manual_sale" && so.issueType !== "sale")
+      .filter((so) => so.issueType !== "manual_sale" && so.issueType !== "sale" && so.issueType !== "order_sale")
       .reduce((s, so) => s + (so.totalLoss || 0), 0);
     const totalRevenue = filteredStockOuts
-      .filter((so) => so.issueType === "manual_sale" || so.issueType === "sale")
+      .filter((so) => so.issueType === "manual_sale" || so.issueType === "sale" || so.issueType === "order_sale")
       .reduce((s, so) => s + (so.totalLoss || 0), 0);
     return {
       grouped,
@@ -127,7 +127,7 @@ function InventoryReports({ materials, stockOuts }) {
   const adjMap = useMemo(() => {
     const map = {};
     (stockOuts || []).forEach((so) => {
-      if (so.issueType === "manual_sale" || so.issueType === "sale") return;
+      if (so.issueType === "manual_sale" || so.issueType === "sale" || so.issueType === "order_sale") return;
       const id = String(so.inventoryId || so.materialId || "");
       if (!id) return;
       map[id] = (map[id] || 0) + Math.abs(so.quantity || 0);

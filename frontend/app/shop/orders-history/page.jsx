@@ -518,7 +518,7 @@ export default function OrdersHistoryPage() {
       const data = await fetchMyShopOrder(token, order.id ?? order._id);
       const detail = data?.data ?? data;
       setSelectedOrder(detail);
-      if (detail?.orderStatus === 'Delivered' && detail?.paymentStatus === 'paid') loadOrderReview(detail._id ?? detail.id ?? order._id ?? order.id);
+      if (detail?.orderStatus?.toLowerCase() === 'delivered' && detail?.paymentStatus === 'paid') loadOrderReview(detail._id ?? detail.id ?? order._id ?? order.id);
     } catch (err) {
       setDetailError(err.message || 'Failed to load order details.');
     } finally { setDetailLoading(false); }
@@ -1134,7 +1134,7 @@ export default function OrdersHistoryPage() {
                     )}
 
                     {/* Review — only after payment confirmed */}
-                    {selectedOrder.orderStatus === 'Delivered' && selectedOrder.paymentStatus === 'paid' && (
+                    {selectedOrder.orderStatus?.toLowerCase() === 'delivered' && selectedOrder.paymentStatus === 'paid' && (
                       <div>
                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '10px' }}>Your Review</div>
                         {reviewCheckLoading && (

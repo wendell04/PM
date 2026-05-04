@@ -6435,7 +6435,7 @@ export default function MasterDataPage() {
     borderRadius: "8px",
     border: "none",
     background: activeTab === tab ? "var(--gold)" : "transparent",
-    color: activeTab === tab ? "#000" : "var(--gray)",
+    color: activeTab === tab ? "#000" : "var(--white)",
     transition: "all 0.15s",
   });
 
@@ -6476,7 +6476,7 @@ export default function MasterDataPage() {
           style={{
             display: "flex",
             gap: "0.25rem",
-            background: "rgba(255,255,255,0.04)",
+            background: "var(--dark3)",
             borderRadius: "10px",
             padding: "0.25rem",
             width: "fit-content",

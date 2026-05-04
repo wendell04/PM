@@ -68,7 +68,7 @@ function ActualStockTab({
   const stockOutsAdjMap = React.useMemo(() => {
     const map = {};
     (stockOuts || []).forEach((so) => {
-      if (so.issueType === "manual_sale" || so.issueType === "sale") return;
+      if (so.issueType === "manual_sale" || so.issueType === "sale" || so.issueType === "order_sale") return;
       const id = String(so.inventoryId || so.materialId || "");
       if (!id) return;
       map[id] = (map[id] || 0) + Math.abs(so.quantity || 0);
