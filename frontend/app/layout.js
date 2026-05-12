@@ -14,7 +14,7 @@ export const metadata = {
   },
 }
 
-const themeScript = `(function(){var t=localStorage.getItem('pmp-theme')||'dark';if(t==='light')document.documentElement.classList.add('light');})();`;
+const themeScript = `(function(){var t=localStorage.getItem('pmp-theme')||'light';if(t==='light')document.documentElement.classList.add('light');})();`;
 
 export default function RootLayout({ children }) {
   return (

@@ -34,6 +34,7 @@ use App\Http\Controllers\WalkInOrderController;
 use App\Http\Controllers\AdminAnalyticsController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\CollectionController;
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::post('/register',        [AuthController::class, 'register'])->middleware('throttle:10,1');
@@ -70,6 +71,8 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::get('/products/{id}',          [ProductController::class, 'show']);
     Route::get('/products/{id}/reviews',  [ReviewController::class, 'productReviews']);
     Route::get('/storefront/reviews',     [ReviewController::class, 'storefrontReviews']);
+    Route::get('/storefront/collections',          [CollectionController::class, 'storefrontIndex']);
+    Route::get('/storefront/collections/{slug}',   [CollectionController::class, 'storefrontShow']);
 });
 
 // ─── Protected — any authenticated user ──────────────────────────────────────
@@ -169,6 +172,14 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/dashboard/stats',         [AdminAnalyticsController::class, 'dashboardStats']);
     Route::get('/admin/reports/sales',           [AdminAnalyticsController::class, 'reportsSales']);
     Route::get('/admin/reports/inventory',       [AdminAnalyticsController::class, 'reportsInventory']);
+
+    // ─── Collections ─────────────────────────────────────────────────────────
+    Route::get('/admin/collections',                         [CollectionController::class, 'adminIndex']);
+    Route::post('/admin/collections',                        [CollectionController::class, 'store']);
+    Route::put('/admin/collections/{id}',                    [CollectionController::class, 'update']);
+    Route::delete('/admin/collections/{id}',                 [CollectionController::class, 'destroy']);
+    Route::patch('/admin/collections/{id}/toggle-publish',   [CollectionController::class, 'togglePublish']);
+    Route::get('/admin/collections/{id}/products',           [CollectionController::class, 'adminProducts']);
 
     // ─── Products ─────────────────────────────────────────────────────────────
     Route::get('/admin/products',                [ProductController::class, 'adminIndex']);

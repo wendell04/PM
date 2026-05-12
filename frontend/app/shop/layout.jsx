@@ -718,7 +718,7 @@ export default function ShopLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
-  const { setCartItems, cartCount: globalCartCount, addToCart: globalAddToCart } = useGlobalCart();
+  const { setCartItems, cartItems: globalCartItems, cartCount: globalCartCount, addToCart: globalAddToCart, removeFromCart: globalRemoveFromCart } = useGlobalCart();
   const [user, setUser]       = useState(null);
   const [cart, setCart]       = useState([]);
   const [cartInitialized, setCartInitialized] = useState(false);
@@ -728,6 +728,7 @@ export default function ShopLayout({ children }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [authModalOpen, setAuthModalOpen]       = useState(false);
@@ -1555,25 +1556,14 @@ export default function ShopLayout({ children }) {
           <div className="shop-navbar-container">
             {/* Left side - Logo and Back button (only show back button when NOT logged in) */}
             <div className="shop-navbar-left">
-              {/* Back to Home button - Only show when not logged in */}
-              {!user && (
-                <Link href="/" className="shop-navbar-back" title="Back to Home">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                    <polyline points="9 22 9 12 15 12 15 22"/>
-                  </svg>
-                </Link>
-              )}
-
-              {/* Logo - Not clickable */}
-              <div className="shop-navbar-logo">
+              {/* Logo — always links back to landing */}
+              <Link href="/" className="shop-navbar-logo">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/logos/PersonalizeMe logo.png" alt="Personalize Me Prints" className="shop-navbar-logo-img" />
                 <div className="shop-navbar-logo-text">
                   PERSONALIZE <span>ME</span><br />PRINTS
                 </div>
-              </div>
+              </Link>
             </div>
 
             {/* Center — Search bar — B-01 */}
@@ -1618,42 +1608,85 @@ export default function ShopLayout({ children }) {
 
             {/* Right side */}
             <div className="shop-navbar-right">
-              {/* Theme toggle */}
-              <button
-                type="button"
-                onClick={toggleTheme}
-                aria-label="Toggle light/dark mode"
-                style={{
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  color: 'var(--gray)', padding: '6px', borderRadius: '8px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                {theme === 'dark' ? (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              {/* Cart button + popup */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  className="shop-navbar-cart"
+                  onClick={() => setCartOpen(o => !o)}
+                  aria-label="Cart"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="9" cy="21" r="1"/>
+                    <circle cx="20" cy="21" r="1"/>
+                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
                   </svg>
-                ) : (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                  </svg>
+                  {globalCartCount > 0 && (
+                    <span className="shop-navbar-cart-badge">
+                      {globalCartCount > 99 ? '99+' : globalCartCount}
+                    </span>
+                  )}
+                </button>
+                {cartOpen && (
+                  <>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 98 }} onClick={() => setCartOpen(false)} />
+                    <div className="shop-cart-popup">
+                      <div className="shop-cart-popup-header">
+                        Cart
+                        {globalCartCount > 0 && <span className="shop-cart-popup-count">{globalCartCount}</span>}
+                        <button className="shop-cart-popup-close" onClick={() => setCartOpen(false)}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </div>
+                      {globalCartItems.length === 0 ? (
+                        <div className="shop-cart-popup-empty">
+                          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                          </svg>
+                          <span className="shop-cart-popup-empty-title">Your cart is empty</span>
+                          <button className="shop-cart-popup-continue" onClick={() => setCartOpen(false)}>Continue shopping</button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="shop-cart-popup-items">
+                            {globalCartItems.map((item, i) => (
+                              <div key={item.lineId || i} className="shop-cart-popup-item">
+                                {item.image ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={item.image} alt={item.productName} className="shop-cart-popup-img" />
+                                ) : (
+                                  <div className="shop-cart-popup-img-placeholder" />
+                                )}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div className="shop-cart-popup-item-name">{item.productName}</div>
+                                  {item.variantName && <div className="shop-cart-popup-item-variant">{item.variantName}</div>}
+                                  <div className="shop-cart-popup-item-price">₱{(item.lineTotal || 0).toLocaleString()} × {item.qty}</div>
+                                </div>
+                                <button
+                                  className="shop-cart-popup-remove"
+                                  onClick={() => globalRemoveFromCart(item.lineId)}
+                                  title="Remove"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="shop-cart-popup-footer">
+                            <div className="shop-cart-popup-total">
+                              <span>Total</span>
+                              <span>₱{globalCartItems.reduce((s, i) => s + (i.lineTotal || 0), 0).toLocaleString()}</span>
+                            </div>
+                            <Link href="/shop/cart" onClick={() => setCartOpen(false)} className="shop-cart-popup-view-btn">View Cart</Link>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </>
                 )}
-              </button>
-
-              {/* Cart button */}
-              <Link href="/shop/cart" className="shop-navbar-cart">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="9" cy="21" r="1"/>
-                  <circle cx="20" cy="21" r="1"/>
-                  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-                </svg>
-                {globalCartCount > 0 && (
-                  <span className="shop-navbar-cart-badge">
-                    {globalCartCount > 99 ? '99+' : globalCartCount}
-                  </span>
-                )}
-              </Link>
+              </div>
 
               {/* User section - Show Login/Register if not logged in, or User menu if logged in */}
               {user ? (
@@ -1792,35 +1825,22 @@ export default function ShopLayout({ children }) {
                   <div className="shop-navbar-user">
                     <button
                       onClick={() => setMenuOpen(o => !o)}
-                      className="shop-navbar-user-btn"
+                      className={`shop-navbar-user-btn${user?.avatar ? ' has-avatar' : ''}`}
+                      title={user?.firstName || 'Account'}
                     >
                       {user?.avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={user.avatar}
                           alt="avatar"
-                          style={{
-                            width: '28px',
-                            height: '28px',
-                            borderRadius: '50%',
-                            objectFit: 'cover',
-                            flexShrink: 0,
-                          }}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />
                       ) : (
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                           <circle cx="12" cy="7" r="4"/>
                         </svg>
                       )}
-                      <span className="shop-navbar-user-name">
-                        {user?.firstName || 'Account'}
-                      </span>
-                      <svg className={`shop-navbar-user-chevron ${menuOpen ? 'open' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="6 9 12 15 18 9"/>
-                      </svg>
                     </button>
 
                     {menuOpen && (
@@ -1878,6 +1898,75 @@ export default function ShopLayout({ children }) {
         <main className="shop-main-content">
           {children}
         </main>
+
+        {/* ── Footer ── */}
+        <footer className="shop-footer">
+          <div className="shop-footer-inner">
+            <div className="shop-footer-brand">
+              <div className="shop-footer-brand-name">PERSONALIZE <span>ME</span> PRINTS</div>
+              <p className="shop-footer-tagline">Your creative partner for custom print products. Quality printing for every occasion.</p>
+              <div className="shop-footer-socials">
+                <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="shop-footer-logo" />
+                <a href="https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Facebook">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073C24 5.404 18.627 0 12 0S0 5.404 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.267h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>
+                </a>
+                <a href="https://www.instagram.com/personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Instagram">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
+                </a>
+                <a href="https://www.tiktok.com/@personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="TikTok">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.75a4.85 4.85 0 0 1-1.01-.06z"/></svg>
+                </a>
+                <a href="https://shopee.ph/personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-footer-social-btn" aria-label="Shopee">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zm3 9a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+                </a>
+              </div>
+            </div>
+            <div className="shop-footer-col">
+              <h4>Shop</h4>
+              <Link href="/shop">All Products</Link>
+              <Link href="/shop">Collections</Link>
+              <Link href="/#pricing">Pricing</Link>
+            </div>
+            <div className="shop-footer-col">
+              <h4>Accepted Payments</h4>
+              <div className="shop-footer-pay-grid">
+                <img src="/logos/Gcash-Logo-1024x1024.png" alt="GCash" className="shop-footer-pay-badge" />
+                <img src="/logos/maya logo.png" alt="Maya" className="shop-footer-pay-badge" />
+                <svg viewBox="0 0 780 500" xmlns="http://www.w3.org/2000/svg" className="shop-footer-pay-visa">
+                  <rect width="780" height="500" rx="40" fill="#1a1f71"/>
+                  <text x="390" y="340" textAnchor="middle" fontFamily="Arial" fontSize="240" fontWeight="bold" fill="#fff" fontStyle="italic">VISA</text>
+                </svg>
+                <svg viewBox="0 0 60 38" xmlns="http://www.w3.org/2000/svg" className="shop-footer-pay-mc">
+                  <rect width="60" height="38" rx="4" fill="#252525"/>
+                  <circle cx="23" cy="19" r="13" fill="#EB001B"/>
+                  <circle cx="37" cy="19" r="13" fill="#F79E1B"/>
+                  <path d="M30 8.8a13 13 0 0 1 0 20.4A13 13 0 0 1 30 8.8z" fill="#FF5F00"/>
+                </svg>
+              </div>
+            </div>
+            <div className="shop-footer-col">
+              <h4>Account</h4>
+              <Link href="/shop/orders-history">My Orders</Link>
+              <Link href="/shop/profile">My Profile</Link>
+              <Link href="/shop/cart">Cart</Link>
+            </div>
+          </div>
+          <div className="shop-footer-bottom">
+            <span className="shop-footer-copy">© {new Date().getFullYear()} Personalize Me Prints. All rights reserved.</span>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label="Toggle theme"
+              style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', cursor: 'pointer', color: 'rgba(245,245,245,0.6)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}
+            >
+              {theme === 'dark' ? (
+                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>Light Mode</>
+              ) : (
+                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>Dark Mode</>
+              )}
+            </button>
+          </div>
+        </footer>
 
         {/* ── Auth Modal (Same as Landing Page) ── */}
         {authModalOpen && (

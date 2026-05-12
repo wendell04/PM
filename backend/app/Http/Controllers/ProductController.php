@@ -521,7 +521,7 @@ class ProductController extends Controller
 
     /**
      * DELETE /api/admin/products/{id}
-     * Soft-deletes (deactivates) a product
+     * Hard-deletes a product permanently from the database
      */
     public function destroy(Request $request, $id)
     {
@@ -536,12 +536,11 @@ class ProductController extends Controller
                 return $this->notFoundResponse('Product');
             }
 
-            // Soft delete — keep data, just hide from store
-            $product->update(['isActive' => false, 'isArchived' => true, 'updatedAt' => now()]);
+            $product->delete();
 
             Cache::forget('admin_products_list');
 
-            return $this->successResponse('Product deactivated successfully.');
+            return $this->successResponse('Product deleted permanently.');
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while deleting the product.');
         }

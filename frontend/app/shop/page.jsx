@@ -280,20 +280,24 @@ function ProductCard({ product, onAddToCart, flashSale }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ShopPage() {
-  const [products, setProducts]   = useState([]);
+  const [products, setProducts]       = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState(null);
-  const [category, setCategory]   = useState('All');
-  const [toast, setToast]         = useState(null);
-  const [banners, setBanners] = useState([]);
-  const [currentSlide, setCurrentSlide] = useState(0);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState(null);
+  const [category, setCategory]       = useState('All');
+  const [toast, setToast]             = useState(null);
+  const [banners, setBanners]         = useState([]);
+  const [currentSlide, setCurrentSlide]   = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
-  const [flashSales, setFlashSales] = useState({});
+  const [flashSales, setFlashSales]   = useState({});
   const [quickAddProduct, setQuickAddProduct] = useState(null);
-  const [quickFlashSale, setQuickFlashSale] = useState(null);
+  const [quickFlashSale, setQuickFlashSale]   = useState(null);
   const [quickVariant, setQuickVariant] = useState(null);
-  const [quickQty, setQuickQty] = useState(1);
+  const [quickQty, setQuickQty]         = useState(1);
+  const [collections, setCollections]             = useState([]);
+  const [selectedCollection, setSelectedCollection] = useState(null);
+  const [collectionProducts, setCollectionProducts] = useState([]);
+  const [collectionLoading, setCollectionLoading]   = useState(false);
   const { addToCart } = useCart();
   const router = useRouter();
 
@@ -327,6 +331,7 @@ export default function ShopPage() {
     loadProducts();
     loadBanners();
     loadFlashSales();
+    loadCollections();
   }, []);
 
   async function loadFlashSales() {
@@ -417,6 +422,34 @@ export default function ShopPage() {
     }
   }
 
+  async function loadCollections() {
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/storefront/collections`, {}, 15000);
+      if (!res.ok) return;
+      const data = await res.json();
+      setCollections(Array.isArray(data?.data) ? data.data : []);
+    } catch {}
+  }
+
+  async function handleSelectCollection(col) {
+    setSelectedCollection(col);
+    setCategory('All');
+    setSearchQuery('');
+    if (!col) return;
+    setCollectionLoading(true);
+    try {
+      const res = await fetchWithTimeout(
+        `${API_URL}/api/storefront/collections/${col.slug}?per_page=60`,
+        {},
+        20000
+      );
+      if (!res.ok) { setCollectionLoading(false); return; }
+      const data = await res.json();
+      setCollectionProducts(data?.data?.products ?? []);
+    } catch {}
+    finally { setCollectionLoading(false); }
+  }
+
   const applyFlashDiscount = (price, sale) => {
     if (!sale || price <= 0) return price;
     if (sale.discountType === 'percentage') return Math.max(0, price * (1 - sale.discountValue / 100));
@@ -445,16 +478,14 @@ export default function ShopPage() {
   };
 
   // Derived values
-  const categories = ['All', ...new Set(products.map(p => p.category))];
+  const baseProducts  = selectedCollection ? collectionProducts : products;
+  const isBaseLoading = selectedCollection ? collectionLoading : loading;
 
-  const filtered = products.filter(p => {
-    const matchCat  = category === 'All' || p.category === category;
-    return matchCat && (
-      !searchQuery ||
-      p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.description?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  });
+  const filtered = baseProducts.filter(p =>
+    !searchQuery ||
+    p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <ErrorBoundary>
@@ -539,53 +570,88 @@ export default function ShopPage() {
         </div>
       )}
 
-      {/* Greeting bar */}
-      <div style={{
-        marginBottom: '1rem',
-        padding: '0.75rem 1rem',
-        background: 'rgba(212,168,67,0.06)',
-        border: '1px solid rgba(212,168,67,0.15)',
-        borderRadius: '10px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-      }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-          stroke="var(--gold)" strokeWidth="2" strokeLinecap="round"
-          strokeLinejoin="round" style={{ flexShrink: 0 }}>
-          <circle cx="12" cy="8" r="4"/>
-          <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-        </svg>
-        <span style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 500 }}>
-          {shopUser?.firstName
-            ? <>{getGreeting()}, <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{shopUser.firstName}</span>! Welcome back.</>
-            : <>Welcome to <span style={{ color: 'var(--gold)', fontWeight: 700 }}>Personalize Me Prints</span>! Browse our products below.</>
-          }
-        </span>
-      </div>
+      {/* Collections showcase — visible on landing, hidden once a collection is active */}
+      {collections.length > 0 && !selectedCollection && (
+        <section className="shop-collections-showcase">
+          <div className="shop-showcase-inner">
+            <div className="shop-showcase-header">
+              <h2 className="shop-showcase-title">Shop by Collection</h2>
+              <p className="shop-showcase-sub">Curated picks for every occasion</p>
+            </div>
+            <div className="shop-showcase-grid">
+              {collections.map(col => (
+                <button
+                  key={col.id ?? col._id}
+                  className="shop-showcase-card"
+                  onClick={() => handleSelectCollection(col)}
+                >
+                  <div className="shop-showcase-card-img">
+                    {col.image ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={col.image} alt={col.title} />
+                    ) : (
+                      <div className="shop-showcase-card-placeholder">
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" strokeWidth="1.2"
+                          strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2"/>
+                          <circle cx="8.5" cy="8.5" r="1.5"/>
+                          <polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                      </div>
+                    )}
+                    <div className="shop-showcase-card-overlay" />
+                    <div className="shop-showcase-card-info">
+                      <span className="shop-showcase-card-title">{col.title}</span>
+                      {col.productCount > 0 && (
+                        <span className="shop-showcase-card-count">{col.productCount} items</span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
-      {/* Category pills */}
-      <div className="shop-category-pills">
-        {categories.map(cat => (
+      {/* Collections tabs — only shown when collections exist */}
+      {collections.length > 0 && (
+        <div className="shop-collections-nav">
           <button
-            key={cat}
-            onClick={() => setCategory(cat)}
-            className={`shop-category-pill${category === cat ? ' active' : ''}`}
+            className={`shop-collection-tab${!selectedCollection ? ' active' : ''}`}
+            onClick={() => handleSelectCollection(null)}
           >
-            {cat}
+            All Products
           </button>
-        ))}
-      </div>
+          {collections.map(col => (
+            <button
+              key={col.id ?? col._id}
+              className={`shop-collection-tab${selectedCollection?.slug === col.slug ? ' active' : ''}`}
+              onClick={() => handleSelectCollection(col)}
+            >
+              {col.title}
+              {col.productCount > 0 && (
+                <span className="shop-collection-tab-count">{col.productCount}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
 
       {/* Results count */}
-      {!loading && filtered.length > 0 && (
+      {!isBaseLoading && filtered.length > 0 && (
         <div className="shop-results-count">
-          Showing {filtered.length} of {products.length} products
+          {selectedCollection
+            ? `${filtered.length} product${filtered.length !== 1 ? 's' : ''} in "${selectedCollection.title}"`
+            : `Showing ${filtered.length} of ${products.length} products`
+          }
         </div>
       )}
 
       {/* Grid */}
-      {loading ? (
+      {isBaseLoading ? (
         <div className="shop-products-grid shop-products-grid-loading">
           {[...Array(8)].map((_, i) => (
             <div key={i} className="shop-product-skeleton" />
@@ -628,29 +694,6 @@ export default function ShopPage() {
           ))}
         </div>
       )}
-
-      {/* Social Proof Section */}
-      <div className="shop-social-proof">
-        <h3 className="shop-proof-title">Connect With Us</h3>
-        <div className="shop-social-links">
-          <a href="https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer" className="shop-social-link shop-social-fb">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073C24 5.404 18.627 0 12 0S0 5.404 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.267h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>
-            Facebook
-          </a>
-          <a href="https://www.instagram.com/personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-social-link shop-social-insta">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
-            Instagram
-          </a>
-          <a href="https://www.tiktok.com/@personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-social-link shop-social-tiktok">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.75a4.85 4.85 0 0 1-1.01-.06z"/></svg>
-            TikTok
-          </a>
-          <a href="https://shopee.ph/personalizemeprints" target="_blank" rel="noopener noreferrer" className="shop-social-link shop-social-shopee">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zm3 9a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
-            Shopee
-          </a>
-        </div>
-      </div>
 
       {/* Quick Add Modal */}
       {quickAddProduct && (

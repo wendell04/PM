@@ -533,9 +533,10 @@ export default function BusinessDashboardLayout({ children }) {
       permKey: "products",
       icon: "M4 6h16M4 10h16M4 14h16M4 18h16",
       children: [
-        { name: "Catalog", href: "/dashboard/business/products" },
-        { name: "Banners", href: "/dashboard/business/banners" },
-        { name: "Reviews", href: "/dashboard/business/reviews" },
+        { name: "Catalog",     href: "/dashboard/business/products" },
+        { name: "Collections", href: "/dashboard/business/collections" },
+        { name: "Banners",     href: "/dashboard/business/banners" },
+        { name: "Reviews",     href: "/dashboard/business/reviews" },
       ],
     },
     {

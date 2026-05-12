@@ -17,7 +17,7 @@ export default function AdminChatPage() {
 
   if (!user || !token) {
     return (
-      <div className="p-8 text-center text-white">
+      <div className="p-8 text-center" style={{ color: 'var(--white)' }}>
         Please log in to access the chat.
       </div>
     );
@@ -30,7 +30,7 @@ export default function AdminChatPage() {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d4a843" strokeWidth="2.5" strokeLinecap="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
-          <h1 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#fff', letterSpacing: '-0.01em', margin: 0 }}>Messages</h1>
+          <h1 style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--white)', letterSpacing: '-0.01em', margin: 0 }}>Messages</h1>
         </div>
         <p style={{ fontSize: '0.78rem', color: '#555', margin: 0, paddingLeft: '28px' }}>
           Manage customer inquiries and order specifications in real-time.

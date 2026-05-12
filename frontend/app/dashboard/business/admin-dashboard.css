@@ -4117,3 +4117,65 @@ html.light .preview-stock-badge.upon-order {
   color: #4338ca;
   background: rgba(99,102,241,0.12);
 }
+
+/* ── Active nav parent: gold bg needs dark text in light mode ── */
+html.light .sidebar-nav-parent.active {
+  color: #1a1a1a;
+}
+html.light .sidebar-nav-parent.active .nav-icon,
+html.light .sidebar-nav-parent.active .nav-chevron {
+  color: #1a1a1a;
+}
+
+/* ── Nav item hover: use dark overlay in light mode ── */
+html.light .sidebar-nav-item:hover {
+  background: rgba(0,0,0,0.05);
+}
+
+/* ── Table rows: alternating rows in light mode ── */
+html.light .data-table tr:nth-child(even),
+html.light .admin-table tr:nth-child(even) {
+  background: rgba(0,0,0,0.02);
+}
+
+/* ── Modal/overlay backgrounds stay dark regardless of theme ── */
+html.light .modal-overlay,
+html.light .modal-backdrop {
+  background: rgba(0,0,0,0.5);
+}
+
+/* ── Page content background ── */
+html.light .page-content,
+html.light .page-content-wrapper {
+  background: var(--black);
+}
+
+/* ── Sidebar divider labels ── */
+html.light .sidebar-divider-label {
+  color: rgba(0,0,0,0.35);
+}
+
+/* ── Input/select options in light mode ── */
+html.light .form-input,
+html.light .form-select,
+html.light .form-textarea {
+  color-scheme: light;
+}
+
+/* ── Dashboard stat cards ── */
+html.light .stat-card,
+html.light .overview-card {
+  background: var(--dark);
+  border-color: rgba(0,0,0,0.1);
+}
+
+/* ── Skeleton loaders ── */
+html.light .skeleton-card,
+html.light .skeleton-row,
+html.light .skeleton-title,
+html.light .skeleton-subtitle,
+html.light .skeleton-cell,
+html.light .skeleton-table-header {
+  background: linear-gradient(90deg, #e8eaed 25%, #d8dade 50%, #e8eaed 75%);
+  background-size: 200% 100%;
+}

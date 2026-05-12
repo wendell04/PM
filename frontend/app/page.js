@@ -1,8 +1,8 @@
 'use client';
-import LandingPage from '@/components/LandingPage';
 import { useRouter } from 'next/navigation';
+import LandingPage from '@/components/LandingPage';
 
 export default function Index() {
   const router = useRouter();
-  return <LandingPage onEnterShop={() => router.push('/home')} />;
+  return <LandingPage onEnterShop={() => router.push('/shop')} />;
 }

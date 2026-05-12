@@ -7,9 +7,28 @@ import { useRouter } from 'next/navigation';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { getStorefrontBanners } from '@/lib/bannerUtils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useCart } from '@/context/CartContext';
+import { fetchNotifications, markNotificationRead, markAllNotificationsRead } from '@/lib/notificationApi';
+import CustomerChatModal from '@/components/chat/CustomerChatModal';
 import '@/components/custom-styles.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+const HERO_SLIDER_IMAGES = [
+  { src: '/products/Tshit_printing.jpg', label: 'T-Shirt Printing',    pos: 'center center' },
+  { src: '/products/DTF.jpg',            label: 'DTF Printing',         pos: 'center center' },
+  { src: '/products/mugs.jpg',           label: 'Custom Mugs',          pos: 'center center' },
+  { src: '/products/ButtonPins.jpg',     label: 'Button Pins & Badges', pos: 'center center' },
+  { src: '/products/ecobags.jpg',        label: 'Canvas Totebag',       pos: 'center 70%'    },
+  { src: '/products/MousePad.jpg',       label: 'Mousepad',             pos: 'center center' },
+  { src: '/products/RefMagnet.jpg',      label: 'Ref Magnet',           pos: 'center center' },
+  { src: '/products/Souvenirs.jpg',      label: 'Souvenirs & Gift Items', pos: 'center 65%'  },
+  { src: '/products/Stickers.jpg',       label: 'Stickers & Labels',    pos: 'center center' },
+  { src: '/products/Bookmarks.jpg',      label: 'Magnetic Bookmark',    pos: 'center center' },
+  { src: '/products/Ballpens.jpg',       label: 'Ballpens',             pos: 'center 30%'    },
+  { src: '/products/Caps.jpg',           label: 'Caps',                 pos: 'center 60%'    },
+];
 
 const PasswordStrength = ({password}) => {
   const checks = [
@@ -55,15 +74,22 @@ const PasswordStrength = ({password}) => {
 
 const LandingPage = ({onEnterShop}) => {
   const router = useRouter();
-  const { user, token } = useAuth();
+  const { currentUser: user, token, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   // Allow everyone to browse products (no login required)
   const handleEnterShop = () => {
     router.push('/shop');
   };
 
+  const { cartItems, cartCount, removeFromCart } = useCart();
   const [mounted, setMounted] = useState(false);
-  const [activeCategory, setActiveCategory] = useState('all');
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [lpCartOpen, setLpCartOpen] = useState(false);
+  const [lpNotifOpen, setLpNotifOpen] = useState(false);
+  const [lpNotifications, setLpNotifications] = useState([]);
+  const [lpNotifLoading, setLpNotifLoading] = useState(false);
+  const [lpUnreadCount, setLpUnreadCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen]   = useState(false);
   const [scrolled, setScrolled]               = useState(false);
   const [modal, setModal]                     = useState(null);
@@ -95,10 +121,22 @@ const LandingPage = ({onEnterShop}) => {
   const [tooltipX, setTooltipX] = useState(0);
   const [tooltipY, setTooltipY] = useState(0);
 
+  const [hoveredNav, setHoveredNav]               = useState(null);
+  const [navProducts, setNavProducts]             = useState([]);
+  const [navProductsLoading, setNavProductsLoading] = useState(false);
+  const [hoveredCollection, setHoveredCollection] = useState(null);
+  const [collectionProducts, setCollectionProducts] = useState([]);
+
   // Hero carousel
   const [heroSlide, setHeroSlide] = useState(0);
   const [heroPaused, setHeroPaused] = useState(false);
   const [heroBanners, setHeroBanners] = useState([]);
+
+  // Hero right-side image slider
+  const [heroImgIdx, setHeroImgIdx] = useState(0);
+
+  // Collections
+  const [landingCollections, setLandingCollections] = useState([]);
 
   // Customer reviews
   const [landingReviews, setLandingReviews] = useState([]);
@@ -134,6 +172,7 @@ const LandingPage = ({onEnterShop}) => {
 
   // Refs for T&C scroll detection
   const termsScrollRef = useRef(null);
+  const navLeaveTimer  = useRef(null);
 
   // ─── useEffects ──────────────────────────────────────────────────────────────
 
@@ -160,6 +199,23 @@ const LandingPage = ({onEnterShop}) => {
     window.addEventListener('scroll', handleScroll, {passive: true});
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (!token) { setLpNotifications([]); setLpUnreadCount(0); return; }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const data = await fetchNotifications(token);
+        if (!cancelled) {
+          setLpNotifications(data.notifications ?? []);
+          setLpUnreadCount(data.unread_count ?? 0);
+        }
+      } catch { /* silent */ }
+    };
+    load();
+    const interval = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [token]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -245,6 +301,14 @@ const LandingPage = ({onEnterShop}) => {
       .catch(console.error);
   }, []);
 
+  useEffect(() => {
+    fetchWithTimeout(`${API_URL}/api/storefront/collections`, {}, 15000)
+      .then(r => r.json())
+      .then(d => setLandingCollections(Array.isArray(d?.data) ? d.data : []))
+      .catch(() => {});
+  }, []);
+
+
   // Fetch live banners for hero carousel
   useEffect(() => {
     getStorefrontBanners('landing')
@@ -266,6 +330,14 @@ const LandingPage = ({onEnterShop}) => {
     }, 4000);
     return () => clearInterval(t);
   }, [heroPaused, heroBanners.length]);
+
+  // Hero right-side image slider
+  useEffect(() => {
+    const t = setInterval(() => {
+      setHeroImgIdx(i => (i + 1) % HERO_SLIDER_IMAGES.length);
+    }, 6000);
+    return () => clearInterval(t);
+  }, []);
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
@@ -778,6 +850,47 @@ const handleForgotResetPassword = async () => {
     }
   };
 
+  // ─── Mega nav handlers ───────────────────────────────────────────────────────
+
+  const fetchNavProducts = async () => {
+    if (navProducts.length > 0 || navProductsLoading) return;
+    setNavProductsLoading(true);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/products`, {}, 15000);
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+      setNavProducts(list.filter(p => p.isPublished !== false));
+    } catch {}
+    setNavProductsLoading(false);
+  };
+
+  const handleNavEnter = (which) => {
+    clearTimeout(navLeaveTimer.current);
+    setHoveredNav(which);
+    if (which === 'products') fetchNavProducts();
+  };
+
+  const handleNavLeave = () => {
+    navLeaveTimer.current = setTimeout(() => {
+      setHoveredNav(null);
+      setHoveredCollection(null);
+      setCollectionProducts([]);
+    }, 150);
+  };
+
+  const handlePanelEnter = () => clearTimeout(navLeaveTimer.current);
+
+  const handleHoverCollection = async (col) => {
+    const colId = col.id ?? col._id;
+    setHoveredCollection(colId);
+    setCollectionProducts([]);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/storefront/collections/${col.slug}`, {}, 10000);
+      const data = await res.json();
+      setCollectionProducts(Array.isArray(data?.data?.products) ? data.data.products : []);
+    } catch {}
+  };
+
   // ─── Data ─────────────────────────────────────────────────────────────────────
 
   const services = [
@@ -795,9 +908,6 @@ const handleForgotResetPassword = async () => {
     { img: '/products/Caps.jpg',           title: 'Caps',                  category: 'tshirts', desc: 'Custom printed or embroidered caps. Perfect for teams, sports events, corporate uniforms, and merchandise. Contact us for bulk pricing.' },
   ];
 
-  const filteredServices = activeCategory === 'all'
-    ? services
-    : services.filter(s => s.category === activeCategory);
 
   const publicPricing = [
     { category: 'T-Shirt Printing',      startingAt: '₱300', note: 'Final cost depends on quantity, design, material & panel print.' },
@@ -887,11 +997,12 @@ const handleForgotResetPassword = async () => {
     {
       tag: 'Premium Custom Printing',
       titleParts: [
-        {text: 'Print What ', plain: true},
-        {text: 'Represents', className: 'red-text'},
-        {text: ' You', className: 'gold-text'},
+        {text: 'Print What', plain: true},
+        {break: true},
+        {text: 'Represents ', className: 'red-text'},
+        {text: 'You', className: 'gold-text'},
       ],
-      subtitle: 'High-quality personalized printing for t-shirts, mugs, souvenirs, and more. Upload your design — we\'ll make it real.',
+      subtitle: 'High-quality personalized printing for t-shirts, mugs, souvenirs, and more. Upload your design and we\'ll make it real.',
       cta: {label: 'Browse Products', action: 'shop'},
       cta2: {label: 'How It Works', href: '#how-it-works'},
     },
@@ -943,24 +1054,283 @@ const handleForgotResetPassword = async () => {
               <div className="nav-logo-text">PERSONALIZE <span>ME</span><br/>PRINTS</div>
             </a>
             <ul className="nav-links">
-              <li><a href="#services">Products</a></li>
+              <li className="nav-has-mega"
+                  onMouseEnter={() => handleNavEnter('products')}
+                  onMouseLeave={handleNavLeave}>
+                <a href="#services" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  Products
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </a>
+              </li>
+              <li className="nav-has-mega"
+                  onMouseEnter={() => handleNavEnter('categories')}
+                  onMouseLeave={handleNavLeave}>
+                <a href="#" style={{ display: 'flex', alignItems: 'center', gap: '3px' }} onClick={(e) => e.preventDefault()}>
+                  Categories
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </a>
+              </li>
               <li><a href="#how-it-works">How It Works</a></li>
               <li><a href="#pricing">Pricing</a></li>
               <li><a href="#contact">Contact</a></li>
+              <li><a href="/shop" className="nav-go-to-shop">Go to Shop</a></li>
             </ul>
             <div className="nav-auth" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {!user && (
+              {mounted && (user ? (
                 <>
-                  <button className="btn-nav-login" suppressHydrationWarning onClick={() => openModal('login')}>Sign In</button>
-                  <button className="btn-nav-register" suppressHydrationWarning onClick={() => openModal('register')}>Get Started</button>
+                  {/* Cart popup */}
+                  <div style={{position:'relative'}}>
+                    <button type="button" className="lp-nav-icon-btn" title="Cart" onClick={() => setLpCartOpen(o => !o)} style={{position:'relative'}}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                      </svg>
+                      {cartCount > 0 && <span className="lp-nav-badge">{cartCount > 99 ? '99+' : cartCount}</span>}
+                    </button>
+                    {lpCartOpen && (
+                      <>
+                        <div style={{position:'fixed',inset:0,zIndex:98}} onClick={() => setLpCartOpen(false)} />
+                        <div className="lp-nav-popup">
+                          <div className="lp-nav-popup-header">
+                            Cart
+                            {cartCount > 0 && <span className="lp-nav-popup-count">{cartCount}</span>}
+                            <button className="lp-nav-popup-close" onClick={() => setLpCartOpen(false)}>
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                          </div>
+                          {cartItems.length === 0 ? (
+                            <div className="lp-nav-popup-empty">
+                              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                              <span className="lp-nav-popup-empty-title">Your cart is empty</span>
+                              <button className="lp-nav-popup-cta" onClick={() => { setLpCartOpen(false); handleEnterShop(); }}>Continue shopping</button>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="lp-nav-popup-items">
+                                {cartItems.map((item, i) => (
+                                  <div key={item.lineId || i} className="lp-nav-popup-item">
+                                    {item.image ? (
+                                      <img src={item.image} alt={item.productName} className="lp-nav-popup-item-img" />
+                                    ) : (
+                                      <div className="lp-nav-popup-item-img-ph" />
+                                    )}
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div className="lp-nav-popup-item-name">{item.productName}</div>
+                                      {item.variantName && <div className="lp-nav-popup-item-variant">{item.variantName}</div>}
+                                      <div className="lp-nav-popup-item-price">₱{(item.lineTotal||0).toLocaleString()} × {item.qty}</div>
+                                    </div>
+                                    <button
+                                      className="lp-nav-popup-remove"
+                                      onClick={() => removeFromCart(item.lineId)}
+                                      title="Remove"
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="lp-nav-popup-footer">
+                                <div className="lp-nav-popup-total"><span>Total</span><span>₱{cartItems.reduce((s,i)=>s+(i.lineTotal||0),0).toLocaleString()}</span></div>
+                                <a href="/shop/cart" onClick={() => setLpCartOpen(false)} className="lp-nav-popup-view-btn">View Cart</a>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Notifications popup */}
+                  <div style={{position:'relative'}}>
+                    <button type="button" className="lp-nav-icon-btn" title="Notifications" onClick={() => setLpNotifOpen(o => !o)} style={{position:'relative'}}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                      </svg>
+                      {lpUnreadCount > 0 && <span className="lp-nav-badge notif">{lpUnreadCount > 99 ? '99+' : lpUnreadCount}</span>}
+                    </button>
+                    {lpNotifOpen && (
+                      <>
+                        <div style={{position:'fixed',inset:0,zIndex:98}} onClick={() => setLpNotifOpen(false)} />
+                        <div className="lp-nav-popup lp-nav-notif-popup">
+                          <div className="lp-nav-popup-header">
+                            Notifications
+                            {lpUnreadCount > 0 && <span className="lp-nav-popup-count red">{lpUnreadCount}</span>}
+                            {lpUnreadCount > 0 && (
+                              <button className="lp-nav-popup-mark-all" onClick={async () => { try { await markAllNotificationsRead(token); setLpUnreadCount(0); setLpNotifications(p => p.map(n => ({...n, is_read: true}))); } catch{} }}>Mark all read</button>
+                            )}
+                            <button className="lp-nav-popup-close" onClick={() => setLpNotifOpen(false)}>
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                          </div>
+                          <div className="lp-nav-notif-body">
+                            {lpNotifications.length === 0 ? (
+                              <div className="lp-nav-popup-empty">
+                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                <span className="lp-nav-popup-empty-title">No notifications</span>
+                              </div>
+                            ) : lpNotifications.map((n, i) => {
+                              const id = n._id ?? n.id ?? String(i);
+                              return (
+                                <div key={id} className={`lp-nav-notif-item${n.is_read ? '' : ' unread'}`} onClick={async () => { if (!n.is_read) { try { await markNotificationRead(token, id); setLpUnreadCount(c => Math.max(0,c-1)); setLpNotifications(p => p.map(x => x._id===id||x.id===id ? {...x,is_read:true} : x)); } catch{} } }}>
+                                  <div className={`lp-nav-notif-dot${n.is_read ? ' read' : ''}`} />
+                                  <div>
+                                    <div className="lp-nav-notif-title" style={{fontWeight: n.is_read ? 400 : 600}}>{n.title}</div>
+                                    <div className="lp-nav-notif-msg">{n.message}</div>
+                                    <div className="lp-nav-notif-time">{new Date(n.created_at).toLocaleDateString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div style={{position:'relative'}}>
+                    <button className={`lp-nav-avatar-btn${user?.avatar ? ' has-avatar' : ''}`} onClick={() => setUserMenuOpen(o => !o)} title="Account">
+                      {user?.avatar ? (
+                        <img src={user.avatar} alt="avatar" style={{width:'100%',height:'100%',objectFit:'cover'}} />
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                          <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                      )}
+                    </button>
+                    {userMenuOpen && (
+                      <>
+                        <div style={{position:'fixed',inset:0,zIndex:98}} onClick={() => setUserMenuOpen(false)} />
+                        <div className="lp-nav-user-menu">
+                          <div className="lp-nav-user-info">
+                            <div className="lp-nav-user-label">Signed in as</div>
+                            <div className="lp-nav-user-name-full">{user?.firstName} {user?.lastName}</div>
+                          </div>
+                          <a href="/shop/profile" className="lp-nav-menu-item" onClick={() => setUserMenuOpen(false)}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            My Profile
+                          </a>
+                          <a href="/shop/orders-history" className="lp-nav-menu-item" onClick={() => setUserMenuOpen(false)}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            My Orders
+                          </a>
+                          <button onClick={() => { logout(); setUserMenuOpen(false); }} className="lp-nav-menu-item lp-nav-logout">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                            Log Out
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </>
-              )}
+              ) : (
+                <>
+                  <button className="btn-nav-login" onClick={() => openModal('login')}>Sign In</button>
+                  <button className="btn-nav-register" onClick={() => openModal('register')}>Get Started</button>
+                </>
+              ))}
             </div>
             <button className={`hamburger ${mobileMenuOpen ? 'open' : ''}`} onClick={toggleMobile} aria-label="Menu">
               <span/><span/><span/>
             </button>
           </div>
         </div>
+
+        {/* Mega nav panels */}
+        {hoveredNav && (
+          <div
+            className="mega-nav-panel"
+            onMouseEnter={handlePanelEnter}
+            onMouseLeave={handleNavLeave}
+          >
+            <div className="mega-nav-inner">
+              {hoveredNav === 'products' ? (
+                navProductsLoading ? (
+                  <div className="mega-nav-loading">Loading products...</div>
+                ) : navProducts.length === 0 ? (
+                  <div className="mega-nav-empty">No products yet</div>
+                ) : (() => {
+                  const grouped = navProducts.reduce((acc, p) => {
+                    const cat = p.category || 'Other';
+                    if (!acc[cat]) acc[cat] = [];
+                    acc[cat].push(p);
+                    return acc;
+                  }, {});
+                  return (
+                    <>
+                      <div className="mega-products-columns">
+                        {Object.entries(grouped).map(([cat, prods]) => (
+                          <div key={cat} className="mega-products-col">
+                            <div className="mega-col-heading">{cat}</div>
+                            {prods.map(p => (
+                              <button
+                                key={p._id ?? p.id}
+                                className="mega-col-item"
+                                onClick={() => { setHoveredNav(null); router.push('/shop'); }}
+                              >
+                                {p.name}
+                              </button>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mega-nav-footer">
+                        <button onClick={() => { setHoveredNav(null); router.push('/shop'); }}>
+                          View all products
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: '4px', verticalAlign: 'middle' }}>
+                            <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </>
+                  );
+                })()
+              ) : (
+                landingCollections.length === 0 ? (
+                  <div className="mega-nav-empty">No categories yet</div>
+                ) : (
+                  <div className="mega-categories-layout">
+                    <div className="mega-cat-list">
+                      {landingCollections.map(col => {
+                        const colId = col.id ?? col._id;
+                        return (
+                          <button
+                            key={colId}
+                            className={`mega-cat-item${hoveredCollection === colId ? ' active' : ''}`}
+                            onMouseEnter={() => handleHoverCollection(col)}
+                            onClick={() => { setHoveredNav(null); router.push('/shop'); }}
+                          >
+                            <span>{col.title}</span>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="9 18 15 12 9 6"/>
+                            </svg>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="mega-cat-products">
+                      {collectionProducts.length === 0 ? (
+                        <div className="mega-cat-empty">Hover a category to preview products</div>
+                      ) : (
+                        <div className="mega-col-products-list">
+                          {collectionProducts.map(p => (
+                            <button
+                              key={p.id ?? p._id}
+                              className="mega-col-item"
+                              onClick={() => { setHoveredNav(null); router.push('/shop'); }}
+                            >
+                              {p.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* MOBILE MENU */}
@@ -969,9 +1339,14 @@ const handleForgotResetPassword = async () => {
         <a href="#how-it-works" onClick={closeMobile}>How It Works</a>
         <a href="#pricing"      onClick={closeMobile}>Pricing</a>
         <a href="#contact"      onClick={closeMobile}>Contact</a>
+        <a href="/shop"         onClick={closeMobile}>Go to Shop</a>
         <div className="mobile-auth-btns">
-          <button className="btn-nav-login" suppressHydrationWarning onClick={() => openModal('login')}>Sign In</button>
-          <button className="btn-nav-register" suppressHydrationWarning onClick={() => openModal('register')}>Get Started</button>
+          {mounted && !user && (
+            <>
+              <button className="btn-nav-login" onClick={() => openModal('login')}>Sign In</button>
+              <button className="btn-nav-register" onClick={() => openModal('register')}>Get Started</button>
+            </>
+          )}
         </div>
       </div>
 
@@ -988,12 +1363,13 @@ const handleForgotResetPassword = async () => {
                 key={i}
                 className={`hero-slide${heroSlide === i ? ' active' : ''}`}
               >
-                {slide.tag && <div className="hero-badge">{slide.tag}</div>}
                 <h1 className="hero-title">
                   {slide.titleParts.map((part, j) =>
-                    part.plain
-                      ? <span key={j}>{part.text}</span>
-                      : <span key={j} className={part.className}>{part.text}</span>
+                    part.break
+                      ? <br key={j}/>
+                      : part.plain
+                        ? <span key={j}>{part.text}</span>
+                        : <span key={j} className={part.className}>{part.text}</span>
                   )}
                 </h1>
                 {slide.subtitle && <p className="hero-subtitle">{slide.subtitle}</p>}
@@ -1039,138 +1415,122 @@ const handleForgotResetPassword = async () => {
             ))}
           </div>
 
-          {/* Dot indicators */}
-          <div className="hero-dots">
-            {effectiveSlides.map((_, i) => (
-              <button
-                key={i}
-                className={`hero-dot${heroSlide === i ? ' active' : ''}`}
-                onClick={() => setHeroSlide(i)}
-                aria-label={`Slide ${i + 1}`}
-              />
-            ))}
-          </div>
-
-          <div className="hero-stats">
-            <div>
-              <div className="hero-stat-num gold-text">500+</div>
-              <div className="hero-stat-label">Happy Clients</div>
-            </div>
-            <div>
-              <div className="hero-stat-num gold-text">24hr</div>
-              <div className="hero-stat-label">Turnaround</div>
-            </div>
-            <div>
-              <div className="hero-stat-num gold-text">100%</div>
-              <div className="hero-stat-label">Satisfaction</div>
-            </div>
-          </div>
         </div>
         <div className="hero-visual">
           {currentBannerImage ? (
             <img
               src={currentBannerImage}
               alt=""
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                borderRadius: '16px',
-                border: '1px solid rgba(212,168,67,0.2)',
-                boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
-              }}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 20%' }}
             />
           ) : (
-            <div className="logo-3d-scene">
-              <div className="particles" id="particles"/>
-              <div className="ring-outer"/><div className="ring-mid"/>
-              <div className="orbit" style={{animationDuration:'7s'}}>
-                <div className="orbit-dot" style={{width:'10px',height:'10px',borderRadius:'50%',background:'var(--gold)',boxShadow:'0 0 8px var(--gold)'}}/>
+            <div className="hero-image-slider">
+              {HERO_SLIDER_IMAGES.map((img, i) => (
+                <img
+                  key={img.src}
+                  src={img.src}
+                  alt={img.label}
+                  className={`hero-slider-img${heroImgIdx === i ? ' active' : ''}`}
+                  style={{ objectPosition: img.pos }}
+                />
+              ))}
+              <div className="hero-slider-label">{HERO_SLIDER_IMAGES[heroImgIdx].label}</div>
+              <div className="hero-slider-dots">
+                {HERO_SLIDER_IMAGES.map((_, i) => (
+                  <button
+                    key={i}
+                    className={`hero-slider-dot${heroImgIdx === i ? ' active' : ''}`}
+                    onClick={() => setHeroImgIdx(i)}
+                    aria-label={`Product ${i + 1}`}
+                  />
+                ))}
               </div>
-              <div className="orbit" style={{animationDuration:'10s',animationDirection:'reverse',transform:'rotate(120deg)'}}>
-                <div className="orbit-dot" style={{width:'7px',height:'7px',borderRadius:'50%',background:'var(--red)',boxShadow:'0 0 8px var(--red)'}}/>
-              </div>
-              <div className="orbit" style={{animationDuration:'13s',transform:'rotate(240deg)'}}>
-                <div className="orbit-dot" style={{width:'5px',height:'5px',borderRadius:'50%',background:'var(--gold-light)',boxShadow:'0 0 6px var(--gold-light)'}}/>
-              </div>
-              <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="hero-logo-img"/>
-              <div className="logo-glow"/>
             </div>
           )}
         </div>
-      </section>
 
-      {/* CATEGORY PILLS */}
-      <section className="lp-pills-section">
-        <div className="lp-pills-row">
-          {[
-            { id: 'all', label: 'All', icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="7" height="7"/>
-                <rect x="14" y="3" width="7" height="7"/>
-                <rect x="3" y="14" width="7" height="7"/>
-                <rect x="14" y="14" width="7" height="7"/>
-              </svg>
-            )},
-            { id: 'tshirts', label: 'T-Shirts', icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.57a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.57a2 2 0 0 0-1.34-2.23z"/>
-              </svg>
-            )},
-            { id: 'mugs', label: 'Mugs', icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17 8h1a4 4 0 0 1 0 8h-1"/>
-                <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/>
-                <line x1="6" y1="2" x2="6" y2="4"/>
-                <line x1="10" y1="2" x2="10" y2="4"/>
-                <line x1="14" y1="2" x2="14" y2="4"/>
-              </svg>
-            )},
-            { id: 'stickers', label: 'Stickers', icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-                <line x1="9" y1="9" x2="9.01" y2="9"/>
-                <line x1="15" y1="9" x2="15.01" y2="9"/>
-              </svg>
-            )},
-            { id: 'bags', label: 'Bags', icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-                <line x1="3" y1="6" x2="21" y2="6"/>
-                <path d="M16 10a4 4 0 0 1-8 0"/>
-              </svg>
-            )},
-            { id: 'books', label: 'Books', icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-              </svg>
-            )},
-          ].map(cat => (
-            <button
-              key={cat.id}
-              className={`lp-pill${activeCategory === cat.id ? ' lp-pill--active' : ''}`}
-              onClick={() => setActiveCategory(cat.id)}
-            >
-              {cat.icon}
-              {cat.label}
-            </button>
-          ))}
+        {/* Nav centered across full banner */}
+        <div className="hero-nav">
+          <button
+            className="hero-nav-btn"
+            aria-label="Previous slide"
+            onClick={() => setHeroSlide(i => (i - 1 + effectiveSlides.length) % effectiveSlides.length)}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <div className="hero-pills">
+            {effectiveSlides.map((_, i) => (
+              <button
+                key={i}
+                className={`hero-pill${heroSlide === i ? ' active' : ''}`}
+                onClick={() => setHeroSlide(i)}
+                aria-label={`Slide ${i + 1}`}
+              />
+            ))}
+          </div>
+          <button
+            className="hero-nav-btn"
+            aria-label="Next slide"
+            onClick={() => setHeroSlide(i => (i + 1) % effectiveSlides.length)}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </button>
         </div>
       </section>
+
+      {/* COLLECTIONS SHOWCASE */}
+      {landingCollections.length > 0 && (
+        <section className="lp-collections-section">
+          <div className="container">
+            <div className="lp-collections-header">
+              <div>
+                <h2 className="lp-collections-title">Shop by Collection</h2>
+                <p className="lp-collections-sub">Handpicked products for every occasion</p>
+              </div>
+              <button className="lp-collections-viewall" onClick={handleEnterShop}>
+                View all
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                </svg>
+              </button>
+            </div>
+            <div className="lp-collections-grid">
+              {landingCollections.slice(0, 6).map(col => (
+                <button
+                  key={col.id ?? col._id}
+                  className="lp-collection-card"
+                  onClick={handleEnterShop}
+                >
+                  <div className="lp-collection-card-img">
+                    {col.image ? (
+                      <img src={col.image} alt={col.title} />
+                    ) : (
+                      <div className="lp-collection-card-placeholder">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2"/>
+                          <circle cx="8.5" cy="8.5" r="1.5"/>
+                          <polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                      </div>
+                    )}
+                    <div className="lp-collection-card-overlay" />
+                    <div className="lp-collection-card-info">
+                      <span className="lp-collection-card-title">{col.title}</span>
+                      {col.productCount > 0 && (
+                        <span className="lp-collection-card-count">{col.productCount} items</span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* SERVICE CAROUSEL */}
       <section id="services">
@@ -1198,54 +1558,16 @@ const handleForgotResetPassword = async () => {
               {services[hoveredService % services.length]?.desc}
             </div>
           )}
-          <div
-            className="services-carousel-wrapper"
-            style={activeCategory !== 'all' ? {overflowX:'hidden'} : {}}
-          >
-            <div
-              className="services-carousel-track"
-              style={activeCategory !== 'all' ? {
-                animation: 'none',
-                transform: 'none',
-                display: 'flex',
-                flexWrap: 'wrap',
-                justifyContent: 'center',
-                gap: '24px',
-                padding: '1.5rem 2rem',
-                width: '100%',
-              } : {}}
-            >
-              {filteredServices.length === 0 ? (
-                <div style={{
-                  display:'flex',
-                  alignItems:'center',
-                  justifyContent:'center',
-                  padding:'4rem 2rem',
-                  color:'var(--gray)',
-                  fontSize:'0.95rem',
-                  width:'100%'
-                }}>
-                  No products found in this category.
+          <div className="services-carousel-wrapper">
+            <div className="services-carousel-track">
+              {[...services, ...services].map((s, i) => (
+                <div className="service-slide" key={i}
+                  onMouseEnter={(e) => { setHoveredService(i); const r = e.currentTarget.getBoundingClientRect(); setTooltipX(r.left+r.width/2); setTooltipY(r.top-10); }}
+                  onMouseLeave={() => setHoveredService(null)}>
+                  <div className="service-slide-img-wrap"><img src={s.img} alt={s.title} className="service-slide-img"/></div>
+                  <h3>{s.title}</h3>
                 </div>
-              ) : activeCategory === 'all' ? (
-                [...filteredServices, ...filteredServices].map((s, i) => (
-                  <div className="service-slide" key={i}
-                    onMouseEnter={(e) => { setHoveredService(i); const r = e.currentTarget.getBoundingClientRect(); setTooltipX(r.left+r.width/2); setTooltipY(r.top-10); }}
-                    onMouseLeave={() => setHoveredService(null)}>
-                    <div className="service-slide-img-wrap"><img src={s.img} alt={s.title} className="service-slide-img"/></div>
-                    <h3>{s.title}</h3>
-                  </div>
-                ))
-              ) : (
-                filteredServices.map((s, i) => (
-                  <div className="service-slide" key={i}
-                    onMouseEnter={(e) => { setHoveredService(i); const r = e.currentTarget.getBoundingClientRect(); setTooltipX(r.left+r.width/2); setTooltipY(r.top-10); }}
-                    onMouseLeave={() => setHoveredService(null)}>
-                    <div className="service-slide-img-wrap"><img src={s.img} alt={s.title} className="service-slide-img"/></div>
-                    <h3>{s.title}</h3>
-                  </div>
-                ))
-              )}
+              ))}
             </div>
           </div>
         </div>
@@ -1483,20 +1805,11 @@ const handleForgotResetPassword = async () => {
       <section id="contact" className="contact-bg">
         <div className="container">
           <div className="section-header center">
-            <div className="section-tag">Get In Touch</div>
             <h2 className="section-title">Let's <span className="red-text">Talk</span></h2>
             <p className="section-subtitle">Have a question, a bulk order, or a custom request? We'd love to hear from you.</p>
           </div>
           <div className="contact-layout">
             <div className="contact-info">
-              <div className="contact-info-card">
-                <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-                  </svg>
-                </div>
-                <div><h4>Visit Us</h4><p>5 Ford St., Fil.2, Batasan Hills, Quezon City</p></div>
-              </div>
               <div className="contact-info-card">
                 <div className="contact-info-icon" style={{color:'var(--gold)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1605,21 +1918,75 @@ const handleForgotResetPassword = async () => {
       </section>
 
       {/* FOOTER */}
-      <footer className="footer">
-        <div className="container">
-          <div className="footer-bottom" style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'1rem'}}>
-            <a href="#" className="nav-logo" style={{ cursor: 'default' }} onClick={(e) => e.preventDefault()}>
-              <img src="/logos/PersonalizeMe logo.png" alt="Personalize Me Prints" className="nav-logo-mark"/>
-              <div className="nav-logo-text">PERSONALIZE<span>ME</span><br/>PRINTS</div>
-            </a>
-            <nav className="footer-nav">
-              <a href="#services">Products</a><a href="#how-it-works">How It Works</a>
-              <a href="#pricing">Pricing</a><a href="#contact">Contact</a>
-            </nav>
-            <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:'0.4rem'}}>
-              <div className="footer-legal"><a href="#">Privacy Policy</a><a href="#">Terms of Service</a></div>
-              <p style={{fontSize:'0.75rem',color:'var(--gray)',margin:0}}>© 2026 Personalize ME Prints. All rights reserved.</p>
+      <footer className="lp-footer">
+        <div className="lp-footer-inner">
+          <div className="lp-footer-brand">
+            <div className="lp-footer-brand-name">PERSONALIZE <span>ME</span> PRINTS</div>
+            <p className="lp-footer-tagline">Your creative partner for custom print products. Quality printing for every occasion.</p>
+            <div className="lp-footer-socials">
+              <img src="/logos/PersonalizeMe logo.png" alt="Logo" className="lp-footer-logo" />
+              <a href="https://www.facebook.com/share/1Mks4kwnhZ/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer" className="lp-footer-social-btn" aria-label="Facebook">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073C24 5.404 18.627 0 12 0S0 5.404 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.267h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>
+              </a>
+              <a href="https://www.instagram.com/personalizemeprints" target="_blank" rel="noopener noreferrer" className="lp-footer-social-btn" aria-label="Instagram">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
+              </a>
+              <a href="https://www.tiktok.com/@personalizemeprints" target="_blank" rel="noopener noreferrer" className="lp-footer-social-btn" aria-label="TikTok">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.75a4.85 4.85 0 0 1-1.01-.06z"/></svg>
+              </a>
+              <a href="https://shopee.ph/personalizemeprints" target="_blank" rel="noopener noreferrer" className="lp-footer-social-btn" aria-label="Shopee">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6zm3 9a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+              </a>
             </div>
+          </div>
+          <div className="lp-footer-col">
+            <h4>Explore</h4>
+            <a href="#services">Products</a>
+            <a href="#how-it-works">How It Works</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#contact">Contact Us</a>
+          </div>
+          <div className="lp-footer-col">
+            <h4>Shop</h4>
+            <a href="/shop" onClick={handleEnterShop}>Browse Products</a>
+            <a href="/shop" onClick={handleEnterShop}>Collections</a>
+            <a href="/shop/cart" onClick={handleEnterShop}>My Cart</a>
+          </div>
+          <div className="lp-footer-col">
+            <h4>Accepted Payments</h4>
+            <div className="lp-footer-pay-grid">
+              <img src="/logos/Gcash-Logo-1024x1024.png" alt="GCash" className="lp-footer-pay-badge" />
+              <img src="/logos/maya logo.png" alt="Maya" className="lp-footer-pay-badge" />
+              <svg viewBox="0 0 780 500" xmlns="http://www.w3.org/2000/svg" className="lp-footer-pay-visa">
+                <rect width="780" height="500" rx="40" fill="#1a1f71"/>
+                <text x="390" y="340" textAnchor="middle" fontFamily="Arial" fontSize="240" fontWeight="bold" fill="#fff" fontStyle="italic">VISA</text>
+              </svg>
+              <svg viewBox="0 0 60 38" xmlns="http://www.w3.org/2000/svg" className="lp-footer-pay-mc">
+                <rect width="60" height="38" rx="4" fill="#252525"/>
+                <circle cx="23" cy="19" r="13" fill="#EB001B"/>
+                <circle cx="37" cy="19" r="13" fill="#F79E1B"/>
+                <path d="M30 8.8a13 13 0 0 1 0 20.4A13 13 0 0 1 30 8.8z" fill="#FF5F00"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        <div className="lp-footer-bottom">
+          <span className="lp-footer-copy">© {new Date().getFullYear()} Personalize Me Prints. All rights reserved.</span>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+            style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', cursor: 'pointer', color: 'rgba(245,245,245,0.6)', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem' }}
+          >
+            {theme === 'dark' ? (
+              <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>Light</>
+            ) : (
+              <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>Dark</>
+            )}
+          </button>
+          <div className="lp-footer-legal">
+            <a href="#">Privacy Policy</a>
+            <a href="#">Terms of Service</a>
           </div>
         </div>
       </footer>
@@ -2262,6 +2629,13 @@ const handleForgotResetPassword = async () => {
           </div>
         </div>
       )}
+
+      {/* Chat bubble — login gate when not signed in */}
+      <CustomerChatModal
+        user={user}
+        token={token}
+        onRequestLogin={() => openModal('login')}
+      />
     </>
   );
 };
