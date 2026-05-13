@@ -169,11 +169,12 @@
   }
 
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; overscroll-behavior: none; }
   body {
     font-family: 'Montserrat', sans-serif;
     background: var(--black);
     color: var(--white);
+    overscroll-behavior: none;
     line-height: 1.6;
     overflow-x: hidden;
   }

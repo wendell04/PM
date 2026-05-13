@@ -3,6 +3,8 @@
           50%       { opacity: 0.35; }
         }
 
+        html, body { overscroll-behavior: none; }
+
         .shop-wrapper {
           min-height: 100vh;
           background: var(--black);
@@ -1256,7 +1258,7 @@
         }
 
         .shop-products-grid-loading {
-          /* Loading state */
+          display: contents;
         }
 
         .shop-product-skeleton {
@@ -1653,6 +1655,7 @@
           line-height: 1.6;
           display: -webkit-box;
           -webkit-line-clamp: 2;
+          line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
         }
@@ -2015,6 +2018,7 @@
     font-weight: 600;
     outline: none;
     -moz-appearance: textfield;
+    appearance: textfield;
   }
 
   .cart-qty-input::-webkit-outer-spin-button,

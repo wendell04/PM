@@ -15,9 +15,11 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    overscroll-behavior: none;
   }
   body {
     @apply antialiased;
+    overscroll-behavior: none;
   }
   :root {
     --background: 0 0% 100%;
