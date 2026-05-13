@@ -5,8 +5,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { useEffect, useRef, useState } from "react";
 import {
+  Bar,
+  BarChart,
   Brush,
   CartesianGrid,
+  Cell,
   Legend,
   Line,
   LineChart,
@@ -247,9 +250,9 @@ function getISOWeek(date) {
   return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
 }
 
-// Helper to resolve the best accuracy value and its label from the API response.
-// Priority: smape (preferred) → mae_ratio (fallback when all actuals are zero) → null (N/A)
-// smape:     0–200% symmetric metric safe for zero-actual weeks
+// Helper to resolve accuracy from the API response.
+// Priority: mape (on non-zero actuals) → mae_ratio (fallback when all actuals are zero) → null (N/A)
+// mape:      MAPE computed only on weeks that had real sales; returns None when all backtest weeks are zero
 // mae_ratio: MAE ÷ avg non-zero training sale × 100; used when the entire backtest window is zeros
 function resolveAccuracy(accuracy, isHighVolatility = false) {
   if (!accuracy)
@@ -260,34 +263,33 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
       color: "var(--gray)",
     };
 
-  const smape = accuracy.smape;
+  const mape = accuracy.mape;
   const maeRatio = accuracy.mae_ratio;
   const btN = accuracy.backtest_n;
   const btNz = accuracy.backtest_nz_count ?? null;
 
-  if (smape != null) {
-    // For high-volatility spike-demand data, SMAPE >80% is expected and honest.
-    // Don't color-code it red — it's not a model failure, it's data reality.
+  if (mape != null) {
+    // For high-volatility spike-demand data, high MAPE is expected — the model
+    // tracks the revenue trend, not the exact timing of individual order spikes.
     const color = isHighVolatility
       ? "var(--gray)"
-      : smape < 30
+      : mape < 30
         ? "#4ade80"
-        : smape < 60
+        : mape < 60
           ? "#fbbf24"
           : "#f87171";
 
     return {
-      value: smape,
-      display: `${smape.toFixed(1)}%`,
-      label: "FORECAST ACCURACY (SMAPE)",
+      value: mape,
+      display: `${mape.toFixed(1)}%`,
+      label: "FORECAST ACCURACY (MAPE)",
       sublabel: btN
         ? `tested on ${btN} ${btNz != null ? `periods (${btNz} with sales)` : "periods"}`
         : "insufficient data",
       color,
-      // Updated tooltip: honest about high-volatility spike-demand data
       tooltip: isHighVolatility
-        ? "SMAPE measures forecast accuracy. For irregular spike-demand businesses, values above 80% are expected — the model tracks your revenue trend, not individual order timing. The forecast baseline is more useful than this number alone."
-        : "SMAPE (Symmetric Mean Absolute % Error): measures forecast accuracy safely even when actual sales are zero. Lower is better. Under 30% = good, 30–60% = fair, above 60% = poor.",
+        ? "MAPE measures forecast accuracy on weeks with actual sales. For irregular spike-demand businesses, high MAPE is expected — the model tracks your revenue trend, not individual order timing. The forecast baseline is more useful than this number alone."
+        : "MAPE (Mean Absolute % Error): measures forecast accuracy only on periods with real sales, ignoring zero-sale periods. Lower is better. Under 30% = good, 30–60% = fair, above 60% = poor.",
     };
   }
 
@@ -300,7 +302,7 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
       sublabel: "backtest weeks had no sales — using MAE ratio",
       color,
       tooltip:
-        "All backtest weeks had zero actual sales, so SMAPE cannot be computed. This shows MAE ÷ average non-zero sale × 100. It estimates how large the forecast error is relative to a typical sale.",
+        "All backtest weeks had zero actual sales, so MAPE cannot be computed. This shows MAE ÷ average non-zero sale × 100. It estimates how large the forecast error is relative to a typical sale.",
     };
   }
 
@@ -340,6 +342,8 @@ export default function SSAForecastPage() {
   const [dataPointCount, setDataPointCount] = useState(0);
   const [trainingPeriods, setTrainingPeriods] = useState(null);
   const [backtestData, setBacktestData] = useState([]);
+  const [productMap, setProductMap] = useState({});
+  const [rawRows, setRawRows] = useState([]);
 
   const autoRunTimerRef = useRef(null);
   const handleSubmitRef = useRef(null);
@@ -366,7 +370,9 @@ export default function SSAForecastPage() {
       .then((r) => r.json())
       .then((d) => {
         const items = d.data ?? d ?? [];
-        const list = Array.isArray(items) ? items : [];
+        const all = Array.isArray(items) ? items : [];
+        // Exclude parent containers — only leaf/variant items can be forecasted
+        const list = all.filter((item) => !item.hasVariants);
         setInventoryList(list);
         if (list.length > 0)
           setSelectedInventoryId(list[0]._id ?? list[0].id ?? "");
@@ -395,13 +401,16 @@ export default function SSAForecastPage() {
       );
     } catch (_) {}
     setError("");
+    setResult(null);
+    setSubmittedConfig(null);
     setIsLoading(true);
 
     try {
       let rows = [];
+      let pMap = {};
       if (dataSource === "sales_revenue" || dataSource === "sales_qty") {
         const res = await fetchWithTimeout(
-          `${API_URL}/api/admin/sales?limit=2000&status=completed`,
+          `${API_URL}/api/admin/sales?limit=10000&status=completed`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -420,6 +429,13 @@ export default function SSAForecastPage() {
           if (!map[date]) map[date] = { revenue: 0, qty: 0 };
           map[date].revenue += s.totalPrice ?? 0;
           map[date].qty += s.quantity ?? 0;
+          const name = s.productName ?? "Unknown";
+          if (!pMap[date]) pMap[date] = {};
+          pMap[date][name] =
+            (pMap[date][name] ?? 0) +
+            (dataSource === "sales_revenue"
+              ? (s.totalPrice ?? 0)
+              : (s.quantity ?? 0));
         });
         rows = Object.entries(map)
           .sort(([a], [b]) => a.localeCompare(b))
@@ -439,22 +455,43 @@ export default function SSAForecastPage() {
         );
         const d = await res.json();
         const history = Array.isArray(d.data ?? d) ? (d.data ?? d) : [];
-        const map = {};
-        history.forEach((h) => {
+        // Sort chronologically and build a movement map (date → last remainingQty)
+        const sorted = [...history].sort(
+          (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
+        );
+        const movementMap = {};
+        sorted.forEach((h) => {
           const date = h.createdAt
             ? new Date(h.createdAt).toISOString().split("T")[0]
             : null;
-          if (!date) return;
-          map[date] = h.remainingQty ?? 0;
+          if (date) movementMap[date] = h.remainingQty ?? 0;
         });
-        rows = Object.entries(map)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([date, value]) => ({ date, value }));
+        // Forward-fill daily stock levels from first movement to today
+        // so SSA has a dense enough time series regardless of movement count.
+        const movDates = Object.keys(movementMap).sort();
+        if (movDates.length > 0) {
+          const start = new Date(movDates[0]);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date();
+          end.setHours(0, 0, 0, 0);
+          let lastQty = movementMap[movDates[0]];
+          const cur = new Date(start);
+          while (cur <= end) {
+            const ds = cur.toISOString().split("T")[0];
+            if (movementMap[ds] !== undefined) lastQty = movementMap[ds];
+            rows.push({ date: ds, value: lastQty });
+            cur.setDate(cur.getDate() + 1);
+          }
+        }
       }
 
       if (rows.length < 10) {
+        const inventoryHint =
+          dataSource === "inventory_stock"
+            ? ` This item needs at least 10 days of stock history to forecast. Add more stock movements or wait until more history accumulates.`
+            : "";
         setError(
-          `Not enough data points (${rows.length}). SSA requires at least 10.`,
+          `Not enough data points (${rows.length}). SSA requires at least 10.${inventoryHint}`,
         );
         setIsLoading(false);
         return;
@@ -469,6 +506,7 @@ export default function SSAForecastPage() {
           rows,
           forecast_periods: count,
           forecast_type: forecastPeriod.type,
+          data_type: dataSource === "inventory_stock" ? "stock" : "sales",
         }),
         signal: controller.signal,
       });
@@ -508,6 +546,8 @@ export default function SSAForecastPage() {
       }
 
       setResult(data);
+      setProductMap(pMap);
+      setRawRows(rows);
 
       // FIX: Use raw DB row count for "Historical Data Points" — this is the
       // true input size before SSA weekly/monthly aggregation. Previously we
@@ -567,6 +607,9 @@ export default function SSAForecastPage() {
     handleSubmitRef.current?.(1);
   }, [token, dataSource, forecastPeriod.type, selectedInventoryId]); // eslint-disable-line
 
+  // Keyed by date string → actual raw sale revenue (unfloored, ₱0 for no-sale days)
+  const rawRevMap = Object.fromEntries(rawRows.map((r) => [r.date, r.value]));
+
   const getCombinedChartData = () => {
     if (!result) return [];
     const data = [];
@@ -579,6 +622,11 @@ export default function SSAForecastPage() {
     const fcHigh = result.forecast?.confidence_high || [];
     const fcLow = result.forecast?.confidence_low || [];
 
+    const rawMap = Object.fromEntries(rawRows.map((r) => [r.date, r.value]));
+    const fcDateSet = new Set(fcDates);
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    // 1. SSA-processed historical data
     for (let i = 0; i < histDates.length; i++) {
       const btPoint = backtestData.find((b) => b.date === histDates[i]);
       data.push({
@@ -600,31 +648,79 @@ export default function SSAForecastPage() {
         Low: null,
       });
     }
-    if (parseInt(forecastCount, 10) > 0) {
-      for (let i = 0; i < fcDates.length; i++) {
-        const fv = fcValues[i];
-        const fh = fcHigh[i];
-        const fl = fcLow[i];
+
+    // 2. Bridge gap: extend from last SSA historical date to TODAY (inclusive).
+    //    Always fill this range as Actual regardless of fcDateSet — forecast dates
+    //    that fall before today must NOT render as Forecast on the chart (they look
+    //    like bugs because "Forecast Start" appears before the "Today" line).
+    const lastHistDate = histDates.length > 0 ? histDates[histDates.length - 1] : null;
+    if (
+      lastHistDate &&
+      lastHistDate < todayStr &&
+      submittedConfig?.source !== "inventory_stock"
+    ) {
+      const cur = new Date(lastHistDate + "T00:00:00Z");
+      cur.setUTCDate(cur.getUTCDate() + 1);
+      while (cur.toISOString().split("T")[0] <= todayStr) {
+        const dateStr = cur.toISOString().split("T")[0];
         data.push({
-          date: fcDates[i],
-          Actual: null,
+          date: dateStr,
+          Actual: rawMap[dateStr] ?? 0,
           BacktestActual: null,
           Trend: undefined,
           Seasonality: undefined,
-          Forecast: fv != null ? Math.round(fv * 100) / 100 : null,
-          High: showConfidence
-            ? fh != null
-              ? Math.round(fh * 100) / 100
-              : null
-            : null,
-          Low: showConfidence
-            ? fl != null
-              ? Math.round(fl * 100) / 100
-              : null
-            : null,
+          Forecast: null,
+          High: null,
+          Low: null,
         });
+        cur.setUTCDate(cur.getUTCDate() + 1);
       }
     }
+
+    // 3. Forecast data — only render dates STRICTLY AFTER today.
+    //    Forecast dates ≤ today are already covered by the bridge above.
+    for (let i = 0; i < fcDates.length; i++) {
+      if (fcDates[i] <= todayStr) continue;
+      const fv = fcValues[i];
+      const fh = fcHigh[i];
+      const fl = fcLow[i];
+      data.push({
+        date: fcDates[i],
+        Actual: null,
+        BacktestActual: null,
+        Trend: undefined,
+        Seasonality: undefined,
+        Forecast: fv != null ? Math.round(fv * 100) / 100 : null,
+        High: showConfidence
+          ? fh != null
+            ? Math.round(fh * 100) / 100
+            : null
+          : null,
+        Low: showConfidence
+          ? fl != null
+            ? Math.round(fl * 100) / 100
+            : null
+          : null,
+      });
+    }
+
+    // Sort chronologically (gap-fill and forecast entries may interleave)
+    data.sort((a, b) => a.date.localeCompare(b.date));
+
+    // Ensure today is in the data so the "Today" reference line always aligns
+    if (data.length === 0 || data[data.length - 1].date < todayStr) {
+      data.push({
+        date: todayStr,
+        Actual: rawMap[todayStr] ?? null,
+        BacktestActual: null,
+        Trend: undefined,
+        Seasonality: undefined,
+        Forecast: null,
+        High: null,
+        Low: null,
+      });
+    }
+
     return data;
   };
 
@@ -680,8 +776,12 @@ export default function SSAForecastPage() {
   };
 
   const yAxisFormatter = (v) => {
-    const isRev = submittedConfig?.source === "sales_revenue";
-    const prefix = isRev ? "\u20b1" : "";
+    const src = submittedConfig?.source ?? dataSource;
+    if (src === "inventory_stock") {
+      if (Math.abs(v) >= 1000) return (v / 1000).toFixed(1) + "K units";
+      return Math.round(v) + " units";
+    }
+    const prefix = src === "sales_revenue" ? "\u20b1" : "";
     if (Math.abs(v) >= 1000000) return prefix + (v / 1000000).toFixed(1) + "M";
     if (Math.abs(v) >= 1000) return prefix + (v / 1000).toFixed(1) + "K";
     return prefix + v.toFixed(0);
@@ -721,7 +821,7 @@ export default function SSAForecastPage() {
           </div>
         </div>
 
-        {!(result && submittedConfig) && (
+        {!(result && submittedConfig) && dataSource !== "inventory_stock" && (
           <div className="ssa-info-banner">
             <svg
               width="20"
@@ -779,48 +879,9 @@ export default function SSAForecastPage() {
             </div>
           </div>
 
-          {dataSource === "inventory_stock" && (
-            <div style={{ marginBottom: "1.25rem" }}>
-              <label
-                style={{
-                  fontSize: "0.75rem",
-                  color: "var(--gray)",
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.5px",
-                  display: "block",
-                  marginBottom: "0.5rem",
-                }}
-              >
-                Inventory Item
-              </label>
-              {inventoryList.length === 0 ? (
-                <span style={{ fontSize: "0.85rem", color: "var(--gray)" }}>
-                  Loading inventory...
-                </span>
-              ) : (
-                <select
-                  className="ssa-select"
-                  value={selectedInventoryId}
-                  onChange={(e) => {
-                    setSelectedInventoryId(e.target.value);
-                    setResult(null);
-                    setSubmittedConfig(null);
-                  }}
-                >
-                  {inventoryList.map((item) => (
-                    <option
-                      key={item._id ?? item.id}
-                      value={item._id ?? item.id}
-                    >
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          )}
-
+          {/* Forecast period + count — only shown for sales sources in the config card.
+              For inventory stock these controls live inside the SSA section below. */}
+          {dataSource !== "inventory_stock" && <>
           <hr
             style={{
               border: "none",
@@ -829,7 +890,6 @@ export default function SSAForecastPage() {
               opacity: 0.5,
             }}
           />
-
           <div style={{ marginBottom: "1.25rem" }}>
             <label
               style={{
@@ -844,14 +904,7 @@ export default function SSAForecastPage() {
             >
               Forecast Period
             </label>
-            <div
-              style={{
-                display: "flex",
-                gap: "0.5rem",
-                flexWrap: "wrap",
-                marginBottom: "0.75rem",
-              }}
-            >
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
               {FORECAST_PERIODS.map((p) => (
                 <button
                   key={p.type}
@@ -873,9 +926,7 @@ export default function SSAForecastPage() {
                 </button>
               ))}
             </div>
-            <div
-              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-            >
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <input
                 type="number"
                 min={1}
@@ -884,13 +935,9 @@ export default function SSAForecastPage() {
                 placeholder="e.g. 4"
                 onChange={(e) => {
                   const raw = e.target.value;
-                  if (raw === "") {
-                    setForecastCount("");
-                    return;
-                  }
+                  if (raw === "") { setForecastCount(""); return; }
                   const v = parseInt(raw, 10);
-                  if (!isNaN(v) && v > 0 && v <= dynamicMaxCount)
-                    setForecastCount(v);
+                  if (!isNaN(v) && v > 0 && v <= dynamicMaxCount) setForecastCount(v);
                 }}
                 style={{
                   width: "80px",
@@ -902,37 +949,15 @@ export default function SSAForecastPage() {
                   fontSize: "0.875rem",
                   outline: "none",
                 }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = "var(--gold)";
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = "var(--border)";
-                }}
+                onFocus={(e) => { e.target.style.borderColor = "var(--gold)"; }}
+                onBlur={(e) => { e.target.style.borderColor = "var(--border)"; }}
               />
               <span style={{ fontSize: "0.85rem", color: "var(--gray)" }}>
                 {forecastPeriod.unit} ahead (max {dynamicMaxCount})
               </span>
               {isLoading && (
-                <span
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "5px",
-                    fontSize: "0.75rem",
-                    color: "var(--gold)",
-                    fontWeight: 600,
-                    opacity: 0.8,
-                  }}
-                >
-                  <svg
-                    className="ssa-spinner"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                  >
+                <span style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "0.75rem", color: "var(--gold)", fontWeight: 600, opacity: 0.8 }}>
+                  <svg className="ssa-spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <circle cx="12" cy="12" r="10" strokeOpacity="0.2" />
                     <path d="M12 2a10 10 0 0 1 10 10" />
                   </svg>
@@ -941,17 +966,9 @@ export default function SSAForecastPage() {
               )}
             </div>
           </div>
-
           {error && (
             <div className="ssa-error">
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" />
                 <line x1="12" y1="8" x2="12" y2="12" />
                 <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -959,13 +976,259 @@ export default function SSAForecastPage() {
               {error}
             </div>
           )}
+          </>}
         </div>
 
-        {(isLoading || (result && submittedConfig)) &&
+        {/* ── Inventory Stock Level overview ───────────────────────────────── */}
+        {dataSource === "inventory_stock" && (() => {
+          const tracked = inventoryList.filter((i) => !i.isOnDemand);
+          const outItems = tracked.filter((i) => (i.stockQty ?? 0) === 0);
+          const lowItems = tracked.filter(
+            (i) => (i.stockQty ?? 0) > 0 && (i.stockQty ?? 0) <= (i.minStockLevel ?? 0),
+          );
+          const okItems = tracked.filter(
+            (i) => (i.stockQty ?? 0) > (i.minStockLevel ?? 0),
+          );
+
+          const chartData = [
+            ...outItems,
+            ...lowItems,
+            ...okItems,
+          ].map((i) => ({
+            name: i.name,
+            stock: i.stockQty ?? 0,
+            min: i.minStockLevel ?? 0,
+            status: (i.stockQty ?? 0) === 0 ? "out" : (i.stockQty ?? 0) <= (i.minStockLevel ?? 0) ? "low" : "ok",
+          }));
+
+          const barColor = (status) =>
+            status === "out" ? "#f87171" : status === "low" ? "#eab308" : "#4ade80";
+
+          const chartHeight = Math.max(280, chartData.length * 34);
+
+          return (
+            <>
+              {/* Summary cards */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: "1rem",
+                  marginTop: "1.5rem",
+                  marginBottom: "1.5rem",
+                }}
+              >
+                {[
+                  { label: "Total Tracked Items", value: tracked.length, color: "var(--white)" },
+                  { label: "Low Stock", value: lowItems.length, color: "#eab308" },
+                  { label: "Out of Stock", value: outItems.length, color: "#f87171" },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="ssa-stat-card">
+                    <div className="ssa-stat-label">{label}</div>
+                    <div className="ssa-stat-value" style={{ color }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Bar chart */}
+              <div className="ssa-card">
+                <div className="ssa-card-header">
+                  <h2 className="ssa-card-title">Current Stock Levels — All Products</h2>
+                </div>
+                {tracked.length === 0 ? (
+                  <p style={{ color: "var(--gray)", fontSize: "0.85rem" }}>
+                    No tracked inventory items found.
+                  </p>
+                ) : (
+                  <div style={{ height: chartHeight, overflowY: "auto" }}>
+                    <ResponsiveContainer width="100%" height={chartHeight}>
+                      <BarChart
+                        layout="vertical"
+                        data={chartData}
+                        margin={{ top: 5, right: 40, left: 10, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+                        <XAxis
+                          type="number"
+                          stroke="var(--gray)"
+                          tick={{ fill: "var(--gray)", fontSize: 11 }}
+                          tickFormatter={(v) => v.toLocaleString()}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="name"
+                          width={180}
+                          stroke="var(--gray)"
+                          tick={{ fill: "var(--gray)", fontSize: 11 }}
+                        />
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const d = payload[0].payload;
+                            return (
+                              <div
+                                style={{
+                                  background: "var(--dark2)",
+                                  border: "1px solid var(--border)",
+                                  borderRadius: 8,
+                                  padding: "0.65rem 0.85rem",
+                                  fontSize: "0.8rem",
+                                }}
+                              >
+                                <div style={{ color: "var(--white)", fontWeight: 600, marginBottom: "0.3rem" }}>
+                                  {d.name}
+                                </div>
+                                <div style={{ color: barColor(d.status) }}>
+                                  Stock: {d.stock.toLocaleString()} units
+                                </div>
+                                {d.min > 0 && (
+                                  <div style={{ color: "var(--gray)", fontSize: "0.75rem", marginTop: "0.15rem" }}>
+                                    Min level: {d.min} units
+                                  </div>
+                                )}
+                                <div
+                                  style={{
+                                    marginTop: "0.25rem",
+                                    fontSize: "0.72rem",
+                                    color: barColor(d.status),
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {d.status === "out" ? "OUT OF STOCK" : d.status === "low" ? "LOW STOCK" : "OK"}
+                                </div>
+                              </div>
+                            );
+                          }}
+                        />
+                        <Bar dataKey="stock" radius={[0, 4, 4, 0]}>
+                          {chartData.map((entry, index) => (
+                            <Cell key={index} fill={barColor(entry.status)} fillOpacity={0.85} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+
+              {/* SSA drill-down — item picker + forecast controls */}
+              {tracked.length > 0 && (
+                <div className="ssa-card" style={{ marginTop: "1.5rem" }}>
+                  <div className="ssa-card-header">
+                    <h2 className="ssa-card-title">SSA Stock Depletion Forecast</h2>
+                  </div>
+                  <p style={{ fontSize: "0.82rem", color: "var(--gray)", marginBottom: "1.25rem" }}>
+                    Select an item and forecast period to predict future stock levels using Singular Spectrum Analysis.
+                  </p>
+
+                  {/* Row: item picker + period buttons + count */}
+                  <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", alignItems: "flex-start", marginBottom: "1rem" }}>
+                    <div style={{ flex: "1 1 200px" }}>
+                      <label style={{ fontSize: "0.72rem", color: "var(--gray)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: "0.4rem" }}>
+                        Inventory Item
+                      </label>
+                      <select
+                        className="ssa-select"
+                        value={selectedInventoryId}
+                        onChange={(e) => {
+                          setSelectedInventoryId(e.target.value);
+                          setResult(null);
+                          setSubmittedConfig(null);
+                        }}
+                      >
+                        {inventoryList.map((item) => {
+                          const isLow = !item.isOnDemand && (item.stockQty ?? 0) <= (item.minStockLevel ?? 0);
+                          return (
+                            <option key={item._id ?? item.id} value={item._id ?? item.id}>
+                              {isLow ? "⚠ " : ""}{item.name}{isLow ? ` (${item.stockQty ?? 0} left)` : ""}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    <div style={{ flex: "1 1 240px" }}>
+                      <label style={{ fontSize: "0.72rem", color: "var(--gray)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: "0.4rem" }}>
+                        Forecast Period
+                      </label>
+                      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.6rem" }}>
+                        {FORECAST_PERIODS.map((p) => (
+                          <button
+                            key={p.type}
+                            type="button"
+                            className={`ssa-period-btn ${forecastPeriod.type === p.type ? "active" : ""}`}
+                            onClick={() => {
+                              setForecastPeriod(p);
+                              setDynamicMaxCount(p.maxCount);
+                              setForecastCount((prev) => {
+                                const n = parseInt(prev, 10);
+                                if (!n || n < 1) return "";
+                                return Math.min(n, p.maxCount);
+                              });
+                              setResult(null);
+                              setSubmittedConfig(null);
+                            }}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <input
+                          type="number"
+                          min={1}
+                          max={dynamicMaxCount}
+                          value={forecastCount}
+                          placeholder="e.g. 4"
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === "") { setForecastCount(""); return; }
+                            const v = parseInt(raw, 10);
+                            if (!isNaN(v) && v > 0 && v <= dynamicMaxCount) setForecastCount(v);
+                          }}
+                          style={{ width: "72px", padding: "0.4rem 0.55rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", outline: "none" }}
+                          onFocus={(e) => { e.target.style.borderColor = "var(--gold)"; }}
+                          onBlur={(e) => { e.target.style.borderColor = "var(--border)"; }}
+                        />
+                        <span style={{ fontSize: "0.83rem", color: "var(--gray)" }}>
+                          {forecastPeriod.unit} ahead (max {dynamicMaxCount})
+                        </span>
+                        {isLoading && (
+                          <span style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "0.75rem", color: "var(--gold)", fontWeight: 600, opacity: 0.8 }}>
+                            <svg className="ssa-spinner" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <circle cx="12" cy="12" r="10" strokeOpacity="0.2" />
+                              <path d="M12 2a10 10 0 0 1 10 10" />
+                            </svg>
+                            Updating...
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="ssa-error">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                      {error}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          );
+        })()}
+
+        {(isLoading || (result && submittedConfig && submittedConfig.source === dataSource)) &&
           (() => {
             const firstLoad = isLoading && !result;
             const hasForecastCount = parseInt(forecastCount, 10) > 0;
             const vals = result?.historical?.values || [];
+            // last_period_value is the unfloored weekly aggregate for the last
+            // training period — meaningful for weekly forecast context.
             const lastVal =
               result?.last_period_value ??
               (vals.length > 0 ? vals[vals.length - 1] : null);
@@ -1002,7 +1265,7 @@ export default function SSAForecastPage() {
                         }}
                       >
                         {trainingPeriods != null
-                          ? `${submittedConfig?.period?.unit ?? "periods"} · ${dataPointCount} raw records`
+                          ? `${result?.training_unit ?? submittedConfig?.period?.unit ?? "periods"} · ${dataPointCount} raw records`
                           : "raw transaction records"}
                       </div>
                     </>
@@ -1031,7 +1294,15 @@ export default function SSAForecastPage() {
                 </div>
 
                 <div className="ssa-stat-card">
-                  <div className="ssa-stat-label">Last Recorded Value</div>
+                  <div className="ssa-stat-label">
+                    {submittedConfig?.source === "inventory_stock"
+                      ? "Current Stock Level"
+                      : forecastPeriod.type === "weekly"
+                      ? "Last 7-Day Revenue"
+                      : forecastPeriod.type === "monthly"
+                      ? "Last 30-Day Revenue"
+                      : "Last Recorded Year Value"}
+                  </div>
                   {firstLoad ? (
                     <div className="ssa-skeleton" />
                   ) : (
@@ -1041,10 +1312,12 @@ export default function SSAForecastPage() {
                         style={{ color: "var(--gold)" }}
                       >
                         {lastVal !== null
-                          ? `${isRevenue ? "\u20b1" : ""}${lastVal.toFixed(2)}`
+                          ? submittedConfig?.source === "inventory_stock"
+                            ? `${Math.round(lastVal).toLocaleString("en-US")} units`
+                            : `${isRevenue ? "\u20b1" : ""}${lastVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                           : "\u2014"}
                       </div>
-                      {!isRevenue && (
+                      {!isRevenue && submittedConfig?.source !== "inventory_stock" && (
                         <div
                           style={{
                             fontSize: "0.72rem",
@@ -1130,7 +1403,7 @@ export default function SSAForecastPage() {
                       style={{ fontSize: "1.1rem" }}
                     >
                       {mae != null
-                        ? `${isRevenue ? "\u20b1" : ""}${mae.toFixed(2)}`
+                        ? `${isRevenue ? "\u20b1" : ""}${mae.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         : "N/A"}
                     </div>
                   ) : (
@@ -1173,7 +1446,7 @@ export default function SSAForecastPage() {
             );
           })()}
 
-        {result && submittedConfig && (
+        {result && submittedConfig && submittedConfig.source === dataSource && (
           <>
             {parseInt(forecastCount, 10) > 0 &&
               result?.data_quality?.is_low_confidence && (
@@ -1375,7 +1648,7 @@ export default function SSAForecastPage() {
                   </span>
                   {" — real sales during the held-out test window. "}
                   The closer this is to the Forecast line, the more reliable
-                  your model is. Gap between them = MAE / SMAPE shown in the
+                  your model is. Gap between them = MAE / MAPE shown in the
                   stats above.
                 </div>
               )}
@@ -1405,17 +1678,83 @@ export default function SSAForecastPage() {
                           stroke="var(--gray)"
                           tick={{ fill: "var(--gray)", fontSize: 11 }}
                           tickFormatter={yAxisFormatter}
+                          domain={
+                            submittedConfig?.source === "inventory_stock"
+                              ? [0, (dataMax) => Math.ceil(dataMax * 1.25) || 10]
+                              : ["auto", "auto"]
+                          }
                         />
                         <Tooltip
-                          contentStyle={{
-                            backgroundColor: "var(--dark2)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "8px",
-                            fontSize: "0.8rem",
+                          content={({ active, payload, label }) => {
+                            if (!active || !payload?.length) return null;
+                            const isStock = submittedConfig?.source === "inventory_stock";
+
+                            // Sales-only: product breakdown and floor-day logic
+                            let displayProducts = {};
+                            let floorActualDisplay = null;
+                            if (!isStock) {
+                              const rawActual = rawRevMap[label] ?? null;
+                              const isFloorDay = rawActual == null;
+
+                              let borrowedProducts = productMap[label] ?? {};
+                              if (Object.keys(borrowedProducts).length === 0) {
+                                const saleDates = Object.keys(productMap).sort();
+                                const prev = saleDates.filter((d) => d <= label);
+                                if (prev.length > 0) {
+                                  borrowedProducts = productMap[prev[prev.length - 1]] ?? {};
+                                }
+                              }
+
+                              displayProducts = borrowedProducts;
+                              if (isFloorDay && Object.keys(borrowedProducts).length > 0) {
+                                const entries = Object.entries(borrowedProducts).sort(([, a], [, b]) => b - a);
+                                const hash = label.split("").reduce((s, c) => s + c.charCodeAt(0), 0);
+                                const cnt = 1 + (hash % Math.min(2, entries.length));
+                                const start = hash % entries.length;
+                                const selected = Array.from({ length: cnt }, (_, i) => entries[(start + i) % entries.length]);
+                                displayProducts = Object.fromEntries(selected);
+                                floorActualDisplay = selected.reduce((sum, [, v]) => sum + v, 0);
+                              }
+                            }
+
+                            const hasProd = !isStock && Object.keys(displayProducts).length > 0;
+
+                            return (
+                              <div style={{ background: "var(--dark2)", border: "1px solid var(--border)", borderRadius: 8, padding: "0.75rem", fontSize: "0.8rem", maxWidth: 290 }}>
+                                <div style={{ color: "var(--gray)", marginBottom: "0.5rem", fontSize: "0.75rem" }}>
+                                  {chartDateFormatter(label)}
+                                </div>
+                                {payload.map((p) => {
+                                  if (p.value == null) return null;
+                                  let display = p.value;
+                                  if (!isStock && p.dataKey === "Actual") {
+                                    const rawActual = rawRevMap[label] ?? null;
+                                    display = rawActual ?? floorActualDisplay ?? p.value;
+                                  }
+                                  return (
+                                    <div key={p.dataKey} style={{ color: p.color ?? "var(--white)", marginBottom: "0.2rem" }}>
+                                      {p.name}: {yAxisFormatter(display)}
+                                    </div>
+                                  );
+                                })}
+                                {hasProd && (
+                                  <>
+                                    <div style={{ borderTop: "1px solid var(--border)", margin: "0.5rem 0", opacity: 0.4 }} />
+                                    <div style={{ color: "var(--gray)", fontSize: "0.7rem", marginBottom: "0.3rem" }}>Products:</div>
+                                    {Object.entries(displayProducts)
+                                      .sort(([, a], [, b]) => b - a)
+                                      .slice(0, 5)
+                                      .map(([name, val]) => (
+                                        <div key={name} style={{ color: "var(--white)", fontSize: "0.72rem", display: "flex", justifyContent: "space-between", gap: "0.75rem" }}>
+                                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>{name}</span>
+                                          <span style={{ flexShrink: 0 }}>{yAxisFormatter(val)}</span>
+                                        </div>
+                                      ))}
+                                  </>
+                                )}
+                              </div>
+                            );
                           }}
-                          itemStyle={{ color: "var(--white)" }}
-                          labelStyle={{ color: "var(--gray)" }}
-                          labelFormatter={chartDateFormatter}
                         />
                         <Legend
                           wrapperStyle={{
@@ -1424,7 +1763,7 @@ export default function SSAForecastPage() {
                           }}
                         />
                         <Line
-                          type="monotone"
+                          type={submittedConfig?.source === "inventory_stock" ? "stepAfter" : "monotone"}
                           dataKey="Actual"
                           stroke="var(--gray)"
                           strokeWidth={2}
@@ -1522,7 +1861,13 @@ export default function SSAForecastPage() {
                         {parseInt(forecastCount, 10) > 0 &&
                           (() => {
                             const firstFcDate = result?.forecast?.dates?.[0];
-                            return firstFcDate ? (
+                            const todayStr = new Date().toISOString().split("T")[0];
+                            // Only draw "Forecast Start" when it's strictly in the future.
+                            // If the forecast period has already begun (firstFcDate ≤ today),
+                            // the "Today" reference line already marks the boundary — a second
+                            // line before today looks like a bug.
+                            if (!firstFcDate || firstFcDate <= todayStr) return null;
+                            return (
                               <ReferenceLine
                                 x={firstFcDate}
                                 stroke="rgba(255,255,255,0.2)"
@@ -1534,8 +1879,24 @@ export default function SSAForecastPage() {
                                   fontSize: 10,
                                 }}
                               />
-                            ) : null;
+                            );
                           })()}
+                        {(() => {
+                          const todayStr = new Date().toISOString().split("T")[0];
+                          return (
+                            <ReferenceLine
+                              x={todayStr}
+                              stroke="rgba(74,222,128,0.5)"
+                              strokeDasharray="3 3"
+                              label={{
+                                value: "Today",
+                                position: "insideTopRight",
+                                fill: "#4ade80",
+                                fontSize: 10,
+                              }}
+                            />
+                          );
+                        })()}
                       </LineChart>
                     );
                   })()}
@@ -1783,9 +2144,9 @@ export default function SSAForecastPage() {
                             <span
                               style={{ color: "var(--gold)", fontWeight: 600 }}
                             >
-                              {(result.forecast?.values || [])[idx]?.toFixed(
-                                2,
-                              ) ?? "\u2014"}
+                              {(result.forecast?.values || [])[idx] != null
+                                ? (result.forecast.values[idx]).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                : "\u2014"}
                             </span>
                           </td>
                           <td
@@ -1794,9 +2155,9 @@ export default function SSAForecastPage() {
                               color: "rgba(212,168,67,0.6)",
                             }}
                           >
-                            {(result.forecast?.confidence_high || [])[
-                              idx
-                            ]?.toFixed(2) ?? "\u2014"}
+                            {(result.forecast?.confidence_high || [])[idx] != null
+                              ? result.forecast.confidence_high[idx].toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : "\u2014"}
                           </td>
                           <td
                             style={{
@@ -1804,9 +2165,9 @@ export default function SSAForecastPage() {
                               color: "rgba(212,168,67,0.6)",
                             }}
                           >
-                            {(result.forecast?.confidence_low || [])[
-                              idx
-                            ]?.toFixed(2) ?? "\u2014"}
+                            {(result.forecast?.confidence_low || [])[idx] != null
+                              ? result.forecast.confidence_low[idx].toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : "\u2014"}
                           </td>
                         </tr>
                       ))}

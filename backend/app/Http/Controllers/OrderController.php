@@ -875,7 +875,7 @@ class OrderController extends Controller
                     'totalPrice'      => $item['lineTotal'],
                     'cost'            => $cost,
                     'profit'          => $profit,
-                    'saleDate'        => now(),
+                    'saleDate'        => $order->createdAt ?? now(),
                     'customerName'    => $order->userSnapshot['name'] ?? 'Online Customer',
                     'customerEmail'   => $order->userSnapshot['email'] ?? null,
                     'source'          => 'online',

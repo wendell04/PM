@@ -198,7 +198,7 @@ class WalkInOrderController extends Controller
                     'totalPrice'      => (float) $item['lineTotal'],
                     'cost'            => $cost,
                     'profit'          => $profit,
-                    'saleDate'        => now(),
+                    'saleDate'        => $order->createdAt ?? now(),
                     'customerName'    => $customerName,
                     'customerContact' => null,
                     'customerEmail'   => null,
