@@ -30,8 +30,11 @@ class WalkInOrderController extends Controller
     {
         try {
             $user = $request->user();
-            if (!$user || !in_array($user->role, ['admin', 'owner', 'cashier'])) {
-                return response()->json(['message' => 'Unauthorized.'], 403);
+            if (!$user) {
+                return response()->json(['message' => 'Unauthorized.'], 401);
+            }
+            if (!$this->hasPermission($request, 'pos')) {
+                return $this->unauthorizedResponse();
             }
 
             $v = Validator::make($request->all(), [
@@ -48,7 +51,7 @@ class WalkInOrderController extends Controller
                 'items.*.variantName'   => 'nullable|string',
                 'items.*.qty'           => 'nullable|integer|min:1',
                 'items.*.unitPrice'     => 'nullable|numeric|min:0',
-                'paymentMethod'  => 'required|in:cash,gcash',
+                'paymentMethod'  => 'required|in:cash,gcash,paymaya,card,bank_transfer',
                 'amountTendered' => 'nullable|numeric|min:0',
                 'discount'       => 'nullable|numeric|min:0',
                 'notes'          => 'nullable|string|max:1000',

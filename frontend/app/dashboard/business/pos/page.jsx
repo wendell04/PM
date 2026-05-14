@@ -27,13 +27,13 @@ function resolvePrice(product, qty = 1, variantId = null) {
     if (matched === null && sorted.length > 0) matched = parseFloat(sorted[sorted.length - 1].price);
     if (matched !== null) return matched;
   }
-  if (product.price != null)     return parseFloat(product.price);
-  if (product.flatPrice != null) return parseFloat(product.flatPrice);
+  if (product.price != null)     { const p = parseFloat(product.price);     if (!isNaN(p)) return p; }
+  if (product.flatPrice != null) { const p = parseFloat(product.flatPrice); if (!isNaN(p)) return p; }
   return null;
 }
 
 function formatPrice(n) {
-  if (n == null) return '—';
+  if (n == null || isNaN(n)) return '—';
   return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
@@ -51,8 +51,8 @@ function getVariantOptions(product) {
 const inputStyle = {
   width: '100%',
   padding: '0.625rem 0.75rem',
-  backgroundColor: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.1)',
+  backgroundColor: 'var(--dark)',
+  border: '1px solid var(--border)',
   borderRadius: '8px',
   color: 'var(--white)',
   fontSize: '14px',
@@ -61,7 +61,7 @@ const inputStyle = {
 };
 
 const cardStyle = {
-  background: 'rgba(255,255,255,0.03)',
+  background: 'var(--dark2)',
   border: '1px solid var(--border)',
   borderRadius: '12px',
 };
@@ -79,7 +79,7 @@ const btnGold = {
 
 const btnGhost = {
   padding: '0.625rem 1rem',
-  backgroundColor: 'rgba(255,255,255,0.06)',
+  backgroundColor: 'var(--dark)',
   color: 'var(--white)',
   border: '1px solid var(--border)',
   borderRadius: '8px',
@@ -162,19 +162,6 @@ export default function PosPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [receipt, setReceipt] = useState(null);
-
-  const [posMode, setPosMode] = useState('walkin');
-  // COD Collection mode state
-  const [codOrderId, setCodOrderId]             = useState('');
-  const [codOrder, setCodOrder]                 = useState(null);
-  const [codLookupLoading, setCodLookupLoading] = useState(false);
-  const [codLookupError, setCodLookupError]     = useState('');
-  const [codPaymentAmount, setCodPaymentAmount] = useState('');
-  const [codPaymentMethod, setCodPaymentMethod] = useState('cash');
-  const [codPaymentNote, setCodPaymentNote]     = useState('');
-  const [codSubmitting, setCodSubmitting]       = useState(false);
-  const [codSuccess, setCodSuccess]             = useState(null);
-  const [codError, setCodError]                 = useState('');
 
   const loadProducts = useCallback(async () => {
     if (!token) return;
@@ -344,91 +331,6 @@ export default function PosPage() {
     }
   }
 
-  const lookupCodOrder = useCallback(async () => {
-    if (!codOrderId.trim()) return;
-    setCodLookupLoading(true);
-    setCodLookupError('');
-    setCodOrder(null);
-    try {
-      const res = await fetchWithTimeout(
-        `${API_URL}/api/admin/orders/${codOrderId.trim()}`,
-        { headers: { Authorization: `Bearer ${token}`,
-          'ngrok-skip-browser-warning': '1' } },
-        10000
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        setCodLookupError(data.message || data.error || 'Order not found.');
-        return;
-      }
-      const order = data.data ?? data;
-      if (order.paymentMethod !== 'cod') {
-        setCodLookupError('This order is not a COD order.');
-        return;
-      }
-      if (order.paymentStatus === 'paid') {
-        setCodLookupError('This order has already been fully paid.');
-        return;
-      }
-      setCodOrder(order);
-      const balance = (order.balance ?? order.totalAmount ?? 0);
-      setCodPaymentAmount(String(Number(balance).toFixed(2)));
-    } catch (err) {
-      setCodLookupError(err.message || 'Failed to lookup order.');
-    } finally {
-      setCodLookupLoading(false);
-    }
-  }, [codOrderId, token]);
-
-  const submitCodPayment = useCallback(async () => {
-    if (!codOrder || !codPaymentAmount) return;
-    const amt = parseFloat(codPaymentAmount);
-    if (isNaN(amt) || amt <= 0) {
-      setCodError('Enter a valid amount.');
-      return;
-    }
-    setCodSubmitting(true);
-    setCodError('');
-    try {
-      const res = await fetchWithTimeout(
-        `${API_URL}/api/admin/orders/${codOrder._id ?? codOrder.id}/record-payment`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-            'ngrok-skip-browser-warning': '1',
-          },
-          body: JSON.stringify({
-            amount: amt,
-            method: codPaymentMethod,
-            note: codPaymentNote || 'COD payment collected by courier',
-          }),
-        },
-        10000
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        setCodError(data.error || data.message || 'Failed to record payment.');
-        return;
-      }
-      setCodSuccess({
-        orderId: codOrder._id ?? codOrder.id,
-        amount: amt,
-        customerName: data.order?.userSnapshot?.name
-          ?? codOrder.userSnapshot?.name
-          ?? 'Customer',
-      });
-      setCodOrderId('');
-      setCodOrder(null);
-      setCodPaymentAmount('');
-      setCodPaymentNote('');
-    } catch (err) {
-      setCodError(err.message || 'Network error.');
-    } finally {
-      setCodSubmitting(false);
-    }
-  }, [codOrder, codPaymentAmount, codPaymentMethod, codPaymentNote, token]);
 
   if (receipt) {
     return (
@@ -472,48 +374,12 @@ export default function PosPage() {
       {/* Page header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 className="page-title">Point of Sale</h1>
-        <p style={{ color: 'var(--gray)', fontSize: '0.875rem', margin: '0.25rem 0 1rem' }}>
-          Walk-in counter sales and COD payment collection
+        <p style={{ color: 'var(--gray)', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>
+          Walk-in counter sales
           {currentUser?.name ? ` | ${currentUser.name}` : ''}
         </p>
-
-        {/* Mode toggle */}
-        <div style={{ display: 'inline-flex', borderRadius: '10px',
-          border: '1px solid var(--border)', overflow: 'hidden',
-          background: 'var(--dark)' }}>
-          {[
-            { key: 'walkin', label: 'Walk-in Sale' },
-            { key: 'cod',    label: 'COD Collection' },
-          ].map(m => (
-            <button
-              key={m.key}
-              type="button"
-              onClick={() => {
-                setPosMode(m.key);
-                setCodSuccess(null);
-                setCodError('');
-                setCodLookupError('');
-              }}
-              style={{
-                padding: '0.5rem 1.25rem',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer',
-                background: posMode === m.key ? 'var(--gold)' : 'transparent',
-                color: posMode === m.key ? 'var(--black)' : 'var(--gray)',
-                transition: 'all 0.15s',
-              }}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
       </div>
 
-      {/* Walk-in Sale mode */}
-      {posMode === 'walkin' && (
-        <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '1.5rem', alignItems: 'start' }}>
 
         <div>
@@ -596,7 +462,7 @@ export default function PosPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem', maxHeight: '280px', overflowY: 'auto' }}>
               {cart.map(c => (
-                <div key={c.key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div key={c.key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', background: 'var(--dark)', borderRadius: '8px', border: '1px solid var(--border)' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {c.product.name}
@@ -607,7 +473,7 @@ export default function PosPage() {
                     <div style={{ fontSize: '0.78rem', color: 'var(--gold)', fontWeight: 700 }}>{formatPrice(c.unitPrice)}</div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <button type="button" onClick={() => updateQty(c.key, -1)} style={{ width: '24px', height: '24px', borderRadius: '6px', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', color: 'var(--white)', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                    <button type="button" onClick={() => updateQty(c.key, -1)} style={{ width: '24px', height: '24px', borderRadius: '6px', background: 'var(--dark)', border: '1px solid var(--border)', color: 'var(--white)', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
                     <input
                       type="number"
                       min={1}
@@ -615,7 +481,7 @@ export default function PosPage() {
                       onChange={e => setQtyDirect(c.key, e.target.value)}
                       style={{ width: '42px', textAlign: 'center', padding: '0.25rem', ...inputStyle, fontSize: '0.8rem' }}
                     />
-                    <button type="button" onClick={() => updateQty(c.key, 1)} style={{ width: '24px', height: '24px', borderRadius: '6px', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', color: 'var(--white)', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                    <button type="button" onClick={() => updateQty(c.key, 1)} style={{ width: '24px', height: '24px', borderRadius: '6px', background: 'var(--dark)', border: '1px solid var(--border)', color: 'var(--white)', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                   </div>
                   <div style={{ fontSize: '0.78rem', color: 'var(--white)', fontWeight: 600, minWidth: '60px', textAlign: 'right' }}>
                     {formatPrice(c.unitPrice * c.qty)}
@@ -661,10 +527,51 @@ export default function PosPage() {
               <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Defaults to Walk-in Customer" style={inputStyle} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700, marginBottom: '0.375rem' }}>Payment</label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button type="button" onClick={() => setPaymentMethod('cash')} style={{ ...btnGhost, flex: 1, borderColor: paymentMethod === 'cash' ? 'var(--gold)' : 'var(--border)', borderWidth: '1px' }}>Cash</button>
-                <button type="button" onClick={() => setPaymentMethod('gcash')} style={{ ...btnGhost, flex: 1, borderColor: paymentMethod === 'gcash' ? 'var(--gold)' : 'var(--border)', borderWidth: '1px' }}>GCash</button>
+              <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700, marginBottom: '0.5rem' }}>Payment</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                {[
+                  { id: 'cash',         label: 'Cash',                sub: 'Physical cash at counter',    accent: 'var(--gold)',  accentBg: 'rgba(212,168,67,0.08)', logo: null },
+                  { id: 'gcash',        label: 'GCash',               sub: 'QR scan or send money',       accent: '#0066FF',     accentBg: 'rgba(0,102,255,0.07)',  logo: '/logos/Gcash-Logo-1024x1024.png' },
+                  { id: 'paymaya',      label: 'Maya',                sub: 'QR scan or send money',       accent: '#00B14F',     accentBg: 'rgba(0,177,79,0.07)',   logo: '/logos/maya logo.png' },
+                  { id: 'card',         label: 'Credit / Debit Card', sub: 'Swipe or tap card on terminal', accent: '#9C7BE8',   accentBg: 'rgba(156,123,232,0.07)', logo: '/logos/credit-card.svg', filterImg: true },
+                  { id: 'bank_transfer',label: 'Bank Transfer',       sub: 'Direct bank deposit / transfer', accent: 'var(--gray)', accentBg: 'rgba(120,120,120,0.07)', logo: null },
+                ].map(opt => {
+                  const isSel = paymentMethod === opt.id;
+                  return (
+                    <div
+                      key={opt.id}
+                      onClick={() => setPaymentMethod(opt.id)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.625rem',
+                        padding: '0.625rem 0.75rem', borderRadius: '10px', cursor: 'pointer',
+                        border: `1px solid ${isSel ? opt.accent : 'var(--border)'}`,
+                        background: isSel ? opt.accentBg : 'var(--dark)',
+                        transition: 'border-color 0.15s, background 0.15s',
+                      }}
+                    >
+                      {opt.logo
+                        ? <img src={opt.logo} alt="" style={{ width: 26, height: 26, objectFit: 'contain', flexShrink: 0, filter: opt.filterImg ? 'grayscale(0.3) brightness(0.85)' : undefined }} />
+                        : (
+                          <div style={{ width: 26, height: 26, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {opt.id === 'cash' ? (
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isSel ? opt.accent : 'var(--gray)'} strokeWidth="2" strokeLinecap="round">
+                                <rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/>
+                              </svg>
+                            ) : (
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isSel ? opt.accent : 'var(--gray)'} strokeWidth="2" strokeLinecap="round">
+                                <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+                              </svg>
+                            )}
+                          </div>
+                        )
+                      }
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: isSel ? opt.accent : 'var(--white)' }}>{opt.label}</div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--gray)', lineHeight: 1.3 }}>{opt.sub}</div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             {paymentMethod === 'cash' && (
@@ -787,7 +694,7 @@ export default function PosPage() {
             </div>
 
             <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '1rem' }}>
-              <div>Payment: <strong style={{ color: 'var(--white)' }}>{paymentMethod === 'cash' ? 'Cash' : 'GCash'}</strong></div>
+              <div>Payment: <strong style={{ color: 'var(--white)' }}>{{ cash: 'Cash', gcash: 'GCash', paymaya: 'Maya', card: 'Credit / Debit Card', bank_transfer: 'Bank Transfer' }[paymentMethod] ?? paymentMethod}</strong></div>
               {paymentMethod === 'cash' && (
                 <div style={{ marginTop: '0.35rem' }}>
                   Tendered: {formatPrice(tenderNum)} | Change: {formatPrice(changeDue)}
@@ -805,210 +712,6 @@ export default function PosPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
-        </>
-      )}
-
-      {/* COD Collection mode */}
-      {posMode === 'cod' && (
-        <div style={{ display: 'flex', flexDirection: 'column',
-          gap: '1rem', maxWidth: '520px' }}>
-
-          {codSuccess ? (
-            <div style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
-              <IconSuccess />
-              <h2 style={{ margin: '1rem 0 0.5rem', color: 'var(--white)',
-                fontSize: '1.125rem' }}>
-                Payment Recorded
-              </h2>
-              <p style={{ color: 'var(--gray)', fontSize: '0.875rem',
-                margin: '0 0 1.5rem' }}>
-                ₱{Number(codSuccess.amount).toLocaleString('en-PH',
-                  { minimumFractionDigits: 2 })} collected from{' '}
-                {codSuccess.customerName} for order{' '}
-                #{String(codSuccess.orderId).slice(-8).toUpperCase()}
-              </p>
-              <button
-                type="button"
-                onClick={() => { setCodSuccess(null); }}
-                style={{ ...btnGold }}
-              >
-                Record Another
-              </button>
-            </div>
-          ) : (
-            <>
-              {/* Step 1 — Order lookup */}
-              <div style={{ ...cardStyle, padding: '1.25rem' }}>
-                <h3 style={{ margin: '0 0 1rem', fontSize: '0.9375rem',
-                  fontWeight: 700, color: 'var(--white)' }}>
-                  Step 1 — Find Order
-                </h3>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <input
-                    type="text"
-                    value={codOrderId}
-                    onChange={e => {
-                      setCodOrderId(e.target.value);
-                      setCodOrder(null);
-                      setCodLookupError('');
-                    }}
-                    placeholder="Order short code (e.g. A1B2C3D4)"
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                  <button
-                    type="button"
-                    onClick={lookupCodOrder}
-                    disabled={codLookupLoading || !codOrderId.trim()}
-                    style={{
-                      ...btnGold,
-                      opacity: codLookupLoading || !codOrderId.trim() ? 0.6 : 1,
-                      cursor: codLookupLoading || !codOrderId.trim()
-                        ? 'not-allowed' : 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {codLookupLoading ? 'Looking up…' : 'Look up'}
-                  </button>
-                </div>
-                <p style={{
-                  margin: '0.375rem 0 0',
-                  fontSize: '0.75rem',
-                  color: 'var(--gray)',
-                  lineHeight: 1.4,
-                }}>
-                  Find the 8-character code in the Orders table (#ID column)
-                  or the customer's receipt. You can also paste the full order ID.
-                </p>
-                {codLookupError && (
-                  <p style={{ margin: '0.5rem 0 0', fontSize: '0.8rem',
-                    color: 'var(--red)' }}>
-                    {codLookupError}
-                  </p>
-                )}
-                {codOrder && (
-                  <div style={{ marginTop: '0.75rem', padding: '0.75rem',
-                    background: 'rgba(212,168,67,0.06)',
-                    border: '1px solid rgba(212,168,67,0.2)',
-                    borderRadius: '8px', fontSize: '0.875rem' }}>
-                    <div style={{ fontWeight: 700, color: 'var(--white)',
-                      marginBottom: '0.25rem' }}>
-                      Order #{String(codOrder._id ?? codOrder.id)
-                        .slice(-8).toUpperCase()}
-                    </div>
-                    <div style={{ color: 'var(--gray)' }}>
-                      Customer: {codOrder.userSnapshot?.name ?? '—'}
-                    </div>
-                    <div style={{ color: 'var(--gray)' }}>
-                      Total: ₱{Number(codOrder.totalAmount ?? 0)
-                        .toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                    </div>
-                    <div style={{ color: 'var(--gray)' }}>
-                      Paid so far: ₱{Number(codOrder.downPayment ?? 0)
-                        .toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                    </div>
-                    <div style={{ fontWeight: 700,
-                      color: 'var(--gold)', marginTop: '0.25rem' }}>
-                      Balance due: ₱{Number(
-                        codOrder.balance ?? codOrder.totalAmount ?? 0)
-                        .toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Step 2 — Record payment (only shown after lookup) */}
-              {codOrder && (
-                <div style={{ ...cardStyle, padding: '1.25rem' }}>
-                  <h3 style={{ margin: '0 0 1rem',
-                    fontSize: '0.9375rem', fontWeight: 700,
-                    color: 'var(--white)' }}>
-                    Step 2 — Record Payment
-                  </h3>
-
-                  <label style={{ display: 'block', fontSize: '0.75rem',
-                    color: 'var(--gray)', marginBottom: '0.375rem',
-                    fontWeight: 500 }}>
-                    Amount Collected (₱)
-                  </label>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={codPaymentAmount}
-                    onChange={e => setCodPaymentAmount(e.target.value)}
-                    style={{ ...inputStyle, marginBottom: '0.75rem' }}
-                  />
-
-                  <label style={{ display: 'block', fontSize: '0.75rem',
-                    color: 'var(--gray)', marginBottom: '0.375rem',
-                    fontWeight: 500 }}>
-                    Payment Method
-                  </label>
-                  <div style={{ display: 'flex', gap: '0.5rem',
-                    marginBottom: '0.75rem' }}>
-                    {['cash', 'gcash', 'bank_transfer'].map(m => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => setCodPaymentMethod(m)}
-                        style={{
-                          ...btnGhost,
-                          flex: 1,
-                          background: codPaymentMethod === m
-                            ? 'rgba(212,168,67,0.15)' : undefined,
-                          borderColor: codPaymentMethod === m
-                            ? 'var(--gold)' : undefined,
-                          color: codPaymentMethod === m
-                            ? 'var(--gold)' : undefined,
-                        }}
-                      >
-                        {m === 'bank_transfer' ? 'Bank' :
-                          m.charAt(0).toUpperCase() + m.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-
-                  <label style={{ display: 'block', fontSize: '0.75rem',
-                    color: 'var(--gray)', marginBottom: '0.375rem',
-                    fontWeight: 500 }}>
-                    Note (optional)
-                  </label>
-                  <textarea
-                    value={codPaymentNote}
-                    onChange={e => setCodPaymentNote(e.target.value)}
-                    placeholder="e.g. Collected by courier — JRS Express"
-                    rows={2}
-                    style={{ ...inputStyle, marginBottom: '0.75rem',
-                      resize: 'vertical' }}
-                  />
-
-                  {codError && (
-                    <p style={{ margin: '0 0 0.75rem',
-                      fontSize: '0.8rem', color: 'var(--red)' }}>
-                      {codError}
-                    </p>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={submitCodPayment}
-                    disabled={codSubmitting ||
-                      !codPaymentAmount || parseFloat(codPaymentAmount) <= 0}
-                    style={{
-                      ...btnGold,
-                      width: '100%',
-                      opacity: codSubmitting ? 0.7 : 1,
-                      cursor: codSubmitting ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {codSubmitting ? 'Recording…' : 'Confirm Payment'}
-                  </button>
-                </div>
-              )}
-            </>
-          )}
         </div>
       )}
 
