@@ -88,26 +88,22 @@ class TwoFactorController extends Controller
             ]);
 
             // ── Send via email ────────────────────────────────────────────
-            $mailRecipient = in_array($user->role, ['admin', 'owner'])
-                ? (env('ADMIN_NOTIFICATION_EMAIL') ?: config('mail.from.address'))
-                : $user->email;
+            $mailRecipient = $user->email;
+            $otpToSend     = $plainCode;
+            $nameToUse     = $user->firstName ?? 'User';
 
-            $otpToSend = $plainCode;
-            $nameToUse = $user->firstName ?? 'User';
-
-            app()->terminating(function () use ($mailRecipient, $otpToSend, $nameToUse) {
-                try {
-                    Mail::to($mailRecipient)->send(
-                        new TwoFactorMail(
-                            otpCode:       $otpToSend,
-                            userName:      $nameToUse,
-                            expiryMinutes: 5
-                        )
-                    );
-                } catch (\Exception $e) {
-                    Log::error('TwoFactor email failed: ' . $e->getMessage());
-                }
-            });
+            try {
+                Mail::to($mailRecipient)->send(
+                    new TwoFactorMail(
+                        otpCode:       $otpToSend,
+                        userName:      $nameToUse,
+                        expiryMinutes: 5
+                    )
+                );
+            } catch (\Exception $e) {
+                Log::error('TwoFactor email failed: ' . $e->getMessage());
+                return response()->json(['message' => 'Failed to send OTP email. Please try again.'], 500);
+            }
 
             return response()->json([
                 'message'  => 'OTP sent.',

@@ -35,6 +35,10 @@ use App\Http\Controllers\AdminAnalyticsController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\CollectionController;
+use App\Http\Controllers\HealthController;
+
+// ─── Health Check ─────────────────────────────────────────────────────────────
+Route::get('/health', [HealthController::class, 'check']);
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::post('/register',        [AuthController::class, 'register'])->middleware('throttle:10,1');

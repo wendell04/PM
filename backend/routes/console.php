@@ -13,3 +13,5 @@ Schedule::call(function () {
         ->where('created_at', '<', now()->subHours(24))
         ->delete();
 })->daily()->name('purge-unverified-accounts');
+
+Schedule::command('db:backup')->dailyAt('02:00')->name('db-backup');

@@ -37,29 +37,24 @@ function getLocalUser() {
 function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
-  // Read current method from stored user
-  const getStoredMethod = () => {
+  const getStoredTotpConfirmed = () => {
     try {
-      const raw =
-        localStorage.getItem("auth_user") ||
-        sessionStorage.getItem("auth_user");
-      return raw ? (JSON.parse(raw)?.two_factor_method ?? "email") : "email";
-    } catch {
-      return "email";
-    }
+      const raw = localStorage.getItem("auth_user") || sessionStorage.getItem("auth_user");
+      return raw ? !!(JSON.parse(raw)?.totp_confirmed) : false;
+    } catch { return false; }
   };
 
   const [twoFaToggling, setTwoFaToggling] = useState(false);
-  const [twoFaError, setTwoFaError] = useState("");
-  const [twoFaSuccess, setTwoFaSuccess] = useState("");
-  const [method, setMethod] = useState(getStoredMethod);
+  const [twoFaError, setTwoFaError]       = useState("");
+  const [twoFaSuccess, setTwoFaSuccess]   = useState("");
+  const [totpConfirmed, setTotpConfirmed] = useState(getStoredTotpConfirmed);
 
   // TOTP setup flow states
-  const [totpStep, setTotpStep] = useState("idle"); // idle | setup | confirm | active | remove
-  const [qrCode, setQrCode] = useState("");
-  const [totpSecret, setTotpSecret] = useState("");
-  const [totpCode, setTotpCode] = useState("");
-  const [totpError, setTotpError] = useState("");
+  const [totpStep, setTotpStep]       = useState("idle"); // idle | setup | confirm | active | remove
+  const [qrCode, setQrCode]           = useState("");
+  const [totpSecret, setTotpSecret]   = useState("");
+  const [totpCode, setTotpCode]       = useState("");
+  const [totpError, setTotpError]     = useState("");
   const [totpLoading, setTotpLoading] = useState(false);
   const [removePassword, setRemovePassword] = useState("");
   const [showRemovePass, setShowRemovePass] = useState(false);
@@ -103,14 +98,8 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
           (next ? "Two-factor authentication enabled." : "Disabled."),
       );
       setTimeout(() => setTwoFaSuccess(""), 3000);
-      updateStoredUser({
-        two_factor_enabled: next,
-        two_factor_method: data.two_factor_method ?? "email",
-      });
-      if (!next) {
-        setMethod("email");
-        setTotpStep("idle");
-      }
+      updateStoredUser({ two_factor_enabled: next });
+      if (!next) setTotpStep("idle");
     } catch (err) {
       setTwoFaError(err.message || "Failed to update 2FA setting.");
     } finally {
@@ -118,33 +107,16 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
     }
   };
 
-  const handleSelectMethod = async (chosen) => {
-    if (chosen === method) return;
-    if (chosen === "totp") {
-      // Start setup flow
-      setTotpError("");
-      setTotpLoading(true);
-      try {
-        const data = await setupTotp(token);
-        setQrCode(data.qr_code);
-        setTotpSecret(data.manual_entry?.key || data.secret);
-        setTotpStep("setup");
-      } catch (err) {
-        setTotpError(err.message || "Failed to start setup.");
-      } finally {
-        setTotpLoading(false);
-      }
-    } else {
-      // Switch back to email
-      try {
-        await updateTwoFactorMethod(token, "email");
-        setMethod("email");
-        setTotpStep("idle");
-        updateStoredUser({ two_factor_method: "email" });
-      } catch (err) {
-        setTwoFaError(err.message || "Failed to switch method.");
-      }
-    }
+  const handleSetupTotp = async () => {
+    setTotpError(""); setTotpLoading(true);
+    try {
+      const data = await setupTotp(token);
+      setQrCode(data.qr_code);
+      setTotpSecret(data.manual_entry?.key || data.secret);
+      setTotpStep("setup");
+    } catch (err) {
+      setTotpError(err.message || "Failed to start setup.");
+    } finally { setTotpLoading(false); }
   };
 
   const handleConfirmTotp = async () => {
@@ -153,9 +125,9 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
     setTotpError("");
     try {
       await confirmTotp(token, totpCode);
-      setMethod("totp");
+      setTotpConfirmed(true);
       setTotpStep("active");
-      updateStoredUser({ two_factor_method: "totp", totp_confirmed: true });
+      updateStoredUser({ totp_confirmed: true });
     } catch (err) {
       setTotpError(err.message || "Invalid code. Try again.");
     } finally {
@@ -172,10 +144,10 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
     setTotpError("");
     try {
       await removeTotp(token, removePassword);
-      setMethod("email");
+      setTotpConfirmed(false);
       setTotpStep("idle");
       setRemovePassword("");
-      updateStoredUser({ two_factor_method: "email", totp_confirmed: false });
+      updateStoredUser({ totp_confirmed: false });
     } catch (err) {
       setTotpError(err.message || "Incorrect password.");
     } finally {
@@ -340,177 +312,92 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
         )}
       </div>
 
-      {/* ── Method selector — only when enabled ── */}
-      {twoFactorEnabled &&
-        totpStep !== "setup" &&
-        totpStep !== "confirm" &&
-        totpStep !== "remove" && (
-          <div style={{ marginTop: "1.25rem" }}>
-            <p
-              style={{
-                margin: "0 0 0.75rem",
-                fontSize: "0.8rem",
-                color: "var(--gray)",
-                fontWeight: 600,
-              }}
-            >
-              Choose your verification method
-            </p>
-            <div style={{ display: "flex", gap: "0.75rem" }}>
-              {/* Email option */}
-              <button
-                onClick={() => handleSelectMethod("email")}
-                style={s.methodBtn(method === "email")}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    marginBottom: "0.25rem",
-                  }}
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke={method === "email" ? "var(--gold)" : "var(--gray)"}
-                    strokeWidth="2"
-                  >
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                    <polyline points="22,6 12,13 2,6" />
-                  </svg>
-                  <span
-                    style={{
-                      fontSize: "0.875rem",
-                      fontWeight: 600,
-                      color:
-                        method === "email" ? "var(--gold)" : "var(--white)",
-                    }}
-                  >
-                    Email OTP
-                  </span>
-                  {method === "email" && (
-                    <span
-                      style={{
-                        marginLeft: "auto",
-                        fontSize: "0.65rem",
-                        padding: "1px 6px",
-                        borderRadius: "999px",
-                        background: "rgba(212,168,67,0.15)",
-                        color: "var(--gold)",
-                        border: "1px solid rgba(212,168,67,0.3)",
-                        fontWeight: 700,
-                      }}
-                    >
-                      ACTIVE
-                    </span>
-                  )}
-                </div>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "0.75rem",
-                    color: "var(--gray)",
-                    lineHeight: 1.4,
-                  }}
-                >
-                  A code is sent to your email on each login.
-                </p>
-              </button>
+      {/* ── Verification methods — shown when 2FA is enabled ── */}
+      {twoFactorEnabled && totpStep !== "setup" && totpStep !== "confirm" && totpStep !== "remove" && (
+        <div style={{ marginTop: "1.25rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <p style={{ margin: 0, fontSize: "0.78rem", color: "var(--gray)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Verification Methods
+          </p>
 
-              {/* Google Authenticator option */}
-              <button
-                onClick={() => handleSelectMethod("totp")}
-                style={s.methodBtn(method === "totp")}
-                disabled={totpLoading}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    marginBottom: "0.25rem",
-                  }}
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke={method === "totp" ? "var(--gold)" : "var(--gray)"}
-                    strokeWidth="2"
-                  >
-                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-                    <line x1="12" y1="18" x2="12.01" y2="18" />
-                  </svg>
-                  <span
-                    style={{
-                      fontSize: "0.875rem",
-                      fontWeight: 600,
-                      color: method === "totp" ? "var(--gold)" : "var(--white)",
-                    }}
-                  >
-                    Authenticator App
-                  </span>
-                  {method === "totp" && (
-                    <span
-                      style={{
-                        marginLeft: "auto",
-                        fontSize: "0.65rem",
-                        padding: "1px 6px",
-                        borderRadius: "999px",
-                        background: "rgba(212,168,67,0.15)",
-                        color: "var(--gold)",
-                        border: "1px solid rgba(212,168,67,0.3)",
-                        fontWeight: 700,
-                      }}
-                    >
-                      ACTIVE
-                    </span>
-                  )}
-                </div>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "0.75rem",
-                    color: "var(--gray)",
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {totpLoading
-                    ? "Loading..."
-                    : "Use Google Authenticator or Authy. Works offline, free."}
-                </p>
-              </button>
+          {/* Email OTP — always available */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: "0.875rem",
+            padding: "0.875rem 1rem", borderRadius: "10px",
+            border: "1.5px solid rgba(96,165,250,0.35)",
+            background: "rgba(96,165,250,0.05)",
+          }}>
+            <div style={{
+              width: "38px", height: "38px", borderRadius: "9px", flexShrink: 0,
+              background: "rgba(96,165,250,0.12)", border: "1px solid rgba(96,165,250,0.3)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
             </div>
-            {totpError && totpStep === "idle" && (
-              <p
-                style={{
-                  margin: "0.5rem 0 0",
-                  fontSize: "0.8rem",
-                  color: "var(--red)",
-                }}
-              >
-                {totpError}
-              </p>
-            )}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: "0.875rem", fontWeight: 700, color: "#60a5fa", marginBottom: "0.15rem" }}>Email OTP</div>
+              <div style={{ fontSize: "0.73rem", color: "var(--gray)" }}>A 6-digit code sent to your email at each login.</div>
+            </div>
+            <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "2px 8px", borderRadius: "999px", background: "rgba(96,165,250,0.15)", color: "#60a5fa", border: "1px solid rgba(96,165,250,0.3)", whiteSpace: "nowrap" }}>
+              Always available
+            </span>
+          </div>
 
-            {/* Remove TOTP button when active */}
-            {method === "totp" && (
+          {/* Authenticator App — setup or active */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: "0.875rem",
+            padding: "0.875rem 1rem", borderRadius: "10px",
+            border: `1.5px solid ${totpConfirmed ? "rgba(74,222,128,0.45)" : "rgba(255,255,255,0.09)"}`,
+            background: totpConfirmed ? "rgba(74,222,128,0.05)" : "rgba(255,255,255,0.02)",
+          }}>
+            <div style={{
+              width: "38px", height: "38px", borderRadius: "9px", flexShrink: 0,
+              background: totpConfirmed ? "rgba(74,222,128,0.12)" : "rgba(255,255,255,0.05)",
+              border: `1px solid ${totpConfirmed ? "rgba(74,222,128,0.35)" : "rgba(255,255,255,0.1)"}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={totpConfirmed ? "#4ade80" : "var(--gray)"} strokeWidth="2">
+                <rect x="5" y="2" width="14" height="20" rx="2"/>
+                <path d="M9 7h6M9 11h6M9 15h4"/>
+              </svg>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: "0.875rem", fontWeight: 700, color: totpConfirmed ? "#4ade80" : "var(--white)", marginBottom: "0.15rem" }}>Authenticator App</div>
+              <div style={{ fontSize: "0.73rem", color: "var(--gray)" }}>
+                {totpConfirmed ? "Google Authenticator / Authy is linked to your account." : "Link Google Authenticator or Authy for offline codes."}
+              </div>
+            </div>
+            {totpConfirmed ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.4rem", flexShrink: 0 }}>
+                <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "2px 8px", borderRadius: "999px", background: "rgba(74,222,128,0.15)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.3)" }}>
+                  ACTIVE
+                </span>
+                <button onClick={() => { setTotpStep("remove"); setTotpError(""); }}
+                  style={{ fontSize: "0.72rem", fontWeight: 600, padding: "2px 8px", borderRadius: "6px", border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.08)", color: "var(--red)", cursor: "pointer" }}>
+                  Remove
+                </button>
+              </div>
+            ) : (
               <button
-                onClick={() => {
-                  setTotpStep("remove");
-                  setTotpError("");
-                }}
-                style={{ marginTop: "0.75rem", ...s.btn("red") }}
-              >
-                Remove Authenticator
+                onClick={handleSetupTotp}
+                disabled={totpLoading}
+                style={{ fontSize: "0.78rem", fontWeight: 700, padding: "0.4rem 0.9rem", borderRadius: "8px", border: "1px solid rgba(74,222,128,0.4)", background: "rgba(74,222,128,0.1)", color: "#4ade80", cursor: totpLoading ? "not-allowed" : "pointer", flexShrink: 0, opacity: totpLoading ? 0.6 : 1 }}>
+                {totpLoading ? "Loading…" : "Set Up"}
               </button>
             )}
           </div>
-        )}
+
+          {totpError && totpStep === "idle" && (
+            <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--red)" }}>{totpError}</p>
+          )}
+
+          <p style={{ margin: 0, fontSize: "0.72rem", color: "var(--gray)", lineHeight: 1.4 }}>
+            At login you can choose which method to use. Both can be active simultaneously.
+          </p>
+        </div>
+      )}
 
       {/* ── TOTP Setup — Show QR code ── */}
       {totpStep === "setup" && (
@@ -663,32 +550,9 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
 
       {/* ── TOTP active confirmation ── */}
       {totpStep === "active" && (
-        <div
-          style={{
-            marginTop: "1rem",
-            padding: "0.75rem 1rem",
-            background: "rgba(74,222,128,0.08)",
-            border: "1px solid rgba(74,222,128,0.2)",
-            borderRadius: "8px",
-            color: "var(--green)",
-            fontSize: "0.85rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-          }}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          Google Authenticator is now active. You&apos;ll use your app at every
-          login.
+        <div style={{ marginTop: "1rem", padding: "0.75rem 1rem", background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: "8px", color: "var(--green)", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Authenticator app linked! You can now choose it at login.
         </div>
       )}
 
@@ -711,8 +575,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
               color: "var(--gray)",
             }}
           >
-            Enter your account password to confirm. Your 2FA method will revert
-            to email OTP.
+            Enter your account password to confirm removal. Email OTP will still be available at login.
           </p>
           <div style={{ position: "relative" }}>
             <input

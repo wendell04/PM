@@ -15,7 +15,15 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\(r'D:\\\\PM\\\\ssa-service\\\\main.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
       "PowerShell(Get-Process -Id 18944)",
       "PowerShell(Get-WmiObject Win32_Process -Filter \"ProcessId = 18944\")",
-      "PowerShell(wmic process where \"ProcessId=18944\" get ProcessId,Name,CommandLine 2>&1)"
+      "PowerShell(wmic process where \"ProcessId=18944\" get ProcessId,Name,CommandLine 2>&1)",
+      "Bash(Get-ChildItem -Path \"D:\\\\PM\" -Recurse -Depth 2)",
+      "Bash(Select-Object FullName)",
+      "Bash(powershell -Command \"[System.Web.Security.Membership]::GeneratePassword\\(24, 4\\)\")",
+      "Bash(python3 -c \"import secrets, string; chars=string.ascii_letters+string.digits+'!@#\\\\$%^&*'; print\\(secrets.token_urlsafe\\(24\\)\\)\")",
+      "Bash(node -e \"const c='ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#\\\\$%^&*'; let p=''; for\\(let i=0;i<24;i++\\) p+=c[Math.floor\\(Math.random\\(\\)*c.length\\)]; console.log\\(p\\);\")",
+      "Bash(php artisan *)",
+      "PowerShell(Start-ScheduledTask -TaskName \"LaravelReverb\"; Start-Sleep -Seconds 3; \\(Get-ScheduledTask -TaskName \"LaravelReverb\"\\).State)",
+      "PowerShell(Start-ScheduledTask -TaskName \"LaravelScheduler\"; Start-Sleep -Seconds 3; \\(Get-ScheduledTask -TaskName \"LaravelScheduler\"\\).State)"
     ]
   }
 }

@@ -248,6 +248,8 @@ class AuthController extends Controller
                         'lastLogin'          => $user->lastLogin,
                         'avatar'             => $user->avatar,
                         'two_factor_enabled' => (bool) ($user->two_factor_enabled ?? false),
+                    'two_factor_method'  => $user->two_factor_method ?? 'email',
+                    'totp_confirmed'     => (bool) ($user->totp_confirmed ?? false),
                     ],
                 ]
             );
