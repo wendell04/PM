@@ -884,8 +884,7 @@ export default function ShopLayout({ children }) {
       // Do NOT write to storage yet — hold in state only.
       // Storage write happens in onSuccess after OTP verified.
       sessionStorage.setItem('pending_2fa', 'true');
-      const dashboardRoles = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
-      const isAdminUser = dashboardRoles.includes(userData.role);
+      const isAdminUser = userData.role !== 'customer';
       const currentPath = window.location.pathname;
       const returnTo = isAdminUser
         ? '/dashboard/business/dashboardoverview'
@@ -913,9 +912,8 @@ export default function ShopLayout({ children }) {
       bc.close();
     } catch {}
 
-    // Redirect admin/owner to dashboard
-    const dashboardRolesLogin = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
-    if (dashboardRolesLogin.includes(userData.role)) {
+    // Redirect non-customers to dashboard
+    if (userData.role !== 'customer') {
       sessionStorage.removeItem('pre_login_redirect');
       setAuthModalOpen(false);
       window.location.href = '/dashboard/business/dashboardoverview';

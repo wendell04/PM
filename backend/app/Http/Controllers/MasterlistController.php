@@ -15,7 +15,7 @@ class MasterlistController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -37,7 +37,7 @@ class MasterlistController extends Controller
     public function update(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -77,7 +77,7 @@ class MasterlistController extends Controller
     public function units(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -108,7 +108,7 @@ class MasterlistController extends Controller
     public function saveUnit(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory')) {
                 return $this->unauthorizedResponse();
             }
 

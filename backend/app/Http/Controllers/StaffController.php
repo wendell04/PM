@@ -8,13 +8,10 @@ use App\Models\User;
 
 class StaffController extends Controller
 {
-    protected array $staffRoles = [
-        'salesRep',
-        'productionOperator',
-        'qualityControl',
-        'cashier',
-        'inventoryManager',
-    ];
+    private function getStaffRoles(): array
+    {
+        return \App\Models\RolePermission::pluck('role')->toArray();
+    }
 
     /**
      * GET /api/admin/staff
@@ -23,11 +20,11 @@ class StaffController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'userManagement')) {
                 return $this->unauthorizedResponse();
             }
 
-            $staff = User::whereIn('role', array_merge(['admin', 'owner'], $this->staffRoles))
+            $staff = User::where('role', '!=', 'customer')
                 ->get(['_id', 'firstName', 'lastName', 'email', 'role', 'is_verified', 'lastLogin', 'avatar']);
 
             return $this->successResponse('Staff fetched successfully.', $staff);
@@ -43,7 +40,7 @@ class StaffController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'userManagement')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -52,7 +49,7 @@ class StaffController extends Controller
                 'lastName'  => 'required|string|max:100',
                 'email'     => 'required|email|unique:users,email',
                 'password'  => 'required|string|min:8',
-                'role'      => 'required|string|in:' . implode(',', $this->staffRoles),
+                'role'      => 'required|string|in:' . implode(',', $this->getStaffRoles()),
             ]);
 
             $staff = User::create([
@@ -86,7 +83,7 @@ class StaffController extends Controller
     public function update(Request $request, string $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'userManagement')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -101,7 +98,7 @@ class StaffController extends Controller
             $validated = $request->validate([
                 'firstName' => 'sometimes|string|max:100',
                 'lastName'  => 'sometimes|string|max:100',
-                'role'      => 'sometimes|string|in:' . implode(',', $this->staffRoles),
+                'role'      => 'sometimes|string|in:' . implode(',', $this->getStaffRoles()),
                 'password'  => 'sometimes|string|min:8',
             ]);
 
@@ -134,7 +131,7 @@ class StaffController extends Controller
     public function destroy(Request $request, string $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'userManagement')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -165,7 +162,7 @@ class StaffController extends Controller
     public function customers(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'userManagement')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -201,7 +198,7 @@ class StaffController extends Controller
     public function unlockCustomer(Request $request, string $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'userManagement')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -228,7 +225,7 @@ class StaffController extends Controller
     public function unlockRequests(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'userManagement')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -257,7 +254,7 @@ class StaffController extends Controller
     public function approveUnlock(Request $request, string $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'userManagement')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -284,7 +281,7 @@ class StaffController extends Controller
     public function denyUnlock(Request $request, string $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'userManagement')) {
                 return $this->unauthorizedResponse();
             }
 

@@ -585,7 +585,7 @@ class OrderController extends Controller
     public function adminIndex(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'orders')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -666,7 +666,7 @@ class OrderController extends Controller
     public function adminUpdate(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'orders')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -790,7 +790,7 @@ class OrderController extends Controller
     public function stats(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'orders')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -1086,8 +1086,8 @@ class OrderController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 401);
             }
 
-            if ($user->role !== 'admin' && $user->role !== 'owner') {
-                return response()->json(['error' => 'Forbidden'], 403);
+            if (!$this->hasPermission($request, 'orders')) {
+                return $this->unauthorizedResponse();
             }
 
             $limit = min(max((int) $request->input('limit', 50), 1), 200);
@@ -1119,8 +1119,8 @@ class OrderController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 401);
             }
 
-            if ($user->role !== 'admin' && $user->role !== 'owner') {
-                return response()->json(['error' => 'Forbidden'], 403);
+            if (!$this->hasPermission($request, 'orders')) {
+                return $this->unauthorizedResponse();
             }
 
             // Try exact _id match first
@@ -1162,8 +1162,8 @@ class OrderController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 401);
             }
 
-            if ($user->role !== 'admin' && $user->role !== 'owner') {
-                return response()->json(['error' => 'Forbidden'], 403);
+            if (!$this->hasPermission($request, 'orders')) {
+                return $this->unauthorizedResponse();
             }
 
             $validated = $request->validate([

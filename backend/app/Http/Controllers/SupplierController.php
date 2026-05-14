@@ -25,7 +25,7 @@ class SupplierController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'vendors')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -65,7 +65,7 @@ class SupplierController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'vendors')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -119,7 +119,7 @@ class SupplierController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'vendors')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -172,7 +172,7 @@ class SupplierController extends Controller
     public function destroy(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'vendors')) {
                 return $this->unauthorizedResponse();
             }
 

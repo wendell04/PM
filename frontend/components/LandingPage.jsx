@@ -594,8 +594,7 @@ const LandingPage = ({onEnterShop}) => {
         sessionStorage.setItem('pmp_pending_user', JSON.stringify(data.data.user));
         sessionStorage.setItem('pmp_pending_remember', rememberMe ? '1' : '0');
         sessionStorage.setItem('pending_2fa', 'true');
-        const dashboardRoles2fa = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
-        const isAdminUser = dashboardRoles2fa.includes(data.data.user.role);
+        const isAdminUser = data.data.user.role !== 'customer';
         sessionStorage.setItem('post_2fa_redirect', isAdminUser
           ? '/dashboard/business/dashboardoverview'
           : '/shop');
@@ -618,8 +617,7 @@ const LandingPage = ({onEnterShop}) => {
       const redirectPath = sessionStorage.getItem('redirectAfterLogin');
       sessionStorage.removeItem('redirectAfterLogin');
 
-      const dashboardRoles = ['admin', 'owner', 'salesRep', 'productionOperator', 'qualityControl', 'cashier', 'inventoryManager'];
-      if (dashboardRoles.includes(data.data.user.role)) {
+      if (data.data.user.role !== 'customer') {
         window.location.href = '/dashboard/business/dashboardoverview';
         return;
       }

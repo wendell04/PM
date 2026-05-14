@@ -23,7 +23,18 @@
       "Bash(node -e \"const c='ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#\\\\$%^&*'; let p=''; for\\(let i=0;i<24;i++\\) p+=c[Math.floor\\(Math.random\\(\\)*c.length\\)]; console.log\\(p\\);\")",
       "Bash(php artisan *)",
       "PowerShell(Start-ScheduledTask -TaskName \"LaravelReverb\"; Start-Sleep -Seconds 3; \\(Get-ScheduledTask -TaskName \"LaravelReverb\"\\).State)",
-      "PowerShell(Start-ScheduledTask -TaskName \"LaravelScheduler\"; Start-Sleep -Seconds 3; \\(Get-ScheduledTask -TaskName \"LaravelScheduler\"\\).State)"
+      "PowerShell(Start-ScheduledTask -TaskName \"LaravelScheduler\"; Start-Sleep -Seconds 3; \\(Get-ScheduledTask -TaskName \"LaravelScheduler\"\\).State)",
+      "Bash(Get-ChildItem -Path \"D:\\\\PM\\\\frontend\\\\app\" -Recurse -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Get-ChildItem -Path \"D:\\\\PM\\\\frontend\\\\components\" -Recurse -ErrorAction SilentlyContinue)",
+      "Bash(grep -c 'isAdmin\\($request\\)' D:/PM/backend/app/Http/Controllers/JobOrderController.php D:/PM/backend/app/Http/Controllers/InventoryController.php D:/PM/backend/app/Http/Controllers/SaleController.php D:/PM/backend/app/Http/Controllers/BannerController.php D:/PM/backend/app/Http/Controllers/FlashSaleController.php D:/PM/backend/app/Http/Controllers/VoucherController.php D:/PM/backend/app/Http/Controllers/AuditLogController.php D:/PM/backend/app/Http/Controllers/ActivityLogController.php D:/PM/backend/app/Http/Controllers/ProductController.php D:/PM/backend/app/Http/Controllers/OrderRequestController.php D:/PM/backend/app/Http/Controllers/InventoryReturnController.php D:/PM/backend/app/Http/Controllers/SupplierController.php D:/PM/backend/app/Http/Controllers/CollectionController.php)",
+      "Bash(sed -i 's/\\\\$this->isAdmin\\(\\\\$request\\)/\\\\$this->hasPermission\\(\\\\$request, '\\\\''inventory'\\\\''\\)/g' D:/PM/backend/app/Http/Controllers/InventoryController.php)",
+      "Bash(sed -i 's/\\\\$this->isAdmin\\(\\\\$request\\)/\\\\$this->hasPermission\\(\\\\$request, '\\\\''auditLogs'\\\\''\\)/g' D:/PM/backend/app/Http/Controllers/ActivityLogController.php)",
+      "Bash(sed -i 's/\\\\$this->isAdmin\\(\\\\$request\\)/\\\\$this->hasPermission\\(\\\\$request, '\\\\''badOrders'\\\\''\\)/g' D:/PM/backend/app/Http/Controllers/InventoryReturnController.php)",
+      "Bash(sed -i 's/\\\\$this->isAdmin\\(\\\\$request\\)/\\\\$this->hasPermission\\(\\\\$request, '\\\\''inventory'\\\\''\\)/g' D:/PM/backend/app/Http/Controllers/MasterlistController.php)",
+      "Bash(sed -i 's/\\\\$this->isAdmin\\(\\\\$request\\)/\\\\$this->hasPermission\\(\\\\$request, '\\\\''reports'\\\\''\\)/g' D:/PM/backend/app/Http/Controllers/AdminAnalyticsController.php)",
+      "Bash(grep -rl 'isAdmin\\($request\\)' D:/PM/backend/app/Http/Controllers/)",
+      "Bash(php -l app/Http/Controllers/OrderController.php)"
     ]
   }
 }

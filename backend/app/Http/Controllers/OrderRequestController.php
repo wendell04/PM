@@ -522,7 +522,7 @@ class OrderRequestController extends Controller
     public function stats(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'orderRequests')) {
                 return $this->unauthorizedResponse();
             }
 

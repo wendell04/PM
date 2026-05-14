@@ -24,6 +24,21 @@ abstract class Controller
     }
 
     /**
+     * Checks if the authenticated user has a specific RBAC permission.
+     * Admin and owner always pass. Staff are checked against role_permissions collection.
+     */
+    protected function hasPermission(\Illuminate\Http\Request $request, string $permKey): mixed
+    {
+        $user = $request->user();
+        if (!$user) return false;
+        if (in_array($user->role, ['admin', 'owner'])) return $user;
+        $rolePermission = \App\Models\RolePermission::where('role', $user->role)->first();
+        if (!$rolePermission) return false;
+        $permissions = $rolePermission->permissions ?? [];
+        return !empty($permissions[$permKey]) ? $user : false;
+    }
+
+    /**
      * Checks if the authenticated user has one of the given roles.
      * Admin and owner always pass — they have full access.
      *

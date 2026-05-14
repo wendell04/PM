@@ -165,7 +165,7 @@ class ProductController extends Controller
     public function adminIndex(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'products')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -186,7 +186,7 @@ class ProductController extends Controller
     public function adminShow(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'products')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -209,7 +209,7 @@ class ProductController extends Controller
     public function availableInventory(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'products')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -238,7 +238,7 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'products')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -388,7 +388,7 @@ class ProductController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'products')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -526,7 +526,7 @@ class ProductController extends Controller
     public function destroy(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'products')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -553,7 +553,7 @@ class ProductController extends Controller
     public function togglePublish(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'products')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -610,7 +610,7 @@ class ProductController extends Controller
     public function uploadImage(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'products')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -665,7 +665,7 @@ class ProductController extends Controller
     public function uploadFile(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'products')) {
                 return $this->unauthorizedResponse();
             }
 

@@ -264,7 +264,7 @@ class InventoryController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -359,7 +359,7 @@ class InventoryController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -434,7 +434,7 @@ class InventoryController extends Controller
     public function adjustStock(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -641,7 +641,7 @@ class InventoryController extends Controller
     public function destroy(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'inventory')) {
                 return $this->unauthorizedResponse();
             }
 

@@ -17,7 +17,7 @@ class AdminAnalyticsController extends Controller
     public function dashboardStats(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'reports')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -86,7 +86,7 @@ class AdminAnalyticsController extends Controller
     public function reportsSales(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'reports')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -179,7 +179,7 @@ class AdminAnalyticsController extends Controller
     public function reportsInventory(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'reports')) {
                 return $this->unauthorizedResponse();
             }
 

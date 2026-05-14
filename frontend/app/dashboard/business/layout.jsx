@@ -90,16 +90,7 @@ export default function BusinessDashboardLayout({ children }) {
 
   useEffect(() => {
     if (currentUser) {
-      const allowedRoles = [
-        "admin",
-        "owner",
-        "salesRep",
-        "productionOperator",
-        "qualityControl",
-        "cashier",
-        "inventoryManager",
-      ];
-      if (!allowedRoles.includes(currentUser.role)) {
+      if (currentUser.role === 'customer') {
         router.replace("/shop");
         return;
       }
@@ -928,10 +919,7 @@ export default function BusinessDashboardLayout({ children }) {
               .filter((item) => {
                 if (item.type === "divider") return true;
                 if (item.adminOnly && !isAdminOwner) return false;
-                if (item.marketingGroup) {
-                  return can("flashSales") || can("vouchers");
-                }
-                return can(item.permKey ?? "dashboard");
+                return true;
               })
               .map((item) => {
                 if (item.type === "divider") {
@@ -941,12 +929,42 @@ export default function BusinessDashboardLayout({ children }) {
                     </div>
                   );
                 }
+
+                const navIcon = item.icon ? (
+                  <svg className="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d={item.icon} />
+                  </svg>
+                ) : null;
+
+                const lockIcon = (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginLeft: "auto", flexShrink: 0, opacity: 0.6 }}>
+                    <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+                  </svg>
+                );
+
+                const isAccessible = isAdminOwner || (
+                  item.marketingGroup
+                    ? (can("flashSales") || can("vouchers"))
+                    : can(item.permKey ?? "dashboard")
+                );
+
                 if (item.children) {
-                  const visibleChildren = item.children.filter(
-                    (c) => (!c.permKey || can(c.permKey)) && (!c.adminOnly || isAdminOwner),
-                  );
+                  const allChildren = item.children.filter(c => !c.adminOnly || isAdminOwner);
                   const isExpanded = expandedItems.includes(item.name);
-                  const hasActiveChild = isChildActive(visibleChildren);
+                  const activeChildren = allChildren.filter(c => !c.permKey || can(c.permKey));
+                  const hasActiveChild = isChildActive(activeChildren);
+
+                  if (!isAccessible) {
+                    return (
+                      <div key={item.name} className="sidebar-nav-group">
+                        <div className="sidebar-nav-parent" style={{ opacity: 0.4, cursor: "not-allowed", display: "flex", alignItems: "center" }}>
+                          {navIcon}
+                          <span className="nav-text">{item.name}</span>
+                          {lockIcon}
+                        </div>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div key={item.name} className="sidebar-nav-group">
@@ -954,64 +972,38 @@ export default function BusinessDashboardLayout({ children }) {
                         type="button"
                         className={`sidebar-nav-parent ${hasActiveChild ? "active" : ""}`}
                         onClick={() => {
-                          if (sidebarCollapsed) {
-                            setSidebarCollapsed(false);
-                          }
+                          if (sidebarCollapsed) setSidebarCollapsed(false);
                           toggleExpanded(item.name);
                         }}
                       >
-                        {item.icon && (
-                          <svg
-                            className="nav-icon"
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d={item.icon} />
-                          </svg>
-                        )}
+                        {navIcon}
                         <span className="nav-text">{item.name}</span>
-                        <svg
-                          className={`nav-chevron ${isExpanded ? "rotated" : ""}`}
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
+                        <svg className={`nav-chevron ${isExpanded ? "rotated" : ""}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <polyline points="6 9 12 15 18 9" />
                         </svg>
                       </button>
-                      <div
-                        className={`sidebar-nav-children ${isExpanded ? "expanded" : ""}`}
-                      >
-                        {visibleChildren.map((child) => (
-                          <Link
-                            key={child.name}
-                            href={child.href}
-                            className={`sidebar-nav-child ${pathname === child.href ? "active" : ""}`}
-                            onClick={() => setSidebarOpen(false)}
-                          >
-                            <span className="nav-text">{child.name}</span>
-                          </Link>
-                        ))}
+                      <div className={`sidebar-nav-children ${isExpanded ? "expanded" : ""}`}>
+                        {allChildren.map((child) => {
+                          const childOk = isAdminOwner || !child.permKey || can(child.permKey);
+                          if (!childOk) {
+                            return (
+                              <div key={child.name} className="sidebar-nav-child" style={{ opacity: 0.4, cursor: "not-allowed", display: "flex", alignItems: "center" }}>
+                                <span className="nav-text">{child.name}</span>
+                                {lockIcon}
+                              </div>
+                            );
+                          }
+                          return (
+                            <Link key={child.name} href={child.href} className={`sidebar-nav-child ${pathname === child.href ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
+                              <span className="nav-text">{child.name}</span>
+                            </Link>
+                          );
+                        })}
                       </div>
                       <div className="sidebar-nav-flyout">
-                        <div className="sidebar-nav-flyout-title">
-                          {item.name}
-                        </div>
-                        {visibleChildren.map((child) => (
-                          <Link
-                            key={child.href}
-                            href={child.href}
-                            className={`sidebar-nav-child ${pathname === child.href ? "active" : ""}`}
-                            onClick={() => setSidebarOpen(false)}
-                          >
+                        <div className="sidebar-nav-flyout-title">{item.name}</div>
+                        {allChildren.filter(c => isAdminOwner || !c.permKey || can(c.permKey)).map((child) => (
+                          <Link key={child.href} href={child.href} className={`sidebar-nav-child ${pathname === child.href ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
                             <span className="nav-text">{child.name}</span>
                           </Link>
                         ))}
@@ -1020,27 +1012,19 @@ export default function BusinessDashboardLayout({ children }) {
                   );
                 }
 
+                if (!isAccessible) {
+                  return (
+                    <div key={item.name} className="sidebar-nav-item" style={{ opacity: 0.4, cursor: "not-allowed", display: "flex", alignItems: "center" }}>
+                      {navIcon}
+                      <span className="nav-text">{item.name}</span>
+                      {lockIcon}
+                    </div>
+                  );
+                }
+
                 return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={`sidebar-nav-item ${pathname === item.href ? "active" : ""}`}
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    {item.icon && (
-                      <svg
-                        className="nav-icon"
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d={item.icon} />
-                      </svg>
-                    )}
+                  <Link key={item.name} href={item.href} className={`sidebar-nav-item ${pathname === item.href ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
+                    {navIcon}
                     <span className="nav-text">{item.name}</span>
                   </Link>
                 );

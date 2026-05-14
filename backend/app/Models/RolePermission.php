@@ -11,6 +11,7 @@ class RolePermission extends Model
 
     protected $fillable = [
         'role',
+        'label',
         'permissions',
         'updatedBy',
         'updatedAt',

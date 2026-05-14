@@ -16,7 +16,7 @@ class JobOrderController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'jobOrders')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -45,7 +45,7 @@ class JobOrderController extends Controller
     public function show(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'jobOrders')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -64,7 +64,7 @@ class JobOrderController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'jobOrders')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -123,7 +123,7 @@ class JobOrderController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'jobOrders')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -183,7 +183,7 @@ class JobOrderController extends Controller
     public function submitQC(Request $request, string $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'jobOrders')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -318,7 +318,7 @@ class JobOrderController extends Controller
     public function schedule(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'jobOrders')) {
                 return $this->unauthorizedResponse();
             }
 

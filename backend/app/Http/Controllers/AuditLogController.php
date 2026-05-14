@@ -16,7 +16,7 @@ class AuditLogController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'auditLogs')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -52,7 +52,7 @@ class AuditLogController extends Controller
     public function byInventory(Request $request, $inventoryId)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'auditLogs')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -69,7 +69,7 @@ class AuditLogController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'auditLogs')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -123,7 +123,7 @@ class AuditLogController extends Controller
     public function summary(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'auditLogs')) {
                 return $this->unauthorizedResponse();
             }
 

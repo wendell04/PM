@@ -22,7 +22,7 @@ class InventoryReturnController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'badOrders')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -51,7 +51,7 @@ class InventoryReturnController extends Controller
     public function stats(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'badOrders')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -80,7 +80,7 @@ class InventoryReturnController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'badOrders')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -143,7 +143,7 @@ class InventoryReturnController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'badOrders')) {
                 return $this->unauthorizedResponse();
             }
 

@@ -59,7 +59,7 @@ class CollectionController extends Controller
     public function adminIndex(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return $this->unauthorizedResponse();
+            if (!$this->hasPermission($request, 'products')) return $this->unauthorizedResponse();
 
             $cols = Collection::orderBy('sortOrder', 'asc')
                 ->orderBy('created_at', 'desc')
@@ -79,7 +79,7 @@ class CollectionController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) return $this->unauthorizedResponse();
+            if (!$this->hasPermission($request, 'products')) return $this->unauthorizedResponse();
 
             $validated = $request->validate([
                 'title'       => 'required|string|max:255',
@@ -116,7 +116,7 @@ class CollectionController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) return $this->unauthorizedResponse();
+            if (!$this->hasPermission($request, 'products')) return $this->unauthorizedResponse();
 
             $col = Collection::find($id);
             if (!$col) return $this->notFoundResponse('Collection');
@@ -155,7 +155,7 @@ class CollectionController extends Controller
     public function destroy(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) return $this->unauthorizedResponse();
+            if (!$this->hasPermission($request, 'products')) return $this->unauthorizedResponse();
 
             $col = Collection::find($id);
             if (!$col) return $this->notFoundResponse('Collection');
@@ -172,7 +172,7 @@ class CollectionController extends Controller
     public function togglePublish(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) return $this->unauthorizedResponse();
+            if (!$this->hasPermission($request, 'products')) return $this->unauthorizedResponse();
 
             $col = Collection::find($id);
             if (!$col) return $this->notFoundResponse('Collection');
@@ -194,7 +194,7 @@ class CollectionController extends Controller
     public function adminProducts(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) return $this->unauthorizedResponse();
+            if (!$this->hasPermission($request, 'products')) return $this->unauthorizedResponse();
 
             $col = Collection::find($id);
             if (!$col) return $this->notFoundResponse('Collection');

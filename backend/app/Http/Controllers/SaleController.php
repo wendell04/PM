@@ -18,7 +18,7 @@ class SaleController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'sales')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -59,7 +59,7 @@ class SaleController extends Controller
     public function show(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'sales')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -78,7 +78,7 @@ class SaleController extends Controller
     public function store(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'sales')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -192,7 +192,7 @@ class SaleController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'sales')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -224,7 +224,7 @@ class SaleController extends Controller
     public function summary(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'sales')) {
                 return $this->unauthorizedResponse();
             }
 
@@ -306,7 +306,7 @@ class SaleController extends Controller
     public function topProducts(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'sales')) {
                 return $this->unauthorizedResponse();
             }
 

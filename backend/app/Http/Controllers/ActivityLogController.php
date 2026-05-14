@@ -13,7 +13,7 @@ class ActivityLogController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!$this->isAdmin($request)) {
+            if (!$this->hasPermission($request, 'auditLogs')) {
                 return $this->unauthorizedResponse();
             }
 

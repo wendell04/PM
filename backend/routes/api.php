@@ -148,7 +148,9 @@ Route::middleware(['auth:sanctum', 'isAdmin:owner,admin'])->group(function () {
     Route::put('/admin/settings/shipping',          [SettingsController::class, 'shippingUpdate']);
 
     Route::get('/admin/role-permissions',            [RolePermissionController::class, 'index']);
+    Route::post('/admin/role-permissions',           [RolePermissionController::class, 'store']);
     Route::put('/admin/role-permissions/{role}',     [RolePermissionController::class, 'update']);
+    Route::delete('/admin/role-permissions/{role}',  [RolePermissionController::class, 'destroy']);
 Route::get('/admin/staff',                            [StaffController::class, 'index']);
     Route::post('/admin/staff',                           [StaffController::class, 'store']);
     Route::put('/admin/staff/{id}',                       [StaffController::class, 'update']);

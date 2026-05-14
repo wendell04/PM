@@ -124,54 +124,112 @@ export default function CustomersPage() {
           </p>
         </div>
 
-        {/* Unlock Requests Panel */}
-        {!loading && unlockRequests.length > 0 && (
+        {/* Unlock Requests — always visible section */}
+        {!loading && (
           <div style={{
-            marginBottom: '24px', border: '1px solid rgba(251,191,36,0.3)',
-            borderRadius: '12px', overflow: 'hidden', background: 'rgba(251,191,36,0.04)',
+            marginBottom: '24px',
+            border: unlockRequests.length > 0
+              ? '1px solid rgba(251,191,36,0.4)'
+              : '1px solid var(--border)',
+            borderRadius: '12px',
+            overflow: 'hidden',
+            background: unlockRequests.length > 0
+              ? 'rgba(251,191,36,0.05)'
+              : 'rgba(255,255,255,0.02)',
           }}>
+            {/* Header */}
             <div style={{
-              padding: '12px 20px', borderBottom: '1px solid rgba(251,191,36,0.15)',
+              padding: '12px 20px',
+              borderBottom: unlockRequests.length > 0 ? '1px solid rgba(251,191,36,0.15)' : 'none',
               display: 'flex', alignItems: 'center', gap: '10px',
             }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2">
-                <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                stroke={unlockRequests.length > 0 ? '#D4A843' : 'var(--gray)'} strokeWidth="2">
+                <rect x="5" y="11" width="14" height="10" rx="2"/>
+                <path d="M7 11V7a5 5 0 0110 0v4"/>
               </svg>
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--gold)' }}>Unlock Requests</span>
-              <span style={{ fontSize: '0.72rem', background: '#D4A843', color: '#000', borderRadius: '999px', padding: '1px 8px', fontWeight: 700 }}>
-                {unlockRequests.length}
+              <span style={{
+                fontWeight: 700, fontSize: '0.88rem',
+                color: unlockRequests.length > 0 ? 'var(--gold)' : 'var(--gray)',
+              }}>
+                Account Unlock Requests
               </span>
+              {unlockRequests.length > 0 ? (
+                <span style={{
+                  fontSize: '0.7rem', background: '#D4A843', color: '#000',
+                  borderRadius: '999px', padding: '1px 8px', fontWeight: 700,
+                }}>
+                  {unlockRequests.length}
+                </span>
+              ) : (
+                <span style={{
+                  fontSize: '0.7rem', color: 'var(--green)', fontWeight: 600,
+                  background: 'rgba(34,197,94,0.1)', borderRadius: '999px',
+                  padding: '1px 10px',
+                }}>
+                  All clear
+                </span>
+              )}
             </div>
-            {unlockRequests.map(c => (
+
+            {/* Empty state */}
+            {unlockRequests.length === 0 && (
+              <div style={{
+                padding: '14px 20px',
+                display: 'flex', alignItems: 'center', gap: '10px',
+                color: 'var(--gray)', fontSize: '0.82rem',
+              }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                No pending unlock requests. Customers who get locked out can submit a request here.
+              </div>
+            )}
+
+            {/* Request rows */}
+            {unlockRequests.map((c, idx) => (
               <div key={c.id} style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '12px 20px', gap: '12px', flexWrap: 'wrap',
-                borderBottom: '1px solid rgba(255,255,255,0.04)',
+                padding: '14px 20px', gap: '12px', flexWrap: 'wrap',
+                borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.05)',
+                background: 'rgba(251,191,36,0.03)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
-                  <Avatar customer={c} size={36} />
+                  <Avatar customer={c} size={38} />
                   <div>
-                    <div style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.875rem' }}>
-                      {`${c.firstName} ${c.lastName}`.trim() || '—'}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, color: 'var(--white)', fontSize: '0.88rem' }}>
+                        {`${c.firstName} ${c.lastName}`.trim() || '—'}
+                      </span>
+                      <span style={{
+                        fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px',
+                        borderRadius: '999px', background: 'rgba(251,191,36,0.15)',
+                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.05em',
+                      }}>Unlock Requested</span>
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{c.email}</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '2px' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: '2px' }}>{c.email}</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '2px', opacity: 0.8 }}>
                       Requested: {c.unlock_requested_at ? new Date(c.unlock_requested_at).toLocaleString() : '—'}
                     </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                   <button
                     type="button"
                     disabled={!!unlockActing[c.id]}
                     onClick={() => handleUnlock(c.id)}
                     style={{
-                      padding: '6px 14px', borderRadius: '8px', border: 'none',
+                      padding: '7px 16px', borderRadius: '8px', border: 'none',
                       background: '#16a34a', color: '#fff', fontWeight: 600, fontSize: '0.8rem',
                       cursor: unlockActing[c.id] ? 'not-allowed' : 'pointer',
                       opacity: unlockActing[c.id] ? 0.6 : 1,
+                      display: 'flex', alignItems: 'center', gap: '5px',
                     }}
                   >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 019.9-1"/>
+                    </svg>
                     {unlockActing[c.id] ? 'Unlocking...' : 'Approve & Unlock'}
                   </button>
                   <button
@@ -190,7 +248,7 @@ export default function CustomersPage() {
                       finally { setUnlockActing(prev => { const n = { ...prev }; delete n[c.id]; return n; }); }
                     }}
                     style={{
-                      padding: '6px 14px', borderRadius: '8px',
+                      padding: '7px 14px', borderRadius: '8px',
                       border: '1px solid var(--border)', background: 'transparent',
                       color: 'var(--gray)', fontWeight: 600, fontSize: '0.8rem',
                       cursor: unlockActing[c.id] ? 'not-allowed' : 'pointer',
