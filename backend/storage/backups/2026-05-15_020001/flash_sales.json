@@ -1,0 +1,36 @@
+[
+    {
+        "_id": {
+            "$oid": "69f46c5ca95638070d0777d2"
+        },
+        "isActive": false,
+        "stockLimit": 100,
+        "stockUsed": 0,
+        "productId": "69f03b8fbdb44806dd073578",
+        "productName": "Scrunchies",
+        "productThumbnail": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777355173\/pmp-products\/dir6gin0nrbfceuvkeqt.webp",
+        "discountType": "percentage",
+        "discountValue": 5,
+        "startDate": {
+            "$date": {
+                "$numberLong": "1777626120000"
+            }
+        },
+        "endDate": {
+            "$date": {
+                "$numberLong": "1780131720000"
+            }
+        },
+        "createdBy": "personalizemeprints.admin@gmail.com",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777766032902"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777626204479"
+            }
+        }
+    }
+]

@@ -3253,6 +3253,9 @@ input[type="text"][inputMode="numeric"] {
   border-right: none;
   box-shadow: none;
   animation: slideInRight 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 @keyframes slideInRight {
@@ -3388,6 +3391,8 @@ input[type="text"][inputMode="numeric"] {
 
 .profile-modal-body {
   padding: 1.5rem;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .profile-success-message,

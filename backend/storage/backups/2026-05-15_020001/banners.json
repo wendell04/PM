@@ -1,0 +1,54 @@
+[
+    {
+        "_id": {
+            "$oid": "69f12ec131ac435bae067962"
+        },
+        "headline": "Custom Paper Bags",
+        "subtext": "Personalized custom eco paper bags",
+        "ctaLabel": "Buy now",
+        "ctaLink": "\/shop\/products\/69f136ed8e58e200e10d2ab3",
+        "image": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777766431\/pmp-banners\/xtcicpeuqizkwaqoqelh.png",
+        "isVisible": true,
+        "status": "live",
+        "order": 0,
+        "scheduleStart": null,
+        "scheduleEnd": null,
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777768408542"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777413825628"
+            }
+        },
+        "showOn": "shop"
+    },
+    {
+        "_id": {
+            "$oid": "69f60ac87607852a1b044634"
+        },
+        "headline": null,
+        "subtext": null,
+        "ctaLabel": null,
+        "ctaLink": null,
+        "image": null,
+        "isVisible": false,
+        "status": "draft",
+        "order": 0,
+        "scheduleStart": null,
+        "scheduleEnd": null,
+        "showOn": "both",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777766411501"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777732296559"
+            }
+        }
+    }
+]

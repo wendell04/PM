@@ -715,6 +715,14 @@ export default function CustomerProfilePage() {
   const [overviewAddresses, setOverviewAddresses] = useState([]);
   const [overviewAddrLoading, setOverviewAddrLoading] = useState(false);
 
+  // Overview orders state
+  const [overviewOrders, setOverviewOrders] = useState([]);
+  const [overviewOrdersLoading, setOverviewOrdersLoading] = useState(false);
+
+  // Overview notifications state
+  const [overviewNotifs, setOverviewNotifs] = useState([]);
+  const [overviewUnread, setOverviewUnread] = useState(0);
+
   // Sessions state
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -790,22 +798,36 @@ export default function CustomerProfilePage() {
     }
   }, [activeTab]);
 
-  // Fetch addresses when Overview tab is activated
+  // Fetch addresses + orders when Overview tab is activated
   useEffect(() => {
     if (activeTab !== "overview") return;
     if (!token) return;
     setOverviewAddrLoading(true);
-    fetchWithTimeout(
-      `${API_URL}/api/addresses`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      },
-      15000,
-    )
+    fetchWithTimeout(`${API_URL}/api/addresses`, { headers: { Authorization: `Bearer ${token}` } }, 15000)
       .then((r) => r.json())
       .then((d) => setOverviewAddresses(d.addresses || []))
       .catch(() => {})
       .finally(() => setOverviewAddrLoading(false));
+
+    setOverviewOrdersLoading(true);
+    fetchWithTimeout(`${API_URL}/api/orders/my`, { headers: { Authorization: `Bearer ${token}` } }, 15000)
+      .then((r) => r.json())
+      .then((d) => {
+        const raw = d?.orders ?? d?.data ?? d;
+        setOverviewOrders(Array.isArray(raw) ? raw : []);
+      })
+      .catch(() => setOverviewOrders([]))
+      .finally(() => setOverviewOrdersLoading(false));
+
+    fetchWithTimeout(`${API_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } }, 10000)
+      .then((r) => r.json())
+      .then((d) => {
+        const raw = d?.notifications ?? d?.data ?? d;
+        const list = Array.isArray(raw) ? raw : [];
+        setOverviewNotifs(list.slice(0, 5));
+        setOverviewUnread(list.filter(n => !n.read_at && !n.read).length);
+      })
+      .catch(() => {});
   }, [activeTab, token]);
 
   // Fetch sessions when Security tab is activated
@@ -1495,6 +1517,30 @@ export default function CustomerProfilePage() {
               </svg>
               Overview
             </button>
+            <Link
+              href="/shop/orders-history"
+              style={{
+                padding: "0.625rem 1rem",
+                borderRadius: "8px",
+                fontSize: "0.9rem",
+                fontWeight: 500,
+                textAlign: "left",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.75rem",
+                textDecoration: "none",
+                color: "var(--white)",
+                background: "transparent",
+                transition: "background 0.15s",
+              }}
+              className="profile-nav-item"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 11l3 3L22 4"/>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+              </svg>
+              My Orders
+            </Link>
             <button
               onClick={() => setActiveTab("personal")}
               className={`profile-nav-item${activeTab === "personal" ? " active" : ""}`}
@@ -1595,320 +1641,373 @@ export default function CustomerProfilePage() {
               padding: "2rem",
             }}
           >
-            {/* TAB 1: Overview */}
-            {activeTab === "overview" && (
-              <div>
-                <h2
-                  style={{
-                    margin: "0 0 1.5rem",
-                    fontSize: "1.25rem",
-                    color: "var(--white)",
-                  }}
-                >
-                  Profile Overview
-                </h2>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "1rem",
-                  }}
-                >
-                  <div>
-                    <div
-                      style={{
-                        fontSize: "0.75rem",
-                        color: "var(--gray)",
-                        marginBottom: "0.25rem",
-                      }}
-                    >
-                      First Name
-                    </div>
-                    <div style={{ fontSize: "0.95rem", color: "var(--white)" }}>
-                      {profileForm.firstName || "—"}
-                    </div>
-                  </div>
-                  <div>
-                    <div
-                      style={{
-                        fontSize: "0.75rem",
-                        color: "var(--gray)",
-                        marginBottom: "0.25rem",
-                      }}
-                    >
-                      Last Name
-                    </div>
-                    <div style={{ fontSize: "0.95rem", color: "var(--white)" }}>
-                      {profileForm.lastName || "—"}
-                    </div>
-                  </div>
-                  <div>
-                    <div
-                      style={{
-                        fontSize: "0.75rem",
-                        color: "var(--gray)",
-                        marginBottom: "0.25rem",
-                      }}
-                    >
-                      Email
-                    </div>
-                    <div style={{ fontSize: "0.95rem", color: "var(--white)" }}>
-                      {profileForm.email || "—"}
-                    </div>
-                  </div>
-                  <div>
-                    <div
-                      style={{
-                        fontSize: "0.75rem",
-                        color: "var(--gray)",
-                        marginBottom: "0.25rem",
-                      }}
-                    >
-                      Phone
-                    </div>
-                    <div style={{ fontSize: "0.95rem", color: "var(--white)" }}>
-                      {profileForm.phoneNumber || "—"}
-                    </div>
-                  </div>
-                </div>
+            {/* TAB 1: Overview — Customer Dashboard */}
+            {activeTab === "overview" && (() => {
+              const orders = Array.isArray(overviewOrders) ? overviewOrders : [];
+              const inProgressStatuses = ["Pending", "Processing", "In Production", "For QC", "For Delivery", "For Pick-up", "Confirmed"];
+              const total = orders.length;
+              const inProgress = orders.filter(o => inProgressStatuses.includes(o.orderStatus)).length;
+              const delivered = orders.filter(o => o.orderStatus === "Delivered").length;
+              const totalSpent = orders.filter(o => o.paymentStatus === "paid").reduce((s, o) => s + (parseFloat(o.totalAmount) || 0), 0);
+              const needsDesignApproval = orders.filter(o => o.designStatus === "proof_sent" || o.designStatus === "pending_approval");
+              const paymentDue = orders.filter(o => inProgressStatuses.includes(o.orderStatus) && o.paymentStatus !== "paid" && parseFloat(o.balance || 0) > 0);
+              const hasActions = needsDesignApproval.length > 0 || paymentDue.length > 0;
 
-                {/* Saved Addresses */}
-                <div
-                  style={{
-                    marginTop: "2rem",
-                    borderTop: "1px solid var(--border)",
-                    paddingTop: "1.5rem",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: "1rem",
-                    }}
-                  >
-                    <h4
-                      style={{
-                        margin: 0,
-                        fontSize: "0.875rem",
-                        fontWeight: 600,
-                        color: "var(--white)",
-                      }}
-                    >
-                      Saved Addresses
-                    </h4>
-                    <button
-                      onClick={() => setActiveTab("addresses")}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "var(--gold)",
-                        fontSize: "0.8rem",
-                        cursor: "pointer",
-                        padding: 0,
-                        fontWeight: 600,
-                      }}
-                    >
-                      Manage →
-                    </button>
+              const statusStyle = (status) => {
+                const map = {
+                  Delivered: { bg: "rgba(74,222,128,0.1)", color: "#4ade80", border: "rgba(74,222,128,0.25)" },
+                  Cancelled: { bg: "rgba(239,68,68,0.1)", color: "#f87171", border: "rgba(239,68,68,0.25)" },
+                  Returned:  { bg: "rgba(239,68,68,0.08)", color: "#f87171", border: "rgba(239,68,68,0.2)" },
+                  Pending:   { bg: "rgba(251,191,36,0.1)", color: "#fbbf24", border: "rgba(251,191,36,0.25)" },
+                  Confirmed: { bg: "rgba(212,168,67,0.1)", color: "var(--gold)", border: "rgba(212,168,67,0.3)" },
+                  "In Production": { bg: "rgba(96,165,250,0.1)", color: "#60a5fa", border: "rgba(96,165,250,0.25)" },
+                  "For QC":        { bg: "rgba(167,139,250,0.1)", color: "#a78bfa", border: "rgba(167,139,250,0.25)" },
+                  "For Delivery":  { bg: "rgba(52,211,153,0.1)", color: "#34d399", border: "rgba(52,211,153,0.25)" },
+                  "For Pick-up":   { bg: "rgba(52,211,153,0.1)", color: "#34d399", border: "rgba(52,211,153,0.25)" },
+                };
+                return map[status] || { bg: "rgba(255,255,255,0.05)", color: "var(--gray)", border: "var(--border)" };
+              };
+
+              // Account completeness
+              const completenessItems = [
+                { label: "Profile photo", done: !!(currentUser?.avatar) },
+                { label: "Phone number", done: !!(profileForm.phoneNumber) },
+                { label: "Delivery address", done: overviewAddresses.length > 0 },
+                { label: "Two-factor auth", done: !!twoFactorEnabled },
+              ];
+              const completePct = Math.round((completenessItems.filter(c => c.done).length / completenessItems.length) * 100);
+
+              // Active order tracker
+              const orderSteps = ["Pending", "Confirmed", "In Production", "For QC", "For Delivery", "Delivered"];
+              const activeOrder = orders.find(o => inProgressStatuses.includes(o.orderStatus));
+              const activeStepIdx = activeOrder ? orderSteps.indexOf(activeOrder.orderStatus) : -1;
+
+              // Pending reviews (delivered + paid)
+              const pendingReviews = orders.filter(o => o.orderStatus === "Delivered" && o.paymentStatus === "paid");
+
+              // Voucher usage — derived from order data, no extra fetch needed
+              const voucherOrders = orders.filter(o => o.voucherCode && o.voucherCode.trim() !== "");
+              const totalVoucherSavings = voucherOrders.reduce((s, o) => s + (parseFloat(o.discountAmount) || 0), 0);
+              const uniqueVouchers = [...new Set(voucherOrders.map(o => o.voucherCode.trim().toUpperCase()))];
+
+              // Time-relative helper
+              const timeAgo = (dateStr) => {
+                if (!dateStr) return "";
+                const diff = Date.now() - new Date(dateStr).getTime();
+                const m = Math.floor(diff / 60000);
+                if (m < 1) return "Just now";
+                if (m < 60) return `${m}m ago`;
+                const h = Math.floor(m / 60);
+                if (h < 24) return `${h}h ago`;
+                return `${Math.floor(h / 24)}d ago`;
+              };
+
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
+
+                  {/* ── Welcome ── */}
+                  <div style={{ padding: "1.25rem 1.5rem", background: "linear-gradient(135deg, rgba(212,168,67,0.07) 0%, rgba(255,255,255,0.02) 100%)", border: "1px solid rgba(212,168,67,0.18)", borderRadius: "12px", position: "relative", overflow: "hidden" }}>
+                    <div style={{ position: "absolute", top: 0, right: 0, width: "120px", height: "100%", background: "linear-gradient(90deg, transparent, rgba(212,168,67,0.04))", pointerEvents: "none" }} />
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "rgba(212,168,67,0.7)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.35rem" }}>
+                          {(() => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; })()}
+                        </div>
+                        <h2 style={{ margin: "0 0 0.5rem", fontSize: "1.5rem", fontWeight: 800, color: "var(--white)", letterSpacing: "-0.02em", lineHeight: 1 }}>
+                          {profileForm.firstName || "there"} {profileForm.lastName || ""}
+                        </h2>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                          <span style={{ fontSize: "0.72rem", color: "var(--gray)" }}>{formatMemberSince(currentUser?.createdAt || currentUser?.lastLogin)}</span>
+                          {overviewUnread > 0 && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", fontSize: "0.7rem", fontWeight: 600, color: "#60a5fa" }}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                              {overviewUnread} unread
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {/* Account Completeness */}
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <div style={{ fontSize: "0.6rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "0.1rem" }}>Profile Setup</div>
+                        <div style={{ fontSize: "0.62rem", color: "var(--gray)", opacity: 0.6, marginBottom: "0.35rem" }}>Photo · Phone · Address · 2FA</div>
+                        <div style={{ fontSize: "1.25rem", fontWeight: 800, color: completePct === 100 ? "#4ade80" : "var(--gold)", letterSpacing: "-0.02em", marginBottom: "0.4rem" }}>{completePct}%</div>
+                        <div style={{ width: "80px", height: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "2px", overflow: "hidden", marginLeft: "auto" }}>
+                          <div style={{ height: "100%", width: `${completePct}%`, background: completePct === 100 ? "#4ade80" : "var(--gold)", borderRadius: "2px", transition: "width 0.5s ease" }} />
+                        </div>
+                        {completePct < 100 && (
+                          <button onClick={() => setActiveTab("personal")} style={{ marginTop: "0.4rem", background: "none", border: "none", color: "rgba(212,168,67,0.7)", fontSize: "0.67rem", cursor: "pointer", padding: 0 }}>
+                            Complete profile →
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {/* Completeness items — show only if incomplete */}
+                    {completePct < 100 && (
+                      <div style={{ marginTop: "1rem", paddingTop: "0.875rem", borderTop: "1px solid rgba(212,168,67,0.1)", display: "flex", gap: "0.625rem", flexWrap: "wrap" }}>
+                        {completenessItems.map((c, i) => (
+                          <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", fontSize: "0.68rem", fontWeight: 500, color: c.done ? "#4ade80" : "var(--gray)", opacity: c.done ? 0.7 : 1 }}>
+                            {c.done
+                              ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
+                              : <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/></svg>
+                            }
+                            {c.label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  {overviewAddrLoading ? (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "0.75rem",
-                      }}
-                    >
-                      {[1, 2].map((i) => (
-                        <div
-                          key={i}
-                          style={{
-                            height: "60px",
-                            background: "var(--dark)",
-                            borderRadius: "10px",
-                            border: "1px solid var(--border)",
-                            animation: "pulse 1.5s ease-in-out infinite",
-                          }}
-                        />
-                      ))}
-                    </div>
-                  ) : overviewAddresses.length === 0 ? (
-                    <div
-                      style={{
-                        padding: "1.5rem",
-                        textAlign: "center",
-                        background: "var(--dark)",
-                        borderRadius: "10px",
-                        border: "1px solid var(--border)",
-                      }}
-                    >
-                      <p
-                        style={{
-                          margin: "0 0 0.75rem",
-                          fontSize: "0.85rem",
-                          color: "var(--gray)",
-                        }}
-                      >
-                        No saved addresses yet.
-                      </p>
-                      <button
-                        onClick={() => setActiveTab("addresses")}
-                        style={{
-                          padding: "0.5rem 1rem",
-                          background: "var(--gold)",
-                          border: "none",
-                          borderRadius: "8px",
-                          color: "#000",
-                          fontSize: "0.8rem",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Add Address
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "0.875rem",
-                      }}
-                    >
-                      {overviewAddresses.map((addr) => {
-                        const parts = [
-                          addr.house_number && addr.street
-                            ? `${addr.house_number} ${addr.street}`
-                            : "",
-                          addr.subdivision,
-                          addr.barangay ? `Brgy. ${addr.barangay}` : "",
-                          addr.city,
-                          addr.province,
-                          addr.zip,
-                        ]
-                          .filter(Boolean)
-                          .join(", ");
-                        const isPinned = !!(addr.lat && addr.lng);
-                        return (
-                          <div
-                            key={addr.id}
-                            style={{
-                              background: addr.is_default
-                                ? "rgba(212,168,67,0.05)"
-                                : "var(--dark)",
-                              border: `1px solid ${addr.is_default ? "rgba(212,168,67,0.3)" : "var(--border)"}`,
-                              borderRadius: "10px",
-                              overflow: "hidden",
-                            }}
-                          >
-                            <div style={{ padding: "0.875rem 1rem" }}>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "0.5rem",
-                                  marginBottom: "0.375rem",
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                {addr.label && (
-                                  <span
-                                    style={{
-                                      fontSize: "0.7rem",
-                                      fontWeight: 700,
-                                      padding: "1px 8px",
-                                      borderRadius: "999px",
-                                      background: "rgba(255,255,255,0.08)",
-                                      color: "var(--white)",
-                                      textTransform: "uppercase",
-                                      letterSpacing: "0.04em",
-                                    }}
-                                  >
-                                    {addr.label}
-                                  </span>
-                                )}
-                                {addr.is_default && (
-                                  <span
-                                    style={{
-                                      fontSize: "0.65rem",
-                                      fontWeight: 700,
-                                      padding: "1px 8px",
-                                      borderRadius: "999px",
-                                      background: "rgba(212,168,67,0.15)",
-                                      color: "var(--gold)",
-                                      border: "1px solid rgba(212,168,67,0.3)",
-                                      textTransform: "uppercase",
-                                      letterSpacing: "0.04em",
-                                    }}
-                                  >
-                                    Default
-                                  </span>
-                                )}
-                                <span
-                                  style={{
-                                    marginLeft: "auto",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "0.3rem",
-                                    fontSize: "0.7rem",
-                                    color: isPinned ? "#4ade80" : "var(--gray)",
-                                  }}
-                                >
-                                  <svg
-                                    width="11"
-                                    height="11"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                  >
-                                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                                    <circle cx="12" cy="10" r="3" />
-                                  </svg>
-                                  {isPinned ? "Pinned" : "Not pinned"}
-                                </span>
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: "0.82rem",
-                                  color: "var(--gray)",
-                                  lineHeight: 1.5,
-                                }}
-                              >
-                                {parts || "—"}
-                              </div>
-                              {addr.phone && (
-                                <div
-                                  style={{
-                                    fontSize: "0.78rem",
-                                    color: "var(--gray)",
-                                    marginTop: "0.25rem",
-                                  }}
-                                >
-                                  {addr.phone}
-                                </div>
-                              )}
+                  {/* ── Stats ── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.75rem" }}>
+                    {[
+                      { label: "Total Orders",  value: overviewOrdersLoading ? "—" : total,     color: "var(--gold)",  accent: "rgba(212,168,67,0.7)" },
+                      { label: "In Progress",   value: overviewOrdersLoading ? "—" : inProgress, color: "#60a5fa",      accent: "rgba(96,165,250,0.7)" },
+                      { label: "Delivered",     value: overviewOrdersLoading ? "—" : delivered,  color: "#4ade80",      accent: "rgba(74,222,128,0.7)" },
+                      { label: "Total Spent",   value: overviewOrdersLoading ? "—" : `₱${totalSpent.toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, color: "var(--white)", accent: "rgba(255,255,255,0.25)" },
+                    ].map((s, i) => (
+                      <div key={i} style={{ background: "var(--dark)", border: "1px solid var(--border)", borderLeft: `3px solid ${s.accent}`, borderRadius: "10px", padding: "1.125rem 1.25rem" }}>
+                        <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.5rem" }}>{s.label}</div>
+                        <div style={{ fontSize: "1.625rem", fontWeight: 800, color: s.color, lineHeight: 1, letterSpacing: "-0.03em" }}>{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ── Voucher Usage ── */}
+                  {!overviewOrdersLoading && (
+                    <div style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
+                      <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                        <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--white)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Voucher Savings</span>
+                      </div>
+                      {voucherOrders.length === 0 ? (
+                        <div style={{ padding: "1.25rem 1rem", textAlign: "center" }}>
+                          <div style={{ fontSize: "0.78rem", color: "var(--gray)", marginBottom: "0.25rem" }}>No vouchers used yet</div>
+                          <div style={{ fontSize: "0.68rem", color: "var(--gray)", opacity: 0.6 }}>Apply a voucher code at checkout to save on your next order</div>
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ display: "flex", gap: 0 }}>
+                            <div style={{ flex: 1, padding: "1rem 1.25rem", borderRight: "1px solid var(--border)" }}>
+                              <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "0.4rem" }}>Vouchers Used</div>
+                              <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--gold)", letterSpacing: "-0.03em", lineHeight: 1 }}>{voucherOrders.length}</div>
+                              <div style={{ fontSize: "0.65rem", color: "var(--gray)", marginTop: "0.25rem" }}>across {voucherOrders.length === 1 ? "1 order" : `${voucherOrders.length} orders`}</div>
                             </div>
-                            {isPinned && (
-                              <div style={{ padding: "0 0.875rem 0.875rem" }}>
-                                <ReadOnlyPinMap
-                                  lat={addr.lat}
-                                  lng={addr.lng}
-                                  height={160}
-                                />
-                              </div>
-                            )}
+                            <div style={{ flex: 1, padding: "1rem 1.25rem" }}>
+                              <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "0.4rem" }}>Total Saved</div>
+                              <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#4ade80", letterSpacing: "-0.03em", lineHeight: 1 }}>₱{totalVoucherSavings.toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+                              <div style={{ fontSize: "0.65rem", color: "var(--gray)", marginTop: "0.25rem" }}>from discounts applied</div>
+                            </div>
                           </div>
-                        );
-                      })}
+                          {uniqueVouchers.length > 0 && (
+                            <div style={{ padding: "0.625rem 1rem", borderTop: "1px solid var(--border)", display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
+                              <span style={{ fontSize: "0.62rem", color: "var(--gray)", marginRight: "0.25rem" }}>Codes used:</span>
+                              {uniqueVouchers.map((code) => (
+                                <span key={code} style={{ fontSize: "0.65rem", fontWeight: 700, padding: "1px 7px", borderRadius: "999px", background: "rgba(212,168,67,0.1)", color: "var(--gold)", border: "1px solid rgba(212,168,67,0.25)", letterSpacing: "0.05em" }}>{code}</span>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   )}
+
+                  {/* ── Action Alerts ── */}
+                  {!overviewOrdersLoading && hasActions && (
+                    <div style={{ border: "1px solid rgba(239,68,68,0.25)", borderLeft: "3px solid #f87171", borderRadius: "10px", overflow: "hidden" }}>
+                      <div style={{ padding: "0.625rem 1rem", borderBottom: "1px solid rgba(239,68,68,0.15)", display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(239,68,68,0.04)" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "#f87171", textTransform: "uppercase", letterSpacing: "0.07em" }}>Action Required</span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        {needsDesignApproval.map((o, idx) => (
+                          <Link key={o._id} href="/shop/orders-history" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", borderBottom: idx < needsDesignApproval.length - 1 || paymentDue.length > 0 ? "1px solid rgba(239,68,68,0.1)" : "none", textDecoration: "none" }}>
+                            <div style={{ minWidth: 0 }}>
+                              <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)" }}>Order #{String(o._id).slice(-8).toUpperCase()}</span>
+                              <span style={{ fontSize: "0.72rem", color: "var(--gray)", display: "block", marginTop: "0.15rem" }}>Design proof sent — review and approve to proceed to production</span>
+                            </div>
+                            <span style={{ fontSize: "0.72rem", color: "var(--gold)", fontWeight: 600, flexShrink: 0, marginLeft: "1rem" }}>Review →</span>
+                          </Link>
+                        ))}
+                        {paymentDue.map((o, idx) => (
+                          <Link key={o._id} href="/shop/orders-history" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", borderBottom: idx < paymentDue.length - 1 ? "1px solid rgba(239,68,68,0.1)" : "none", textDecoration: "none" }}>
+                            <div style={{ minWidth: 0 }}>
+                              <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)" }}>Order #{String(o._id).slice(-8).toUpperCase()}</span>
+                              <span style={{ fontSize: "0.72rem", color: "var(--gray)", display: "block", marginTop: "0.15rem" }}>Outstanding balance: ₱{parseFloat(o.balance || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
+                            <span style={{ fontSize: "0.72rem", color: "var(--gold)", fontWeight: 600, flexShrink: 0, marginLeft: "1rem" }}>Pay now →</span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Active Order Tracker ── */}
+                  {!overviewOrdersLoading && activeOrder && (
+                    <div style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
+                      <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+                          <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Active Order</span>
+                          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--white)" }}>#{String(activeOrder._id).slice(-8).toUpperCase()}</span>
+                        </div>
+                        <Link href="/shop/orders-history" style={{ fontSize: "0.72rem", color: "var(--gold)", textDecoration: "none", fontWeight: 600 }}>View details →</Link>
+                      </div>
+                      <div style={{ padding: "1.25rem 1rem" }}>
+                        {/* Step tracker */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 0, position: "relative" }}>
+                          {orderSteps.map((step, i) => {
+                            const isPast = i < activeStepIdx;
+                            const isCurrent = i === activeStepIdx;
+                            const isFuture = i > activeStepIdx;
+                            const stepColor = isCurrent ? "var(--gold)" : isPast ? "#4ade80" : "rgba(255,255,255,0.12)";
+                            const labelColor = isCurrent ? "var(--gold)" : isPast ? "#4ade80" : "var(--gray)";
+                            return (
+                              <div key={step} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", position: "relative" }}>
+                                {/* Connector line */}
+                                {i < orderSteps.length - 1 && (
+                                  <div style={{ position: "absolute", top: "9px", left: "50%", width: "100%", height: "2px", background: i < activeStepIdx ? "#4ade80" : "rgba(255,255,255,0.08)", zIndex: 0 }} />
+                                )}
+                                {/* Dot */}
+                                <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: isFuture ? "var(--dark2)" : stepColor, border: `2px solid ${stepColor}`, zIndex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: isCurrent ? `0 0 8px rgba(212,168,67,0.5)` : "none" }}>
+                                  {isPast && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>}
+                                  {isCurrent && <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--gold)" }} />}
+                                </div>
+                                {/* Label */}
+                                <div style={{ marginTop: "0.375rem", fontSize: "0.6rem", fontWeight: isCurrent ? 700 : 500, color: labelColor, textAlign: "center", lineHeight: 1.2, letterSpacing: "0.02em" }}>
+                                  {step === "For Delivery" ? "Delivery" : step === "For QC" ? "QC Check" : step === "In Production" ? "Production" : step}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {/* Item summary */}
+                        {activeOrder.items?.[0] && (
+                          <div style={{ marginTop: "1rem", paddingTop: "0.875rem", borderTop: "1px solid var(--border)", fontSize: "0.72rem", color: "var(--gray)" }}>
+                            {activeOrder.items[0].productName || activeOrder.items[0].name || "Item"}
+                            {activeOrder.items.length > 1 && ` + ${activeOrder.items.length - 1} more item${activeOrder.items.length > 2 ? "s" : ""}`}
+                            <span style={{ color: "var(--gold)", marginLeft: "0.5rem" }}>
+                              ₱{parseFloat(activeOrder.totalAmount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Recent Notifications ── */}
+                  {overviewNotifs.length > 0 && (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--white)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Notifications</span>
+                          {overviewUnread > 0 && (
+                            <span style={{ fontSize: "0.6rem", fontWeight: 700, padding: "1px 6px", borderRadius: "999px", background: "rgba(96,165,250,0.15)", color: "#60a5fa", border: "1px solid rgba(96,165,250,0.3)" }}>{overviewUnread} new</span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
+                        {overviewNotifs.map((n, idx) => {
+                          const isUnread = !n.read_at && !n.read;
+                          const notifData = typeof n.data === "string" ? (() => { try { return JSON.parse(n.data); } catch { return {}; } })() : (n.data || {});
+                          const message = notifData.message || n.message || n.title || "You have a new notification";
+                          return (
+                            <div key={n.id || idx} style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", padding: "0.75rem 1rem", borderBottom: idx < overviewNotifs.length - 1 ? "1px solid var(--border)" : "none", background: isUnread ? "rgba(96,165,250,0.03)" : "transparent" }}>
+                              <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: isUnread ? "#60a5fa" : "transparent", border: isUnread ? "none" : "1px solid var(--border)", flexShrink: 0, marginTop: "0.4rem" }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: "0.78rem", color: isUnread ? "var(--white)" : "var(--gray)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{message}</div>
+                                <div style={{ fontSize: "0.65rem", color: "var(--gray)", marginTop: "0.2rem", opacity: 0.7 }}>{timeAgo(n.created_at)}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Recent Orders ── */}
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+                      <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--white)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Recent Orders</span>
+                      <Link href="/shop/orders-history" style={{ fontSize: "0.72rem", color: "var(--gold)", textDecoration: "none", fontWeight: 600 }}>View all →</Link>
+                    </div>
+                    {overviewOrdersLoading ? (
+                      <div style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
+                        {[1, 2, 3].map((i, idx) => (
+                          <div key={i} style={{ padding: "0.875rem 1rem", borderBottom: idx < 2 ? "1px solid var(--border)" : "none", display: "flex", gap: "1rem", alignItems: "center" }}>
+                            <div style={{ height: "11px", width: "80px", background: "rgba(255,255,255,0.06)", borderRadius: "4px", animation: "pulse 1.5s ease-in-out infinite" }} />
+                            <div style={{ height: "10px", flex: 1, background: "rgba(255,255,255,0.03)", borderRadius: "4px", animation: "pulse 1.5s ease-in-out infinite" }} />
+                            <div style={{ height: "10px", width: "55px", background: "rgba(255,255,255,0.06)", borderRadius: "4px", animation: "pulse 1.5s ease-in-out infinite" }} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : orders.length === 0 ? (
+                      <div style={{ padding: "3rem 1rem", textAlign: "center", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px" }}>
+                        <p style={{ margin: "0 0 1.25rem", color: "var(--gray)", fontSize: "0.82rem" }}>You have no orders yet.</p>
+                        <Link href="/shop" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1.25rem", background: "var(--gold)", borderRadius: "8px", color: "#000", fontWeight: 700, textDecoration: "none", fontSize: "0.8rem" }}>Browse Products</Link>
+                      </div>
+                    ) : (
+                      <div style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
+                        {orders.slice(0, 4).map((order, idx) => {
+                          const sc = statusStyle(order.orderStatus);
+                          const date = order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
+                          const firstItem = order.items?.[0];
+                          const itemLabel = firstItem ? `${firstItem.productName || firstItem.name || "Item"}${order.items.length > 1 ? ` +${order.items.length - 1} more` : ""}` : "—";
+                          return (
+                            <div key={order._id} style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.875rem 1rem", borderBottom: idx < Math.min(orders.length, 4) - 1 ? "1px solid var(--border)" : "none" }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.2rem" }}>
+                                  <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--white)", letterSpacing: "0.01em" }}>#{String(order._id).slice(-8).toUpperCase()}</span>
+                                  <span style={{ fontSize: "0.62rem", fontWeight: 700, padding: "1px 6px", borderRadius: "999px", background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>{order.orderStatus}</span>
+                                </div>
+                                <div style={{ fontSize: "0.7rem", color: "var(--gray)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{itemLabel} · {date}</div>
+                              </div>
+                              <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--gold)", flexShrink: 0 }}>₱{parseFloat(order.totalAmount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</div>
+                              <Link href="/shop/orders-history" style={{ fontSize: "0.7rem", color: "var(--gray)", textDecoration: "none", padding: "0.2rem 0.5rem", border: "1px solid var(--border)", borderRadius: "6px", flexShrink: 0 }}>View</Link>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Pending Reviews ── */}
+                  {!overviewOrdersLoading && pendingReviews.length > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem 1rem", background: "rgba(212,168,67,0.05)", border: "1px solid rgba(212,168,67,0.18)", borderLeft: "3px solid rgba(212,168,67,0.6)", borderRadius: "10px" }}>
+                      <div>
+                        <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)", marginBottom: "0.15rem" }}>
+                          {pendingReviews.length === 1 ? "You have a delivered order" : `You have ${pendingReviews.length} delivered orders`}
+                        </div>
+                        <div style={{ fontSize: "0.72rem", color: "var(--gray)" }}>Share your experience — your review helps other shoppers</div>
+                      </div>
+                      <Link href="/shop/orders-history" style={{ fontSize: "0.72rem", color: "var(--gold)", textDecoration: "none", fontWeight: 600, flexShrink: 0, marginLeft: "1rem" }}>Leave a review →</Link>
+                    </div>
+                  )}
+
+                  {/* ── Quick Actions ── */}
+                  <div style={{ paddingTop: "0.5rem", borderTop: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.75rem" }}>Quick Actions</div>
+                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                      <Link href="/shop" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1rem", background: "var(--gold)", borderRadius: "8px", color: "#000", fontWeight: 700, fontSize: "0.78rem", textDecoration: "none" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                        Shop Now
+                      </Link>
+                      <Link href="/shop/orders-history" style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontWeight: 600, fontSize: "0.78rem", textDecoration: "none" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                        All Orders
+                      </Link>
+                      <button onClick={() => setActiveTab("personal")} style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontWeight: 600, fontSize: "0.78rem", cursor: "pointer" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        Edit Profile
+                      </button>
+                      <button onClick={() => setActiveTab("addresses")} style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontWeight: 600, fontSize: "0.78rem", cursor: "pointer" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        Addresses
+                      </button>
+                    </div>
+                  </div>
+
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* TAB 2: Personal Info */}
             {activeTab === "personal" && (

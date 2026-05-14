@@ -1,0 +1,363 @@
+[
+    {
+        "_id": {
+            "$oid": "69c4f730e0b481f9f207b332"
+        },
+        "firstName": "Personalize Me",
+        "lastName": "Prints",
+        "email": "personalizemeprints.admin@gmail.com",
+        "password": "$2y$12$lbkZgLZrXgVHJYzG18Mt7uJDxdNK65KPqkvDOKyRm4VmDJN9JuBhe",
+        "role": "admin",
+        "is_verified": true,
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778781373218"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1774516016009"
+            }
+        },
+        "api_token": "6a9da4b67001acf43be4b69d85ba09e1d54ba59ac6fb4008e940b2c478f668dd",
+        "lastLogin": "2026-05-14 19:13:35",
+        "address": "Quezon City",
+        "phoneNumber": "639562530772",
+        "avatar": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1775031517\/pmp-avatars\/cxolqgqea6dztoauykru.jpg",
+        "last_login_at": {
+            "$date": {
+                "$numberLong": "1778757215416"
+            }
+        },
+        "device_tokens": "[{\"token\":\"870cwbGyXPGoWdnMAZAFBioOiuBiVPC3Sh69zi7RuYAmAGfpNItFNdPn4wcA90Pv\",\"created_at\":\"2026-04-05T17:00:05.957088Z\"},{\"token\":\"LI08hxpgjbwtKVu5ln1x5ej8m64OTIaYQK683yZauSTVEiJAJ3Co1uMJFkC9um6x\",\"created_at\":\"2026-04-07T05:56:13.066925Z\"},{\"token\":\"EUmdbzWOAOxFR5qKd1mINdca9fx3NJq8G9jmXZuICYEKPMQF3yqUgAuYPguXCJLN\",\"created_at\":\"2026-04-07T16:17:01.589317Z\"},{\"token\":\"WRBQ2EvMsKFhe38t45RkrozyadFhtlofgs7IPCDDguWrkAYsH47gczJWWSNS4Jr4\",\"created_at\":\"2026-04-13T15:48:34.821689Z\"},{\"token\":\"edZxphokvFChQYK3L2SuahW3LmNi99AxnBlMK8M0MxImINggTtqpTtzDXsPQaMGj\",\"created_at\":\"2026-04-14T09:00:44.416280Z\"}]",
+        "failed_login_attempts": 0,
+        "login_locked_until": null,
+        "last_seen_at": {
+            "$date": {
+                "$numberLong": "1778761386288"
+            }
+        },
+        "shippingBaseRate": 50,
+        "shippingPerKmRate": 5,
+        "storeAddress": "Ford Street, Filinvest Homes II, Quezon City, 1100",
+        "storeLat": 14.69361808052617,
+        "storeLng": 121.10573939982261,
+        "flatRateInsideMetro": 150,
+        "flatRateOutsideMetro": 250,
+        "shippingMode": "distance",
+        "two_factor_enabled": false,
+        "two_factor_method": "email",
+        "totp_confirmed": false,
+        "totp_failed_attempts": 0,
+        "totp_secret": null
+    },
+    {
+        "_id": {
+            "$oid": "69c51238e985051e690c8974"
+        },
+        "firstName": "Dan",
+        "middleInitial": null,
+        "lastName": "Ravelo",
+        "address": "Caloocan City",
+        "phoneNumber": "+639562530772",
+        "email": "lebronzee236@gmail.com",
+        "password": "$2y$12$LBFiedzEGm.rMk4mYkIufejRJqZsknYt1g4xygXbY9m02K9cEl1Xy",
+        "is_verified": true,
+        "api_token": null,
+        "role": "customer",
+        "verification_code": null,
+        "verification_code_expires_at": null,
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1775034750535"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1774522936276"
+            }
+        },
+        "lastLogin": "2026-04-01 17:11:04",
+        "reset_code": null,
+        "reset_code_expires_at": null,
+        "reset_token": null,
+        "reset_token_expires_at": null,
+        "avatar": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1775034737\/pmp-avatars\/slspkuh6dwdjr6qt6pgs.png"
+    },
+    {
+        "_id": {
+            "$oid": "69cbb26b837118420a0e2e82"
+        },
+        "firstName": "Wendell",
+        "middleInitial": null,
+        "lastName": "Ravelo",
+        "address": "Caloocan City",
+        "phoneNumber": "+639562530772",
+        "email": "wendellzx04@gmail.com",
+        "password": "$2y$12$QN2qRDs3EuyhKX3xzhk5VuylQt22NjzAKjkyRpWLcqujw\/oYh63t2",
+        "is_verified": true,
+        "api_token": null,
+        "role": "customer",
+        "verification_code": null,
+        "verification_code_expires_at": null,
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778781589573"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1774957163215"
+            }
+        },
+        "lastLogin": "2026-05-14 20:37:20",
+        "avatar": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1775032748\/pmp-avatars\/cpfv6yvfcje0u0mbuz1s.png",
+        "last_login_at": {
+            "$date": {
+                "$numberLong": "1778762240625"
+            }
+        },
+        "device_tokens": "[{\"token\":\"DoRcVsjoBTwzr5zF8IbMR0DzZWy9P4hhjyPaFr7YTHUO53ui84X7Cfh4iSuF86uQ\",\"created_at\":\"2026-04-05T17:01:00.200963Z\"},{\"token\":\"JPrJ9Rdqjs2ZDpXnUjqlSxtcumyLhMb2nY5JchU9XlUYlJxhxARunCblNYPntsOX\",\"created_at\":\"2026-04-06T10:59:21.855610Z\"},{\"token\":\"ZBJPNu0qEHzZe15bp7i0Wwli1iNCQX3ceCmFxYBoc2EIMxbVAuUIl3xGs4boa57L\",\"created_at\":\"2026-04-06T14:56:10.928848Z\"},{\"token\":\"LFg940QgOcwwClSyiU3ZVOXkGF7Yi1fl4Dvp5F3tOFH3XoYDhr4rcYUEaXgImyhu\",\"created_at\":\"2026-04-09T15:48:56.439787Z\"},{\"token\":\"eVPk1dSm691qcLW5sfpUvm55WaUhKw86SD0S5UaNCLw1F0LouwtKuFCXG282fDEt\",\"created_at\":\"2026-04-10T11:11:23.899381Z\"}]",
+        "otp_locked_until": null,
+        "is_locked": false,
+        "locked_until": null,
+        "login_attempts": 0,
+        "two_factor_attempts": 0,
+        "addresses": "[{\"id\":\"c134d5fc-6b99-4c65-a90f-69572774c94a\",\"label\":\"Home\",\"house_number\":\"Blk 2 Lot 24\",\"street\":\"Diamond Street\",\"subdivision\":\"\",\"barangay\":\"Barangay 164\",\"city\":\"Caloocan City\",\"province\":\"Metro Manila\",\"zip\":\"1400\",\"phone\":\"09562530772\",\"is_default\":false},{\"id\":\"0666722d-5653-4a3f-9b7f-bd8e0b59889e\",\"label\":\"\",\"house_number\":\"Blk 2 Lot 24\",\"street\":\"Diamond Street\",\"subdivision\":\"Interville 1\",\"barangay\":\"Barangay 164\",\"city\":\"Caloocan\",\"province\":\"Metro Manila\",\"zip\":\"1402\",\"phone\":\"+639562530772\",\"is_default\":true,\"lat\":14.68617289037989,\"lng\":121.01539820914128}]",
+        "failed_login_attempts": 0,
+        "login_locked_until": null,
+        "last_seen_at": {
+            "$date": {
+                "$numberLong": "1778781589572"
+            }
+        },
+        "two_factor_enabled": true,
+        "totp_confirmed": true,
+        "totp_secret": "OY6PIH3QSW7VUO3S",
+        "two_factor_method": "totp",
+        "totp_failed_attempts": 0
+    },
+    {
+        "_id": {
+            "$oid": "69cbbb49837118420a0e2e84"
+        },
+        "firstName": "Dan",
+        "middleInitial": null,
+        "lastName": "Dan",
+        "address": "Caloocan City",
+        "phoneNumber": "+639562530772",
+        "email": "dndzx22@gmail.com",
+        "password": "$2y$12$YCDH5baQRHSJ\/.pw053TIOms71WFKKFBbApIOpMRRSJ0CqWYqp4VW",
+        "is_verified": true,
+        "api_token": null,
+        "role": "customer",
+        "verification_code": null,
+        "verification_code_expires_at": null,
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1774960574995"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1774959433896"
+            }
+        },
+        "lastLogin": "2026-03-31 20:18:00"
+    },
+    {
+        "_id": {
+            "$oid": "69cbc033837118420a0e2e86"
+        },
+        "firstName": "New",
+        "middleInitial": null,
+        "lastName": "User",
+        "address": "Caloocan CIty",
+        "phoneNumber": "+639562530772",
+        "email": "frenchdyne@gmail.com",
+        "password": "$2y$12$FGvOB\/eYc7Y3kWs2qaMMze4MAJLs.nETzVhNms7s3IDxijKva32a6",
+        "is_verified": true,
+        "api_token": null,
+        "role": "customer",
+        "verification_code": null,
+        "verification_code_expires_at": null,
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1775034647412"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1774960691186"
+            }
+        },
+        "lastLogin": "2026-04-01 16:56:53",
+        "avatar": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1775033875\/pmp-avatars\/j8czelmwhixds0zb6dl1.png"
+    },
+    {
+        "_id": {
+            "$oid": "69dce6559b30b7d328029e14"
+        },
+        "firstName": "Wyne",
+        "middleInitial": "D",
+        "lastName": "Santiago",
+        "address": "B-26 Dupax Comp",
+        "phoneNumber": "+639997991689",
+        "email": "santiagowyne08@gmail.com",
+        "password": "$2y$12$edUUEd0gjU.1sVNRF.AESuqiJiFuNa\/ZgAe8eqJdEWOghAJyFe38.",
+        "is_verified": true,
+        "role": "customer",
+        "verification_code": null,
+        "verification_code_expires_at": null,
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778665377520"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1776084565268"
+            }
+        },
+        "verification_attempts": 0,
+        "addresses": "[{\"id\":\"e7f01949-c107-4e49-9f15-901300cd108e\",\"label\":\"Home\",\"house_number\":\"40\",\"street\":\"Esther\",\"subdivision\":\"Goodwill Homes II\",\"barangay\":\"Bagbag\",\"city\":\"Quezon City\",\"province\":\"Metro Manila\",\"zip\":\"1116\",\"phone\":\"+639997991689\",\"is_default\":true,\"lat\":14.69740190069584,\"lng\":121.02590560913087}]",
+        "lastLogin": "2026-05-13 17:29:40",
+        "last_login_at": {
+            "$date": {
+                "$numberLong": "1778664580610"
+            }
+        },
+        "device_tokens": "[{\"token\":\"ch0m6Wdn1zc3vpvrS06ssFrAsajDHHUjGxW3bLeP3bO7qImajLjUOnkC8wGuUwZc\",\"created_at\":\"2026-04-13T12:51:41.352865Z\"},{\"token\":\"FF5BAyPWDLcNMSIwFrL0v0SC0ScOhRsGuykH32IARdaAPOX7rGpA5cbOUIh6PYtf\",\"created_at\":\"2026-04-21T07:00:00.448270Z\"}]",
+        "reset_code": null,
+        "reset_code_expires_at": null,
+        "reset_token": null,
+        "reset_token_expires_at": null,
+        "otp_locked_until": "2026-04-21T07:47:08.429530Z",
+        "failed_login_attempts": 0,
+        "login_locked_until": null,
+        "two_factor_enabled": false,
+        "last_seen_at": {
+            "$date": {
+                "$numberLong": "1778665377520"
+            }
+        },
+        "avatar": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1778664902\/pmp-avatars\/yxswfznch4f9nfqmqtac.jpg"
+    },
+    {
+        "_id": {
+            "$oid": "69e21b7fd3daad8cc607bcc2"
+        },
+        "firstName": "Joshua Ron",
+        "middleInitial": null,
+        "lastName": "Torres",
+        "address": "168 General Luis",
+        "phoneNumber": "+639272518750",
+        "email": "joshuarontorres04@gmail.com",
+        "password": "$2y$12$t4ArW8NBqZZfMqDLyzTbA.IXiRXxBOpA4T78MuHh9Ek\/rn34yfepi",
+        "is_verified": true,
+        "role": "customer",
+        "verification_code": null,
+        "verification_code_expires_at": null,
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778772177510"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1776425855257"
+            }
+        },
+        "verification_attempts": 0,
+        "addresses": "[{\"id\":\"762e143a-68d8-48da-aaec-11831ec94399\",\"label\":\"Home\",\"house_number\":\"168\",\"street\":\"General Luis Street\",\"subdivision\":\"\",\"barangay\":\"Nagkaisang nayon\",\"city\":\"Quezon City\",\"province\":\"Metro Manila\",\"zip\":\"1125\",\"phone\":\"+639272518750\",\"is_default\":true,\"lat\":14.72168585383934,\"lng\":121.03197008371355},{\"id\":\"22daf6a2-1b6e-43ce-9e02-43b69194bc07\",\"label\":\"\",\"house_number\":\"12\",\"street\":\"Bayani road\",\"subdivision\":\"\",\"barangay\":\"Galas\",\"city\":\"Quezon City\",\"province\":\"Metro Manila\",\"zip\":\"1113\",\"phone\":\"+639272518750\",\"is_default\":false,\"lat\":14.615238417873824,\"lng\":121.01685384994656}]",
+        "lastLogin": "2026-05-14 19:56:24",
+        "last_login_at": {
+            "$date": {
+                "$numberLong": "1778759784370"
+            }
+        },
+        "failed_login_attempts": 0,
+        "login_locked_until": null,
+        "last_seen_at": {
+            "$date": {
+                "$numberLong": "1778772177510"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4b1c7f8c9ed24da0230b2"
+        },
+        "firstName": "Jaid",
+        "middleInitial": "D",
+        "lastName": "Pili",
+        "address": "261 Pingkian 3, Zone 3, Pasong Tamo Quezon City",
+        "phoneNumber": "+639604695182",
+        "email": "pili.jaid.delmundo1@gmail.com",
+        "password": "$2y$12$cSk7WPccQkeHbS0YgOc39.UolQ1vOHNKJsdwItGZrTYyVnzx23hzm",
+        "is_verified": true,
+        "role": "customer",
+        "verification_code": null,
+        "verification_code_expires_at": null,
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777647739711"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777643975715"
+            }
+        },
+        "verification_attempts": 0,
+        "addresses": "[{\"id\":\"8076b238-b143-480d-8d2c-5be4d975e644\",\"label\":\"Home\",\"house_number\":\"261\",\"street\":\"Zone 3\",\"subdivision\":\"Pingkian\",\"barangay\":\"South Peak\",\"city\":\"Quezon City\",\"province\":\"Metro Manila\",\"zip\":\"1107\",\"phone\":\"+639604695182\",\"is_default\":true,\"lat\":14.692821765158952,\"lng\":121.0593366622925}]",
+        "failed_login_attempts": 0,
+        "lastLogin": "2026-05-01 22:26:20",
+        "last_login_at": {
+            "$date": {
+                "$numberLong": "1777645580410"
+            }
+        },
+        "login_locked_until": null,
+        "last_seen_at": {
+            "$date": {
+                "$numberLong": "1777647739711"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "6a05ac72c8e18c30ea045c53"
+        },
+        "firstName": "Joshua Ron",
+        "lastName": "Torres",
+        "email": "Dummersync@gmail.com",
+        "password": "$2y$12$YOzhjOoAmoVFcE\/JgB.9JutpPjpvUtsQu9L9lHPVjpQ2xlqAu9XcC",
+        "role": "productionStaff",
+        "is_verified": true,
+        "phoneNumber": null,
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778758568448"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1778756722362"
+            }
+        },
+        "failed_login_attempts": 0,
+        "lastLogin": "2026-05-14 19:22:07",
+        "last_login_at": {
+            "$date": {
+                "$numberLong": "1778757727440"
+            }
+        },
+        "login_locked_until": null,
+        "last_seen_at": {
+            "$date": {
+                "$numberLong": "1778758568447"
+            }
+        }
+    }
+]

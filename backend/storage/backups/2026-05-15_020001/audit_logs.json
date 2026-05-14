@@ -1,0 +1,228 @@
+[
+    {
+        "_id": {
+            "$oid": "69f60f920547e8499a0bf228"
+        },
+        "quantity": -1,
+        "stockBefore": 24,
+        "stockAfter": 23,
+        "inventoryId": "69f3b3a8787c8bb6d00c0b72",
+        "productName": "Bow Tied Ribbon",
+        "category": "Garments",
+        "reason": "bom_deduction",
+        "unitCost": 15,
+        "totalCost": 15,
+        "remarks": "Order: 69f60d1a8d57b75b83097502",
+        "performedBy": "system",
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777733522022"
+            }
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777733522022"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777733522022"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60f920547e8499a0bf22a"
+        },
+        "quantity": -1,
+        "stockBefore": 94,
+        "stockAfter": 93,
+        "inventoryId": "69f0176d9322a7aa0f06dea5",
+        "productName": "Plastic Packaging - 9x8 inch",
+        "category": "Packaging",
+        "reason": "bom_deduction",
+        "unitCost": 1.5,
+        "totalCost": 1.5,
+        "remarks": "Order: 69f60d1a8d57b75b83097502",
+        "performedBy": "system",
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777733522131"
+            }
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777733522131"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777733522131"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f695b9ef072ce3c30893c6"
+        },
+        "quantity": 19,
+        "stockBefore": 0,
+        "stockAfter": 19,
+        "inventoryId": "69f694744aa8c70684003192",
+        "productName": "Mouse - Wired",
+        "category": "Gaming Accesories",
+        "reason": "restock",
+        "unitCost": 50,
+        "totalCost": 950,
+        "supplierId": "69f00f5dfada0756b80d6825",
+        "sellingPrice": null,
+        "customerName": null,
+        "saleDate": null,
+        "remarks": "",
+        "performedBy": null,
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777767865724"
+            }
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777767865725"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777767865725"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f695bb4aa8c70684003195"
+        },
+        "quantity": 20,
+        "stockBefore": 0,
+        "stockAfter": 20,
+        "inventoryId": "69f69473aa2b84268608abd2",
+        "productName": "Mouse - Wireless",
+        "category": "Gaming Accesories",
+        "reason": "restock",
+        "unitCost": 40,
+        "totalCost": 800,
+        "supplierId": "69f00f5dfada0756b80d6825",
+        "sellingPrice": null,
+        "customerName": null,
+        "saleDate": null,
+        "remarks": "",
+        "performedBy": null,
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777767867334"
+            }
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777767867335"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777767867335"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f69663ef072ce3c30893c8"
+        },
+        "quantity": 1,
+        "stockBefore": 19,
+        "stockAfter": 20,
+        "inventoryId": "69f694744aa8c70684003192",
+        "productName": "Mouse - Wired",
+        "category": "Gaming Accesories",
+        "reason": "return",
+        "unitCost": 50,
+        "totalCost": 50,
+        "supplierId": "69f00f5dfada0756b80d6825",
+        "remarks": "Bad order replacement received from vendor",
+        "performedBy": "Personalize Me Prints",
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777768035098"
+            }
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777768035099"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777768035099"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6b7a0d71490a674086b38"
+        },
+        "quantity": -15,
+        "stockBefore": 100,
+        "stockAfter": 85,
+        "inventoryId": "69eb6a25afdcbdc6800a81a8",
+        "productName": "Mugs - Inner Color 11oz",
+        "category": "Glassware",
+        "reason": "sale_reserved",
+        "unitCost": 50,
+        "totalCost": 750,
+        "remarks": "Order: 69f6b7a0d71490a674086b36",
+        "performedBy": "system",
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777776544863"
+            }
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777776544864"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777776544864"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6b7a1d71490a674086b3a"
+        },
+        "quantity": -15,
+        "stockBefore": 50,
+        "stockAfter": 35,
+        "inventoryId": "69eccb67dc6e31942a0c2f06",
+        "productName": "Mug Box",
+        "category": "Packaging",
+        "reason": "sale_reserved",
+        "unitCost": 5,
+        "totalCost": 75,
+        "remarks": "Order: 69f6b7a0d71490a674086b36",
+        "performedBy": "system",
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777776545266"
+            }
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777776545266"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777776545266"
+            }
+        }
+    }
+]

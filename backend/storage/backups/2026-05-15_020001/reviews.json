@@ -1,0 +1,74 @@
+[
+    {
+        "_id": {
+            "$oid": "69f47c444a1cd6c96603f044"
+        },
+        "is_visible": true,
+        "productIds": [
+            "69f03b8fbdb44806dd073578"
+        ],
+        "userId": "69cbb26b837118420a0e2e82",
+        "orderId": "69f46e27a95638070d0777d3",
+        "rating": 5,
+        "comment": "Sheesh! Malupet and order, will buy ulit!",
+        "customerName": "Wendell Ravelo",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777630276575"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777630276575"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f53cc416b26b80890903c6"
+        },
+        "is_visible": true,
+        "productIds": [
+            "69f3b547787c8bb6d00c0b74"
+        ],
+        "userId": "69e21b7fd3daad8cc607bcc2",
+        "orderId": "69f5356616b26b80890903c3",
+        "rating": 4,
+        "comment": "Will buy again",
+        "customerName": "Joshua Ron Torres",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777679556305"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777679556305"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f611145e0e9412280876a7"
+        },
+        "is_visible": true,
+        "productIds": [
+            "69f3b547787c8bb6d00c0b74"
+        ],
+        "userId": "69dce6559b30b7d328029e14",
+        "orderId": "69f60d1a8d57b75b83097502",
+        "rating": 5,
+        "comment": "Maingat",
+        "customerName": "Wyne Santiago",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777733908429"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777733908429"
+            }
+        }
+    }
+]

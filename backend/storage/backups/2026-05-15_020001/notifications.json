@@ -1,0 +1,5315 @@
+[
+    {
+        "_id": {
+            "$oid": "69dce8419b30b7d328029e19"
+        },
+        "user_id": "69dce6559b30b7d328029e14",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #28029E18 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69dce7de9b30b7d328029e18\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1776085129487"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1776085057108"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69e72c4a510efbe8930f6ff9"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #930F6FF8 placed by Wendell Ravelo.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69e72c3d510efbe8930f6ff8\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1776758592149"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1776757834203"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69e72c6c510efbe8930f6ffb"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #930F6FFA placed by Wendell Ravelo.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69e72c60510efbe8930f6ffa\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1776758576129"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1776757868920"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1168412fe472de204fc2d"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #E204FC2C placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1167712fe472de204fc2c\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777407620579"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f116a91d4bc255c7045bcf"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #B00C8382 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f0e75e63d93b89b00c8382\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777445843465"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777407657998"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f116aa1d4bc255c7045bd0"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #B00C8382 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f0e75e63d93b89b00c8382\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777407658185"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f118411d4bc255c7045bd2"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #E204FC13 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f0e89312fe472de204fc13\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777445843465"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777408065480"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f118421d4bc255c7045bd3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #E204FC13 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f0e89312fe472de204fc13\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777408066236"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1184538f8224251041472"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #C7045BB6 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f0eaec1d4bc255c7045bb6\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777445843465"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777408069298"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1184538f8224251041473"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #C7045BB6 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f0eaec1d4bc255c7045bb6\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777408069419"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f11b37bc18b8a4ba0e5063"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #BA0E5062 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f11b32bc18b8a4ba0e5062\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777408823577"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f11c8038f8224251041476"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #51041475 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f11c7b38f8224251041475\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777438059574"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777409152524"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1a24138f822425104147d"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #4A0735A2 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1189b2aca76e64a0735a2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777445843465"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777443393969"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1a24238f822425104147e"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #4A0735A2 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1189b2aca76e64a0735a2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777443394122"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1a25a38f8224251041480"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #BA0E5062 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f11b32bc18b8a4ba0e5062\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777445843465"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777443418889"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1a25a38f8224251041481"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #BA0E5062 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f11b32bc18b8a4ba0e5062\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777443418983"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1a3d42aca76e64a0735a5"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #BA0E5064 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f11c22bc18b8a4ba0e5064\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777445843465"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777443796589"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1a3d42aca76e64a0735a6"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #BA0E5064 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f11c22bc18b8a4ba0e5064\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777443796748"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1a3dfbc18b8a4ba0e5068"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #E204FC2C has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1167712fe472de204fc2c\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777445843465"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777443807728"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1a3dfbc18b8a4ba0e5069"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #E204FC2C was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1167712fe472de204fc2c\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777443807861"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1a75138f8224251041483"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #D70D3BF8 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1a5d4c8ec63b7d70d3bf8\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777445843465"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777444689311"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1a75138f8224251041484"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #D70D3BF8 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1a5d4c8ec63b7d70d3bf8\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777444689431"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1aa162aca76e64a0735a8"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #D70D3BF9 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1a775c8ec63b7d70d3bf9\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777445843465"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777445398892"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1aa172aca76e64a0735a9"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #D70D3BF9 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1a775c8ec63b7d70d3bf9\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777445399055"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1aa22c8ec63b7d70d3bfa"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #4A0735A4 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1a1562aca76e64a0735a4\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777445843465"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777445410108"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1aa22c8ec63b7d70d3bfb"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #4A0735A4 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1a1562aca76e64a0735a4\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777445410324"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1b063cf23ffc77d0aa5e2"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #D70D3BFD has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1ab73c8ec63b7d70d3bfd\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777488551886"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777447011623"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1b063cf23ffc77d0aa5e3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #D70D3BFD was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1ab73c8ec63b7d70d3bfd\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777449968830"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777447011779"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1e1d0c52726b0e202c495"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #E202C494 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1e1c6c52726b0e202c494\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777459664336"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1e430fa9efbaf5502d612"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #A60D6212 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1ce63a2920e30a60d6212\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777488551886"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777460272696"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1e430fa9efbaf5502d613"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #A60D6212 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1ce63a2920e30a60d6212\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777460272825"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1e43995d9fa60e30bec84"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #E202C493 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1d883c52726b0e202c493\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777488551886"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777460281282"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1e43995d9fa60e30bec85"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #E202C493 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1d883c52726b0e202c493\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777460281354"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1e441c52726b0e202c496"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #E202C494 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1e1c6c52726b0e202c494\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777488551886"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777460289472"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1e441c52726b0e202c497"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #E202C494 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1e1c6c52726b0e202c494\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777460289532"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1e7da95d9fa60e30bec87"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #5502D615 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1e541fa9efbaf5502d615\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777488551886"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777461210212"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1e7da95d9fa60e30bec88"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #5502D615 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1e541fa9efbaf5502d615\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777461210325"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1f86dfa9efbaf5502d616"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #E202C499 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1e7ffc52726b0e202c499\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777488519606"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777465453320"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f1f86dfa9efbaf5502d617"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #E202C499 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1e7ffc52726b0e202c499\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777465480188"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777465453436"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f2137d069751f5a80f67b4"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #A80F67B3 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f2136f069751f5a80f67b3\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777509032374"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777472381004"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f2137da289bff5640199b2"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #A80F67B3 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f2136f069751f5a80f67b3\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777509032374"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777472381477"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f21600069751f5a80f67b5"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #210DFF42 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f20c47782a9f5f210dff42\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777509032374"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777473024016"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f216006fab5ce3070116c2"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #210DFF42 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f20c47782a9f5f210dff42\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777474494477"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777473024100"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f2b939da2b7bfce4011072"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #A60D6213 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1faf2a2920e30a60d6213\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777519669040"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777514809913"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f2b93ada2b7bfce4011073"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #A60D6213 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f1faf2a2920e30a60d6213\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777516459217"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777514810806"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f2b945da2b7bfce4011075"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #A80F67B3 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f2136f069751f5a80f67b3\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777519669040"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777514821122"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f2b945da2b7bfce4011076"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #A80F67B3 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f2136f069751f5a80f67b3\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777516459217"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777514821180"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f2b953b33884e2b502e962"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #210DFF42 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f20c47782a9f5f210dff42\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777519669040"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777514835492"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f2b953b33884e2b502e963"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #210DFF42 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f20c47782a9f5f210dff42\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777516459217"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777514835611"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f2b95c9c6572e1070ac9f3"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #A80F67B2 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f20b4b069751f5a80f67b2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777519669040"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777514844606"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f2b95c9c6572e1070ac9f4"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #A80F67B2 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f20b4b069751f5a80f67b2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777516459217"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777514844746"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f2b967b33884e2b502e965"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #E30BEC8A has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f203b795d9fa60e30bec8a\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777519669040"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777514855607"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f2b967b33884e2b502e966"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #E30BEC8A was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f203b795d9fa60e30bec8a\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777516459217"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777514855708"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f2f6d08e7d9c44cb038e04"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #CB038E03 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f2f6c68e7d9c44cb038e03\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777531307504"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777530576393"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f39e56ba03ccd6ce039be5"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #CE039BE4 placed by Wyne Santiago.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f39e4dba03ccd6ce039be4\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777573513368"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777573462118"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3a5273b09cbb58b04c589"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #8B04C588 placed by Wyne Santiago.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3a5233b09cbb58b04c588\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777576210351"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777575207966"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3a53cba03ccd6ce039be8"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #CE039BE7 placed by Wyne Santiago.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3a538ba03ccd6ce039be7\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777576207013"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777575228726"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3aca4ccae2a2d0302961c"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #0302961B paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3ac9cccae2a2d0302961b\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777577149753"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777577124066"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3aca4fb3f66926d0523d3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #0302961B paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3ac9cccae2a2d0302961b\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777577143487"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777577124151"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3ad2f2dd403fa7c002c03"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #7C002C02 paid by Wyne Santiago via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3ad2a2dd403fa7c002c02\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777578217548"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777577263876"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3ad30a60bf377d5064e33"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #7C002C02 paid by Wyne Santiago via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3ad2a2dd403fa7c002c02\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777578212278"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777577264134"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3b64da60bf377d5064e35"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #D5064E34 paid by Wyne Santiago via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3b647a60bf377d5064e34\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777583064090"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777579597325"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3b64dfb3f66926d0523d6"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #D5064E34 paid by Wyne Santiago via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3b647a60bf377d5064e34\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777583060160"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777579597581"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3b676fb3f66926d0523d8"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #6D0523D7 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3b66ffb3f66926d0523d7\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777582752930"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777579638295"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3b6762dd403fa7c002c05"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #6D0523D7 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3b66ffb3f66926d0523d7\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777579655534"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777579638579"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3b9bdaaa634c4f50ad553"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #F50AD552 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3b9aeaaa634c4f50ad552\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777582343777"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777580477379"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3b9bde69cae9859026d42"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #F50AD552 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3b9aeaaa634c4f50ad552\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777582370988"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777580477933"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3e0555b00d77cd5037b59"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #D5037B58 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3e04f5b00d77cd5037b58\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777593172250"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777590357399"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3e39dac4d48435d0b03e2"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #D5037B58 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3e04f5b00d77cd5037b58\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777591218436"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777591197591"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4031d67f0cc5142090f44"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #42090F43 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f402b667f0cc5142090f43\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777599338\\\/pmp-admin-designs\\\/j7vbxhshszjpqo8vr1gx.jpg\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777599365616"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777599261263"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f403503499bb2c4d0ee303"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_revision_requested",
+        "title": "Design Revision Requested",
+        "message": "Customer requested a revision for order #42090F43: Not yet nice",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f402b667f0cc5142090f43\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777627753712"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777599312558"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f403683499bb2c4d0ee304"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #42090F43 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f402b667f0cc5142090f43\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777599416\\\/pmp-admin-designs\\\/q82vkncblf8dsqcyk0mg.jpg\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777599362322"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777599336691"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f404471b89e50e5b02ae12"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_approved_by_customer",
+        "title": "Design Approved",
+        "message": "Customer approved the design for order #42090F43. Ready for production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f402b667f0cc5142090f43\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777599559732"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f408403499bb2c4d0ee307"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #4D0EE306 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f408383499bb2c4d0ee306\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777600576864"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4088a36f7b32a42081762"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #4D0EE306 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f408383499bb2c4d0ee306\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777605540655"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777600650973"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f46e2a70a2c81539082303"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #39082302 placed by Wendell Ravelo.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f46e1270a2c81539082302\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777626666626"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f46e2da95638070d0777d4"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #0D0777D3 placed by Wendell Ravelo.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f46e27a95638070d0777d3\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777626669887"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4749c84f6b7ed220b81f4"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #220B81F3 placed by Wyne Santiago.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4749284f6b7ed220b81f3\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777628358579"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777628316994"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f47505a95638070d0777d5"
+        },
+        "user_id": "69dce6559b30b7d328029e14",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #220B81F3 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4749284f6b7ed220b81f3\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777628497813"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777628421981"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f49f778152acad1c09ec43"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #1C09EC42 placed by Wyne Santiago.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f49f6b8152acad1c09ec42\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777639298167"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777639287040"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f49fb05d4f578c40002916"
+        },
+        "user_id": "69dce6559b30b7d328029e14",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #1C09EC42 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f49f6b8152acad1c09ec42\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777639361479"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777639344132"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4ad08f14dfd68270dc9f3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #270DC9F2 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4acfdf14dfd68270dc9f2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777642760426"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4b5fc9ae791b34100fb54"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #4100FB53 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4b5e99ae791b34100fb53\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777645052479"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4b5fc010f2fbf4b0c53c3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #4100FB53 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4b5e99ae791b34100fb53\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777645052766"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4b6cdf8c9ed24da0230b4"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #DA0230B3 placed by Wyne Santiago.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4b6c9f8c9ed24da0230b3\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777645261625"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4b6f9f8c9ed24da0230b6"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #DA0230B5 placed by Wyne Santiago.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4b6f6f8c9ed24da0230b5\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777645624730"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777645305988"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4b8a6f8c9ed24da0230b9"
+        },
+        "user_id": "69dce6559b30b7d328029e14",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #DA0230B5 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4b6f6f8c9ed24da0230b5\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777648718040"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777645734690"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4b977f8c9ed24da0230ba"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #4B0C53C6 paid by Jaid Pili via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4b96e010f2fbf4b0c53c6\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777645943150"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4b977f346eb1457077773"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #4B0C53C6 paid by Jaid Pili via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4b96e010f2fbf4b0c53c6\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777645943384"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4ba129ae791b34100fb56"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #4B0C53C7 paid by Jaid Pili via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4ba07010f2fbf4b0c53c7\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777646098618"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4ba13f346eb1457077775"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #4B0C53C7 paid by Jaid Pili via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4ba07010f2fbf4b0c53c7\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777646099024"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4bbb8f8c9ed24da0230bc"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #DA0230BB paid by Jaid Pili via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4bbacf8c9ed24da0230bb\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777646520183"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4bbb8f346eb1457077776"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #DA0230BB paid by Jaid Pili via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4bbacf8c9ed24da0230bb\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777646602498"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777646520668"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4c58f010f2fbf4b0c53ca"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #4B0C53C9 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4c589010f2fbf4b0c53c9\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777667761571"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777649039775"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4c590f346eb1457077777"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #4B0C53C9 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4c589010f2fbf4b0c53c9\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777649210307"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777649040083"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4c6c6cde18260450243d3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #450243D2 paid by Wyne Santiago via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4c6c1cde18260450243d2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777650766718"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777649350546"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4c6c6ab0d008b510651b2"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #450243D2 paid by Wyne Santiago via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4c6c1cde18260450243d2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777649361693"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777649350867"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4c7abab0d008b510651b4"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #510651B3 placed by Wyne Santiago.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4c7a8ab0d008b510651b3\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777649806174"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777649579786"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4c7cfcde18260450243d6"
+        },
+        "user_id": "69dce6559b30b7d328029e14",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #510651B3 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4c7a8ab0d008b510651b3\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777649641057"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777649615832"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4cec4f1181db86b0bd0e5"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #6B0BD0E4 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4cebef1181db86b0bd0e4\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777665713797"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777651396924"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f4e2567f6ea21b670e1342"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #6B0BD0E4 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4cebef1181db86b0bd0e4\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777679364245"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777656406143"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5356a16b26b80890903c4"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #890903C3 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5356616b26b80890903c3\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777677674845"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f53fea28b06b6c0a0bc372"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #3C0DB592 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4f71648008b883c0db592\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777680443\\\/pmp-admin-designs\\\/mtvzxfcrbwdfsoelvc3i.jpg\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777680362049"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5401932e51bd15d045af4"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_revision_requested",
+        "title": "Design Revision Requested",
+        "message": "Customer requested a revision for order #3C0DB592: Ahh Lakihan po konti",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4f71648008b883c0db592\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777680409180"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f540388b05a8dbe70167d6"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #3C0DB592 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4f71648008b883c0db592\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777680522\\\/pmp-admin-designs\\\/pdpihu2ujulpctptaw7d.jpg\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777680440247"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5404716b26b80890903c8"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_approved_by_customer",
+        "title": "Design Approved",
+        "message": "Customer approved the design for order #3C0DB592. Ready for production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4f71648008b883c0db592\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777680455962"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f540ce32e51bd15d045af6"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #5D045AF5 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f540c032e51bd15d045af5\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777680590530"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f540cf28b06b6c0a0bc374"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #5D045AF5 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f540c032e51bd15d045af5\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777691933033"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777680591014"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f584a09f3789bd250f35e3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #250F35E2 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5848a9f3789bd250f35e2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777697952004"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f584a0c0e821fb6a0173b2"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #250F35E2 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5848a9f3789bd250f35e2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777697952330"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5903124ae9a987300ac76"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #7300AC75 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5902524ae9a987300ac75\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777700913187"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f59031c0e821fb6a0173b3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #7300AC75 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5902524ae9a987300ac75\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777700913674"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5912d0db74fa0e70c23f2"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #250F35E4 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f591229f3789bd250f35e4\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777701165736"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5912e24ae9a987300ac77"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #250F35E4 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f591229f3789bd250f35e4\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777701166060"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5927bc0e821fb6a0173b4"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #7300AC78 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5927024ae9a987300ac78\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777701499671"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5927b0db74fa0e70c23f3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #7300AC78 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5927024ae9a987300ac78\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777701499915"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f593329f3789bd250f35e6"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #250F35E5 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f593249f3789bd250f35e5\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777701682767"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f59333c0e821fb6a0173b5"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #250F35E5 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f593249f3789bd250f35e5\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777701683543"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f59396c0e821fb6a0173b7"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #6A0173B6 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5938cc0e821fb6a0173b6\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777701782279"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f593960db74fa0e70c23f4"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #6A0173B6 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5938cc0e821fb6a0173b6\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777701782933"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f594a09f3789bd250f35e8"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #250F35E7 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f594969f3789bd250f35e7\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777702048595"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f594a10db74fa0e70c23f5"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #250F35E7 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f594969f3789bd250f35e7\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777702049062"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f595c424ae9a987300ac79"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #E70C23F6 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f595ba0db74fa0e70c23f6\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777702340527"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f595c40db74fa0e70c23f7"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #E70C23F6 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f595ba0db74fa0e70c23f6\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777702340750"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f596aa24ae9a987300ac7b"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #7300AC7A paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f596a124ae9a987300ac7a\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777702570470"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f596aa0db74fa0e70c23f8"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #7300AC7A paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f596a124ae9a987300ac7a\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777702570821"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5971bc0e821fb6a0173b8"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #E70C23F9 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f597120db74fa0e70c23f9\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777702683417"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5971b9f3789bd250f35e9"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #E70C23F9 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f597120db74fa0e70c23f9\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777702683890"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5976f24ae9a987300ac7d"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #7300AC7C paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5976524ae9a987300ac7c\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777702767516"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f597709f3789bd250f35ea"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #7300AC7C paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5976524ae9a987300ac7c\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777702768063"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f597a59f3789bd250f35eb"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #7300AC7C is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5976524ae9a987300ac7c\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777702903\\\/pmp-admin-designs\\\/qvjh4aieewk2bqcopj1v.webp\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777702821347"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f597c70db74fa0e70c23fa"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_revision_requested",
+        "title": "Design Revision Requested",
+        "message": "Customer requested a revision for order #7300AC7C: its ugly",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5976524ae9a987300ac7c\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777702855724"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f597e2c0e821fb6a0173b9"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #7300AC7C is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5976524ae9a987300ac7c\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777702964\\\/pmp-admin-designs\\\/kenhaub0llykomim9yki.jpg\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777702882312"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5af4aaaa4b19f4a084f82"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_approved_by_customer",
+        "title": "Design Approved",
+        "message": "Customer approved the design for order #7300AC7C. Ready for production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5976524ae9a987300ac7c\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777708874924"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5b170aaa4b19f4a084f84"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #7B07CAF2 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5b15b083c47217b07caf2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777709424128"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5c34470e178a5c0024ed3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #3505D782 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5c32f2e4122e73505d782\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777713988007"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5c345340e62a6e402d4c2"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #3505D782 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5c32f2e4122e73505d782\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777713989089"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5c6be70e178a5c0024ed4"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #3505D782 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5c32f2e4122e73505d782\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777714945\\\/pmp-admin-designs\\\/d4tvtsr3ehinmncyzsan.jpg\",\"adminDesignUrls\":[\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777714945\\\/pmp-admin-designs\\\/d4tvtsr3ehinmncyzsan.jpg\",\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777714948\\\/pmp-admin-designs\\\/bj5aeo233xjvrcswnjrm.jpg\",\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777714960\\\/pmp-admin-designs\\\/lhxb7b1wtqgpzvckdpw6.mp4\"]}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777714890325"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777714878247"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5c6d36a7167de8d02b833"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #3505D782 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5c32f2e4122e73505d782\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777714966\\\/pmp-admin-designs\\\/gllaeomvkhbxnmopha80.jpg\",\"adminDesignUrls\":[\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777714966\\\/pmp-admin-designs\\\/gllaeomvkhbxnmopha80.jpg\",\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777714969\\\/pmp-admin-designs\\\/xqg2kkoqe6qd3yguxekc.jpg\",\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777714980\\\/pmp-admin-designs\\\/ffsoukl4popfhulxszsw.mp4\"]}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777716031459"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777714899149"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5c70770e178a5c0024ed6"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_approved_by_customer",
+        "title": "Design Approved",
+        "message": "Customer approved the design for order #3505D782. Ready for production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5c32f2e4122e73505d782\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777714951021"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5ca622e4122e73505d783"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #C0024ED7 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5ca4370e178a5c0024ed7\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777715810167"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5ca636a7167de8d02b835"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #C0024ED7 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5ca4370e178a5c0024ed7\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777715811696"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5cb1f340e62a6e402d4c3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #3505D784 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5caee2e4122e73505d784\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777715999850"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5cb2070e178a5c0024ed8"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #3505D784 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5caee2e4122e73505d784\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777717339771"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777716000827"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5cb9e2e4122e73505d785"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #3505D784 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5caee2e4122e73505d784\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777716208\\\/pmp-admin-designs\\\/obfceke2jid6nlx6me91.mp4\",\"adminDesignUrls\":[\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777716208\\\/pmp-admin-designs\\\/obfceke2jid6nlx6me91.mp4\"]}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777716126672"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5d16c534f9534480ff982"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #2601D663 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d15dfc5510b72601d663\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777717612902"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5d16efc5510b72601d664"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #2601D663 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d15dfc5510b72601d663\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777717614103"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5d1a6534f9534480ff983"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #2601D665 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d199fc5510b72601d665\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777717670224"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5d1a7d18a9c6f6f0a9812"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #2601D665 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d199fc5510b72601d665\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777717671658"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5d1d5c26faf01e10b2c23"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #E10B2C22 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d1ccc26faf01e10b2c22\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777717717329"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5d3c5fc5510b72601d667"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #2601D666 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d3acfc5510b72601d666\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777718213975"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5d3c7534f9534480ff984"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #2601D666 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d3acfc5510b72601d666\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777718215091"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5d3fefc5510b72601d668"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #2601D666 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d3acfc5510b72601d666\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777718352\\\/pmp-admin-designs\\\/jxghvbwaqwlrvwvhzq6x.mp4\",\"adminDesignUrls\":[\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777718352\\\/pmp-admin-designs\\\/jxghvbwaqwlrvwvhzq6x.mp4\"]}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777718270084"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5d5c8c26faf01e10b2c24"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_revision_requested",
+        "title": "Design Revision Requested",
+        "message": "Customer requested a revision for order #2601D666: Ayoko",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d3acfc5510b72601d666\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777718728919"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5db01534f9534480ff985"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #2601D666 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d3acfc5510b72601d666\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777720132\\\/pmp-admin-designs\\\/xoyti5xy79k6vpta33er.jpg\",\"adminDesignUrls\":[\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777720132\\\/pmp-admin-designs\\\/xoyti5xy79k6vpta33er.jpg\",\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777720135\\\/pmp-admin-designs\\\/ookrc6hfcimus6ex6s8w.jpg\",\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777720147\\\/pmp-admin-designs\\\/uxyak1nkqgli4o8vd054.mp4\"]}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777720065344"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5de14c26faf01e10b2c25"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #2601D666 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d3acfc5510b72601d666\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777720916\\\/pmp-admin-designs\\\/akkaczq4uzvxqmqnutpg.jpg\",\"adminDesignUrls\":[\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777720916\\\/pmp-admin-designs\\\/akkaczq4uzvxqmqnutpg.jpg\",\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777720919\\\/pmp-admin-designs\\\/onusyd18nttdutesngtr.jpg\",\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777720934\\\/pmp-admin-designs\\\/emdyt4alnemltfcdlxfh.mp4\"]}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777720852499"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5e53cd18a9c6f6f0a9813"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #2601D666 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d3acfc5510b72601d666\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777722756\\\/pmp-admin-designs\\\/js0ijdk7fg8dcszhnw4d.jpg\",\"adminDesignUrls\":[\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777722756\\\/pmp-admin-designs\\\/js0ijdk7fg8dcszhnw4d.jpg\",\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777722759\\\/pmp-admin-designs\\\/kjx0ecniu2ugvubwojkz.jpg\",\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777722766\\\/pmp-admin-designs\\\/biyqmiw02pzyjgjnmhor.mp4\"]}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777722684283"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5e556fc5510b72601d66a"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_approved_by_customer",
+        "title": "Design Approved",
+        "message": "Customer approved the design for order #2601D666. Set to Awaiting Payment so the customer can complete their order.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d3acfc5510b72601d666\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777722710984"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5f3d6534f9534480ff987"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #E10B2C22 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d1ccc26faf01e10b2c22\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777727876999"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777726422901"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5fc88af1b1631920e8302"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #D903AA53 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5fc81bd9e4e4cd903aa53\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777728648860"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5fc89e0a4243e8d09a004"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #D903AA53 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5fc81bd9e4e4cd903aa53\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777728709518"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777728649049"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5fd34af1b1631920e8304"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #920E8303 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5fd2faf1b1631920e8303\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777728820295"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5fd34bd9e4e4cd903aa54"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #920E8303 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5fd2faf1b1631920e8303\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777728820565"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f5ffdabd9e4e4cd903aa56"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #D903AA55 placed by Wyne Santiago.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5ffd2bd9e4e4cd903aa55\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777729517072"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777729498999"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60009e0a4243e8d09a005"
+        },
+        "user_id": "69dce6559b30b7d328029e14",
+        "type": "design_approved",
+        "title": "Design Approved!",
+        "message": "Your design for order #D903AA55 has been approved. We'll begin production shortly.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5ffd2bd9e4e4cd903aa55\",\"designStatus\":\"approved\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777729970700"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777729545182"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6016dbd9e4e4cd903aa58"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #D903AA57 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60168bd9e4e4cd903aa57\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777729901879"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6016eaf1b1631920e8307"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #D903AA57 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60168bd9e4e4cd903aa57\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777729909906"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777729902043"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f601a0e0a4243e8d09a007"
+        },
+        "user_id": "69dce6559b30b7d328029e14",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #D903AA57 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60168bd9e4e4cd903aa57\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777729952\\\/pmp-admin-designs\\\/ui9gt7ip5qj2nbyah6sh.jpg\",\"adminDesignUrls\":[\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777729952\\\/pmp-admin-designs\\\/ui9gt7ip5qj2nbyah6sh.jpg\"]}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777729960154"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777729952196"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60485af1b1631920e8309"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #920E8308 placed by Wyne Santiago.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60481af1b1631920e8308\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777730740537"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777730693599"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f604c4e0a4243e8d09a009"
+        },
+        "user_id": "69dce6559b30b7d328029e14",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #920E8308 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60481af1b1631920e8308\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777730763609"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777730756598"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f608401ebac757aa08af63"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #920E8308 paid by Wyne Santiago via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60481af1b1631920e8308\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777731648621"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60840c91ce3b37600d0e3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #920E8308 paid by Wyne Santiago via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60481af1b1631920e8308\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777731648809"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60bb44dfe2badce02fa34"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #7600D0E6 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60baac91ce3b37600d0e6\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777732532944"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60bb5c91ce3b37600d0e7"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #7600D0E6 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60baac91ce3b37600d0e6\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777732533208"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60bf455808817310bc4e3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #310BC4E2 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60bea55808817310bc4e2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777732596479"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60c193f8053ce030a5e24"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #310BC4E2 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60bea55808817310bc4e2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777732633733"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60c3c9d56caecea04bd52"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #7600D0E6 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60baac91ce3b37600d0e6\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777732750\\\/pmp-admin-designs\\\/jxr4p3mccnsaltr8o6lz.mp4\",\"adminDesignUrls\":[\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777732750\\\/pmp-admin-designs\\\/jxr4p3mccnsaltr8o6lz.mp4\"]}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777732668026"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60c830547e8499a0bf222"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_approved_by_customer",
+        "title": "Design Approved",
+        "message": "Customer approved the design for order #D903AA57. Set to Awaiting Payment so the customer can complete their order.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60168bd9e4e4cd903aa57\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777732739679"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60d260b6fb0be22052883"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #83097502 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60d1a8d57b75b83097502\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777732902156"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60d265e0e9412280876a3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #83097502 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60d1a8d57b75b83097502\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777732927302"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777732902358"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60d2955808817310bc4e4"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #310BC4E2 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60bea55808817310bc4e2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777732905695"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60d299d56caecea04bd54"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #310BC4E2 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60bea55808817310bc4e2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777732905844"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60d4e0547e8499a0bf223"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_approved_by_customer",
+        "title": "Design Approved",
+        "message": "Customer approved the design for order #7600D0E6. Set to Awaiting Payment so the customer can complete their order.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60baac91ce3b37600d0e6\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777732942968"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60e1a23f7adcfc80b6043"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #C80B6042 placed by Wyne Santiago.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60e1623f7adcfc80b6042\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777733160817"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777733146025"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60e440b6fb0be22052884"
+        },
+        "user_id": "69dce6559b30b7d328029e14",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #C80B6042 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60e1623f7adcfc80b6042\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777733196037"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777733188959"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60eaf5a736137ca05cb52"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #310BC4E2 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60bea55808817310bc4e2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777733295709"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60eb00547e8499a0bf224"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #310BC4E2 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60bea55808817310bc4e2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777733296031"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60feb0547e8499a0bf22b"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #C80B6042 paid by Wyne Santiago via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60e1623f7adcfc80b6042\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777733611447"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60fec9d56caecea04bd57"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #C80B6042 paid by Wyne Santiago via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f60e1623f7adcfc80b6042\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777733612420"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6114555808817310bc4e6"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #310BC4E5 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f6113c55808817310bc4e5\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777733957694"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f611460547e8499a0bf22d"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #310BC4E5 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f6113c55808817310bc4e5\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777733958007"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f611b45a736137ca05cb58"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #CA05CB57 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f611ad5a736137ca05cb57\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777734068169"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f611d20547e8499a0bf22e"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #310BC4E5 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f6113c55808817310bc4e5\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777734181\\\/pmp-admin-designs\\\/f5l7r7jb4q8mxvd1jqui.mp4\",\"adminDesignUrls\":[\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777734181\\\/pmp-admin-designs\\\/f5l7r7jb4q8mxvd1jqui.mp4\"]}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777734098576"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f611db55808817310bc4e7"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #CA05CB57 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f611ad5a736137ca05cb57\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777734107777"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6120255808817310bc4e8"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_approved_by_customer",
+        "title": "Design Approved",
+        "message": "Customer approved the design for order #310BC4E5. Set to Awaiting Payment so the customer can complete their order.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f6113c55808817310bc4e5\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777734146538"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6128a9d56caecea04bd58"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #CA05CB57 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f611ad5a736137ca05cb57\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777734282538"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6128b0547e8499a0bf230"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #CA05CB57 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f611ad5a736137ca05cb57\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777734283278"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f61ae65a736137ca05cb5a"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #CA05CB59 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f61ae15a736137ca05cb59\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777736422530"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f61b1e0547e8499a0bf231"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #310BC4E9 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f61b0155808817310bc4e9\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777736478122"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f61b1e9d56caecea04bd59"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #310BC4E9 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f61b0155808817310bc4e9\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777736478638"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f61b620547e8499a0bf232"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #310BC4E9 is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f61b0155808817310bc4e9\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777736629\\\/pmp-admin-designs\\\/fwpxfz0prntiis6btqam.mp4\",\"adminDesignUrls\":[\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/video\\\/upload\\\/v1777736629\\\/pmp-admin-designs\\\/fwpxfz0prntiis6btqam.mp4\"]}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777736546325"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f61b7b5a736137ca05cb5b"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_approved_by_customer",
+        "title": "Design Approved",
+        "message": "Customer approved the design for order #310BC4E9. Set to Awaiting Payment so the customer can complete their order.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f61b0155808817310bc4e9\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777736571755"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f61d945a736137ca05cb5d"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #CA05CB5C placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f61d8e5a736137ca05cb5c\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777737108152"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f625d1ae7806af0d0a4553"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #0D0A4552 placed by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f625ccae7806af0d0a4552\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777739217257"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f628a0ff64448991095022"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #CA05CB57 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f611ad5a736137ca05cb57\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777739936372"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f628a155808817310bc4eb"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #CA05CB57 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f611ad5a736137ca05cb57\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777739937263"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f628c155808817310bc4ec"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #CB038E03 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f2f6c68e7d9c44cb038e03\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777739969912"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f628c255808817310bc4ed"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #CB038E03 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f2f6c68e7d9c44cb038e03\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777739970063"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f628caff64448991095023"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #8406FFB2 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f2f787d0d6a4308406ffb2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777739978634"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f628caff64448991095024"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #8406FFB2 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f2f787d0d6a4308406ffb2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777739978687"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f628f255808817310bc4ef"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #F50AD552 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3b9aeaaa634c4f50ad552\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777740018040"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f628f255808817310bc4f0"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #F50AD552 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f3b9aeaaa634c4f50ad552\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777740018186"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f628faff64448991095026"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #2601D663 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d15dfc5510b72601d663\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777740026385"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f628faff64448991095027"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #2601D663 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5d15dfc5510b72601d663\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777740026438"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f629025a736137ca05cb5e"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #270DC9F2 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4acfdf14dfd68270dc9f2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777740034651"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f629025a736137ca05cb5f"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #270DC9F2 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f4acfdf14dfd68270dc9f2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777740034814"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f629105a736137ca05cb61"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #890903C2 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5352e16b26b80890903c2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777740048114"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f629105a736137ca05cb62"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #890903C2 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5352e16b26b80890903c2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777740048253"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f672a2472ea3ef13044ef2"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #EC0D6972 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f672797fd47be0ec0d6972\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777758882449"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f672a22fbce17bce0a10b2"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #EC0D6972 paid by Joshua Ron Torres via paymaya.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f672797fd47be0ec0d6972\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777760156008"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777758882748"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f678445e0e9412280876ab"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #280876AA paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f6783d5e0e9412280876aa\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777760500327"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760324983"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f678450b6fb0be22052888"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #280876AA paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f6783d5e0e9412280876aa\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777760333628"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760325313"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f678658d57b75b83097507"
+        },
+        "user_id": "69dce6559b30b7d328029e14",
+        "type": "design_draft_ready",
+        "title": "Your Design Draft is Ready!",
+        "message": "Your custom design for order #280876AA is ready for review. Open your order to view it.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f6783d5e0e9412280876aa\",\"designStatus\":\"draft_ready\",\"adminDesignUrl\":\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777760357\\\/pmp-admin-designs\\\/nfkapz77mfv7ebby2ahp.jpg\",\"adminDesignUrls\":[\"https:\\\/\\\/res.cloudinary.com\\\/dtwzbqrdy\\\/image\\\/upload\\\/v1777760357\\\/pmp-admin-designs\\\/nfkapz77mfv7ebby2ahp.jpg\"]}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777760364438"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760357447"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6787923f7adcfc80b6046"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "design_approved_by_customer",
+        "title": "Design Approved",
+        "message": "Customer approved the design for order #280876AA. Set to Awaiting Payment so the customer can complete their order.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f6783d5e0e9412280876aa\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777760397416"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760377839"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f67a4b8d57b75b8309750a"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #83097509 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f67a458d57b75b83097509\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777760860202"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760843963"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f67a4c5e0e9412280876ad"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #83097509 paid by Wyne Santiago via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f67a458d57b75b83097509\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777760854678"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760844285"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f67a03411b6408fb034975"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #FB034972 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f679f2411b6408fb034972\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760771804"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f67a042fbce17bce0a10b3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #FB034972 paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f679f2411b6408fb034972\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777761049979"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760772431"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f67a632fbce17bce0a10b4"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #6802ABF3 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f62de868012db16802abf3\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760867605"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f67a632fbce17bce0a10b5"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #6802ABF3 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f62de868012db16802abf3\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777761006104"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760867782"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f67a6fc98a08944802f392"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #9109502B has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f62de4ff6444899109502b\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760879930"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f67a70c98a08944802f393"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #9109502B was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f62de4ff6444899109502b\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777761000326"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760880019"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f67a7a2fbce17bce0a10b7"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #6802ABF2 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f62dde68012db16802abf2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760890291"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f67a7a2fbce17bce0a10b8"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #6802ABF2 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f62dde68012db16802abf2\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777760982764"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760890341"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f67a822fbce17bce0a10ba"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #9109502A has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f62dd9ff6444899109502a\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760898216"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f67a822fbce17bce0a10bb"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #9109502A was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f62dd9ff6444899109502a\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777760990611"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777760898267"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6877b411b6408fb034976"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #EC0D6972 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f672797fd47be0ec0d6972\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777764219364"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6877b411b6408fb034977"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #EC0D6972 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f672797fd47be0ec0d6972\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777764219781"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f687efc98a08944802f397"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #FB034972 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f679f2411b6408fb034972\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777764335926"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f687f0c98a08944802f398"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #FB034972 was cancelled by Joshua Ron Torres.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f679f2411b6408fb034972\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777765987240"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777764336217"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f68de2c98a08944802f39a"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #0D0A4552 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f625ccae7806af0d0a4552\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778601656565"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777765858283"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f69164c98a08944802f39c"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #4802F39B paid by Joshua Ron Torres via gcash.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f69155c98a08944802f39b\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777767064353"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777766756394"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f698cdaa2b84268608abd5"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #8608ABD4 placed by Wyne Santiago.",
+        "is_read": false,
+        "data": "{\"orderId\":\"69f698c6aa2b84268608abd4\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777768653085"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777768653085"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f698df0287ad8e2c0df065"
+        },
+        "user_id": "69dce6559b30b7d328029e14",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #8608ABD4 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f698c6aa2b84268608abd4\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777769484365"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777768671314"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6990caa2b84268608abd6"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #8608ABD4 paid by Wyne Santiago via paymaya.",
+        "is_read": false,
+        "data": "{\"orderId\":\"69f698c6aa2b84268608abd4\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777768716312"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777768716312"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6b7a6d71490a674086b3b"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "New Order Received",
+        "message": "Order #74086B36 placed by Joshua Ron Torres.",
+        "is_read": false,
+        "data": "{\"orderId\":\"69f6b7a0d71490a674086b36\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777776550811"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777776550811"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6b824d71490a674086b3c"
+        },
+        "user_id": "69e21b7fd3daad8cc607bcc2",
+        "type": "upload_approved",
+        "title": "Your Design Was Approved!",
+        "message": "Your uploaded design for order #74086B36 has been approved. Please complete your payment to begin production.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f6b7a0d71490a674086b36\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777777049802"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777776676537"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6b9d14ca89f683c0d4792"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #74086B36 paid by Joshua Ron Torres via gcash.",
+        "is_read": false,
+        "data": "{\"orderId\":\"69f6b7a0d71490a674086b36\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777777105541"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777777105541"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6b9d2d71490a674086b3d"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "new_order",
+        "title": "Payment Received",
+        "message": "Order #74086B36 paid by Joshua Ron Torres via gcash.",
+        "is_read": false,
+        "data": "{\"orderId\":\"69f6b7a0d71490a674086b36\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777777106822"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777777106822"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f875bf4a928e959f040b03"
+        },
+        "user_id": "69dce6559b30b7d328029e14",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #D903AA53 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5fc81bd9e4e4cd903aa53\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778664946567"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777890751352"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f875c34a928e959f040b04"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #D903AA53 was cancelled by Wyne Santiago.",
+        "is_read": false,
+        "data": "{\"orderId\":\"69f5fc81bd9e4e4cd903aa53\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777890755575"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777890755575"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f875ca0e2917819e03a9b2"
+        },
+        "user_id": "69dce6559b30b7d328029e14",
+        "type": "order_cancelled",
+        "title": "Order Cancelled",
+        "message": "Your order #1B044633 has been cancelled.",
+        "is_read": true,
+        "data": "{\"orderId\":\"69f5fe497607852a1b044633\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1778664594398"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777890762648"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f875ce0e2917819e03a9b3"
+        },
+        "user_id": "69c4f730e0b481f9f207b332",
+        "type": "order_cancelled",
+        "title": "Order Cancelled by Customer",
+        "message": "Order #1B044633 was cancelled by Wyne Santiago.",
+        "is_read": false,
+        "data": "{\"orderId\":\"69f5fe497607852a1b044633\"}",
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777890766238"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777890766238"
+            }
+        }
+    }
+]

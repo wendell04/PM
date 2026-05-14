@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -90,6 +91,7 @@ const getPasswordStrength = (pwd) => {
 
 export default function SettingsPage() {
   const { token, currentUser, setCurrentUser } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   const deviceTokens = useMemo(
     () => (Array.isArray(currentUser?.device_tokens) ? currentUser.device_tokens : []),
@@ -175,6 +177,21 @@ export default function SettingsPage() {
   const [twoFaError, setTwoFaError]             = useState('');
   const [twoFaSuccess, setTwoFaSuccess]         = useState('');
 
+  const [totpConfirmed, setTotpConfirmed] = useState(false);
+  const [totpSetupOpen, setTotpSetupOpen] = useState(false);
+  const [totpQr, setTotpQr] = useState('');
+  const [totpSecret, setTotpSecret] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [totpLoading, setTotpLoading] = useState(false);
+  const [totpError, setTotpError] = useState('');
+  const [totpSuccess, setTotpSuccess] = useState('');
+  const [totpRemoveOpen, setTotpRemoveOpen] = useState(false);
+  const [totpRemovePassword, setTotpRemovePassword] = useState('');
+  const [totpRemoveLoading, setTotpRemoveLoading] = useState(false);
+  const [isSavingBusiness, setIsSavingBusiness] = useState(false);
+  const [businessError, setBusinessError] = useState('');
+  const [businessSuccess, setBusinessSuccess] = useState('');
+
   // ── Populate form from currentUser ────────────────────────
   useEffect(() => {
     if (currentUser) {
@@ -192,6 +209,7 @@ export default function SettingsPage() {
         contactEmail: currentUser.email || '',
       });
       setTwoFactorEnabled(!!currentUser.two_factor_enabled);
+      setTotpConfirmed(!!currentUser.totp_confirmed);
       setIsLoading(false);
     }
   }, [currentUser]);
@@ -352,6 +370,85 @@ export default function SettingsPage() {
       setTwoFaError(err.message || 'Failed to update 2FA setting.');
     } finally {
       setTwoFaToggling(false);
+    }
+  };
+
+  const handleSetupTotp = async () => {
+    setTotpLoading(true);
+    setTotpError('');
+    setTotpQr('');
+    setTotpSecret('');
+    setTotpCode('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/2fa/totp/setup`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      }, 10000);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to start setup.');
+      setTotpQr(data.qr_code_svg || '');
+      setTotpSecret(data.secret || '');
+      setTotpSetupOpen(true);
+    } catch (err) {
+      setTotpError(err.message || 'Failed to set up authenticator.');
+    } finally {
+      setTotpLoading(false);
+    }
+  };
+
+  const handleConfirmTotp = async () => {
+    if (!totpCode.trim()) { setTotpError('Enter the 6-digit code from your app.'); return; }
+    setTotpLoading(true);
+    setTotpError('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/2fa/totp/confirm`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: totpCode.trim() }),
+      }, 10000);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Invalid code.');
+      setTotpConfirmed(true);
+      setTotpSetupOpen(false);
+      setTotpSuccess('Google Authenticator activated successfully.');
+      setTimeout(() => setTotpSuccess(''), 4000);
+      if (typeof setCurrentUser === 'function') {
+        setCurrentUser(prev => ({ ...prev, totp_confirmed: true, two_factor_enabled: true }));
+      }
+      setTwoFactorEnabled(true);
+      setTwoFactorMethod('totp');
+    } catch (err) {
+      setTotpError(err.message || 'Failed to verify code.');
+    } finally {
+      setTotpLoading(false);
+    }
+  };
+
+  const handleRemoveTotp = async () => {
+    if (!totpRemovePassword.trim()) { setTotpError('Password is required.'); return; }
+    setTotpRemoveLoading(true);
+    setTotpError('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/2fa/totp`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: totpRemovePassword }),
+      }, 10000);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to remove authenticator.');
+      setTotpConfirmed(false);
+      setTotpRemoveOpen(false);
+      setTotpRemovePassword('');
+      setTotpSetupOpen(false);
+      setTotpSuccess('Authenticator app removed.');
+      setTimeout(() => setTotpSuccess(''), 4000);
+      if (typeof setCurrentUser === 'function') {
+        setCurrentUser(prev => ({ ...prev, totp_confirmed: false }));
+      }
+    } catch (err) {
+      setTotpError(err.message || 'Failed to remove authenticator.');
+    } finally {
+      setTotpRemoveLoading(false);
     }
   };
 
@@ -580,6 +677,32 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSaveBusinessSettings = async () => {
+    setBusinessError('');
+    setBusinessSuccess('');
+    setIsSavingBusiness(true);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/settings`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessName: businessForm.businessName,
+          businessAddress: businessForm.businessAddress,
+          operatingHours: businessForm.operatingHours,
+          contactEmail: businessForm.contactEmail,
+        }),
+      }, 10000);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message || 'Failed to save business settings.');
+      setBusinessSuccess('Business settings saved.');
+      setTimeout(() => setBusinessSuccess(''), 3000);
+    } catch (err) {
+      setBusinessError(err.message || 'An unexpected error occurred.');
+    } finally {
+      setIsSavingBusiness(false);
+    }
+  };
+
   // ── Skeleton ──────────────────────────────────────────────
   if (isLoading) {
     return (
@@ -678,13 +801,12 @@ export default function SettingsPage() {
           {activeTab === 'profile' && (
           <>
           {/* ── Avatar Card ───────────────────────────────── */}
-          <div className="profile-modal" style={{
-            position: 'static',
+          <div style={{
+            background: 'var(--dark2)',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
             marginBottom: '1.5rem',
             padding: '1.5rem',
-            background: 'var(--dark2)',
-            border: '1px solid var(--border)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
 
@@ -1008,571 +1130,339 @@ export default function SettingsPage() {
 
           {/* ── Security Tab ──────────────────────────────── */}
           {activeTab === 'security' && (
-            <div style={{
-              background: 'var(--dark2)', border: '1px solid var(--border)',
-              borderRadius: '12px', padding: '1.5rem',
-            }}>
-              <h2 style={{ margin: '0 0 1.25rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
-                Change Password
-              </h2>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxWidth: '480px' }}>
+    {/* ── Change Password ─────────────────────────── */}
+    <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
+      <h2 style={{ margin: '0 0 1.25rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Change Password</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxWidth: '480px' }}>
 
-                {/* Security notice */}
-                <div style={{
-                  padding: '1rem',
-                  background: 'color-mix(in srgb, var(--gold) 10%, transparent)',
-                  borderRadius: '8px',
-                  border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                      stroke="var(--gold)" strokeWidth="2">
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    </svg>
-                    <strong style={{ color: 'var(--gold)' }}>Password Security</strong>
-                  </div>
-                  <p style={{ fontSize: '0.85rem', opacity: 0.8, margin: 0 }}>
-                    Your password is securely encrypted. Change it regularly to keep your account safe.
-                  </p>
-                </div>
+        <div style={{ padding: '0.875rem 1rem', background: 'color-mix(in srgb, var(--gold) 10%, transparent)', borderRadius: '8px', border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span style={{ fontSize: '0.8125rem', color: 'var(--gold)', fontWeight: 600 }}>Password Security</span>
+          <span style={{ fontSize: '0.8125rem', color: 'var(--gray)', fontWeight: 400, marginLeft: 0 }}>— Change it regularly to keep your account safe.</span>
+        </div>
 
-                {/* Current password */}
-                {[
-                  { key: 'currentPassword', label: 'Current Password',     showKey: 'current', placeholder: 'Enter current password' },
-                  { key: 'newPassword',     label: 'New Password',         showKey: 'newPass', placeholder: 'Enter new password'     },
-                  { key: 'confirmPassword', label: 'Confirm New Password', showKey: 'confirm', placeholder: 'Confirm new password'   },
-                ].map(({ key, label, showKey, placeholder }) => (
-                  <div className="profile-form-field" key={key}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--white)' }}>
-                      {label} <span className="required" style={{ color: 'var(--red)' }}>*</span>
-                    </label>
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        type={showPasswords[showKey] ? 'text' : 'password'}
-                        placeholder={placeholder}
-                        value={passwordForm[key]}
-                        onChange={e => setPasswordForm(p => ({ ...p, [key]: e.target.value }))}
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSavePassword(); } }}
-                        style={{
-                          width: '100%', padding: '0.75rem 0.875rem', paddingRight: '3rem',
-                          background: 'var(--dark)', border: '1px solid var(--border)',
-                          borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPasswords(p => ({ ...p, [showKey]: !p[showKey] }))}
-                        style={{
-                          position: 'absolute', right: '0.75rem', top: '50%',
-                          transform: 'translateY(-50%)', background: 'transparent',
-                          border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '0.25rem',
-                        }}
-                      >
-                        {showPasswords[showKey] ? (
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                            <line x1="1" y1="1" x2="23" y2="23"/>
-                          </svg>
-                        ) : (
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                            <circle cx="12" cy="12" r="3"/>
-                          </svg>
-                        )}
-                      </button>
+        {[
+          { key: 'currentPassword', label: 'Current Password', showKey: 'current', placeholder: 'Enter current password' },
+          { key: 'newPassword', label: 'New Password', showKey: 'newPass', placeholder: 'Enter new password' },
+          { key: 'confirmPassword', label: 'Confirm New Password', showKey: 'confirm', placeholder: 'Confirm new password' },
+        ].map(({ key, label, showKey, placeholder }) => (
+          <div className="profile-form-field" key={key}>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--white)' }}>
+              {label} <span className="required" style={{ color: 'var(--red)' }}>*</span>
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPasswords[showKey] ? 'text' : 'password'}
+                placeholder={placeholder}
+                value={passwordForm[key]}
+                onChange={e => setPasswordForm(p => ({ ...p, [key]: e.target.value }))}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSavePassword(); } }}
+                style={{ width: '100%', padding: '0.75rem 0.875rem', paddingRight: '3rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem', boxSizing: 'border-box' }}
+              />
+              <button type="button" onClick={() => setShowPasswords(p => ({ ...p, [showKey]: !p[showKey] }))} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '0.25rem' }}>
+                {showPasswords[showKey]
+                  ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                }
+              </button>
+            </div>
+            {key === 'newPassword' && passwordForm.newPassword.length > 0 && (
+              <>
+                <div style={{ marginTop: '0.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem' }}>
+                  {[
+                    { label: 'At least 8 characters', pass: passwordForm.newPassword.length >= 8 },
+                    { label: 'One uppercase letter', pass: /[A-Z]/.test(passwordForm.newPassword) },
+                    { label: 'One lowercase letter', pass: /[a-z]/.test(passwordForm.newPassword) },
+                    { label: 'One number', pass: /\d/.test(passwordForm.newPassword) },
+                    { label: 'One special character', pass: /[!@#$%^&*(),.?":{}|<>]/.test(passwordForm.newPassword) },
+                  ].map((c, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: c.pass ? 'var(--green)' : 'var(--gray)', transition: 'color 0.2s', marginBottom: i < 4 ? '0.4rem' : 0 }}>
+                      <span style={{ display: 'inline-flex', width: '14px', justifyContent: 'center', flexShrink: 0 }}>
+                        {c.pass ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg> : <span style={{ opacity: 0.45 }}>|</span>}
+                      </span>
+                      {c.label}
                     </div>
-
-                    {/* Strength meter — only on newPassword */}
-                    {key === 'newPassword' && passwordForm.newPassword.length > 0 && (
-                      <>
-                        <div style={{
-                          marginTop: '0.5rem', background: 'rgba(255,255,255,0.04)',
-                          border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem',
-                        }}>
-                          {[
-                            { label: 'At least 8 characters',  pass: passwordForm.newPassword.length >= 8 },
-                            { label: 'One uppercase letter',    pass: /[A-Z]/.test(passwordForm.newPassword) },
-                            { label: 'One lowercase letter',    pass: /[a-z]/.test(passwordForm.newPassword) },
-                            { label: 'One number',              pass: /\d/.test(passwordForm.newPassword) },
-                            { label: 'One special character',   pass: /[!@#$%^&*(),.?":{}|<>]/.test(passwordForm.newPassword) },
-                          ].map((c, i) => (
-                            <div key={i} style={{
-                              display: 'flex', alignItems: 'center', gap: '0.4rem',
-                              fontSize: '0.78rem', color: c.pass ? 'var(--green)' : 'var(--gray)',
-                              transition: 'color 0.2s', marginBottom: i < 4 ? '0.4rem' : 0,
-                            }}>
-                              <span style={{ display: 'inline-flex', width: '14px', justifyContent: 'center', flexShrink: 0 }} aria-hidden>
-                                {c.pass ? (
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M20 6L9 17l-5-5" />
-                                  </svg>
-                                ) : (
-                                  <span style={{ opacity: 0.45 }} aria-hidden="true">|</span>
-                                )}
-                              </span>
-                              {c.label}
-                            </div>
-                          ))}
-                        </div>
-                        {(() => {
-                          const strength = getPasswordStrength(passwordForm.newPassword);
-                          if (!strength) return null;
-                          return (
-                            <div style={{ marginTop: '6px' }}>
-                              <div style={{
-                                height: '4px', borderRadius: '2px',
-                                background: 'var(--border)', overflow: 'hidden',
-                              }}>
-                                <div style={{
-                                  height: '100%', width: strength.width,
-                                  background: strength.color,
-                                  transition: 'width 0.3s ease', borderRadius: '2px',
-                                }} />
-                              </div>
-                              <span style={{
-                                fontSize: '0.7rem', color: strength.color,
-                                marginTop: '4px', display: 'block',
-                              }}>{strength.label}</span>
-                            </div>
-                          );
-                        })()}
-                      </>
-                    )}
-                  </div>
-                ))}
-
-                {/* Feedback */}
-                {passwordError && (
-                  <div style={{
-                    padding: '0.75rem 1rem',
-                    background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
-                    borderRadius: '8px', color: 'var(--red)',
-                    display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem',
-                  }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10"/>
-                      <line x1="12" y1="8" x2="12" y2="12"/>
-                      <line x1="12" y1="16" x2="12.01" y2="16"/>
-                    </svg>
-                    {passwordError}
-                  </div>
-                )}
-                {passwordSuccess && (
-                  <div style={{
-                    padding: '0.75rem 1rem',
-                    background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
-                    borderRadius: '8px', color: 'var(--green)',
-                    display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem',
-                  }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                      <polyline points="22 4 12 14.01 9 11.01"/>
-                    </svg>
-                    {passwordSuccess}
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleSavePassword}
-                  disabled={isSavingPassword}
-                  style={{
-                    padding: '0.875rem 1.5rem',
-                    background: isSavingPassword ? 'var(--gray)' : 'var(--gold)',
-                    border: 'none', borderRadius: '8px',
-                    color: isSavingPassword ? 'var(--dark)' : 'var(--black)',
-                    fontWeight: 600, fontSize: '0.9rem',
-                    cursor: isSavingPassword ? 'not-allowed' : 'pointer',
-                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                    width: 'fit-content',
-                  }}
-                >
-                  {isSavingPassword ? 'Updating...' : (
-                    <>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                      </svg>
-                      Update Password
-                    </>
-                  )}
-                </button>
-
-                <div style={{
-                  marginTop: '2rem',
-                  paddingTop: '1.5rem',
-                  borderTop: '1px solid var(--border)',
-                }}>
-                  <h3 style={{
-                    margin: '0 0 0.75rem',
-                    fontSize: '0.9375rem',
-                    fontWeight: 700,
-                    color: 'var(--white)',
-                  }}>
-                    Two-factor authentication
-                  </h3>
-                  <div style={{
-                    padding: '1rem',
-                    background: 'var(--dark)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '10px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.75rem',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          padding: '0.2rem 0.6rem',
-                          borderRadius: '20px',
-                          fontSize: '0.7rem',
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.06em',
-                          background: twoFactorEnabled ? 'rgba(74,222,128,0.12)' : 'rgba(156,163,175,0.12)',
-                          color: twoFactorEnabled ? 'var(--green)' : 'var(--gray)',
-                        }}>
-                          {twoFactorEnabled ? 'Enabled' : 'Disabled'}
-                        </span>
+                  ))}
+                </div>
+                {(() => {
+                  const strength = getPasswordStrength(passwordForm.newPassword);
+                  if (!strength) return null;
+                  return (
+                    <div style={{ marginTop: '6px' }}>
+                      <div style={{ height: '4px', borderRadius: '2px', background: 'var(--border)', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: strength.width, background: strength.color, transition: 'width 0.3s ease', borderRadius: '2px' }} />
                       </div>
-                      <button
-                        onClick={handleToggle2FA}
-                        disabled={twoFaToggling}
-                        aria-pressed={twoFactorEnabled}
-                        aria-label="Toggle two-factor authentication"
-                        style={{
-                          position: 'relative',
-                          width: '44px',
-                          height: '24px',
-                          borderRadius: '12px',
-                          border: 'none',
-                          cursor: twoFaToggling ? 'not-allowed' : 'pointer',
-                          background: twoFactorEnabled ? 'var(--gold)' : 'var(--border)',
-                          transition: 'background 0.2s',
-                          padding: 0,
-                          opacity: twoFaToggling ? 0.6 : 1,
-                          flexShrink: 0,
-                        }}
-                      >
-                        <span style={{
-                          position: 'absolute',
-                          top: '3px',
-                          left: twoFactorEnabled ? '23px' : '3px',
-                          width: '18px',
-                          height: '18px',
-                          borderRadius: '50%',
-                          background: '#fff',
-                          transition: 'left 0.2s',
-                        }} />
-                      </button>
+                      <span style={{ fontSize: '0.7rem', color: strength.color, marginTop: '4px', display: 'block' }}>{strength.label}</span>
                     </div>
-                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray-light)' }}>
-                      {twoFactorEnabled
-                        ? 'A one-time code is sent to your email at every login. Trusted devices can skip this step.'
-                        : 'Enable to require email verification on each login for extra account security.'}
-                    </p>
-                    {twoFaError && (
-                      <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--red)' }}>{twoFaError}</p>
-                    )}
-                    {twoFaSuccess && (
-                      <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--green)' }}>{twoFaSuccess}</p>
-                    )}
-                  </div>
-                </div>
+                  );
+                })()}
+              </>
+            )}
+          </div>
+        ))}
 
-                <div style={{ marginTop: '1.5rem' }}>
-                  <h3 style={{
-                    margin: '0 0 0.75rem',
-                    fontSize: '0.9375rem',
-                    fontWeight: 700,
-                    color: 'var(--white)',
-                  }}>
-                    Connected Devices ({deviceTokens.length})
-                  </h3>
-                  {deviceTokens.length === 0 ? (
-                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray)' }}>
-                      No connected devices recorded for this account.
-                    </p>
-                  ) : (
-                    <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {deviceTokens.map((t) => {
-                        const tokenStr = typeof t === 'string' ? t : (t?.token ?? '');
-                        const short = tokenStr.length > 12 ? `${tokenStr.slice(0, 12)}...` : (tokenStr || '(unknown)');
-                        return (
-                          <li
-                            key={tokenStr || JSON.stringify(t)}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: '0.75rem',
-                              padding: '0.75rem 1rem',
-                              background: 'var(--dark)',
-                              border: '1px solid var(--border)',
-                              borderRadius: '8px',
-                            }}
-                          >
-                            <code style={{ fontSize: '0.78rem', color: 'var(--gray-light)', wordBreak: 'break-all' }}>
-                              {short}
-                            </code>
-                            <button
-                              type="button"
-                              onClick={() => revokeDevice(t.token ?? '')}
-                              style={{
-                                padding: '0.375rem 0.75rem',
-                                fontSize: '0.8125rem',
-                                fontWeight: 600,
-                                borderRadius: '8px',
-                                border: '1px solid rgba(239,68,68,0.25)',
-                                background: 'rgba(239,68,68,0.08)',
-                                color: 'var(--red)',
-                                cursor: 'pointer',
-                                flexShrink: 0,
-                              }}
-                            >
-                              Revoke
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
+        {passwordError && (
+          <div style={{ padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            {passwordError}
+          </div>
+        )}
+        {passwordSuccess && (
+          <div style={{ padding: '0.75rem 1rem', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            {passwordSuccess}
+          </div>
+        )}
 
-                {/* Active Sessions */}
-                <div style={{ marginTop: '1.5rem' }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: '0.75rem',
-                    flexWrap: 'wrap',
-                    gap: '0.5rem',
-                  }}>
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 700, color: 'var(--white)' }}>
-                        Active Sessions
-                      </h3>
-                      <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--gray)' }}>
-                        Devices currently logged into your account.
-                      </p>
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      {sessions.filter(s => !s.is_current).length > 0 && (
-                        <button
-                          type="button"
-                          onClick={revokeAllSessions}
-                          disabled={revokeAllBusy}
-                          style={{
-                            padding: '0.375rem 0.75rem',
-                            fontSize: '0.8125rem',
-                            fontWeight: 600,
-                            borderRadius: '8px',
-                            border: '1px solid rgba(239,68,68,0.25)',
-                            background: 'rgba(239,68,68,0.08)',
-                            color: 'var(--red)',
-                            cursor: revokeAllBusy ? 'not-allowed' : 'pointer',
-                            opacity: revokeAllBusy ? 0.6 : 1,
-                          }}
-                        >
-                          {revokeAllBusy ? 'Revoking...' : 'Revoke All Others'}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setSessionsOpen(v => !v)}
-                        style={{
-                          background: 'none', border: 'none', cursor: 'pointer',
-                          color: 'var(--gold)', fontSize: '0.8rem', fontWeight: 600,
-                          padding: '0.25rem 0.5rem',
-                        }}
-                      >
-                        {sessionsOpen ? 'Hide' : 'Show'}
-                      </button>
-                    </div>
-                  </div>
+        <button type="button" onClick={handleSavePassword} disabled={isSavingPassword} style={{ padding: '0.625rem 1.5rem', background: isSavingPassword ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSavingPassword ? 'var(--gray)' : 'var(--black)', fontWeight: 600, fontSize: '0.875rem', cursor: isSavingPassword ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', width: 'fit-content' }}>
+          {isSavingPassword ? <><span className="spinner" />Updating...</> : <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Update Password</>}
+        </button>
+      </div>
+    </div>
 
-                  {sessionsOpen && (
-                    <>
-                      {sessionsSuccess && (
-                        <div style={{
-                          marginBottom: '0.75rem', padding: '0.75rem 1rem',
-                          background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.25)',
-                          borderRadius: '8px', color: 'var(--green)',
-                          display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem',
-                        }}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="20 6 9 17 4 12"/>
-                          </svg>
-                          {sessionsSuccess}
-                        </div>
-                      )}
-                      {sessionsError && (
-                        <div style={{
-                          marginBottom: '0.75rem', padding: '0.75rem 1rem',
-                          background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
-                          borderRadius: '8px', color: 'var(--red)',
-                          display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem',
-                        }}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                          </svg>
-                          {sessionsError}
-                        </div>
-                      )}
-                      {sessionsLoading ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                          {[1, 2].map(i => (
-                            <div key={i} style={{
-                              padding: '1rem', background: 'var(--dark)',
-                              border: '1px solid var(--border)', borderRadius: '10px',
-                              height: '72px',
-                              background: 'linear-gradient(90deg, var(--dark2) 25%, var(--dark3) 50%, var(--dark2) 75%)',
-                              backgroundSize: '400px 100%',
-                              animation: 'shimmer 1.4s ease-in-out infinite',
-                            }}/>
-                          ))}
-                        </div>
-                      ) : sessions.length === 0 ? (
-                        <div style={{
-                          padding: '2rem', textAlign: 'center', color: 'var(--gray)',
-                          fontSize: '0.875rem', background: 'rgba(255,255,255,0.02)',
-                          border: '1px solid var(--border)', borderRadius: '10px',
-                        }}>
-                          No active sessions found.
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          {sessions.map((s) => (
-                            <div
-                              key={s.id}
-                              style={{
-                                display: 'flex', alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '0.75rem', padding: '1rem 1.25rem',
-                                background: s.is_current ? 'rgba(212,168,67,0.06)' : 'var(--dark)',
-                                border: `1px solid ${s.is_current ? 'rgba(212,168,67,0.25)' : 'var(--border)'}`,
-                                borderRadius: '10px', flexWrap: 'wrap',
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', flex: 1, minWidth: 0 }}>
-                                <div style={{
-                                  width: '36px', height: '36px', borderRadius: '8px',
-                                  background: s.is_current ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.05)',
-                                  border: `1px solid ${s.is_current ? 'rgba(212,168,67,0.3)' : 'var(--border)'}`,
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  flexShrink: 0, color: s.is_current ? 'var(--gold)' : 'var(--gray)',
-                                }}>
-                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                                    <line x1="8" y1="21" x2="16" y2="21"/>
-                                    <line x1="12" y1="17" x2="12" y2="21"/>
-                                  </svg>
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', minWidth: 0 }}>
-                                  <span style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                    {s.name}
-                                    {s.is_current && (
-                                      <span style={{
-                                        fontSize: '0.7rem', fontWeight: 600, padding: '0.1rem 0.4rem',
-                                        borderRadius: '20px', background: 'rgba(234,179,8,0.12)',
-                                        color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.06em',
-                                      }}>
-                                        Current
-                                      </span>
-                                    )}
-                                  </span>
-                                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>
-                                    Last used: {s.last_used_at} · Created: {s.created_at}
-                                  </span>
-                                </div>
-                              </div>
-                              {!s.is_current && (
-                                <button
-                                  type="button"
-                                  onClick={() => revokeSession(s.id)}
-                                  disabled={revokingId === s.id}
-                                  style={{
-                                    padding: '0.375rem 0.75rem', fontSize: '0.8125rem', fontWeight: 600,
-                                    borderRadius: '8px', border: '1px solid rgba(239,68,68,0.25)',
-                                    background: 'rgba(239,68,68,0.08)', color: 'var(--red)',
-                                    cursor: revokingId === s.id ? 'not-allowed' : 'pointer',
-                                    opacity: revokingId === s.id ? 0.6 : 1, flexShrink: 0,
-                                  }}
-                                >
-                                  {revokingId === s.id ? 'Revoking...' : 'Revoke'}
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
+    {/* ── Active Sessions ──────────────────────────── */}
+    <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.875rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Active Sessions</h2>
+          <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--gray)' }}>Devices currently logged into your account.</p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {sessions.filter(s => !s.is_current).length > 0 && (
+            <button type="button" onClick={revokeAllSessions} disabled={revokeAllBusy} style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem', fontWeight: 600, borderRadius: '8px', border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.08)', color: 'var(--red)', cursor: revokeAllBusy ? 'not-allowed' : 'pointer', opacity: revokeAllBusy ? 0.6 : 1 }}>
+              {revokeAllBusy ? 'Revoking...' : 'Revoke All Others'}
+            </button>
+          )}
+          <button type="button" onClick={() => setSessionsOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gold)', fontSize: '0.8rem', fontWeight: 600, padding: '0.25rem 0.5rem' }}>
+            {sessionsOpen ? 'Hide' : 'Show'}
+          </button>
+        </div>
+      </div>
+
+      {sessionsOpen && (
+        <>
+          {sessionsSuccess && (
+            <div style={{ marginBottom: '0.75rem', padding: '0.75rem 1rem', background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.25)', borderRadius: '8px', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+              {sessionsSuccess}
             </div>
           )}
+          {sessionsError && (
+            <div style={{ marginBottom: '0.75rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              {sessionsError}
+            </div>
+          )}
+          {sessionsLoading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {[1, 2].map(i => (
+                <div key={i} style={{ padding: '1rem', borderRadius: '10px', height: '72px', background: 'linear-gradient(90deg, var(--dark2) 25%, var(--dark3) 50%, var(--dark2) 75%)', backgroundSize: '400px 100%', animation: 'shimmer 1.4s ease-in-out infinite' }}/>
+              ))}
+            </div>
+          ) : sessions.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.875rem', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+              No active sessions found.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {sessions.map((s) => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '1rem 1.25rem', background: s.is_current ? 'rgba(212,168,67,0.06)' : 'var(--dark)', border: `1px solid ${s.is_current ? 'rgba(212,168,67,0.25)' : 'var(--border)'}`, borderRadius: '10px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', flex: 1, minWidth: 0 }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: s.is_current ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${s.is_current ? 'rgba(212,168,67,0.3)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: s.is_current ? 'var(--gold)' : 'var(--gray)' }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', minWidth: 0 }}>
+                      <span style={{ fontSize: '0.875rem', color: 'var(--white)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        {s.name}
+                        {s.is_current && <span style={{ fontSize: '0.7rem', fontWeight: 600, padding: '0.1rem 0.4rem', borderRadius: '20px', background: 'rgba(234,179,8,0.12)', color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Current</span>}
+                      </span>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Last used: {s.last_used_at} · Created: {s.created_at}</span>
+                    </div>
+                  </div>
+                  {!s.is_current && (
+                    <button type="button" onClick={() => revokeSession(s.id)} disabled={revokingId === s.id} style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem', fontWeight: 600, borderRadius: '8px', border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.08)', color: 'var(--red)', cursor: revokingId === s.id ? 'not-allowed' : 'pointer', opacity: revokingId === s.id ? 0.6 : 1, flexShrink: 0 }}>
+                      {revokingId === s.id ? 'Revoking...' : 'Revoke'}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+
+    {/* ── Two-Factor Authentication ────────────────── */}
+    <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
+      <h2 style={{ margin: '0 0 0.875rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Two-factor authentication</h2>
+
+      {/* Toggle row */}
+      <div style={{ padding: '0.875rem 1rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', background: twoFactorEnabled ? 'rgba(74,222,128,0.12)' : 'rgba(156,163,175,0.12)', color: twoFactorEnabled ? 'var(--green)' : 'var(--gray)' }}>
+          {twoFactorEnabled ? 'Enabled' : 'Disabled'}
+        </span>
+        <button onClick={handleToggle2FA} disabled={twoFaToggling} aria-pressed={twoFactorEnabled} style={{ position: 'relative', width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: twoFaToggling ? 'not-allowed' : 'pointer', background: twoFactorEnabled ? 'var(--gold)' : 'var(--border)', transition: 'background 0.2s', padding: 0, opacity: twoFaToggling ? 0.6 : 1, flexShrink: 0 }}>
+          <span style={{ position: 'absolute', top: '3px', left: twoFactorEnabled ? '23px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+        </button>
+      </div>
+
+      {twoFaError && <p style={{ margin: '0.5rem 0', fontSize: '0.8rem', color: 'var(--red)' }}>{twoFaError}</p>}
+      {twoFaSuccess && <p style={{ margin: '0.5rem 0', fontSize: '0.8rem', color: 'var(--green)' }}>{twoFaSuccess}</p>}
+      {totpSuccess && <p style={{ margin: '0.5rem 0', fontSize: '0.8rem', color: 'var(--green)' }}>{totpSuccess}</p>}
+
+      {twoFactorEnabled && !totpSetupOpen && !totpRemoveOpen && (
+        <div style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <p style={{ margin: 0, fontSize: '0.73rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Verification Methods
+          </p>
+
+          {/* Email OTP — always available */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem 1rem', borderRadius: '10px', border: '1.5px solid rgba(96,165,250,0.35)', background: 'rgba(96,165,250,0.05)' }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '9px', flexShrink: 0, background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#60a5fa', marginBottom: '0.15rem' }}>Email OTP</div>
+              <div style={{ fontSize: '0.73rem', color: 'var(--gray)' }}>A 6-digit code sent to your email at each login.</div>
+            </div>
+            <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', background: 'rgba(96,165,250,0.15)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.3)', whiteSpace: 'nowrap' }}>
+              Always available
+            </span>
+          </div>
+
+          {/* Authenticator App */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem 1rem', borderRadius: '10px', border: `1.5px solid ${totpConfirmed ? 'rgba(74,222,128,0.45)' : 'rgba(255,255,255,0.09)'}`, background: totpConfirmed ? 'rgba(74,222,128,0.05)' : 'rgba(255,255,255,0.02)' }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '9px', flexShrink: 0, background: totpConfirmed ? 'rgba(74,222,128,0.12)' : 'rgba(255,255,255,0.05)', border: `1px solid ${totpConfirmed ? 'rgba(74,222,128,0.35)' : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={totpConfirmed ? '#4ade80' : 'var(--gray)'} strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: 700, color: totpConfirmed ? '#4ade80' : 'var(--white)', marginBottom: '0.15rem' }}>Authenticator App</div>
+              <div style={{ fontSize: '0.73rem', color: 'var(--gray)' }}>
+                {totpConfirmed ? 'Google Authenticator / Authy is linked to your account.' : 'Link Google Authenticator or Authy for offline codes.'}
+              </div>
+            </div>
+            {totpConfirmed ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.4rem', flexShrink: 0 }}>
+                <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', background: 'rgba(74,222,128,0.15)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.3)' }}>ACTIVE</span>
+                <button type="button" onClick={() => { setTotpRemoveOpen(true); setTotpError(''); }} style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.08)', color: 'var(--red)', cursor: 'pointer' }}>
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={handleSetupTotp} disabled={totpLoading} style={{ fontSize: '0.78rem', fontWeight: 700, padding: '0.4rem 0.9rem', borderRadius: '8px', border: '1px solid rgba(74,222,128,0.4)', background: 'rgba(74,222,128,0.1)', color: '#4ade80', cursor: totpLoading ? 'not-allowed' : 'pointer', flexShrink: 0, opacity: totpLoading ? 0.6 : 1 }}>
+                {totpLoading ? 'Loading…' : 'Set Up'}
+              </button>
+            )}
+          </div>
+
+          {totpError && <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--red)' }}>{totpError}</p>}
+          <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.4 }}>
+            At login you can choose which method to use. Both can be active simultaneously.
+          </p>
+        </div>
+      )}
+
+      {/* TOTP setup flow */}
+      {totpSetupOpen && (
+        <div style={{ marginTop: '1.25rem', padding: '1.25rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--white)', marginBottom: '1rem' }}>Scan this QR code with your authenticator app</div>
+          <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            {totpQr && (
+              <div dangerouslySetInnerHTML={{ __html: totpQr }} style={{ width: '160px', height: '160px', background: '#fff', borderRadius: '8px', padding: '8px', flexShrink: 0 }} />
+            )}
+            <div style={{ flex: 1, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {totpSecret && (
+                <div>
+                  <p style={{ margin: '0 0 0.35rem', fontSize: '0.75rem', color: 'var(--gray)' }}>Can&apos;t scan? Enter this key manually:</p>
+                  <code style={{ display: 'block', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', fontSize: '0.82rem', color: 'var(--gold)', letterSpacing: '0.1em', wordBreak: 'break-all' }}>{totpSecret}</code>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input type="text" inputMode="numeric" value={totpCode} onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} onKeyDown={e => { if (e.key === 'Enter') handleConfirmTotp(); }} placeholder="6-digit code" maxLength={6} style={{ flex: 1, padding: '0.625rem 0.75rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--white)', fontSize: '1rem', letterSpacing: '0.2em', textAlign: 'center' }} />
+                <button type="button" onClick={handleConfirmTotp} disabled={totpLoading || totpCode.length !== 6} style={{ padding: '0.625rem 1rem', background: totpCode.length === 6 ? 'var(--gold)' : 'var(--dark3)', border: 'none', borderRadius: '8px', color: totpCode.length === 6 ? 'var(--black)' : 'var(--gray)', fontSize: '0.875rem', fontWeight: 600, cursor: totpCode.length === 6 ? 'pointer' : 'not-allowed' }}>
+                  {totpLoading ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : 'Verify'}
+                </button>
+              </div>
+              {totpError && <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--red)' }}>{totpError}</p>}
+            </div>
+          </div>
+          <button type="button" onClick={() => { setTotpSetupOpen(false); setTotpCode(''); setTotpError(''); }} style={{ marginTop: '0.875rem', background: 'none', border: 'none', color: 'var(--gray)', fontSize: '0.78rem', cursor: 'pointer', padding: 0 }}>
+            Cancel setup
+          </button>
+        </div>
+      )}
+
+      {/* Remove TOTP confirmation */}
+      {totpRemoveOpen && (
+        <div style={{ marginTop: '1.25rem', padding: '1.25rem', background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px' }}>
+          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--red)', marginBottom: '0.35rem' }}>Remove authenticator app</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.875rem' }}>Enter your account password to confirm removal.</div>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <input type="password" value={totpRemovePassword} onChange={e => setTotpRemovePassword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleRemoveTotp(); }} placeholder="Your password" style={{ flex: 1, padding: '0.625rem 0.75rem', background: 'var(--dark)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--white)', fontSize: '0.875rem' }} />
+            <button type="button" onClick={handleRemoveTotp} disabled={totpRemoveLoading} style={{ padding: '0.625rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--red)', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer' }}>
+              {totpRemoveLoading ? <span className="spinner" style={{ width: '14px', height: '14px' }} /> : 'Confirm'}
+            </button>
+          </div>
+          {totpError && <p style={{ margin: '0.5rem 0 0', fontSize: '0.78rem', color: 'var(--red)' }}>{totpError}</p>}
+          <button type="button" onClick={() => { setTotpRemoveOpen(false); setTotpRemovePassword(''); setTotpError(''); }} style={{ marginTop: '0.625rem', background: 'none', border: 'none', color: 'var(--gray)', fontSize: '0.78rem', cursor: 'pointer', padding: 0 }}>
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
           {activeTab === 'business' && (
-            <div style={{
-              background: 'var(--dark2)', border: '1px solid var(--border)',
-              borderRadius: '12px', padding: '1.5rem',
-            }}>
-              <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
-                Business details
-              </h2>
-              <p style={{ margin: '0 0 1.25rem', fontSize: '0.875rem', color: 'var(--gray)' }}>
-                Information shown to customers (saved to your profile when backend fields are available).
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '480px' }}>
-                <div className="profile-form-field">
-                  <label>Business name</label>
-                  <input
-                    type="text"
-                    value={businessForm.businessName}
-                    onChange={e => setBusinessForm(f => ({ ...f, businessName: e.target.value }))}
-                    placeholder="PersonalizeMe Prints"
-                  />
-                </div>
-                <div className="profile-form-field">
-                  <label>Business address</label>
-                  <input
-                    type="text"
-                    value={businessForm.businessAddress}
-                    onChange={e => setBusinessForm(f => ({ ...f, businessAddress: e.target.value }))}
-                    placeholder="Street, city"
-                  />
-                </div>
-                <div className="profile-form-field">
-                  <label>Operating hours</label>
-                  <input
-                    type="text"
-                    value={businessForm.operatingHours}
-                    onChange={e => setBusinessForm(f => ({ ...f, operatingHours: e.target.value }))}
-                    placeholder="Mon–Sat 9:00–18:00"
-                  />
-                </div>
-                <div className="profile-form-field">
-                  <label>Customer contact email</label>
-                  <input
-                    type="email"
-                    value={businessForm.contactEmail}
-                    onChange={e => setBusinessForm(f => ({ ...f, contactEmail: e.target.value }))}
-                    placeholder="support@example.com"
-                  />
-                </div>
-                <p style={{ fontSize: '0.78rem', color: 'var(--gray)', margin: 0 }}>
-                  Logo upload and API sync for business fields can be wired in a follow-up.
-                </p>
-              </div>
-            </div>
-          )}
+  <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+      <div>
+        <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Business Details</h2>
+        <p style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: 'var(--gray)' }}>Public information shown to your customers</p>
+      </div>
+    </div>
+
+    {businessSuccess && (
+      <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        {businessSuccess}
+      </div>
+    )}
+    {businessError && (
+      <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        {businessError}
+      </div>
+    )}
+
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '480px' }}>
+      <div className="profile-form-field">
+        <label>Business name</label>
+        <input type="text" value={businessForm.businessName} onChange={e => setBusinessForm(f => ({ ...f, businessName: e.target.value }))} placeholder="PersonalizeMe Prints" maxLength={100} />
+      </div>
+      <div className="profile-form-field">
+        <label>Business address</label>
+        <input type="text" value={businessForm.businessAddress} onChange={e => setBusinessForm(f => ({ ...f, businessAddress: e.target.value }))} placeholder="Street, city" maxLength={200} />
+      </div>
+      <div className="profile-form-field">
+        <label>Operating hours</label>
+        <input type="text" value={businessForm.operatingHours} onChange={e => setBusinessForm(f => ({ ...f, operatingHours: e.target.value }))} placeholder="Mon–Sat 9:00–18:00" maxLength={100} />
+      </div>
+      <div className="profile-form-field">
+        <label>Customer contact email</label>
+        <input type="email" value={businessForm.contactEmail} onChange={e => setBusinessForm(f => ({ ...f, contactEmail: e.target.value }))} placeholder="support@example.com" maxLength={100} />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.25rem' }}>
+        <button type="button" onClick={handleSaveBusinessSettings} disabled={isSavingBusiness} style={{ padding: '0.625rem 1.5rem', background: isSavingBusiness ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSavingBusiness ? 'var(--gray)' : 'var(--black)', fontSize: '0.875rem', fontWeight: 600, cursor: isSavingBusiness ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {isSavingBusiness ? <><span className="spinner" />Saving...</> : <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Changes</>}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
           {activeTab === 'shipping' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -1869,22 +1759,39 @@ export default function SettingsPage() {
           )}
 
           {activeTab === 'appearance' && (
-            <div style={{
-              background: 'var(--dark2)', border: '1px solid var(--border)',
-              borderRadius: '12px', padding: '1.5rem',
-            }}>
-              <h2 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
-                Appearance
-              </h2>
-              <div style={{
-                padding: '2rem 1.5rem', textAlign: 'center',
-                border: '1px dashed var(--border)', borderRadius: '12px', color: 'var(--gray)',
-                fontSize: '0.875rem',
-              }}>
-                Theme options coming soon.
-              </div>
+  <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
+    <h2 style={{ margin: '0 0 0.25rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Appearance</h2>
+    <p style={{ margin: '0 0 1.5rem', fontSize: '0.8rem', color: 'var(--gray)' }}>Choose how the dashboard looks to you</p>
+
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '480px' }}>
+      {[
+        { id: 'dark', label: 'Dark', desc: 'Easy on the eyes in low-light environments', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg> },
+        { id: 'light', label: 'Light', desc: 'Classic light theme for bright environments', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> },
+      ].map(({ id, label, desc, icon }) => {
+        const active = theme === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => { if (!active) toggleTheme(); }}
+            style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.125rem', borderRadius: '10px', border: `1px solid ${active ? 'var(--gold)' : 'var(--border)'}`, background: active ? 'rgba(212,168,67,0.07)' : 'var(--dark)', cursor: active ? 'default' : 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
+          >
+            <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: active ? 'rgba(212,168,67,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${active ? 'rgba(212,168,67,0.3)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: active ? 'var(--gold)' : 'var(--gray)' }}>
+              {icon}
             </div>
-          )}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: 600, color: active ? 'var(--white)' : 'var(--gray-light)' }}>{label}</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{desc}</div>
+            </div>
+            <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: `2px solid ${active ? 'var(--gold)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              {active && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--gold)' }} />}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  </div>
+)}
 
         </div>
         </div>

@@ -154,42 +154,44 @@ function PromotionsInner() {
   const [tab, setTab] = useState(() => searchParams?.get('tab') === 'flash_sales' ? 'flash_sales' : 'vouchers');
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-        {/* Header */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <h1 className="page-title">Promotions</h1>
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--gray)' }}>
-            Manage flash sales and voucher codes for customers
+    <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div>
+          <h1 className="page-title" style={{ margin: 0 }}>Promotions</h1>
+          <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', color: 'var(--gray)' }}>
+            Manage vouchers and flash sales for customers
           </p>
         </div>
-
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.75rem', borderBottom: '1px solid var(--border)', paddingBottom: '0' }}>
-          {[
-            { key: 'vouchers',    label: 'Vouchers' },
-            { key: 'flash_sales', label: 'Flash Sales' },
-          ].map(t => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              style={{
-                padding: '0.625rem 1.25rem',
-                background: 'none', border: 'none',
-                borderBottom: tab === t.key ? '2px solid var(--gold)' : '2px solid transparent',
-                color: tab === t.key ? 'var(--gold)' : 'var(--gray)',
-                fontWeight: tab === t.key ? 700 : 500,
-                fontSize: '0.875rem', cursor: 'pointer',
-                marginBottom: '-1px', transition: 'color 0.15s',
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {tab === 'vouchers'    && <VouchersTab    token={token} />}
-        {tab === 'flash_sales' && <FlashSalesTab  token={token} />}
       </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '0', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
+        {[
+          { key: 'vouchers',    label: 'Vouchers' },
+          { key: 'flash_sales', label: 'Flash Sales' },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            style={{
+              padding: '0.5rem 1.125rem',
+              background: 'none', border: 'none',
+              borderBottom: tab === t.key ? '2px solid var(--gold)' : '2px solid transparent',
+              color: tab === t.key ? 'var(--gold)' : 'var(--gray)',
+              fontWeight: tab === t.key ? 700 : 500,
+              fontSize: '0.875rem', cursor: 'pointer',
+              marginBottom: '-1px', transition: 'color 0.15s',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'vouchers'    && <VouchersTab    token={token} />}
+      {tab === 'flash_sales' && <FlashSalesTab  token={token} />}
+    </div>
   );
 }
 
@@ -289,7 +291,7 @@ function VouchersTab({ token }) {
         isActive:           form.isActive,
         expiresAt:          form.expiresAt || null,
       };
-      if (editTarget) await updateVoucher(token, editTarget._id ?? editTarget.id, payload);
+      if (editTarget) await updateVoucher(token, editTarget._id || editTarget.id, payload);
       else await createVoucher(token, payload);
       closeModal(); load();
     } catch (err) { setFormError(err.message); }
@@ -297,7 +299,7 @@ function VouchersTab({ token }) {
   }
 
   async function handleToggle(v) {
-    try { await toggleVoucher(token, v._id ?? v.id); load(); }
+    try { await toggleVoucher(token, v._id || v.id); load(); }
     catch (err) { setError(err.message); }
   }
 
@@ -324,50 +326,48 @@ function VouchersTab({ token }) {
 
   return (
     <>
-      {/* Stats row */}
-      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+      {/* Toolbar: stats + action + filter */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap', marginBottom: '0.875rem' }}>
         {[
           { label: 'Total',  value: vouchers.length, color: 'var(--white)' },
           { label: 'Active', value: activeCnt,        color: 'var(--green)' },
         ].map(c => (
-          <div key={c.label} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.75rem 1.25rem', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: c.color }}>{c.value}</span>
-            <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>{c.label}</span>
+          <div key={c.label} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '7px', padding: '0.4rem 0.875rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <span style={{ fontSize: '1rem', fontWeight: 700, color: c.color }}>{c.value}</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{c.label}</span>
           </div>
         ))}
+        <div style={{ flex: 1, display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {[{ key: 'all', label: 'All' }, ...BENEFIT_CATEGORIES].map(c => {
+            const ac = CAT_COLORS[c.key] || {};
+            const active = catFilter === c.key;
+            return (
+              <button
+                key={c.key}
+                onClick={() => { setCatFilter(c.key); setPage(1); }}
+                style={{
+                  padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                  display: 'inline-flex', alignItems: 'center', gap: '4px',
+                  background: active ? (ac.bg || 'rgba(212,168,67,0.15)') : 'var(--dark2)',
+                  border: `1px solid ${active ? (ac.border || 'rgba(212,168,67,0.4)') : 'var(--border)'}`,
+                  color: active ? (ac.color || 'var(--gold)') : 'var(--gray)',
+                }}
+              >
+                {c.key !== 'all' && <CatIcon type={c.key} size={11} />}
+                {c.label}
+                {c.key !== 'all' && catCounts[c.key] > 0 && (
+                  <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({catCounts[c.key]})</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
         <button
           onClick={openCreate}
-          style={{ marginLeft: 'auto', padding: '0.6rem 1.25rem', background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer' }}
+          style={{ padding: '0.45rem 1rem', background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '7px', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
         >
           + New Voucher
         </button>
-      </div>
-
-      {/* Category filter pills */}
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-        {[{ key: 'all', label: 'All' }, ...BENEFIT_CATEGORIES].map(c => {
-          const ac = CAT_COLORS[c.key] || {};
-          const active = catFilter === c.key;
-          return (
-            <button
-              key={c.key}
-              onClick={() => { setCatFilter(c.key); setPage(1); }}
-              style={{
-                padding: '0.3rem 0.875rem', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-                display: 'inline-flex', alignItems: 'center', gap: '5px',
-                background: active ? (ac.bg || 'rgba(212,168,67,0.15)') : 'var(--dark2)',
-                border: `1px solid ${active ? (ac.border || 'rgba(212,168,67,0.4)') : 'var(--border)'}`,
-                color: active ? (ac.color || 'var(--gold)') : 'var(--gray)',
-              }}
-            >
-              {c.key !== 'all' && <CatIcon type={c.key} size={12} />}
-              {c.label}
-              {c.key !== 'all' && catCounts[c.key] > 0 && (
-                <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>({catCounts[c.key]})</span>
-              )}
-            </button>
-          );
-        })}
       </div>
 
       {error && (
@@ -380,7 +380,7 @@ function VouchersTab({ token }) {
       {/* Table */}
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
         {paged.length === 0 ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray)' }}>
+          <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--gray)', fontSize: '0.875rem' }}>
             {catFilter === 'all' ? 'No vouchers yet. Create one to get started.' : `No ${catFilter} vouchers yet.`}
           </div>
         ) : (
@@ -403,7 +403,7 @@ function VouchersTab({ token }) {
                 const statusOk  = v.isActive && !isExpired && !isMaxed;
 
                 return (
-                  <tr key={String(v.id ?? v._id ?? i)} style={{ borderBottom: '1px solid var(--border)', opacity: statusOk ? 1 : 0.6 }}
+                  <tr key={String(v._id || v.id || `v-${i}`)} style={{ borderBottom: '1px solid var(--border)', opacity: statusOk ? 1 : 0.6 }}
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
                     onMouseLeave={e => e.currentTarget.style.background = ''}>
 
@@ -461,7 +461,7 @@ function VouchersTab({ token }) {
                         <button onClick={() => handleToggle(v)} style={{ padding: '4px 10px', background: v.isActive ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)', border: 'none', borderRadius: '6px', color: v.isActive ? 'var(--red)' : 'var(--green)', fontSize: '0.75rem', cursor: 'pointer' }}>
                           {v.isActive ? 'Disable' : 'Enable'}
                         </button>
-                        <button onClick={() => setDeleteId(v._id ?? v.id)} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.12)', border: 'none', borderRadius: '6px', color: 'var(--red)', fontSize: '0.75rem', cursor: 'pointer' }}>Del</button>
+                        <button onClick={() => setDeleteId(v._id || v.id)} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.12)', border: 'none', borderRadius: '6px', color: 'var(--red)', fontSize: '0.75rem', cursor: 'pointer' }}>Del</button>
                       </div>
                     </td>
                   </tr>
@@ -766,14 +766,14 @@ function FlashSalesTab({ token }) {
   return (
     <>
       {/* Stats + action */}
-      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap', marginBottom: '0.875rem', alignItems: 'center' }}>
         {[{ label: 'Total', value: sales.length, color: 'var(--white)' }, { label: 'Live Now', value: liveCount, color: 'var(--green)' }, { label: 'Upcoming', value: upcomingCount, color: 'var(--blue)' }].map(c => (
-          <div key={c.label} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.75rem 1.25rem', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: c.color }}>{c.value}</span>
-            <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>{c.label}</span>
+          <div key={c.label} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '7px', padding: '0.4rem 0.875rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <span style={{ fontSize: '1rem', fontWeight: 700, color: c.color }}>{c.value}</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{c.label}</span>
           </div>
         ))}
-        <button onClick={openCreate} style={{ marginLeft: 'auto', padding: '0.6rem 1.25rem', background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer' }}>
+        <button onClick={openCreate} style={{ marginLeft: 'auto', padding: '0.45rem 1rem', background: 'var(--gold)', color: 'var(--black)', border: 'none', borderRadius: '7px', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
           + New Flash Sale
         </button>
       </div>
@@ -786,10 +786,10 @@ function FlashSalesTab({ token }) {
       )}
 
       {!error && sales.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '4rem 2rem', color: 'var(--gray)', border: '1px solid var(--border)', borderRadius: '10px' }}>
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5, marginBottom: '1rem' }}><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-          <p style={{ fontSize: '1rem', color: 'var(--white)', marginBottom: '0.5rem', fontWeight: 600 }}>No flash sales yet</p>
-          <p style={{ fontSize: '0.85rem' }}>Create one to get started</p>
+        <div style={{ textAlign: 'center', padding: '2.5rem 2rem', color: 'var(--gray)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5, marginBottom: '0.75rem' }}><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          <p style={{ fontSize: '0.95rem', color: 'var(--white)', marginBottom: '0.25rem', fontWeight: 600 }}>No flash sales yet</p>
+          <p style={{ fontSize: '0.82rem' }}>Create one to get started</p>
         </div>
       )}
 

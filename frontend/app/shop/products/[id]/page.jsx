@@ -273,7 +273,7 @@ export default function ProductDetailPage() {
         quantity,
         comboId,
         resolveVariantName(selectedVariants),
-        null,
+        flashSale ? (flashSale.id ?? flashSale._id ?? null) : null,
         null
       );
       setAddedToCart(true);
@@ -346,12 +346,13 @@ export default function ProductDetailPage() {
       const basePrice = unitPrice ?? product.flatPrice ?? product.price ?? 0;
       const resolvedPrice = flashSale ? applyFlashDiscount(basePrice, flashSale) : basePrice;
       const comboId = resolveCombinationId(selectedVariants);
+      const fsId = flashSale ? (flashSale.id ?? flashSale._id ?? null) : null;
       await addToCart(
         { ...product, flatPrice: resolvedPrice },
         quantity,
         comboId,
         resolveVariantName(selectedVariants),
-        null,
+        fsId,
         null
       );
       const payload = {
@@ -371,12 +372,13 @@ export default function ProductDetailPage() {
             downpaymentPercent:   product.downpaymentPercent ?? null,
             downpaymentMinQty:    product.downpaymentMinQty ?? null,
           },
-          variantId:   comboId,
-          variantName: resolveVariantName(selectedVariants),
-          qty:         quantity,
-          unitPrice:   resolvedPrice,
-          designUrl:   null,
-          designNotes: null,
+          variantId:    comboId,
+          variantName:  resolveVariantName(selectedVariants),
+          qty:          quantity,
+          unitPrice:    resolvedPrice,
+          ...(fsId ? { flashSaleId: String(fsId) } : {}),
+          designUrl:    null,
+          designNotes:  null,
         }],
         notes:     '',
         designUrl: null,

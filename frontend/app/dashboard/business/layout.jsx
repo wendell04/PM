@@ -1532,594 +1532,153 @@ export default function BusinessDashboardLayout({ children }) {
       {profileModalOpen && (
         <div
           className="profile-modal-overlay profile-modal-overlay--slide"
-          onClick={() => {
-            setProfileModalOpen(false);
-            setShowAvatarFallback(false);
-            setPasswordForm({
-              currentPassword: "",
-              newPassword: "",
-              confirmPassword: "",
-            });
-            setPasswordError("");
-            setPasswordSuccess("");
-            setActiveTab("personal");
-            setIsEditingProfile(false);
-            setProfileSnapshot(null);
-          }}
+          onClick={() => { setProfileModalOpen(false); setShowAvatarFallback(false); }}
         >
           <div className="profile-modal profile-modal--slide" onClick={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
-            <div className="profile-modal-header">
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "1rem" }}
-              >
-                <div style={{ position: "relative", flexShrink: 0 }}>
-                  {currentUser?.avatar && !showAvatarFallback ? (
-                    <Image
-                      src={currentUser.avatar}
-                      alt="avatar"
-                      width={48}
-                      height={48}
-                      onError={() => setShowAvatarFallback(true)}
-                      style={{
-                        borderRadius: "50%",
-                        objectFit: "cover",
-                        display: "block",
-                        border: "2px solid var(--gold)",
-                      }}
-                      unoptimized
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: "48px",
-                        height: "48px",
-                        borderRadius: "50%",
-                        background: "var(--gold)",
-                        color: "var(--black)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: 700,
-                        fontSize: "1.2rem",
-                        border: "2px solid var(--gold)",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {getInitials(currentUser)}
-                    </div>
-                  )}
-                  <label
-                    htmlFor="avatar-upload"
-                    style={{
-                      position: "absolute",
-                      bottom: 0,
-                      right: 0,
-                      width: "24px",
-                      height: "24px",
-                      borderRadius: "50%",
-                      background: "var(--gold)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      cursor: isUploadingAvatar ? "not-allowed" : "pointer",
-                      border: "2px solid var(--dark2)",
-                      zIndex: 2,
-                    }}
-                  >
-                    {isUploadingAvatar ? (
-                      <span
-                        className="spinner"
-                        style={{ width: "10px", height: "10px" }}
-                      />
-                    ) : (
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="var(--black)"
-                        strokeWidth="2.5"
-                      >
-                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                        <circle cx="12" cy="13" r="4" />
-                      </svg>
-                    )}
-                  </label>
-                  <input
-                    id="avatar-upload"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    style={{ display: "none" }}
-                    disabled={isUploadingAvatar}
-                    onChange={handleAvatarUpload}
-                  />
-                </div>
-                <div>
-                  <h2 style={{ margin: 0 }}>Profile</h2>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: "0.85rem",
-                      color: "var(--gray)",
-                      marginTop: "0.15rem",
-                    }}
-                  >
-                    {currentUser?.firstName && currentUser?.lastName
-                      ? `${currentUser.firstName} ${currentUser.lastName}`
-                      : currentUser?.email || ""}
-                  </p>
-                  <span
-                    style={{
-                      display: "inline-block",
-                      padding: "2px 10px",
-                      borderRadius: "999px",
-                      border: "1px solid var(--gold)",
-                      color: "var(--gold)",
-                      fontSize: "0.7rem",
-                      fontWeight: 700,
-                      letterSpacing: "0.08em",
-                      textTransform: "uppercase",
-                      marginTop: "4px",
-                    }}
-                  >
-                    {{
-                      admin: "Admin",
-                      owner: "Owner",
-                      salesRep: "Sales Rep",
-                      productionOperator: "Production",
-                      qualityControl: "QC Staff",
-                      cashier: "Cashier",
-                      inventoryManager: "Inventory",
-                    }[currentUser?.role] ?? "Staff"}
-                  </span>
-                </div>
-              </div>
+
+            {/* ── Close button ── */}
+            <div style={{ display: "flex", justifyContent: "flex-end", padding: "0.75rem 0.875rem 0" }}>
               <button
                 className="profile-modal-close"
-                onClick={() => {
-                  setProfileModalOpen(false);
-                  setShowAvatarFallback(false);
-                  setPasswordForm({
-                    currentPassword: "",
-                    newPassword: "",
-                    confirmPassword: "",
-                  });
-                  setPasswordError("");
-                  setPasswordSuccess("");
-                  setActiveTab("personal");
-                  setIsEditingProfile(false);
-                  setProfileSnapshot(null);
-                }}
+                style={{ width: "30px", height: "30px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--dark2)", fontSize: "1rem" }}
+                onClick={() => { setProfileModalOpen(false); setShowAvatarFallback(false); }}
               >
                 ✕
               </button>
             </div>
 
-            {/* Avatar error message */}
-            {avatarError && (
-              <div
-                style={{
-                  margin: "0 1.5rem",
-                  padding: "0.5rem 0.75rem",
-                  background: "rgba(239,68,68,0.1)",
-                  border: "1px solid rgba(239,68,68,0.3)",
-                  borderRadius: "8px",
-                  color: "var(--red)",
-                  fontSize: "0.8rem",
-                }}
-              >
-                {avatarError}
+            {/* ── Hero: avatar + name + role ── */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "1rem 1.5rem 1.25rem", borderBottom: "1px solid var(--border)" }}>
+              {/* Avatar — display only */}
+              <div style={{ position: "relative", marginBottom: "0.875rem" }}>
+                {currentUser?.avatar && !showAvatarFallback ? (
+                  <Image
+                    src={currentUser.avatar}
+                    alt="avatar"
+                    width={76}
+                    height={76}
+                    onError={() => setShowAvatarFallback(true)}
+                    style={{ borderRadius: "50%", objectFit: "cover", display: "block", border: "2px solid var(--gold)" }}
+                    unoptimized
+                  />
+                ) : (
+                  <div style={{ width: "76px", height: "76px", borderRadius: "50%", background: "var(--gold)", color: "var(--black)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "1.7rem", border: "2px solid var(--gold)" }}>
+                    {getInitials(currentUser)}
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* Avatar success message */}
-            {avatarSuccess && (
-              <div
-                style={{
-                  margin: "0 1.5rem",
-                  padding: "0.5rem 0.75rem",
-                  borderRadius: "8px",
-                  fontSize: "0.8rem",
-                  background:
-                    "color-mix(in srgb, var(--green) 15%, transparent)",
-                  border: "1px solid var(--green)",
-                  color: "var(--green)",
-                }}
-              >
-                Avatar updated successfully.
+              {/* Name */}
+              <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "var(--white)", textAlign: "center", lineHeight: 1.3 }}>
+                {currentUser?.firstName && currentUser?.lastName
+                  ? `${currentUser.firstName} ${currentUser.lastName}`
+                  : currentUser?.email || "—"}
               </div>
-            )}
 
-            {/* Quick actions */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.5rem",
-                padding: "0 1.25rem 1rem",
-                borderBottom: "1px solid var(--border)",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("personal");
-                  setProfileSnapshot({ ...profileForm });
-                  setIsEditingProfile(true);
-                }}
-                style={{
-                  width: "100%",
-                  padding: "0.5rem 0.75rem",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border)",
-                  background: "var(--dark3)",
-                  color: "var(--white)",
-                  fontSize: "0.8125rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  textAlign: "left",
-                }}
-              >
-                Edit profile
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setProfileModalOpen(false);
-                  handleLogout();
-                }}
-                style={{
-                  width: "100%",
-                  padding: "0.5rem 0.75rem",
-                  borderRadius: "8px",
-                  border: "1px solid rgba(239,68,68,0.25)",
-                  background: "rgba(239,68,68,0.08)",
-                  color: "var(--red)",
-                  fontSize: "0.8125rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  textAlign: "left",
-                }}
-              >
-                Sign out
-              </button>
-            </div>
+              {/* Email */}
+              <div style={{ fontSize: "0.78rem", color: "var(--gray)", marginTop: "0.2rem", textAlign: "center" }}>
+                {currentUser?.email || ""}
+              </div>
 
-            {/* Tabs */}
-            <div className="profile-tabs">
-              <button
-                className={`profile-tab ${activeTab === "personal" ? "active" : ""}`}
-                onClick={() => setActiveTab("personal")}
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-                Personal
-              </button>
-              <button
-                className={`profile-tab ${activeTab === "security" ? "active" : ""}`}
-                onClick={() => setActiveTab("security")}
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-                Security
-              </button>
+              {/* Role badge */}
+              <span style={{ display: "inline-block", marginTop: "0.6rem", padding: "2px 10px", borderRadius: "999px", border: "1px solid var(--gold)", color: "var(--gold)", fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                {{ admin: "Admin", owner: "Owner", salesRep: "Sales Rep", productionOperator: "Production", qualityControl: "QC Staff", cashier: "Cashier", inventoryManager: "Inventory" }[currentUser?.role] ?? "Staff"}
+              </span>
             </div>
 
             <div className="profile-modal-body">
-              {saveSuccess && (
-                <div className="profile-success-message">
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                    <polyline points="22 4 12 14.01 9 11.01" />
-                  </svg>
-                  {saveSuccess}
+              {/* ── Account Summary (display-only) ── */}
+              <div>
+                <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "0.25rem" }}>
+                  Account Details
+                </span>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {[
+                    { label: "Full Name", value: [profileForm.firstName, profileForm.lastName].filter(Boolean).join(" ") || "—" },
+                    { label: "Email", value: profileForm.email || "—" },
+                    { label: "Phone", value: profileForm.phoneNumber || "—" },
+                    { label: "Address", value: profileForm.address || "—" },
+                  ].map((row, i, arr) => (
+                    <div key={row.label} style={{ display: "flex", flexDirection: "column", padding: "0.75rem 0", borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
+                      <span style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>{row.label}</span>
+                      <span style={{ fontSize: "0.875rem", color: "var(--white)", wordBreak: "break-word" }}>{row.value}</span>
+                    </div>
+                  ))}
                 </div>
-              )}
+              </div>
 
-              {saveError && (
-                <div className="profile-error-message">
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
+              {/* ── Manage Settings link ── */}
+              <div style={{ marginTop: "1.25rem" }}>
+                <Link
+                  href="/dashboard/business/settings"
+                  onClick={() => setProfileModalOpen(false)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", width: "100%", padding: "0.6rem", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--dark2)", color: "var(--white)", fontSize: "0.8125rem", fontWeight: 600, textDecoration: "none" }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                   </svg>
-                  {saveError}
-                </div>
-              )}
+                  Manage Settings
+                </Link>
+              </div>
 
-              {/* Personal Info Tab */}
-              {activeTab === "personal" && (
+              {/* ── DEAD CODE BELOW — kept for reference, never rendered ── */}
+              {false && activeTab === "personal" && (
                 <div>
-                  {/* Section header with Edit Profile button */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: "1.25rem",
-                    }}
-                  >
-                    <h2
-                      style={{
-                        margin: 0,
-                        fontSize: "1.25rem",
-                        color: "var(--white)",
-                      }}
-                    >
-                      Personal Information
-                    </h2>
+                  {/* Section header */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
+                    <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      Account Details
+                    </span>
                     {!isEditingProfile ? (
                       <button
                         type="button"
-                        onClick={() => {
-                          setProfileSnapshot({ ...profileForm });
-                          setIsEditingProfile(true);
-                        }}
-                        style={{
-                          padding: "0.5rem 1rem",
-                          background: "transparent",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          color: "var(--white)",
-                          fontSize: "0.875rem",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                        }}
+                        onClick={() => { setProfileSnapshot({ ...profileForm }); setIsEditingProfile(true); }}
+                        style={{ padding: "0.3rem 0.75rem", background: "var(--dark2)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", fontSize: "0.75rem", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "0.375rem" }}
                       >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                         </svg>
-                        Edit Profile
+                        Edit
                       </button>
                     ) : (
                       <button
                         type="button"
-                        onClick={() => {
-                          if (profileSnapshot) {
-                            setProfileForm(profileSnapshot);
-                          }
-                          setIsEditingProfile(false);
-                        }}
-                        style={{
-                          padding: "0.5rem 1rem",
-                          background: "transparent",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          color: "var(--gray)",
-                          fontSize: "0.875rem",
-                          cursor: "pointer",
-                        }}
+                        onClick={() => { if (profileSnapshot) setProfileForm(profileSnapshot); setIsEditingProfile(false); }}
+                        style={{ padding: "0.3rem 0.75rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--gray)", fontSize: "0.75rem", cursor: "pointer" }}
                       >
-                        Cancel Editing
+                        Cancel
                       </button>
                     )}
                   </div>
 
-                  {/* Success/Error messages */}
-                  {saveSuccess && (
-                    <div
-                      style={{
-                        marginBottom: "1rem",
-                        padding: "0.75rem 1rem",
-                        background: "rgba(34, 197, 94, 0.1)",
-                        border: "1px solid rgba(34, 197, 94, 0.3)",
-                        borderRadius: "8px",
-                        color: "var(--gold)",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                      }}
-                    >
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                        <polyline points="22 4 12 14.01 9 11.01" />
-                      </svg>
-                      {saveSuccess}
+                  {/* Save/Error feedback */}
+                  {(saveSuccess || saveError) && (
+                    <div style={{ marginBottom: "0.875rem", padding: "0.6rem 0.875rem", borderRadius: "8px", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.5rem", background: saveSuccess ? "rgba(74,222,128,0.1)" : "rgba(239,68,68,0.1)", border: `1px solid ${saveSuccess ? "rgba(74,222,128,0.3)" : "rgba(239,68,68,0.3)"}`, color: saveSuccess ? "var(--green)" : "var(--red)" }}>
+                      {saveSuccess || saveError}
                     </div>
                   )}
 
-                  {saveError && (
-                    <div
-                      style={{
-                        marginBottom: "1rem",
-                        padding: "0.75rem 1rem",
-                        background: "rgba(239, 68, 68, 0.1)",
-                        border: "1px solid rgba(239, 68, 68, 0.3)",
-                        borderRadius: "8px",
-                        color: "var(--red)",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                      }}
-                    >
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <circle cx="12" cy="12" r="10" />
-                        <line x1="12" y1="8" x2="12" y2="12" />
-                        <line x1="12" y1="16" x2="12.01" y2="16" />
-                      </svg>
-                      {saveError}
-                    </div>
-                  )}
-
-                  {/* Read-only display when NOT editing */}
+                  {/* Read-only display */}
                   {!isEditingProfile && (
-                    <>
-                      {!currentUser ? (
-                        <div
-                          style={{
-                            color: "var(--gray)",
-                            fontSize: "0.875rem",
-                            padding: "0.5rem 0",
-                          }}
-                        >
-                          Loading profile...
-                        </div>
-                      ) : (
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            gap: "1rem",
-                            marginBottom: "1rem",
-                          }}
-                        >
-                          <div>
-                            <div
-                              style={{
-                                fontSize: "0.8rem",
-                                color: "var(--gray)",
-                                marginBottom: "0.25rem",
-                              }}
-                            >
-                              First Name
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "0.95rem",
-                                color: "var(--white)",
-                              }}
-                            >
-                              {profileForm.firstName || "—"}
-                            </div>
+                    !currentUser ? (
+                      <div style={{ color: "var(--gray)", fontSize: "0.875rem" }}>Loading profile...</div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        {[
+                          { label: "Full Name", value: [profileForm.firstName, profileForm.lastName].filter(Boolean).join(" ") || "—" },
+                          { label: "Email", value: profileForm.email || "—" },
+                          { label: "Phone", value: profileForm.phoneNumber || "—" },
+                          { label: "Address", value: profileForm.address || "—" },
+                        ].map((row, i, arr) => (
+                          <div key={row.label} style={{ display: "flex", flexDirection: "column", padding: "0.75rem 0", borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
+                            <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>{row.label}</span>
+                            <span style={{ fontSize: "0.875rem", color: "var(--white)", wordBreak: "break-word" }}>{row.value}</span>
                           </div>
-                          <div>
-                            <div
-                              style={{
-                                fontSize: "0.8rem",
-                                color: "var(--gray)",
-                                marginBottom: "0.25rem",
-                              }}
-                            >
-                              Last Name
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "0.95rem",
-                                color: "var(--white)",
-                              }}
-                            >
-                              {profileForm.lastName || "—"}
-                            </div>
-                          </div>
-                          <div style={{ gridColumn: "1 / -1" }}>
-                            <div
-                              style={{
-                                fontSize: "0.8rem",
-                                color: "var(--gray)",
-                                marginBottom: "0.25rem",
-                              }}
-                            >
-                              Email
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "0.95rem",
-                                color: "var(--white)",
-                              }}
-                            >
-                              {profileForm.email || "—"}
-                            </div>
-                          </div>
-                          <div>
-                            <div
-                              style={{
-                                fontSize: "0.8rem",
-                                color: "var(--gray)",
-                                marginBottom: "0.25rem",
-                              }}
-                            >
-                              Phone
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "0.95rem",
-                                color: "var(--white)",
-                              }}
-                            >
-                              {profileForm.phoneNumber || "—"}
-                            </div>
-                          </div>
-                          <div>
-                            <div
-                              style={{
-                                fontSize: "0.8rem",
-                                color: "var(--gray)",
-                                marginBottom: "0.25rem",
-                              }}
-                            >
-                              Address
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "0.95rem",
-                                color: "var(--white)",
-                              }}
-                            >
-                              {profileForm.address || "—"}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </>
+                        ))}
+                      </div>
+                    )
                   )}
 
                   {/* Editable form fields — only when editing */}
@@ -2999,6 +2558,22 @@ export default function BusinessDashboardLayout({ children }) {
                   </button>
                 </div>
               )}
+            </div>
+
+            {/* ── Sign Out footer ── */}
+            <div style={{ padding: "0.875rem 1.25rem", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => { setProfileModalOpen(false); handleLogout(); }}
+                style={{ width: "100%", padding: "0.6rem", borderRadius: "8px", border: "1px solid rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.07)", color: "var(--red)", fontSize: "0.8125rem", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/>
+                  <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+                Sign Out
+              </button>
             </div>
           </div>
         </div>

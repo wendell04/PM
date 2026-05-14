@@ -1,0 +1,1033 @@
+[
+    {
+        "_id": {
+            "$oid": "69ef17784412ada34e0a0823"
+        },
+        "isActive": true,
+        "isPublished": true,
+        "isArchived": false,
+        "isCustom": true,
+        "name": "Custom Mugs",
+        "category": "Mugs",
+        "subCategoryCode": "CM",
+        "subCategoryName": "Custom Mugs",
+        "description": "Make every sip more personal with our Custom Mugs perfect for gifts, branding, or everyday use. Crafted from high-quality ceramic, these mugs are designed for durability and vibrant, long-lasting prints.",
+        "priceType": "tiered",
+        "variantGroups": [
+            {
+                "name": "Type",
+                "options": [
+                    {
+                        "value": "Mugs - Inner Color 11oz",
+                        "_id": "69ee92d6e1134448c600e512"
+                    },
+                    {
+                        "value": "Mugs - Magic Mug 11oz",
+                        "_id": "69ee92d7acb156a61b04c673"
+                    },
+                    {
+                        "value": "Mugs - Ceramic 11oz",
+                        "_id": "69ee92d5acb156a61b04c672"
+                    }
+                ],
+                "_id": "bom-variant"
+            }
+        ],
+        "combinations": [
+            {
+                "combo": {
+                    "bom-variant": "Mugs - Inner Color 11oz"
+                },
+                "label": "Mugs - Inner Color 11oz",
+                "_id": "69ee92d6e1134448c600e512"
+            },
+            {
+                "combo": {
+                    "bom-variant": "Mugs - Magic Mug 11oz"
+                },
+                "label": "Mugs - Magic Mug 11oz",
+                "_id": "69ee92d7acb156a61b04c673"
+            },
+            {
+                "combo": {
+                    "bom-variant": "Mugs - Ceramic 11oz"
+                },
+                "label": "Mugs - Ceramic 11oz",
+                "_id": "69ee92d5acb156a61b04c672"
+            }
+        ],
+        "trackInventory": true,
+        "stock": null,
+        "thumbnail": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777161834\/pmp-products\/mestwky2e0udlmxupptu.jpg",
+        "bomGroupName": "Custom Mugs",
+        "variantStock": {
+            "69ee92d6e1134448c600e512": 50,
+            "69ee92d7acb156a61b04c673": 50,
+            "69ee92d5acb156a61b04c672": 50
+        },
+        "priceTiers": [
+            {
+                "minQty": 1,
+                "maxQty": 20,
+                "prices": {
+                    "69ee92d5acb156a61b04c672": "95",
+                    "69ee92d6e1134448c600e512": "100",
+                    "69ee92d7acb156a61b04c673": "200"
+                },
+                "_id": 1
+            },
+            {
+                "minQty": 21,
+                "maxQty": "30",
+                "prices": {
+                    "69ee92d5acb156a61b04c672": "90",
+                    "69ee92d6e1134448c600e512": "95",
+                    "69ee92d7acb156a61b04c673": "180"
+                },
+                "_id": 1777276131879
+            },
+            {
+                "minQty": "31",
+                "maxQty": "50",
+                "prices": {
+                    "69ee92d5acb156a61b04c672": "85",
+                    "69ee92d6e1134448c600e512": "90",
+                    "69ee92d7acb156a61b04c673": "170"
+                },
+                "_id": 1777516736050
+            },
+            {
+                "minQty": 51,
+                "maxQty": "100",
+                "prices": {
+                    "69ee92d5acb156a61b04c672": "80",
+                    "69ee92d6e1134448c600e512": "85",
+                    "69ee92d7acb156a61b04c673": "160"
+                },
+                "_id": 1777516745778
+            },
+            {
+                "minQty": 101,
+                "maxQty": "300",
+                "prices": {
+                    "69ee92d5acb156a61b04c672": "75",
+                    "69ee92d6e1134448c600e512": "80",
+                    "69ee92d7acb156a61b04c673": "150"
+                },
+                "_id": 1777516747985
+            },
+            {
+                "minQty": 301,
+                "maxQty": "500",
+                "prices": {
+                    "69ee92d5acb156a61b04c672": "65",
+                    "69ee92d6e1134448c600e512": "75",
+                    "69ee92d7acb156a61b04c673": "130"
+                },
+                "_id": 1777516751393
+            },
+            {
+                "minQty": 501,
+                "maxQty": "1000",
+                "prices": {
+                    "69ee92d5acb156a61b04c672": "60",
+                    "69ee92d6e1134448c600e512": "70",
+                    "69ee92d7acb156a61b04c673": "100"
+                },
+                "_id": 1777516754522
+            }
+        ],
+        "images": [
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777161842\/pmp-products\/pvvtyvawmhz39xcgsc3f.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777161846\/pmp-products\/oppygr4egsdrm1meikdc.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777161850\/pmp-products\/tixf5yyjjk35drrc0stf.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777321801\/pmp-products\/m3fz0nyn5vagwgvyzegd.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777321805\/pmp-products\/xtsuj5ujdfhrufbjpt4s.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777321811\/pmp-products\/vteaeak4uadzcqzmjrlt.jpg"
+        ],
+        "tags": [],
+        "variantPrices": [],
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777276792488"
+            }
+        },
+        "updatedAt": {
+            "$date": {
+                "$numberLong": "1777658542622"
+            }
+        },
+        "bomId": {
+            "$oid": "69ef17784412ada34e0a0822"
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777658542624"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777276792494"
+            }
+        },
+        "variantImageUrls": {
+            "69ee92d5acb156a61b04c672": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777321801\/pmp-products\/m3fz0nyn5vagwgvyzegd.jpg",
+            "69ee92d6e1134448c600e512": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777321805\/pmp-products\/xtsuj5ujdfhrufbjpt4s.jpg",
+            "69ee92d7acb156a61b04c673": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777321811\/pmp-products\/vteaeak4uadzcqzmjrlt.jpg"
+        },
+        "designFee": 200,
+        "downpaymentPercent": 40,
+        "isMadeToOrder": false,
+        "minOrderQty": 15,
+        "requiresDownpayment": true,
+        "stockStatus": "out-of-stock",
+        "variantBackorder": {
+            "69ee92d6e1134448c600e512": false,
+            "69ee92d7acb156a61b04c673": false,
+            "69ee92d5acb156a61b04c672": false
+        },
+        "downpaymentMinQty": 10,
+        "weightGrams": null
+    },
+    {
+        "_id": {
+            "$oid": "69f01d54edfd4a2335082f02"
+        },
+        "isActive": true,
+        "isPublished": true,
+        "isArchived": false,
+        "isCustom": true,
+        "name": "Custom Mousepad",
+        "category": "Gaming Accessories",
+        "subCategoryCode": "CM",
+        "subCategoryName": "Custom Mousepad",
+        "description": "High-quality custom mousepad with full-color sublimation printing. Smooth fabric surface for precise mouse tracking with a non-slip rubber base. Perfect for personalized setups, gifts, and merch. Available in 22x18cm. Submit your design and we'll print it for you!",
+        "priceType": "tiered",
+        "variantGroups": [
+            {
+                "name": "Type",
+                "options": [
+                    {
+                        "value": "Mousepad - Round",
+                        "_id": "69f0aaa512fe472de204fc12"
+                    },
+                    {
+                        "value": "Mousepad - Rectangle 22x18 cm",
+                        "_id": "69f01913fada0756b80d6829"
+                    }
+                ],
+                "_id": "bom-variant"
+            }
+        ],
+        "combinations": [
+            {
+                "combo": {
+                    "bom-variant": "Mousepad - Round"
+                },
+                "label": "Mousepad - Round",
+                "_id": "69f0aaa512fe472de204fc12"
+            },
+            {
+                "combo": {
+                    "bom-variant": "Mousepad - Rectangle 22x18 cm"
+                },
+                "label": "Mousepad - Rectangle 22x18 cm",
+                "_id": "69f01913fada0756b80d6829"
+            }
+        ],
+        "trackInventory": true,
+        "stock": null,
+        "thumbnail": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777343860\/pmp-products\/wyhtzddra25zs4xbmmsb.jpg",
+        "bomId": {
+            "$oid": "69f01913fada0756b80d6829"
+        },
+        "bomGroupName": "Custom Mousepad",
+        "variantImageUrls": {
+            "69f01913fada0756b80d6829": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777343903\/pmp-products\/gr80nlqjwrruzdn1i6b1.webp",
+            "69f0aaa512fe472de204fc12": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777380212\/pmp-products\/geqxcxk2pxcbea059e3o.webp"
+        },
+        "priceTiers": [
+            {
+                "minQty": 1,
+                "maxQty": 20,
+                "prices": {
+                    "__base__": "100",
+                    "69f01913fada0756b80d6829": "100",
+                    "69f0aaa512fe472de204fc12": "85"
+                },
+                "_id": 1
+            },
+            {
+                "minQty": 21,
+                "maxQty": "30",
+                "prices": {
+                    "__base__": "95",
+                    "69f01913fada0756b80d6829": "95",
+                    "69f0aaa512fe472de204fc12": "80"
+                },
+                "_id": 1777343513314
+            },
+            {
+                "minQty": 31,
+                "maxQty": "50",
+                "prices": {
+                    "__base__": "90",
+                    "69f01913fada0756b80d6829": "90",
+                    "69f0aaa512fe472de204fc12": "75"
+                },
+                "_id": 1777343517254
+            },
+            {
+                "minQty": 51,
+                "maxQty": "100",
+                "prices": {
+                    "__base__": "85",
+                    "69f01913fada0756b80d6829": "85",
+                    "69f0aaa512fe472de204fc12": "70"
+                },
+                "_id": 1777343519662
+            },
+            {
+                "minQty": 101,
+                "maxQty": "300",
+                "prices": {
+                    "__base__": "80",
+                    "69f01913fada0756b80d6829": "80",
+                    "69f0aaa512fe472de204fc12": "65"
+                },
+                "_id": 1777343521965
+            },
+            {
+                "minQty": 301,
+                "maxQty": "500",
+                "prices": {
+                    "__base__": "75",
+                    "69f01913fada0756b80d6829": "75",
+                    "69f0aaa512fe472de204fc12": "60"
+                },
+                "_id": 1777343524837
+            },
+            {
+                "minQty": 501,
+                "maxQty": "1000",
+                "prices": {
+                    "__base__": "70",
+                    "69f01913fada0756b80d6829": "70",
+                    "69f0aaa512fe472de204fc12": "55"
+                },
+                "_id": 1777343527510
+            }
+        ],
+        "images": [
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777343869\/pmp-products\/yqy5jxgwx8eavzx1hmzy.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777343885\/pmp-products\/foxa4vufxtfp3g8tfloy.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777343893\/pmp-products\/twsduja5v7cbojwpqo9s.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777343900\/pmp-products\/akrsnvtqoyirplukbpl5.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777343903\/pmp-products\/gr80nlqjwrruzdn1i6b1.webp",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777380212\/pmp-products\/geqxcxk2pxcbea059e3o.webp"
+        ],
+        "tags": [],
+        "variantPrices": [],
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777343828131"
+            }
+        },
+        "updatedAt": {
+            "$date": {
+                "$numberLong": "1777643307797"
+            }
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777643307798"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777343828133"
+            }
+        },
+        "variantStock": {
+            "69f0aaa512fe472de204fc12": 50,
+            "69f01913fada0756b80d6829": 100
+        },
+        "designFee": 100,
+        "downpaymentMinQty": 10,
+        "downpaymentPercent": 50,
+        "isMadeToOrder": false,
+        "minOrderQty": 15,
+        "requiresDownpayment": true,
+        "stockStatus": "out-of-stock",
+        "variantBackorder": {
+            "69f0aaa512fe472de204fc12": false,
+            "69f01913fada0756b80d6829": false
+        },
+        "weightGrams": null
+    },
+    {
+        "_id": {
+            "$oid": "69f03b8fbdb44806dd073578"
+        },
+        "isActive": true,
+        "isPublished": true,
+        "isArchived": false,
+        "isCustom": false,
+        "name": "Scrunchies",
+        "category": "Acessories",
+        "subCategoryCode": "S",
+        "subCategoryName": "Scrunchies",
+        "description": "Custom-printed mousepad with vibrant full-color design. Smooth top surface, anti-slip rubber base. Size: 22x18cm. Just send your design we handle the rest!",
+        "priceType": "fixed",
+        "priceTiers": [],
+        "variantPrices": {
+            "69f03a9cedfd4a2335082f06": "50",
+            "69f03a9dcadbd29bad04bd7b": "50"
+        },
+        "variantGroups": [
+            {
+                "name": "Type",
+                "options": [
+                    {
+                        "value": "Scrunchies - Orange",
+                        "_id": "69f03a9cedfd4a2335082f06"
+                    },
+                    {
+                        "value": "Scrunchies - Yellow",
+                        "_id": "69f03a9dcadbd29bad04bd7b"
+                    }
+                ],
+                "_id": "bom-variant"
+            }
+        ],
+        "combinations": [
+            {
+                "combo": {
+                    "bom-variant": "Scrunchies - Orange"
+                },
+                "label": "Scrunchies - Orange",
+                "_id": "69f03a9cedfd4a2335082f06"
+            },
+            {
+                "combo": {
+                    "bom-variant": "Scrunchies - Yellow"
+                },
+                "label": "Scrunchies - Yellow",
+                "_id": "69f03a9dcadbd29bad04bd7b"
+            }
+        ],
+        "trackInventory": true,
+        "stock": null,
+        "thumbnail": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777355173\/pmp-products\/dir6gin0nrbfceuvkeqt.webp",
+        "bomGroupName": "Scrunchies",
+        "variantStock": {
+            "69f03a9cedfd4a2335082f06": 150,
+            "69f03a9dcadbd29bad04bd7b": 100
+        },
+        "variantImageUrls": {
+            "69f03a9cedfd4a2335082f06": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777355184\/pmp-products\/ppkiqpblbfcwtztxdubx.jpg",
+            "69f03a9dcadbd29bad04bd7b": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777355194\/pmp-products\/ey88m5bjmvlsygugckoi.jpg"
+        },
+        "images": [
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777355179\/pmp-products\/u4ygkyoyooqduqxqsiwa.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777355184\/pmp-products\/ppkiqpblbfcwtztxdubx.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777355194\/pmp-products\/ey88m5bjmvlsygugckoi.jpg"
+        ],
+        "tags": [],
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777351567069"
+            }
+        },
+        "updatedAt": {
+            "$date": {
+                "$numberLong": "1777379898361"
+            }
+        },
+        "bomId": {
+            "$oid": "69f03b8fbdb44806dd073577"
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777379898362"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777351567071"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f136ed8e58e200e10d2ab3"
+        },
+        "isActive": true,
+        "isPublished": true,
+        "isArchived": false,
+        "isCustom": true,
+        "name": "Custom Paper Bags",
+        "category": "Bags",
+        "subCategoryCode": "CPB",
+        "subCategoryName": "Custom Paper Bags",
+        "description": "Premium custom paper bags designed for businesses, events, and personal branding. Made from durable eco friendly materials with customizable sizes, colors, handles, and high quality print options to match your style and packaging needs.",
+        "priceType": "fixed",
+        "priceTiers": [],
+        "variantPrices": {
+            "69f1357befaa2b948106bac7": "30",
+            "69f1357c8982d1118e022fed": "25",
+            "69f1357defaa2b948106bac8": "20"
+        },
+        "variantGroups": [
+            {
+                "name": "Type",
+                "options": [
+                    {
+                        "value": "Paper Bag - Large A3",
+                        "_id": "69f1357befaa2b948106bac7"
+                    },
+                    {
+                        "value": "Paper Bag - Medium A4",
+                        "_id": "69f1357c8982d1118e022fed"
+                    },
+                    {
+                        "value": "Paper Bag - Small A5",
+                        "_id": "69f1357defaa2b948106bac8"
+                    }
+                ],
+                "_id": "bom-variant"
+            }
+        ],
+        "combinations": [
+            {
+                "combo": {
+                    "bom-variant": "Paper Bag - Large A3"
+                },
+                "label": "Paper Bag - Large A3",
+                "_id": "69f1357befaa2b948106bac7"
+            },
+            {
+                "combo": {
+                    "bom-variant": "Paper Bag - Medium A4"
+                },
+                "label": "Paper Bag - Medium A4",
+                "_id": "69f1357c8982d1118e022fed"
+            },
+            {
+                "combo": {
+                    "bom-variant": "Paper Bag - Small A5"
+                },
+                "label": "Paper Bag - Small A5",
+                "_id": "69f1357defaa2b948106bac8"
+            }
+        ],
+        "trackInventory": true,
+        "stock": null,
+        "thumbnail": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777415912\/pmp-products\/sd5flw1nb7pyfmivrdel.webp",
+        "bomGroupName": "Custom Paper Bags",
+        "variantStock": {
+            "69f1357befaa2b948106bac7": 50,
+            "69f1357c8982d1118e022fed": 40,
+            "69f1357defaa2b948106bac8": 50
+        },
+        "variantImageUrls": [],
+        "images": [
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777415915\/pmp-products\/wqvbdm7abdyzlms39uwp.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777415917\/pmp-products\/cgcmxhxu2w9xv1a5olam.webp"
+        ],
+        "tags": [],
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777415917025"
+            }
+        },
+        "updatedAt": {
+            "$date": {
+                "$numberLong": "1777532958687"
+            }
+        },
+        "bomId": {
+            "$oid": "69f136ed8e58e200e10d2ab2"
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777532958689"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777415917026"
+            }
+        },
+        "designFee": 100,
+        "downpaymentPercent": null,
+        "isMadeToOrder": false,
+        "minOrderQty": 15,
+        "requiresDownpayment": false,
+        "stockStatus": "out-of-stock",
+        "variantBackorder": {
+            "69f1357befaa2b948106bac7": false,
+            "69f1357c8982d1118e022fed": false,
+            "69f1357defaa2b948106bac8": false
+        },
+        "downpaymentMinQty": null
+    },
+    {
+        "_id": {
+            "$oid": "69f3a127c739ecea740cdaf7"
+        },
+        "isActive": true,
+        "isPublished": true,
+        "isArchived": false,
+        "isCustom": false,
+        "name": "Salamin",
+        "category": "Acessories",
+        "subCategoryCode": "S",
+        "subCategoryName": "Salamin",
+        "description": "High-definition glass ensures color accuracy and unmatched clarity.",
+        "priceType": "fixed",
+        "priceTiers": [],
+        "variantPrices": {
+            "69f39ffd3b09cbb58b04c585": "75",
+            "69f39ffdc739ecea740cdaf5": "90"
+        },
+        "variantGroups": [
+            {
+                "name": "Type",
+                "options": [
+                    {
+                        "value": "Salamin - Rough",
+                        "_id": "69f39ffd3b09cbb58b04c585"
+                    },
+                    {
+                        "value": "Salamin - Soft",
+                        "_id": "69f39ffdc739ecea740cdaf5"
+                    }
+                ],
+                "_id": "bom-variant"
+            }
+        ],
+        "combinations": [
+            {
+                "combo": {
+                    "bom-variant": "Salamin - Rough"
+                },
+                "label": "Salamin - Rough",
+                "_id": "69f39ffd3b09cbb58b04c585"
+            },
+            {
+                "combo": {
+                    "bom-variant": "Salamin - Soft"
+                },
+                "label": "Salamin - Soft",
+                "_id": "69f39ffdc739ecea740cdaf5"
+            }
+        ],
+        "trackInventory": true,
+        "stock": null,
+        "thumbnail": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777576236\/pmp-products\/walkxazoskekv4bspumo.jpg",
+        "bomGroupName": "Salamin",
+        "variantStock": {
+            "69f39ffd3b09cbb58b04c585": 40,
+            "69f39ffdc739ecea740cdaf5": 0
+        },
+        "variantImageUrls": {
+            "69f39ffd3b09cbb58b04c585": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777576245\/pmp-products\/fjlg1qtfw8r1bkmj2riu.jpg",
+            "69f39ffdc739ecea740cdaf5": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777576249\/pmp-products\/w66zbma9mtesiynn3psk.jpg"
+        },
+        "isMadeToOrder": false,
+        "minOrderQty": null,
+        "designFee": null,
+        "variantBackorder": {
+            "69f39ffd3b09cbb58b04c585": false,
+            "69f39ffdc739ecea740cdaf5": false
+        },
+        "requiresDownpayment": false,
+        "downpaymentPercent": null,
+        "images": [
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777576245\/pmp-products\/fjlg1qtfw8r1bkmj2riu.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777576249\/pmp-products\/w66zbma9mtesiynn3psk.jpg"
+        ],
+        "stockStatus": "out-of-stock",
+        "tags": [],
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777574183629"
+            }
+        },
+        "updatedAt": {
+            "$date": {
+                "$numberLong": "1777766688876"
+            }
+        },
+        "bomId": {
+            "$oid": "69f3a127c739ecea740cdaf6"
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777766688878"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777574183631"
+            }
+        },
+        "weightGrams": null
+    },
+    {
+        "_id": {
+            "$oid": "69f3a909ba03ccd6ce039bf0"
+        },
+        "isActive": true,
+        "isPublished": true,
+        "isArchived": false,
+        "isCustom": false,
+        "name": "Graphic Tees",
+        "category": "Garments",
+        "subCategoryCode": "GT",
+        "subCategoryName": "Graphic Tees",
+        "description": "Wear your vibe. Our graphic tees combine bold, original artwork with ultra-soft, breathable fabrics.",
+        "priceType": "fixed",
+        "priceTiers": [],
+        "variantPrices": {
+            "69f3a6eeba03ccd6ce039beb": "280",
+            "69f3a6ee3b09cbb58b04c58c": "280",
+            "69f3a6eeba03ccd6ce039bec": "280",
+            "69f3a6ef3b09cbb58b04c58d": "280",
+            "69f3a6efba03ccd6ce039bed": "330"
+        },
+        "variantGroups": [
+            {
+                "name": "Type",
+                "options": [
+                    {
+                        "value": "T-Shirts - Cotton L",
+                        "_id": "69f3a6eeba03ccd6ce039beb"
+                    },
+                    {
+                        "value": "T-Shirts - Cotton M",
+                        "_id": "69f3a6ee3b09cbb58b04c58c"
+                    },
+                    {
+                        "value": "T-Shirts - Cotton S",
+                        "_id": "69f3a6eeba03ccd6ce039bec"
+                    },
+                    {
+                        "value": "T-Shirts - Cotton XL",
+                        "_id": "69f3a6ef3b09cbb58b04c58d"
+                    },
+                    {
+                        "value": "T-Shirts - Cotton XXL",
+                        "_id": "69f3a6efba03ccd6ce039bed"
+                    }
+                ],
+                "_id": "bom-variant"
+            }
+        ],
+        "combinations": [
+            {
+                "combo": {
+                    "bom-variant": "T-Shirts - Cotton L"
+                },
+                "label": "T-Shirts - Cotton L",
+                "_id": "69f3a6eeba03ccd6ce039beb"
+            },
+            {
+                "combo": {
+                    "bom-variant": "T-Shirts - Cotton M"
+                },
+                "label": "T-Shirts - Cotton M",
+                "_id": "69f3a6ee3b09cbb58b04c58c"
+            },
+            {
+                "combo": {
+                    "bom-variant": "T-Shirts - Cotton S"
+                },
+                "label": "T-Shirts - Cotton S",
+                "_id": "69f3a6eeba03ccd6ce039bec"
+            },
+            {
+                "combo": {
+                    "bom-variant": "T-Shirts - Cotton XL"
+                },
+                "label": "T-Shirts - Cotton XL",
+                "_id": "69f3a6ef3b09cbb58b04c58d"
+            },
+            {
+                "combo": {
+                    "bom-variant": "T-Shirts - Cotton XXL"
+                },
+                "label": "T-Shirts - Cotton XXL",
+                "_id": "69f3a6efba03ccd6ce039bed"
+            }
+        ],
+        "trackInventory": true,
+        "stock": null,
+        "thumbnail": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777576195\/pmp-products\/ch8vuqcir0agxf0aabhv.webp",
+        "bomGroupName": "Graphic Tees",
+        "variantStock": {
+            "69f3a6eeba03ccd6ce039beb": 10,
+            "69f3a6ee3b09cbb58b04c58c": 10,
+            "69f3a6eeba03ccd6ce039bec": 10,
+            "69f3a6ef3b09cbb58b04c58d": 10,
+            "69f3a6efba03ccd6ce039bed": 10
+        },
+        "variantImageUrls": [],
+        "isMadeToOrder": false,
+        "minOrderQty": null,
+        "designFee": null,
+        "variantBackorder": {
+            "69f3a6eeba03ccd6ce039beb": false,
+            "69f3a6ee3b09cbb58b04c58c": false,
+            "69f3a6eeba03ccd6ce039bec": false,
+            "69f3a6ef3b09cbb58b04c58d": false,
+            "69f3a6efba03ccd6ce039bed": false
+        },
+        "requiresDownpayment": false,
+        "downpaymentPercent": null,
+        "images": [
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777576196\/pmp-products\/mtwykg6nkr7qw9za1kub.webp",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777576198\/pmp-products\/kchibl9k7hhqjfoalnga.webp",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777576200\/pmp-products\/lhnbbcswdnyaqwcrafuh.webp"
+        ],
+        "stockStatus": "out-of-stock",
+        "tags": [],
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777576201114"
+            }
+        },
+        "updatedAt": {
+            "$date": {
+                "$numberLong": "1777638228475"
+            }
+        },
+        "bomId": {
+            "$oid": "69f3a909ba03ccd6ce039bef"
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777638228475"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777576201115"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f3b547787c8bb6d00c0b74"
+        },
+        "isActive": true,
+        "isPublished": true,
+        "isArchived": false,
+        "isCustom": false,
+        "name": "Bow Tied Ribbon",
+        "category": "Acessories",
+        "subCategoryCode": "BTR",
+        "subCategoryName": "Bow Tied Ribbon",
+        "description": "Our pre-tied ribbon bows offer a professional, uniform look every time.",
+        "priceType": "fixed",
+        "price": "30",
+        "priceTiers": [],
+        "variantGroups": [],
+        "combinations": [],
+        "trackInventory": true,
+        "stock": 30,
+        "thumbnail": "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777579329\/pmp-products\/mkeoccnsyrvl3fdpnasv.webp",
+        "bomId": {
+            "$oid": "69f3b3f0fb3f66926d0523d5"
+        },
+        "bomGroupName": "Bow Tied Ribbon",
+        "variantImageUrls": [],
+        "isMadeToOrder": false,
+        "minOrderQty": null,
+        "designFee": null,
+        "requiresDownpayment": false,
+        "downpaymentPercent": null,
+        "images": [
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777579332\/pmp-products\/zqb7y2lkke45oot6zteq.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777579334\/pmp-products\/unv45mmqsbsz082obo2x.jpg",
+            "https:\/\/res.cloudinary.com\/dtwzbqrdy\/image\/upload\/v1777579327\/pmp-products\/zroeppx14ly8nzdb0mnw.jpg"
+        ],
+        "stockStatus": "in-stock",
+        "tags": [],
+        "variantPrices": [],
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777579335598"
+            }
+        },
+        "updatedAt": {
+            "$date": {
+                "$numberLong": "1777579520909"
+            }
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777579520910"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777579335601"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f6b510d71490a674086b34"
+        },
+        "isActive": false,
+        "isPublished": true,
+        "isArchived": true,
+        "isCustom": true,
+        "name": "Binding",
+        "category": "Binding Services",
+        "subCategoryCode": "B",
+        "subCategoryName": "Binding",
+        "description": "Binding adawdad",
+        "priceType": "fixed",
+        "priceTiers": [],
+        "variantPrices": {
+            "69f04aaecadbd29bad04bd8d": "50",
+            "69f04ab654e2fa86f30f6de5": "40",
+            "69f04aa9edfd4a2335082f17": "40",
+            "69f04aa6bdb44806dd07358a": "50",
+            "69f04aa0edfd4a2335082f16": "50",
+            "69f04aab54e2fa86f30f6de4": "60"
+        },
+        "variantGroups": [
+            {
+                "name": "Type",
+                "options": [
+                    {
+                        "value": "Totebag - W Zipper and Pocket M 12x14 inch",
+                        "_id": "69f04aaecadbd29bad04bd8d"
+                    },
+                    {
+                        "value": "Totebag - W Zipper and Pocket S 10x12 inch",
+                        "_id": "69f04ab654e2fa86f30f6de5"
+                    },
+                    {
+                        "value": "Totebag - Plain S 10x12 inch",
+                        "_id": "69f04aa9edfd4a2335082f17"
+                    },
+                    {
+                        "value": "Totebag - Plain M 12x14 inch",
+                        "_id": "69f04aa6bdb44806dd07358a"
+                    },
+                    {
+                        "value": "Totebag - Plain L 14x16 inch",
+                        "_id": "69f04aa0edfd4a2335082f16"
+                    },
+                    {
+                        "value": "Totebag - W Zipper and Pocket L 14x16 inch",
+                        "_id": "69f04aab54e2fa86f30f6de4"
+                    }
+                ],
+                "_id": "bom-variant"
+            }
+        ],
+        "combinations": [
+            {
+                "combo": {
+                    "bom-variant": "Totebag - W Zipper and Pocket M 12x14 inch"
+                },
+                "label": "Totebag - W Zipper and Pocket M 12x14 inch",
+                "_id": "69f04aaecadbd29bad04bd8d"
+            },
+            {
+                "combo": {
+                    "bom-variant": "Totebag - W Zipper and Pocket S 10x12 inch"
+                },
+                "label": "Totebag - W Zipper and Pocket S 10x12 inch",
+                "_id": "69f04ab654e2fa86f30f6de5"
+            },
+            {
+                "combo": {
+                    "bom-variant": "Totebag - Plain S 10x12 inch"
+                },
+                "label": "Totebag - Plain S 10x12 inch",
+                "_id": "69f04aa9edfd4a2335082f17"
+            },
+            {
+                "combo": {
+                    "bom-variant": "Totebag - Plain M 12x14 inch"
+                },
+                "label": "Totebag - Plain M 12x14 inch",
+                "_id": "69f04aa6bdb44806dd07358a"
+            },
+            {
+                "combo": {
+                    "bom-variant": "Totebag - Plain L 14x16 inch"
+                },
+                "label": "Totebag - Plain L 14x16 inch",
+                "_id": "69f04aa0edfd4a2335082f16"
+            },
+            {
+                "combo": {
+                    "bom-variant": "Totebag - W Zipper and Pocket L 14x16 inch"
+                },
+                "label": "Totebag - W Zipper and Pocket L 14x16 inch",
+                "_id": "69f04aab54e2fa86f30f6de4"
+            }
+        ],
+        "trackInventory": true,
+        "stock": null,
+        "thumbnail": null,
+        "images": [],
+        "bomGroupName": "Binding",
+        "variantStock": {
+            "69f04aaecadbd29bad04bd8d": 0,
+            "69f04ab654e2fa86f30f6de5": 0,
+            "69f04aa9edfd4a2335082f17": 0,
+            "69f04aa6bdb44806dd07358a": 0,
+            "69f04aa0edfd4a2335082f16": 0,
+            "69f04aab54e2fa86f30f6de4": 0
+        },
+        "variantImageUrls": [],
+        "isMadeToOrder": false,
+        "minOrderQty": null,
+        "designFee": null,
+        "variantBackorder": {
+            "69f04aaecadbd29bad04bd8d": false,
+            "69f04ab654e2fa86f30f6de5": false,
+            "69f04aa9edfd4a2335082f17": false,
+            "69f04aa6bdb44806dd07358a": false,
+            "69f04aa0edfd4a2335082f16": false,
+            "69f04aab54e2fa86f30f6de4": false
+        },
+        "requiresDownpayment": false,
+        "downpaymentPercent": null,
+        "weightGrams": null,
+        "stockStatus": "out-of-stock",
+        "tags": [],
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777775888946"
+            }
+        },
+        "updatedAt": {
+            "$date": {
+                "$numberLong": "1777890430580"
+            }
+        },
+        "bomId": {
+            "$oid": "69f6b510d71490a674086b33"
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1777890430581"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1777775888949"
+            }
+        }
+    }
+]

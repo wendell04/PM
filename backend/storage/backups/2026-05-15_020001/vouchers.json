@@ -1,0 +1,107 @@
+[
+    {
+        "_id": {
+            "$oid": "69e72fe2510efbe8930f7001"
+        },
+        "isActive": true,
+        "usedCount": 0,
+        "usedBy": [],
+        "code": "TAE",
+        "discountType": "percentage",
+        "discountValue": 50,
+        "minOrderAmount": 0,
+        "maxUses": null,
+        "expiresAt": {
+            "$date": {
+                "$numberLong": "1777305600000"
+            }
+        },
+        "createdBy": "69c4f730e0b481f9f207b332",
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1776758754739"
+            }
+        },
+        "updatedAt": {
+            "$date": {
+                "$numberLong": "1776758754739"
+            }
+        },
+        "updated_at": {
+            "$date": {
+                "$numberLong": "1776758754741"
+            }
+        },
+        "created_at": {
+            "$date": {
+                "$numberLong": "1776758754741"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60bdb0b6fb0be22052882"
+        },
+        "isActive": true,
+        "usedCount": 0,
+        "benefitCategory": "product",
+        "code": "MAYSAYA",
+        "benefitType": "free_item",
+        "benefitDescription": null,
+        "discountType": null,
+        "discountValue": null,
+        "minOrderAmount": null,
+        "maxUses": 1,
+        "usedBy": [],
+        "expiresAt": {
+            "$date": {
+                "$numberLong": "1777910400000"
+            }
+        },
+        "createdBy": "69c4f730e0b481f9f207b332",
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777732571086"
+            }
+        },
+        "updatedAt": {
+            "$date": {
+                "$numberLong": "1777732571086"
+            }
+        }
+    },
+    {
+        "_id": {
+            "$oid": "69f60cd55e0e9412280876a2"
+        },
+        "isActive": true,
+        "usedCount": 1,
+        "benefitCategory": "monetary",
+        "code": "SAVE20",
+        "benefitType": "percentage",
+        "benefitDescription": null,
+        "discountType": "percentage",
+        "discountValue": 19.99,
+        "minOrderAmount": 20,
+        "maxUses": 2,
+        "usedBy": [
+            "69dce6559b30b7d328029e14"
+        ],
+        "expiresAt": {
+            "$date": {
+                "$numberLong": "1777910400000"
+            }
+        },
+        "createdBy": "69c4f730e0b481f9f207b332",
+        "createdAt": {
+            "$date": {
+                "$numberLong": "1777732821988"
+            }
+        },
+        "updatedAt": {
+            "$date": {
+                "$numberLong": "1777732821988"
+            }
+        }
+    }
+]

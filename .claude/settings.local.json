@@ -37,7 +37,14 @@
       "Bash(php -l app/Http/Controllers/OrderController.php)",
       "Bash(xargs wc -l)",
       "Bash(Get-ChildItem \"d:\\\\PM\\\\backend\\\\database\\\\migrations\" -Filter \"*.php\")",
-      "Bash(Measure-Object)"
+      "Bash(Measure-Object)",
+      "Bash(Get-ChildItem -Path \"d:\\\\PM\\\\backend\\\\app\\\\Http\\\\Controllers\" -File)",
+      "Bash(Select-Object Name)",
+      "Bash(Get-ChildItem -Path \"D:\\\\PM\\\\frontend\\\\app\\\\shop\" -Recurse -File)",
+      "Bash(Get-Content \"C:\\\\Users\\\\Joji\\\\.claude\\\\projects\\\\d--PM\\\\93f41485-6377-4c41-9000-7e18ec89ec5c.jsonl\")",
+      "Bash(Select-Object -Last 100)",
+      "PowerShell(\\(Get-Content \"D:\\\\PM\\\\frontend\\\\app\\\\shop\\\\profile\\\\page.jsx\"\\).Count)",
+      "PowerShell(\\(Get-Content \"D:\\\\PM\\\\frontend\\\\app\\\\dashboard\\\\business\\\\settings\\\\page.jsx\"\\).Count)"
     ]
   }
 }
