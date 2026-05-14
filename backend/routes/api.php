@@ -91,6 +91,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/profile/password',      [ProfileController::class, 'updatePassword']);
     Route::post('/profile/avatar',       [ProfileController::class, 'updateAvatar']);
     Route::post('/profile/upload-avatar',[ProfileController::class, 'uploadAvatar']);
+    Route::delete('/profile',            [ProfileController::class, 'deleteAccount']);
 
     // ─── Orders (Customer) ────────────────────────────────────────────────────
     Route::get('/orders/my',                            [OrderController::class, 'myOrders']);

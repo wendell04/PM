@@ -34,7 +34,10 @@
       "Bash(sed -i 's/\\\\$this->isAdmin\\(\\\\$request\\)/\\\\$this->hasPermission\\(\\\\$request, '\\\\''inventory'\\\\''\\)/g' D:/PM/backend/app/Http/Controllers/MasterlistController.php)",
       "Bash(sed -i 's/\\\\$this->isAdmin\\(\\\\$request\\)/\\\\$this->hasPermission\\(\\\\$request, '\\\\''reports'\\\\''\\)/g' D:/PM/backend/app/Http/Controllers/AdminAnalyticsController.php)",
       "Bash(grep -rl 'isAdmin\\($request\\)' D:/PM/backend/app/Http/Controllers/)",
-      "Bash(php -l app/Http/Controllers/OrderController.php)"
+      "Bash(php -l app/Http/Controllers/OrderController.php)",
+      "Bash(xargs wc -l)",
+      "Bash(Get-ChildItem \"d:\\\\PM\\\\backend\\\\database\\\\migrations\" -Filter \"*.php\")",
+      "Bash(Measure-Object)"
     ]
   }
 }

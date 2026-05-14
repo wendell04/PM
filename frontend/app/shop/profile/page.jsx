@@ -727,6 +727,15 @@ export default function CustomerProfilePage() {
   // 2FA toggle state
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
 
+  // Delete account state
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteShowPassword, setDeleteShowPassword] = useState(false);
+
   // Ref to track if tab has mounted (to prevent reset on initial mount)
   const hasTabMounted = useRef(false);
 
@@ -962,6 +971,43 @@ export default function CustomerProfilePage() {
       setPasswordError(err.message || "Failed to update password");
     } finally {
       setIsSavingPassword(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== 'DELETE MY ACCOUNT') {
+      setDeleteError('Type DELETE MY ACCOUNT exactly to confirm.');
+      return;
+    }
+    if (!deletePassword) {
+      setDeleteError('Please enter your password.');
+      return;
+    }
+    setDeleteLoading(true);
+    setDeleteError('');
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+      const res = await fetch(`${API_URL}/api/profile`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ password: deletePassword, reason: deleteReason || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDeleteError(data.message || 'Failed to delete account.');
+        return;
+      }
+      // Clear all local auth state and redirect
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('auth_user');
+      sessionStorage.removeItem('auth_token');
+      sessionStorage.removeItem('auth_user');
+      logout?.();
+      router.replace('/?accountDeleted=1');
+    } catch (err) {
+      setDeleteError(err.message || 'Something went wrong. Please try again.');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -3089,6 +3135,189 @@ export default function CustomerProfilePage() {
                 twoFactorEnabled={twoFactorEnabled}
                 setTwoFactorEnabled={setTwoFactorEnabled}
               />
+            )}
+
+            {/* Delete Account — Danger Zone */}
+            {activeTab === "security" && (
+              <div style={{ maxWidth: '500px', marginTop: '2rem' }}>
+                <div style={{
+                  border: '1px solid rgba(239,68,68,0.3)',
+                  borderRadius: '10px',
+                  padding: '1rem 1.25rem',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
+                }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(239,68,68,0.85)" strokeWidth="2" strokeLinecap="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        <path d="M10 11v6"/><path d="M14 11v6"/>
+                      </svg>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'rgba(239,68,68,0.9)' }}>Delete Account</span>
+                    </div>
+                    <p style={{ margin: '0 0 0.5rem', fontSize: '0.78rem', color: 'var(--gray)', lineHeight: 1.5 }}>
+                      Removes your personal info. You won't be able to log in again.
+                    </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
+                      {[
+                        'No active orders',
+                        'No unpaid balances',
+                      ].map(cond => (
+                        <span key={cond} style={{
+                          fontSize: '0.68rem', fontWeight: 600, padding: '2px 8px',
+                          borderRadius: '999px', background: 'rgba(239,68,68,0.08)',
+                          color: 'rgba(239,68,68,0.75)', border: '1px solid rgba(239,68,68,0.18)',
+                        }}>
+                          ✓ {cond}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setDeleteModalOpen(true); setDeleteError(''); setDeletePassword(''); setDeleteReason(''); setDeleteConfirmText(''); }}
+                    style={{
+                      flexShrink: 0,
+                      padding: '0.5rem 1rem', borderRadius: '8px',
+                      border: '1px solid rgba(239,68,68,0.45)',
+                      background: 'transparent', color: 'rgba(239,68,68,0.9)',
+                      fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Delete Account
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Delete Account Confirmation Modal */}
+            {deleteModalOpen && (
+              <div style={{
+                position: 'fixed', inset: 0, zIndex: 2000,
+                background: 'rgba(0,0,0,0.75)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
+              }}>
+                <div style={{
+                  width: '100%', maxWidth: '460px',
+                  background: 'var(--dark2)', border: '1px solid rgba(239,68,68,0.3)',
+                  borderRadius: '16px', overflow: 'hidden',
+                }}>
+                  {/* Modal header */}
+                  <div style={{
+                    padding: '1.1rem 1.5rem',
+                    background: 'rgba(239,68,68,0.08)',
+                    borderBottom: '1px solid rgba(239,68,68,0.2)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(239,68,68,0.9)" strokeWidth="2" strokeLinecap="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                      </svg>
+                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'rgba(239,68,68,0.95)' }}>Delete Account</span>
+                    </div>
+                    <button type="button" onClick={() => setDeleteModalOpen(false)} disabled={deleteLoading}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', lineHeight: 1, padding: '4px' }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+
+                  <div style={{ padding: '1.25rem 1.5rem', maxHeight: '80vh', overflowY: 'auto' }}>
+                    {/* What happens — two columns */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem', marginBottom: '1.25rem' }}>
+                      <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.06)', borderRadius: '8px', fontSize: '0.77rem', lineHeight: 1.6, color: 'var(--gray)' }}>
+                        <strong style={{ color: 'var(--white)', display: 'block', marginBottom: '0.3rem', fontSize: '0.78rem' }}>Removed</strong>
+                        Your name, email, phone, address, profile photo, and login access.
+                      </div>
+                      <div style={{ padding: '0.75rem', background: 'rgba(34,197,94,0.05)', borderRadius: '8px', fontSize: '0.77rem', lineHeight: 1.6, color: 'var(--gray)' }}>
+                        <strong style={{ color: 'var(--white)', display: 'block', marginBottom: '0.3rem', fontSize: '0.78rem' }}>Kept</strong>
+                        Order and payment history (required by law, stored anonymously).
+                      </div>
+                    </div>
+
+                    {/* Reason */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                        Why are you leaving? (optional)
+                      </label>
+                      <select
+                        value={deleteReason}
+                        onChange={e => setDeleteReason(e.target.value)}
+                        style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.875rem' }}
+                      >
+                        <option value="">Prefer not to say</option>
+                        <option value="No longer using the service">No longer using the service</option>
+                        <option value="Privacy concerns">Privacy concerns</option>
+                        <option value="Switching to another provider">Switching to another provider</option>
+                        <option value="Poor experience">Poor experience</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+
+                    {/* Password */}
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                        Confirm your password
+                      </label>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type={deleteShowPassword ? 'text' : 'password'}
+                          value={deletePassword}
+                          onChange={e => setDeletePassword(e.target.value)}
+                          placeholder="Enter your current password"
+                          style={{ width: '100%', height: '40px', padding: '0 40px 0 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--dark)', color: 'var(--white)', fontSize: '0.875rem', boxSizing: 'border-box', outline: 'none' }}
+                        />
+                        <button type="button" onClick={() => setDeleteShowPassword(v => !v)}
+                          style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: 0, lineHeight: 1 }}>
+                          {deleteShowPassword
+                            ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                            : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                          }
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Typed confirmation */}
+                    <div style={{ marginBottom: '1.25rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                        Type <span style={{ color: 'rgba(239,68,68,0.9)', fontFamily: 'monospace', letterSpacing: 0 }}>DELETE MY ACCOUNT</span> to continue
+                      </label>
+                      <input
+                        type="text"
+                        value={deleteConfirmText}
+                        onChange={e => setDeleteConfirmText(e.target.value)}
+                        placeholder="DELETE MY ACCOUNT"
+                        style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '8px', border: `1px solid ${deleteConfirmText === 'DELETE MY ACCOUNT' ? 'rgba(239,68,68,0.55)' : 'var(--border)'}`, background: 'var(--dark)', color: deleteConfirmText === 'DELETE MY ACCOUNT' ? 'rgba(239,68,68,0.9)' : 'var(--white)', fontSize: '0.875rem', boxSizing: 'border-box', outline: 'none', fontFamily: 'monospace' }}
+                      />
+                    </div>
+
+                    {deleteError && (
+                      <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: 'rgba(239,68,68,0.95)', fontSize: '0.82rem', marginBottom: '1rem', lineHeight: 1.5 }}>
+                        {deleteError}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                      <button type="button" onClick={() => setDeleteModalOpen(false)} disabled={deleteLoading}
+                        style={{ padding: '10px 18px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--white)', cursor: deleteLoading ? 'not-allowed' : 'pointer', opacity: deleteLoading ? 0.6 : 1, fontSize: '0.875rem' }}>
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeleteAccount}
+                        disabled={deleteLoading || deleteConfirmText !== 'DELETE MY ACCOUNT' || !deletePassword}
+                        style={{
+                          padding: '10px 20px', borderRadius: '8px', border: 'none',
+                          background: deleteLoading || deleteConfirmText !== 'DELETE MY ACCOUNT' || !deletePassword ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.85)',
+                          color: 'white', fontWeight: 700, cursor: deleteLoading || deleteConfirmText !== 'DELETE MY ACCOUNT' || !deletePassword ? 'not-allowed' : 'pointer',
+                          fontSize: '0.875rem',
+                        }}
+                      >
+                        {deleteLoading ? 'Deleting…' : 'Permanently Delete Account'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* TAB 4: Addresses */}

@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class ProfileController extends Controller
@@ -104,6 +106,111 @@ class ProfileController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'Failed to update avatar.');
+        }
+    }
+
+    /**
+     * DELETE /api/profile
+     * Anonymizes the customer's account per Data Privacy Act of 2012 (RA 10173).
+     * Transaction records are retained for BIR legal compliance.
+     *
+     * Blocked if the customer has:
+     *   - Active (non-terminal) orders
+     *   - Orders with an outstanding balance
+     */
+    public function deleteAccount(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if (!$user) {
+                return $this->unauthorizedResponse();
+            }
+
+            if ($user->role !== 'customer') {
+                return $this->errorResponse('Only customer accounts can be self-deleted.', 403);
+            }
+
+            $request->validate([
+                'password' => 'required|string',
+                'reason'   => 'nullable|string|max:500',
+            ]);
+
+            if (!Hash::check($request->password, $user->password)) {
+                return $this->errorResponse('Incorrect password. Please try again.', 422);
+            }
+
+            $userId = (string) ($user->_id ?? $user->id);
+
+            // Block: active (non-terminal) orders
+            $terminalStatuses = [
+                'Delivered', 'Cancelled', 'Returned',
+                'delivered', 'cancelled', 'returned',
+            ];
+
+            $activeCount = Order::where('userId', $userId)
+                ->whereNotIn('orderStatus', $terminalStatuses)
+                ->count();
+
+            if ($activeCount > 0) {
+                return $this->errorResponse(
+                    "You have {$activeCount} active order(s) still in progress. Please wait for them to be completed or cancelled before deleting your account.",
+                    422,
+                    ['reason' => 'active_orders', 'count' => $activeCount]
+                );
+            }
+
+            // Block: outstanding payment balances
+            $unpaidCount = Order::where('userId', $userId)
+                ->where('paymentStatus', '!=', 'paid')
+                ->where('balance', '>', 0)
+                ->count();
+
+            if ($unpaidCount > 0) {
+                return $this->errorResponse(
+                    "You have {$unpaidCount} order(s) with outstanding balance(s). Please settle all payments before deleting your account.",
+                    422,
+                    ['reason' => 'outstanding_balance', 'count' => $unpaidCount]
+                );
+            }
+
+            // Anonymize PII — order/transaction records are retained for BIR compliance
+            $user->firstName          = 'Deleted';
+            $user->lastName           = 'User';
+            $user->middleInitial      = null;
+            $user->email              = 'deleted_' . $userId . '@deleted.invalid';
+            $user->phoneNumber        = null;
+            $user->address            = null;
+            $user->addresses          = [];
+            $user->avatar             = null;
+            $user->device_tokens      = [];
+            $user->two_factor_enabled = false;
+            $user->totp_secret        = null;
+            $user->totp_confirmed     = false;
+            $user->is_verified        = false;
+            $user->status             = 'deleted';
+            $user->deleted_at         = now();
+            $user->deletion_reason    = $request->reason ?? null;
+            // Randomize password so the account cannot be logged into
+            $user->password           = Hash::make(Str::random(64));
+            $user->save();
+
+            // Revoke all Sanctum tokens — logs out all devices
+            $user->tokens()->delete();
+
+            Log::info('Customer account anonymized (RA 10173).', [
+                'anonymized_id' => $userId,
+                'reason'        => $request->reason ?? 'Not specified',
+            ]);
+
+            return $this->successResponse(
+                'Your account has been deleted and your personal information has been removed in accordance with the Data Privacy Act of 2012 (RA 10173). Transaction records are retained as required by law.'
+            );
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'Failed to delete account. Please try again.');
         }
     }
 
