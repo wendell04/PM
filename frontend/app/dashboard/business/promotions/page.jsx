@@ -217,6 +217,7 @@ function VouchersTab({ token }) {
   const [form, setForm]           = useState(EMPTY_VOUCHER);
   const [formError, setFormError] = useState(null);
   const [saving, setSaving]       = useState(false);
+  const [toggling, setToggling]   = useState(null);
   const [deleteId, setDeleteId]   = useState(null);
   const [deleting, setDeleting]   = useState(false);
   const [page, setPage]           = useState(1);
@@ -299,8 +300,12 @@ function VouchersTab({ token }) {
   }
 
   async function handleToggle(v) {
-    try { await toggleVoucher(token, v._id || v.id); load(); }
+    const id = v._id || v.id;
+    setToggling(id);
+    setError(null);
+    try { await toggleVoucher(token, id); load(); }
     catch (err) { setError(err.message); }
+    finally { setToggling(null); }
   }
 
   async function handleDelete() {
@@ -458,8 +463,8 @@ function VouchersTab({ token }) {
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
                         <button onClick={() => openEdit(v)} style={{ padding: '4px 10px', background: 'var(--border)', border: 'none', borderRadius: '6px', color: 'var(--white)', fontSize: '0.75rem', cursor: 'pointer' }}>Edit</button>
-                        <button onClick={() => handleToggle(v)} style={{ padding: '4px 10px', background: v.isActive ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)', border: 'none', borderRadius: '6px', color: v.isActive ? 'var(--red)' : 'var(--green)', fontSize: '0.75rem', cursor: 'pointer' }}>
-                          {v.isActive ? 'Disable' : 'Enable'}
+                        <button onClick={() => handleToggle(v)} disabled={toggling === (v._id || v.id)} style={{ padding: '4px 10px', background: v.isActive ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)', border: 'none', borderRadius: '6px', color: v.isActive ? 'var(--red)' : 'var(--green)', fontSize: '0.75rem', cursor: toggling === (v._id || v.id) ? 'not-allowed' : 'pointer', opacity: toggling === (v._id || v.id) ? 0.5 : 1 }}>
+                          {toggling === (v._id || v.id) ? '...' : v.isActive ? 'Disable' : 'Enable'}
                         </button>
                         <button onClick={() => setDeleteId(v._id || v.id)} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.12)', border: 'none', borderRadius: '6px', color: 'var(--red)', fontSize: '0.75rem', cursor: 'pointer' }}>Del</button>
                       </div>

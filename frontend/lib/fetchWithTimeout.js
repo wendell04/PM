@@ -48,6 +48,5 @@ export async function fetchWithTimeout(
       await new Promise(res => setTimeout(res, 500 * Math.pow(2, i)));
     }
   }
-  console.warn(`Request failed after ${retries + 1} attempts: ${url}`);
   throw lastError;
 }

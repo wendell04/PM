@@ -36,6 +36,7 @@ use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\HealthController;
+use App\Http\Controllers\AnalyticsDataController;
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 Route::get('/health', [HealthController::class, 'check']);
@@ -179,6 +180,11 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
     Route::get('/admin/dashboard/stats',         [AdminAnalyticsController::class, 'dashboardStats']);
     Route::get('/admin/reports/sales',           [AdminAnalyticsController::class, 'reportsSales']);
     Route::get('/admin/reports/inventory',       [AdminAnalyticsController::class, 'reportsInventory']);
+
+    // ─── Analytics data (feeds SSA Python service endpoints) ─────────────────
+    Route::get('/admin/analytics/rfm-data',      [AnalyticsDataController::class, 'rfmData']);
+    Route::get('/admin/analytics/basket-data',   [AnalyticsDataController::class, 'basketData']);
+    Route::get('/admin/analytics/service-data',  [AnalyticsDataController::class, 'serviceData']);
 
     // ─── Collections ─────────────────────────────────────────────────────────
     Route::get('/admin/collections',                         [CollectionController::class, 'adminIndex']);

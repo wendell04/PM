@@ -32,9 +32,10 @@ class VoucherController extends Controller
     private static function serialize(Voucher $v): array
     {
         $raw = $v->getAttributes();   // raw BSON values, no Eloquent casting
+        $id  = (string) $v->getKey();
         return [
-            'id'                 => isset($raw['_id']) ? (string) $raw['_id'] : '',
-            '_id'                => isset($raw['_id']) ? (string) $raw['_id'] : '',
+            'id'                 => $id,
+            '_id'                => $id,
             'code'               => (string) ($raw['code'] ?? ''),
             'benefitCategory'    => (string) ($raw['benefitCategory'] ?? 'monetary'),
             'benefitType'        => isset($raw['benefitType'])  ? (string) $raw['benefitType']  : null,
@@ -132,6 +133,7 @@ class VoucherController extends Controller
     // ── Admin: Update voucher ───────────────────────────────────────────────
     public function update(Request $request, $id)
     {
+        try {
         $user = $request->user();
         if (!$user) return response()->json(['message' => 'Unauthorized.'], 401);
 
@@ -186,6 +188,9 @@ class VoucherController extends Controller
         $voucher->save();
 
         return response()->json(['message' => 'Voucher updated.', 'data' => self::serialize($voucher)]);
+        } catch (Throwable $e) {
+            return response()->json(['message' => 'Failed to update voucher: ' . $e->getMessage()], 500);
+        }
     }
 
     // ── Admin: Delete voucher ───────────────────────────────────────────────
@@ -200,12 +205,16 @@ class VoucherController extends Controller
     // ── Admin: Toggle isActive ──────────────────────────────────────────────
     public function toggle($id)
     {
-        $voucher = Voucher::find($id);
-        if (!$voucher) return response()->json(['message' => 'Voucher not found.'], 404);
-        $voucher->isActive  = !((bool) ($voucher->getAttributes()['isActive'] ?? true));
-        $voucher->updatedAt = now();
-        $voucher->save();
-        return response()->json(['message' => 'Voucher toggled.', 'data' => self::serialize($voucher)]);
+        try {
+            $voucher = Voucher::find($id);
+            if (!$voucher) return response()->json(['message' => 'Voucher not found.'], 404);
+            $voucher->isActive  = !((bool) ($voucher->getAttributes()['isActive'] ?? true));
+            $voucher->updatedAt = now();
+            $voucher->save();
+            return response()->json(['message' => 'Voucher toggled.', 'data' => self::serialize($voucher)]);
+        } catch (Throwable $e) {
+            return response()->json(['message' => 'Failed to toggle voucher: ' . $e->getMessage()], 500);
+        }
     }
 
     // ── Customer: Apply/preview a voucher code ──────────────────────────────

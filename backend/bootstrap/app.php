@@ -58,14 +58,14 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($request->is('api/*')) {
                 if (app()->environment('local', 'development')) {
                     return response()->json([
-                        'error' => $e->getMessage(),
-                        'file'  => $e->getFile(),
-                        'line'  => $e->getLine(),
+                        'message' => $e->getMessage(),
+                        'file'    => $e->getFile(),
+                        'line'    => $e->getLine(),
                     ], 500);
                 }
 
                 return response()->json([
-                    'error' => 'An unexpected error occurred.',
+                    'message' => 'An unexpected error occurred.',
                 ], 500);
             }
         });

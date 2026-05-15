@@ -1260,9 +1260,9 @@ const handleForgotResetPassword = async () => {
                         {Object.entries(grouped).map(([cat, prods]) => (
                           <div key={cat} className="mega-products-col">
                             <div className="mega-col-heading">{cat}</div>
-                            {prods.map(p => (
+                            {prods.map((p, idx) => (
                               <button
-                                key={p._id ?? p.id}
+                                key={p._id || p.id || String(idx)}
                                 className="mega-col-item"
                                 onClick={() => { setHoveredNav(null); router.push('/shop'); }}
                               >
@@ -1311,9 +1311,9 @@ const handleForgotResetPassword = async () => {
                         <div className="mega-cat-empty">Hover a category to preview products</div>
                       ) : (
                         <div className="mega-col-products-list">
-                          {collectionProducts.map(p => (
+                          {collectionProducts.map((p, idx) => (
                             <button
-                              key={p.id ?? p._id}
+                              key={p.id || p._id || String(idx)}
                               className="mega-col-item"
                               onClick={() => { setHoveredNav(null); router.push('/shop'); }}
                             >
@@ -1497,9 +1497,9 @@ const handleForgotResetPassword = async () => {
               </button>
             </div>
             <div className="lp-collections-grid">
-              {landingCollections.slice(0, 6).map(col => (
+              {landingCollections.slice(0, 6).map((col, idx) => (
                 <button
-                  key={col.id ?? col._id}
+                  key={col.id || col._id || col.slug || col.title || String(idx)}
                   className="lp-collection-card"
                   onClick={handleEnterShop}
                 >

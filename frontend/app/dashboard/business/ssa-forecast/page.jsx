@@ -50,6 +50,64 @@ const FORECAST_PERIODS = [
 
 const DEFAULT_COUNTS = { weekly: 4, monthly: 3, annually: 2 };
 
+const RFM_COLORS = {
+  "Champions":           { bg: "rgba(74,222,128,0.15)",  color: "#4ade80" },
+  "Loyal Customers":     { bg: "rgba(96,165,250,0.15)",  color: "#60a5fa" },
+  "Potential Loyalists": { bg: "rgba(167,139,250,0.15)", color: "#a78bfa" },
+  "New Customers":       { bg: "rgba(52,211,153,0.15)",  color: "#34d399" },
+  "Promising":           { bg: "rgba(251,191,36,0.15)",  color: "#fbbf24" },
+  "At Risk":             { bg: "rgba(251,146,60,0.15)",  color: "#fb923c" },
+  "Can't Lose Them":     { bg: "rgba(248,113,113,0.15)", color: "#f87171" },
+  "Hibernating":         { bg: "rgba(156,163,175,0.15)", color: "#9ca3af" },
+  "Lost":                { bg: "rgba(107,114,128,0.15)", color: "#6b7280" },
+  "Need Attention":      { bg: "rgba(212,168,67,0.15)",  color: "#d4a843" },
+};
+
+const SEGMENT_DESC = {
+  "Champions":           "Buy very recently, very often, and spend the most. Reward them — they drive the most revenue.",
+  "Loyal Customers":     "Buy regularly and spend well. Keep them engaged with exclusive offers.",
+  "Potential Loyalists": "Bought recently with growing frequency. Nurture them to become loyal.",
+  "New Customers":       "Made their first purchase recently. Onboard them with a good experience.",
+  "Promising":           "Active but spending below average. Upsell opportunities.",
+  "At Risk":             "Used to buy often but have gone quiet. Send a win-back campaign now.",
+  "Can't Lose Them":     "High purchase frequency but absent recently. High-value churn risk.",
+  "Hibernating":         "Low frequency, haven't bought in a while. Re-engage with a discount.",
+  "Lost":                "Lowest scores across all dimensions — likely churned.",
+  "Need Attention":      "Moderate scores; inconsistent behavior. Need targeted follow-up.",
+};
+
+const ABC_DESC = {
+  A: { label: "Vital — top 70% of revenue",  tip: "Protect these. Prioritize stock, quality, and promotion." },
+  B: { label: "Important — next 20%",         tip: "Grow these. Small improvements here have outsized ROI." },
+  C: { label: "Marginal — bottom 10%",        tip: "Review these. Consider bundling, discounting, or phasing out." },
+};
+
+function AnalyticsSkeleton() {
+  return (
+    <div>
+      <div className="ssa-metrics-grid">
+        {[1,2,3,4].map(i => (
+          <div key={i} className="ssa-stat-card">
+            <div className="ssa-skeleton" style={{height:"0.8rem",width:"55%",marginBottom:"0.7rem"}} />
+            <div className="ssa-skeleton" style={{height:"1.4rem",width:"35%"}} />
+          </div>
+        ))}
+      </div>
+      <div className="ssa-card">
+        <div className="ssa-skeleton" style={{height:"0.9rem",width:"28%",marginBottom:"1.25rem"}} />
+        {[1,2,3,4,5,6].map(i => (
+          <div key={i} style={{display:"flex",gap:"1.5rem",marginBottom:"0.85rem",alignItems:"center"}}>
+            <div className="ssa-skeleton" style={{height:"0.75rem",flex:"2"}} />
+            <div className="ssa-skeleton" style={{height:"0.75rem",flex:"1"}} />
+            <div className="ssa-skeleton" style={{height:"0.75rem",flex:"1"}} />
+            <div className="ssa-skeleton" style={{height:"0.75rem",flex:"1"}} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const DATA_SOURCES = [
   { key: "sales_revenue", label: "Sales Revenue" },
   { key: "sales_qty", label: "Sales Quantity" },
@@ -238,6 +296,85 @@ const pageStyles = `
   .ssa-tooltip:hover .ssa-tooltip-text { visibility: visible; }
   @media (max-width: 768px) { .ssa-stat-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 480px) { .ssa-stat-grid { grid-template-columns: 1fr; } }
+  .ssa-tab-nav {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.5rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .ssa-tab-nav::-webkit-scrollbar { display: none; }
+  .ssa-tab-btn {
+    padding: 0.65rem 1.25rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--gray);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: -1px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .ssa-tab-btn:hover { color: var(--white); }
+  .ssa-tab-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
+  .ssa-rfm-badge {
+    display: inline-block;
+    padding: 0.18rem 0.65rem;
+    border-radius: 99px;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .ssa-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+  }
+  .ssa-table th {
+    text-align: left;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--gray);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+  }
+  .ssa-table td {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: var(--white);
+    vertical-align: middle;
+  }
+  .ssa-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+  .ssa-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 900px)  { .ssa-metrics-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px)  { .ssa-metrics-grid { grid-template-columns: 1fr; } }
+  .ssa-run-btn {
+    padding: 0.5rem 1.25rem;
+    border-radius: 8px;
+    border: 1px solid var(--gold);
+    background: rgba(212,168,67,0.1);
+    color: var(--gold);
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .ssa-run-btn:hover:not(:disabled) { background: rgba(212,168,67,0.2); }
+  .ssa-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .ssa-tbl-wrap { overflow: auto; scrollbar-width: none; }
+  .ssa-tbl-wrap::-webkit-scrollbar { display: none; }
 `;
 
 function getISOWeek(date) {
@@ -267,29 +404,37 @@ function resolveAccuracy(accuracy, isHighVolatility = false) {
   const maeRatio = accuracy.mae_ratio;
   const btN = accuracy.backtest_n;
   const btNz = accuracy.backtest_nz_count ?? null;
+  const mapeReliable = accuracy.mape_reliable !== false;
 
   if (mape != null) {
     // For high-volatility spike-demand data, high MAPE is expected — the model
     // tracks the revenue trend, not the exact timing of individual order spikes.
-    const color = isHighVolatility
+    // For annual forecasts backed by only 1 full-year backtest bin, MAPE is
+    // statistically unreliable (single-observation estimate).
+    const unreliable = !mapeReliable;
+    const color = unreliable
       ? "var(--gray)"
-      : mape < 30
-        ? "#4ade80"
-        : mape < 60
-          ? "#fbbf24"
-          : "#f87171";
+      : isHighVolatility
+        ? "var(--gray)"
+        : mape < 30
+          ? "#4ade80"
+          : mape < 60
+            ? "#fbbf24"
+            : "#f87171";
 
     return {
       value: mape,
       display: `${mape.toFixed(1)}%`,
-      label: "FORECAST ACCURACY (MAPE)",
+      label: unreliable ? "MAPE (LOW CONFIDENCE)" : "FORECAST ACCURACY (MAPE)",
       sublabel: btN
-        ? `tested on ${btN} ${btNz != null ? `periods (${btNz} with sales)` : "periods"}`
+        ? `tested on ${btN} ${btNz != null ? `periods (${btNz} with sales)` : "periods"}${unreliable ? " — limited backtest data" : ""}`
         : "insufficient data",
       color,
-      tooltip: isHighVolatility
-        ? "MAPE measures forecast accuracy on weeks with actual sales. For irregular spike-demand businesses, high MAPE is expected — the model tracks your revenue trend, not individual order timing. The forecast baseline is more useful than this number alone."
-        : "MAPE (Mean Absolute % Error): measures forecast accuracy only on periods with real sales, ignoring zero-sale periods. Lower is better. Under 30% = good, 30–60% = fair, above 60% = poor.",
+      tooltip: unreliable
+        ? "Annual MAPE is based on fewer than 2 full calendar-year backtest periods, making it a single-observation estimate and statistically unreliable. Use it as a rough guide only."
+        : isHighVolatility
+          ? "MAPE measures forecast accuracy on weeks with actual sales. For irregular spike-demand businesses, high MAPE is expected — the model tracks your revenue trend, not individual order timing. The forecast baseline is more useful than this number alone."
+          : "MAPE (Mean Absolute % Error): measures forecast accuracy only on periods with real sales, ignoring zero-sale periods. Lower is better. Under 30% = good, 30–60% = fair, above 60% = poor.",
     };
   }
 
@@ -344,6 +489,15 @@ export default function SSAForecastPage() {
   const [backtestData, setBacktestData] = useState([]);
   const [productMap, setProductMap] = useState({});
   const [rawRows, setRawRows] = useState([]);
+
+  const [activeTab, setActiveTab] = useState("forecast");
+  const [rfmResult, setRfmResult] = useState(null);
+  const [basketResult, setBasketResult] = useState(null);
+  const [serviceResult, setServiceResult] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [rfmError, setRfmError] = useState("");
+  const [basketError, setBasketError] = useState("");
+  const [serviceError, setServiceError] = useState("");
 
   const autoRunTimerRef = useRef(null);
   const handleSubmitRef = useRef(null);
@@ -578,6 +732,148 @@ export default function SSAForecastPage() {
     }
   };
 
+  const loadRFM = async () => {
+    if (!token) return;
+    setAnalyticsLoading(true);
+    setRfmError("");
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/analytics/rfm-data`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      });
+      const d = await res.json();
+      const sales = d.data ?? [];
+      if (sales.length === 0) {
+        setRfmError("No sales data found for customer segmentation.");
+        return;
+      }
+      const ssaRes = await fetch(`${SSA_API_URL}/api/customer-segments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sales }),
+      });
+      if (!ssaRes.ok) {
+        const err = await ssaRes.json().catch(() => ({}));
+        const msg = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+        throw new Error(msg.split("\n")[0] || "Customer segmentation failed.");
+      }
+      setRfmResult(await ssaRes.json());
+    } catch (err) {
+      setRfmError(err.message || "Failed to run customer segmentation.");
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  const loadBasket = async () => {
+    if (!token) return;
+    setAnalyticsLoading(true);
+    setBasketError("");
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/analytics/basket-data`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      });
+      const d = await res.json();
+      const transactions = d.data ?? [];
+      if (transactions.length === 0) {
+        setBasketError("No order data found for market basket analysis.");
+        return;
+      }
+      const ssaRes = await fetch(`${SSA_API_URL}/api/market-basket`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transactions }),
+      });
+      if (!ssaRes.ok) {
+        const err = await ssaRes.json().catch(() => ({}));
+        const msg = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+        throw new Error(msg.split("\n")[0] || "Market basket analysis failed.");
+      }
+      setBasketResult(await ssaRes.json());
+    } catch (err) {
+      setBasketError(err.message || "Failed to run market basket analysis.");
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  const loadService = async () => {
+    if (!token) return;
+    setAnalyticsLoading(true);
+    setServiceError("");
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/analytics/service-data`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      });
+      const d = await res.json();
+      const sales = d.data ?? [];
+      if (sales.length === 0) {
+        setServiceError("No sales data found for service segmentation.");
+        return;
+      }
+      const ssaRes = await fetch(`${SSA_API_URL}/api/service-segments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sales }),
+      });
+      if (!ssaRes.ok) {
+        const err = await ssaRes.json().catch(() => ({}));
+        const msg = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+        throw new Error(msg.split("\n")[0] || "Service segmentation failed.");
+      }
+      setServiceResult(await ssaRes.json());
+    } catch (err) {
+      setServiceError(err.message || "Failed to run service segmentation.");
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  const loadProducts = async () => {
+    if (!token) return;
+    setAnalyticsLoading(true);
+    setBasketError("");
+    setServiceError("");
+    try {
+      const [basketRes, serviceRes] = await Promise.all([
+        fetchWithTimeout(`${API_URL}/api/admin/analytics/basket-data`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        }),
+        fetchWithTimeout(`${API_URL}/api/admin/analytics/service-data`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        }),
+      ]);
+      const basketD  = await basketRes.json();
+      const serviceD = await serviceRes.json();
+      const transactions = basketD.data  ?? [];
+      const sales        = serviceD.data ?? [];
+
+      const [bRes, sRes] = await Promise.all([
+        transactions.length > 0
+          ? fetch(`${SSA_API_URL}/api/market-basket`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ transactions }),
+            }).then(r => r.ok ? r.json() : null).catch(() => null)
+          : Promise.resolve(null),
+        sales.length > 0
+          ? fetch(`${SSA_API_URL}/api/service-segments`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sales }),
+            }).then(r => r.ok ? r.json() : null).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      if (bRes) setBasketResult(bRes);
+      if (sRes) setServiceResult(sRes);
+      if (!bRes && !sRes) setBasketError("No product data found.");
+    } catch (err) {
+      setBasketError(err.message || "Failed to load product data.");
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
   handleSubmitRef.current = handleSubmit;
   forecastCountRef.current = forecastCount;
 
@@ -606,6 +902,13 @@ export default function SSAForecastPage() {
     if (parseInt(forecastCountRef.current, 10) > 0) return;
     handleSubmitRef.current?.(1);
   }, [token, dataSource, forecastPeriod.type, selectedInventoryId]); // eslint-disable-line
+
+  // Auto-run analytics when tab becomes active (fetch once per session)
+  useEffect(() => {
+    if (!token) return;
+    if (activeTab === "segments" && !rfmResult && !analyticsLoading) loadRFM();
+    else if (activeTab === "products" && (!basketResult || !serviceResult) && !analyticsLoading) loadProducts();
+  }, [activeTab, token]); // eslint-disable-line
 
   // Keyed by date string → actual raw sale revenue (unfloored, ₱0 for no-sale days)
   const rawRevMap = Object.fromEntries(rawRows.map((r) => [r.date, r.value]));
@@ -677,9 +980,12 @@ export default function SSAForecastPage() {
       }
     }
 
-    // 3. Forecast data — only render dates STRICTLY AFTER today.
-    //    Forecast dates ≤ today are already covered by the bridge above.
+    // 3. Forecast data — only render when user has explicitly entered a count.
+    //    The auto-run fires with count=1 to pre-load historical data, but forecastCount
+    //    state stays "" until the user types something, so we suppress forecast points here.
+    const userRequestedForecast = parseInt(forecastCount, 10) > 0;
     for (let i = 0; i < fcDates.length; i++) {
+      if (!userRequestedForecast) continue;
       if (fcDates[i] <= todayStr) continue;
       const fv = fcValues[i];
       const fh = fcHigh[i];
@@ -820,6 +1126,27 @@ export default function SSAForecastPage() {
             </div>
           </div>
         </div>
+
+        {/* ── Analytics tab navigation ──────────────────────────────────── */}
+        <div className="ssa-tab-nav">
+          {[
+            { key: "forecast",  label: "Forecast" },
+            { key: "segments",  label: "Customer Segments" },
+            { key: "products",  label: "Products & Services" },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              className={`ssa-tab-btn ${activeTab === key ? "active" : ""}`}
+              onClick={() => setActiveTab(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "forecast" && (
+        <>
 
         {!(result && submittedConfig) && dataSource !== "inventory_stock" && (
           <div className="ssa-info-banner">
@@ -2178,6 +2505,333 @@ export default function SSAForecastPage() {
             )}
           </>
         )}
+
+        {/* ── close forecast tab ─────────────────────────────────────────── */}
+        </>)}
+
+        {/* ── Customer Segments Tab ─────────────────────────────────────── */}
+        {activeTab === "segments" && (
+          <div>
+            {analyticsLoading ? <AnalyticsSkeleton /> : rfmResult ? (
+              <>
+                {/* header */}
+                <div className="ssa-card" style={{marginBottom:"1.5rem"}}>
+                  <div className="ssa-card-header" style={{marginBottom:0}}>
+                    <div>
+                      <h2 className="ssa-card-title">RFM Customer Segmentation</h2>
+                      <p style={{fontSize:"0.8rem",color:"var(--gray)",marginTop:"0.3rem",lineHeight:1.5}}>
+                        Each customer is scored 1–5 on <strong style={{color:"var(--white)"}}>Recency</strong> (days since last purchase),{" "}
+                        <strong style={{color:"var(--white)"}}>Frequency</strong> (number of orders), and{" "}
+                        <strong style={{color:"var(--white)"}}>Monetary</strong> (total spend). Higher = better.
+                      </p>
+                    </div>
+                    <button type="button" className="ssa-run-btn" onClick={loadRFM}>Re-run</button>
+                  </div>
+                </div>
+
+                <div className="ssa-metrics-grid">
+                  {[
+                    { label: "Total Customers", value: rfmResult.total_customers },
+                    { label: "Segments Found",  value: rfmResult.summary?.length ?? 0 },
+                    { label: "Largest Segment", value: [...(rfmResult.summary ?? [])].sort((a,b) => b.count - a.count)[0]?.segment ?? "—" },
+                    { label: "Avg Spend / Customer", value: (rfmResult.customers?.length ?? 0) > 0
+                      ? "₱" + (rfmResult.customers.reduce((s,c) => s + (c.monetary ?? 0), 0) / rfmResult.customers.length).toLocaleString("en-US",{maximumFractionDigits:0})
+                      : "—" },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="ssa-stat-card">
+                      <div className="ssa-stat-label">{label}</div>
+                      <div className="ssa-stat-value" style={{fontSize:"1.2rem"}}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="ssa-card">
+                  <div style={{marginBottom:"1rem"}}>
+                    <h2 className="ssa-card-title">Segment Overview</h2>
+                    <p style={{fontSize:"0.78rem",color:"var(--gray)",marginTop:"0.3rem"}}>
+                      What each customer group means for your business — and what to do about it.
+                    </p>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:"0.6rem"}}>
+                    {[...(rfmResult.summary ?? [])].sort((a,b) => b.total_monetary - a.total_monetary).map((seg) => (
+                      <div key={seg.segment} style={{
+                        padding:"0.9rem 1rem",
+                        borderRadius:"10px",
+                        border:"1px solid var(--border)",
+                        background: (RFM_COLORS[seg.segment]?.bg ?? "rgba(255,255,255,0.03)"),
+                      }}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"1rem",flexWrap:"wrap"}}>
+                          <div style={{flex:1,minWidth:"200px"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem",flexWrap:"wrap"}}>
+                              <span className="ssa-rfm-badge" style={{
+                                background: RFM_COLORS[seg.segment]?.bg ?? "rgba(255,255,255,0.08)",
+                                color: RFM_COLORS[seg.segment]?.color ?? "var(--gray)",
+                                border: `1px solid ${(RFM_COLORS[seg.segment]?.color ?? "#ffffff")}33`,
+                              }}>
+                                {seg.segment}
+                              </span>
+                              <span style={{fontSize:"0.75rem",color:"var(--gray)"}}>
+                                {seg.count} customer{seg.count !== 1 ? "s" : ""}
+                              </span>
+                            </div>
+                            <p style={{fontSize:"0.82rem",color:"var(--gray)",margin:0,lineHeight:1.55}}>
+                              {SEGMENT_DESC[seg.segment] ?? ""}
+                            </p>
+                          </div>
+                          <div style={{display:"flex",gap:"1.5rem",flexShrink:0,flexWrap:"wrap",alignItems:"flex-start"}}>
+                            <div style={{textAlign:"right"}}>
+                              <div style={{fontSize:"0.68rem",color:"var(--gray)",marginBottom:"0.15rem",textTransform:"uppercase",letterSpacing:"0.4px"}}>Last bought</div>
+                              <div style={{fontWeight:700,color:"var(--white)",fontSize:"0.92rem"}}>{seg.avg_recency?.toFixed(0)} days ago</div>
+                            </div>
+                            <div style={{textAlign:"right"}}>
+                              <div style={{fontSize:"0.68rem",color:"var(--gray)",marginBottom:"0.15rem",textTransform:"uppercase",letterSpacing:"0.4px"}}>Avg orders</div>
+                              <div style={{fontWeight:700,color:"var(--white)",fontSize:"0.92rem"}}>{seg.avg_frequency?.toFixed(1)}</div>
+                            </div>
+                            <div style={{textAlign:"right"}}>
+                              <div style={{fontSize:"0.68rem",color:"var(--gray)",marginBottom:"0.15rem",textTransform:"uppercase",letterSpacing:"0.4px"}}>Total revenue</div>
+                              <div style={{fontWeight:700,color:"var(--gold)",fontSize:"0.92rem"}}>₱{seg.total_monetary?.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="ssa-card">
+                  <div style={{marginBottom:"1rem"}}>
+                    <h2 className="ssa-card-title">
+                      Customer Detail
+                      <span style={{fontSize:"0.78rem",fontWeight:400,color:"var(--gray)",marginLeft:"0.5rem"}}>(top 100 by RFM score)</span>
+                    </h2>
+                    <p style={{fontSize:"0.78rem",color:"var(--gray)",marginTop:"0.3rem"}}>
+                      RFM Score = R + F + M (max 15). Higher score = more valuable customer.
+                    </p>
+                  </div>
+                  <div className="ssa-tbl-wrap" style={{maxHeight:"420px"}}>
+                    <table className="ssa-table">
+                      <thead style={{position:"sticky",top:0,background:"var(--dark2)",zIndex:1}}>
+                        <tr>
+                          <th>Customer</th>
+                          <th>Segment</th>
+                          <th style={{textAlign:"right"}}>Score <span style={{fontWeight:400,opacity:0.6}}>(max 15)</span></th>
+                          <th style={{textAlign:"right"}}>Last bought</th>
+                          <th style={{textAlign:"right"}}>Orders</th>
+                          <th style={{textAlign:"right"}}>Total spent</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...(rfmResult.customers ?? [])].sort((a,b) => b.rfm_score - a.rfm_score).slice(0,100).map((c, idx) => (
+                          <tr key={idx}>
+                            <td style={{color:"var(--gray)",fontSize:"0.8rem"}}>{c.email}</td>
+                            <td>
+                              <span className="ssa-rfm-badge" style={{background: RFM_COLORS[c.segment]?.bg ?? "rgba(255,255,255,0.08)", color: RFM_COLORS[c.segment]?.color ?? "var(--gray)"}}>
+                                {c.segment}
+                              </span>
+                            </td>
+                            <td style={{fontWeight:700,color:"var(--gold)",textAlign:"right"}}>{c.rfm_score}</td>
+                            <td style={{color:"var(--gray)",textAlign:"right"}}>{c.recency} days ago</td>
+                            <td style={{textAlign:"right"}}>{c.frequency}</td>
+                            <td style={{textAlign:"right"}}>₱{c.monetary?.toLocaleString("en-US",{maximumFractionDigits:0})}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="ssa-card">
+                <div className="ssa-card-header">
+                  <div>
+                    <h2 className="ssa-card-title">RFM Customer Segmentation</h2>
+                    <p style={{fontSize:"0.82rem",color:"var(--gray)",marginTop:"0.35rem"}}>Segments customers by Recency, Frequency, and Monetary value.</p>
+                  </div>
+                  <button type="button" className="ssa-run-btn" onClick={loadRFM}>Run Analysis</button>
+                </div>
+                {rfmError && <div className="ssa-error" style={{marginTop:"1rem"}}>{rfmError}</div>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Products & Services Tab (Market Basket + Service Segmentation combined) ── */}
+        {activeTab === "products" && (
+          <div>
+            {analyticsLoading ? <AnalyticsSkeleton /> : (serviceResult || basketResult) ? (
+              <>
+                {/* ── header ── */}
+                <div className="ssa-card" style={{marginBottom:"1.5rem"}}>
+                  <div className="ssa-card-header" style={{marginBottom:"0.75rem"}}>
+                    <div>
+                      <h2 className="ssa-card-title">Products &amp; Services</h2>
+                      <p style={{fontSize:"0.8rem",color:"var(--gray)",marginTop:"0.3rem",lineHeight:1.55}}>
+                        Combines <strong style={{color:"var(--white)"}}>ABC revenue analysis</strong> (which products earn the most) with{" "}
+                        <strong style={{color:"var(--white)"}}>purchase frequency</strong> (how often each product appears in orders).
+                      </p>
+                    </div>
+                    <button type="button" className="ssa-run-btn" onClick={loadProducts}>Re-run</button>
+                  </div>
+                  {/* ABC legend */}
+                  <div style={{display:"flex",gap:"0.75rem",flexWrap:"wrap"}}>
+                    {Object.entries(ABC_DESC).map(([cls, info]) => (
+                      <div key={cls} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.35rem 0.75rem",borderRadius:"8px",background:"var(--dark)",border:"1px solid var(--border)"}}>
+                        <span className="ssa-rfm-badge" style={{
+                          background: cls === "A" ? "rgba(74,222,128,0.12)" : cls === "B" ? "rgba(251,191,36,0.12)" : "rgba(248,113,113,0.12)",
+                          color:      cls === "A" ? "#4ade80"               : cls === "B" ? "#fbbf24"               : "#f87171",
+                        }}>{cls}</span>
+                        <span style={{fontSize:"0.78rem"}}>
+                          <span style={{color:"var(--white)",fontWeight:600}}>{info.label}</span>
+                          <span style={{color:"var(--gray)",display:"block",fontSize:"0.72rem"}}>{info.tip}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── summary metrics ── */}
+                <div className="ssa-metrics-grid">
+                  {[
+                    { label: "Total Products",    value: serviceResult?.total_services ?? basketResult?.total_products ?? "—",   sub: "distinct products / services" },
+                    { label: "Total Revenue",      value: serviceResult ? "₱" + (serviceResult.total_revenue ?? 0).toLocaleString("en-US",{maximumFractionDigits:0}) : "—", sub: "from all recorded sales" },
+                    { label: "Total Orders",       value: basketResult?.total_orders ?? "—",                                       sub: "orders analyzed" },
+                    { label: "Top Earner",         value: serviceResult?.top_services?.[0]?.service ?? "—",                        sub: "highest revenue product" },
+                  ].map(({ label, value, sub }) => (
+                    <div key={label} className="ssa-stat-card">
+                      <div className="ssa-stat-label">{label}</div>
+                      <div className="ssa-stat-value" style={{fontSize:"1.1rem"}}>{value}</div>
+                      <div style={{fontSize:"0.72rem",color:"var(--gray)",marginTop:"0.2rem"}}>{sub}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── unified product table ── */}
+                {serviceResult && (
+                  <div className="ssa-card">
+                    <div style={{marginBottom:"1rem"}}>
+                      <h2 className="ssa-card-title">Product Performance</h2>
+                      <p style={{fontSize:"0.78rem",color:"var(--gray)",marginTop:"0.3rem"}}>
+                        Sorted by revenue. Orders column shows how many of the {basketResult?.total_orders ?? "analyzed"} orders included this product.
+                      </p>
+                    </div>
+                    <div className="ssa-tbl-wrap" style={{maxHeight:"500px"}}>
+                      <table className="ssa-table">
+                        <thead style={{position:"sticky",top:0,background:"var(--dark2)",zIndex:1}}>
+                          <tr>
+                            <th>Product / Service</th>
+                            <th>Class</th>
+                            <th style={{textAlign:"right"}}>Revenue</th>
+                            <th style={{textAlign:"right"}}>Revenue share</th>
+                            <th style={{textAlign:"right"}}>Orders</th>
+                            <th style={{textAlign:"right"}}>Order frequency</th>
+                            <th style={{textAlign:"right"}}>Avg price</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(serviceResult.services ?? []).map((svc, idx) => {
+                            const basketItem = (basketResult?.frequent_itemsets ?? []).find(item => {
+                              const name = Array.isArray(item.itemset) ? item.itemset[0] : item.itemset;
+                              return name === svc.service && (!Array.isArray(item.itemset) || item.itemset.length === 1);
+                            });
+                            const orderFreq = basketItem?.support ?? null;
+                            const orderCount = orderFreq != null && basketResult?.total_orders
+                              ? Math.round(orderFreq * basketResult.total_orders)
+                              : svc.order_count;
+                            return (
+                              <tr key={idx}>
+                                <td style={{fontWeight:600}}>{svc.service}</td>
+                                <td>
+                                  <span className="ssa-rfm-badge" style={{
+                                    background: svc.abc_class === "A" ? "rgba(74,222,128,0.12)" : svc.abc_class === "B" ? "rgba(251,191,36,0.12)" : "rgba(248,113,113,0.12)",
+                                    color:      svc.abc_class === "A" ? "#4ade80"               : svc.abc_class === "B" ? "#fbbf24"               : "#f87171",
+                                  }}>
+                                    {svc.abc_class} — {ABC_DESC[svc.abc_class]?.label.split("—")[0].trim()}
+                                  </span>
+                                </td>
+                                <td style={{color:"var(--gold)",fontWeight:600,textAlign:"right"}}>₱{svc.total_revenue?.toLocaleString("en-US",{maximumFractionDigits:0})}</td>
+                                <td style={{textAlign:"right"}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",justifyContent:"flex-end"}}>
+                                    <span style={{color:"var(--gray)"}}>{((svc.revenue_share ?? 0) * 100).toFixed(1)}%</span>
+                                    <div style={{width:"50px",height:"5px",borderRadius:"3px",background:"var(--border)",overflow:"hidden",flexShrink:0}}>
+                                      <div style={{height:"100%",width:`${((svc.revenue_share ?? 0) * 100).toFixed(1)}%`,borderRadius:"3px",background: svc.abc_class === "A" ? "#4ade80" : svc.abc_class === "B" ? "#fbbf24" : "#f87171"}} />
+                                    </div>
+                                  </div>
+                                </td>
+                                <td style={{textAlign:"right",fontWeight:600}}>{orderCount}</td>
+                                <td style={{textAlign:"right",color:"var(--gray)"}}>
+                                  {orderFreq != null ? `${(orderFreq * 100).toFixed(1)}%` : "—"}
+                                </td>
+                                <td style={{textAlign:"right"}}>₱{svc.avg_price?.toLocaleString("en-US",{maximumFractionDigits:0})}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── cross-sell opportunities (only when rules exist) ── */}
+                {(basketResult?.rules?.length ?? 0) > 0 && (
+                  <div className="ssa-card">
+                    <div style={{marginBottom:"1rem"}}>
+                      <h2 className="ssa-card-title">Cross-Sell Opportunities</h2>
+                      <p style={{fontSize:"0.78rem",color:"var(--gray)",marginTop:"0.3rem"}}>
+                        When a customer buys the left product, they are likely to also buy the right one.{" "}
+                        <strong style={{color:"var(--white)"}}>Confidence</strong> = how often this holds.{" "}
+                        <strong style={{color:"var(--white)"}}>Lift</strong> = how much stronger than random ({">"} 1 = meaningful).
+                      </p>
+                    </div>
+                    <div className="ssa-tbl-wrap">
+                      <table className="ssa-table">
+                        <thead>
+                          <tr>
+                            <th>Customer buys</th>
+                            <th>And likely buys</th>
+                            <th style={{textAlign:"right"}}>Confidence</th>
+                            <th style={{textAlign:"right"}}>Lift</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {basketResult.rules.map((rule, idx) => (
+                            <tr key={idx}>
+                              <td style={{color:"var(--gold)",fontWeight:500}}>{rule.antecedents.join(", ")}</td>
+                              <td style={{fontWeight:600}}>{rule.consequents.join(", ")}</td>
+                              <td style={{textAlign:"right"}}>
+                                <span style={{color: rule.confidence >= 0.7 ? "#4ade80" : rule.confidence >= 0.4 ? "#fbbf24" : "var(--gray)", fontWeight:600}}>
+                                  {(rule.confidence * 100).toFixed(1)}%
+                                </span>
+                              </td>
+                              <td style={{textAlign:"right",fontWeight:700,color: rule.lift >= 2 ? "#4ade80" : rule.lift >= 1.5 ? "#fbbf24" : "var(--white)"}}>
+                                {rule.lift.toFixed(2)}×
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="ssa-card">
+                <div className="ssa-card-header">
+                  <div>
+                    <h2 className="ssa-card-title">Products &amp; Services</h2>
+                    <p style={{fontSize:"0.82rem",color:"var(--gray)",marginTop:"0.35rem"}}>
+                      Combines revenue ranking (ABC analysis) with purchase frequency across all orders.
+                    </p>
+                  </div>
+                  <button type="button" className="ssa-run-btn" onClick={loadProducts}>Run Analysis</button>
+                </div>
+                {(basketError || serviceError) && (
+                  <div className="ssa-error" style={{marginTop:"1rem"}}>{basketError || serviceError}</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
       <style dangerouslySetInnerHTML={{ __html: pageStyles }} />
     </ErrorBoundary>

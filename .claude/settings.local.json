@@ -47,7 +47,13 @@
       "PowerShell(\\(Get-Content \"D:\\\\PM\\\\frontend\\\\app\\\\dashboard\\\\business\\\\settings\\\\page.jsx\"\\).Count)",
       "Bash(Get-ChildItem -Path \"D:\\\\PM\\\\frontend\" -Force)",
       "Bash(Select-Object Name, PSIsContainer)",
-      "Bash(grep -E \"\\\\.\\(php|js|jsx\\)$\")"
+      "Bash(grep -E \"\\\\.\\(php|js|jsx\\)$\")",
+      "Bash(Get-ChildItem -Path \"D:\\\\PM\" -Directory)",
+      "Bash(php -r \"echo 'PHP OK';\")",
+      "Bash(php \"D:\\\\PM\\\\backend\\\\artisan\" route:list --path=admin/vouchers)",
+      "Bash(php 'D:\\\\PM\\\\backend\\\\artisan' tinker '--execute=use App\\\\Models\\\\Voucher; $v = Voucher::first\\(\\); echo json_encode\\(['\\\\''id'\\\\''=>\\(string\\)$v->_id,'\\\\''isActive'\\\\''=>$v->isActive,'\\\\''expiresAt'\\\\''=>$v->expiresAt]\\);')",
+      "Bash(php 'D:\\\\PM\\\\backend\\\\artisan' tinker '--execute=use App\\\\Models\\\\Voucher; $v = Voucher::first\\(\\); $v->isActive = !\\(\\(bool\\)\\($v->getAttributes\\(\\)['\\\\''isActive'\\\\''] ?? true\\)\\); $v->updatedAt = now\\(\\); $v->save\\(\\); echo '\\\\''OK: isActive='\\\\'' . \\(int\\)$v->isActive;')",
+      "Bash(Get-ChildItem \"D:\\\\PM\\\\backend\\\\storage\\\\logs\\\\\" | Sort-Object LastWriteTime -Descending | Select-Object -First 3 | Format-Table Name, LastWriteTime, Length)"
     ]
   }
 }

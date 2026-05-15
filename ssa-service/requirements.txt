@@ -3,3 +3,6 @@ uvicorn
 pandas
 numpy
 openpyxl
+scipy
+scikit-learn
+mlxtend

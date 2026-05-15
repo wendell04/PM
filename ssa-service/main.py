@@ -26,6 +26,45 @@ class ForecastRequest(BaseModel):
     data_type: str = "sales"  # "sales" | "stock"
 
 
+class SaleRow(BaseModel):
+    customerEmail: str
+    totalPrice: float
+    saleDate: str
+
+class RFMRequest(BaseModel):
+    sales: List[SaleRow]
+    reference_date: str = None
+
+class BasketRow(BaseModel):
+    orderId: str
+    productName: str
+
+class MarketBasketRequest(BaseModel):
+    transactions: List[BasketRow]
+    min_support: float = 0.01
+    min_confidence: float = 0.3
+    min_lift: float = 1.0
+    top_n: int = 20
+
+class ServiceRow(BaseModel):
+    productName: str
+    totalPrice: float
+    quantity: int = 1
+    saleDate: str = None
+
+class ServiceSegmentRequest(BaseModel):
+    sales: List[ServiceRow]
+
+class ComparativePeriod(BaseModel):
+    period: str
+    actual: float
+    forecast: float = None
+
+class ComparativeRequest(BaseModel):
+    series: List[ComparativePeriod]
+    threshold_pct: float = 20.0
+
+
 # ── MAPE: computed only on weeks with actual sales ───────────────────────────
 # Zero-actual weeks are excluded so we only measure accuracy on real sale events.
 # Returns None when all backtest actuals are zero (mae_ratio fallback used instead).
@@ -263,8 +302,8 @@ async def forecast(req: ForecastRequest):
             bt_periods = min(forecast_periods, max(2, n // 5), 8)
         elif forecast_type == "monthly":
             bt_periods = min(forecast_periods, max(2, n // 5), 6)
-        else:
-            bt_periods = min(forecast_periods, max(1, n // 10), 3)
+        else:  # annually — 12 monthly periods = 1 full calendar year for backtest
+            bt_periods = max(1, min(12, n - 10))
 
         # ── FIX 5: Smart backtest window ──────────────────────────────────────
         # For sparse data the tail window is often all-zeros → SMAPE = None.
@@ -342,13 +381,31 @@ async def forecast(req: ForecastRequest):
                 if mape_val is None and nz_train_mean and nz_train_mean > 0:
                     mae_ratio = round((mae_val / nz_train_mean) * 100, 2)
 
+                # Precision / Recall / F1 for direction accuracy (within 20% threshold)
+                _bt_threshold = 0.20
+                _bt_pct_err   = np.where(act > 0, np.abs(act - pred) / act, 0.0)
+                _bt_within    = _bt_pct_err <= _bt_threshold
+                _bt_median    = float(np.median(act))
+                _bt_act_high  = act > _bt_median
+                _bt_fc_high   = pred > _bt_median
+                _bt_tp = float(np.sum(_bt_act_high & _bt_fc_high))
+                _bt_fp = float(np.sum(~_bt_act_high & _bt_fc_high))
+                _bt_fn = float(np.sum(_bt_act_high & ~_bt_fc_high))
+                _bt_prec = _bt_tp / (_bt_tp + _bt_fp) if (_bt_tp + _bt_fp) > 0 else 0.0
+                _bt_rec  = _bt_tp / (_bt_tp + _bt_fn) if (_bt_tp + _bt_fn) > 0 else 0.0
+                _bt_f1   = 2 * _bt_prec * _bt_rec / (_bt_prec + _bt_rec) if (_bt_prec + _bt_rec) > 0 else 0.0
+
                 accuracy = {
                     "mape":              round(mape_val, 2) if mape_val is not None else None,
                     "mae":               round(mae_val, 2),
                     "mae_ratio":         mae_ratio,
                     "backtest_n":        bt_periods if forecast_type != "annually" else int(n_agg),
-                    # For annually, bt_nz counts non-zero YEARLY backtest periods (not months)
                     "backtest_nz_count": int(np.sum(act > 0)) if forecast_type == "annually" else bt_nz,
+                    "precision":         round(_bt_prec, 4),
+                    "recall":            round(_bt_rec, 4),
+                    "f1":                round(_bt_f1, 4),
+                    "hit_rate":          round(float(np.mean(_bt_within)) * 100, 2),
+                    "mape_reliable":     forecast_type != "annually" or int(n_agg) >= 2,
                 }
                 backtest_series = {
                     "dates":       pd.DatetimeIndex(bt_display_dates).strftime("%Y-%m-%d").tolist(),
@@ -374,9 +431,16 @@ async def forecast(req: ForecastRequest):
                 freq="MS",
             )
         else:
-            monthly_steps    = forecast_periods * 12
+            forecast_start = last_date + pd.DateOffset(months=1)
+            if forecast_start.month != 1:
+                # Pad enough months so that after dropping the partial leading year
+                # we still have exactly forecast_periods full calendar years.
+                months_to_year_end = 12 - forecast_start.month + 1
+                monthly_steps = months_to_year_end + forecast_periods * 12
+            else:
+                monthly_steps = forecast_periods * 12
             fc_dates_monthly = pd.date_range(
-                start=last_date + pd.DateOffset(months=1),
+                start=forecast_start,
                 periods=monthly_steps,
                 freq="MS",
             )
@@ -393,8 +457,14 @@ async def forecast(req: ForecastRequest):
             )
 
         if forecast_type == "annually":
-            fc_df_m  = pd.DataFrame({"Date": fc_dates_monthly, "Value": raw_fc})
-            fc_agg   = fc_df_m.set_index("Date").resample("YS").sum().head(forecast_periods).reset_index()
+            fc_df_m    = pd.DataFrame({"Date": fc_dates_monthly, "Value": raw_fc})
+            fc_agg_all = fc_df_m.set_index("Date").resample("YS").sum().reset_index()
+            if forecast_start.month != 1:
+                # First YS bin covers only a partial year — skip it so the user
+                # gets exactly forecast_periods complete calendar years.
+                fc_agg = fc_agg_all.iloc[1:].head(forecast_periods).reset_index(drop=True)
+            else:
+                fc_agg = fc_agg_all.head(forecast_periods).reset_index(drop=True)
             out_vals  = fc_agg["Value"].values
             out_dates = fc_agg["Date"]
         else:
@@ -404,10 +474,18 @@ async def forecast(req: ForecastRequest):
         # Cap/dampen based on real (unfloored) history so the floor baseline
         # does not artificially suppress the forecast ceiling.
         hist_vals = original_values
-        hist_max  = float(hist_vals.max()) if len(hist_vals) > 0 else 1.0
-        hist_mean = float(hist_vals.mean()) if len(hist_vals) > 0 else 1.0
-        cap       = max(hist_max * 1.5, hist_mean * 2, 1.0)
-        out_vals  = np.clip(out_vals, 0.0, cap)
+        if forecast_type == "annually" and len(hist_vals) > 0:
+            # hist_vals are monthly — aggregate to annual before computing cap
+            # so the ceiling is proportional to annual forecast values.
+            _ann_cap_s    = pd.Series(hist_vals, index=pd.to_datetime(df["Date"]))
+            _ann_cap_sums = _ann_cap_s.resample("YS").sum().values
+            hist_max  = float(_ann_cap_sums.max()) if len(_ann_cap_sums) > 0 else 1.0
+            hist_mean = float(_ann_cap_sums.mean()) if len(_ann_cap_sums) > 0 else 1.0
+        else:
+            hist_max  = float(hist_vals.max()) if len(hist_vals) > 0 else 1.0
+            hist_mean = float(hist_vals.mean()) if len(hist_vals) > 0 else 1.0
+        cap      = max(hist_max * 1.5, hist_mean * 2, 1.0)
+        out_vals = np.clip(out_vals, 0.0, cap)
 
         # ── Dampening + floor: sales-only (skip for inventory stock) ────────────
         is_dampened = False
@@ -449,13 +527,23 @@ async def forecast(req: ForecastRequest):
         # ── FIX 4: Cap CI growth so it doesn't explode on long horizons ──────
         # noise_std on sparse spike data can be very large (residuals from spike
         # weeks dominate). Cap CI so upper never exceeds the historical max and
-        # lower is always at least 5% of the forecast (never pure zero).
+        # lower is always at least 20% of the forecast (never pure zero).
         n_out      = len(out_vals)
         max_growth = np.sqrt(forecast_periods)
-        # Use the smaller of actual noise_std and 1× forecast mean as CI scale
-        # so the bands stay proportional when SSA sees mostly zeros.
-        ci_scale   = min(noise_std, float(out_vals.mean()) * 1.5) if out_vals.mean() > 0 else noise_std
-        hist_max_ceiling = float(hist_vals.max()) * 1.2 if len(hist_vals) > 0 else float("inf")
+        if forecast_type == "annually":
+            # noise_std is monthly-scale; scale to annual uncertainty via √12.
+            # CI ceiling and cap must also use annual-aggregated history, not monthly max.
+            _ann_ci_noise = noise_std * np.sqrt(12)
+            ci_scale = min(_ann_ci_noise, float(out_vals.mean()) * 1.5) if out_vals.mean() > 0 else _ann_ci_noise
+            if len(hist_vals) > 0:
+                _ann_ci_s   = pd.Series(hist_vals, index=pd.to_datetime(df["Date"]))
+                _ann_ci_max = float(_ann_ci_s.resample("YS").sum().max())
+                hist_max_ceiling = _ann_ci_max * 1.5
+            else:
+                hist_max_ceiling = float("inf")
+        else:
+            ci_scale = min(noise_std, float(out_vals.mean()) * 1.5) if out_vals.mean() > 0 else noise_std
+            hist_max_ceiling = float(hist_vals.max()) * 1.2 if len(hist_vals) > 0 else float("inf")
         conf_high  = [
             float(min(hist_max_ceiling, out_vals[i] + 1.96 * ci_scale * min(np.sqrt(i + 1), max_growth)))
             for i in range(n_out)
@@ -596,3 +684,361 @@ async def forecast(req: ForecastRequest):
             status_code=500,
             detail=str(e) + "\n" + traceback.format_exc(),
         )
+
+
+# ── RFM Customer Segmentation ─────────────────────────────────────────────
+
+def _rfm_label(r: int, f: int, m: int) -> str:
+    if r >= 4 and f >= 4 and m >= 4:
+        return "Champions"
+    if r >= 3 and f >= 3 and m >= 3:
+        return "Loyal Customers"
+    if r >= 3 and f <= 2 and m >= 3:
+        return "Potential Loyalists"
+    if r >= 4 and f <= 1:
+        return "New Customers"
+    if r == 3 and f <= 2 and m <= 2:
+        return "Promising"
+    if r <= 2 and f >= 3 and m >= 3:
+        return "At Risk"
+    if r <= 2 and f >= 3:
+        return "Can't Lose Them"
+    if r <= 2 and f <= 2 and m >= 3:
+        return "Hibernating"
+    if r == 1 and f == 1 and m == 1:
+        return "Lost"
+    return "Need Attention"
+
+
+@app.post("/api/customer-segments")
+async def customer_segments(req: RFMRequest):
+    try:
+        if not req.sales:
+            raise HTTPException(status_code=400, detail="No sales data provided.")
+
+        df = pd.DataFrame([{
+            "email":  s.customerEmail,
+            "amount": s.totalPrice,
+            "date":   pd.to_datetime(s.saleDate, errors="coerce"),
+        } for s in req.sales])
+        df = df.dropna(subset=["date"])
+        if df.empty:
+            raise HTTPException(status_code=400, detail="No valid sale rows after date parsing.")
+
+        # Strip timezone info so tz-aware MongoDB dates don't clash with tz-naive Timestamp
+        if df["date"].dt.tz is not None:
+            df["date"] = df["date"].dt.tz_convert("UTC").dt.tz_localize(None)
+
+        ref_date = (
+            pd.to_datetime(req.reference_date).tz_localize(None)
+            if req.reference_date
+            else pd.Timestamp.now(tz=None)
+        )
+
+        rfm = df.groupby("email").agg(
+            recency=("date",   lambda x: (ref_date - x.max()).days),
+            frequency=("date", "count"),
+            monetary=("amount","sum"),
+        ).reset_index()
+
+        def _qscore(series, ascending=True):
+            labels = [1, 2, 3, 4, 5] if ascending else [5, 4, 3, 2, 1]
+            try:
+                return pd.qcut(series, q=5, labels=labels, duplicates="drop").astype(int)
+            except ValueError:
+                ranked = series.rank(method="first", ascending=ascending)
+                return pd.cut(ranked, bins=5, labels=[1, 2, 3, 4, 5]).astype(int)
+
+        rfm["r_score"] = _qscore(rfm["recency"],   ascending=False)
+        rfm["f_score"] = _qscore(rfm["frequency"],  ascending=True)
+        rfm["m_score"] = _qscore(rfm["monetary"],   ascending=True)
+        rfm["rfm_score"] = rfm["r_score"] + rfm["f_score"] + rfm["m_score"]
+        rfm["segment"]   = rfm.apply(lambda r: _rfm_label(r["r_score"], r["f_score"], r["m_score"]), axis=1)
+
+        customers = rfm.round(2).to_dict(orient="records")
+        summary = (
+            rfm.groupby("segment")
+            .agg(
+                count=("email",     "count"),
+                avg_recency=("recency",   "mean"),
+                avg_frequency=("frequency","mean"),
+                avg_monetary=("monetary", "mean"),
+                total_monetary=("monetary","sum"),
+            )
+            .round(2).reset_index().to_dict(orient="records")
+        )
+
+        return {"customers": customers, "summary": summary, "total_customers": len(rfm)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(status_code=500, detail=str(e) + "\n" + traceback.format_exc())
+
+
+# ── Market Basket Analysis ────────────────────────────────────────────────
+
+def _apriori(transactions: list, min_support: float, max_len: int = 3):
+    """Pure-Python Apriori — no external dependencies."""
+    from itertools import combinations
+
+    n = len(transactions)
+    if n == 0:
+        return []
+
+    txn_sets = [frozenset(t) for t in transactions]
+    all_items = sorted({item for t in txn_sets for item in t})
+
+    freq: list = []
+    prev_freq_sets: list = [frozenset([item]) for item in all_items]
+
+    for k in range(1, max_len + 1):
+        candidates = prev_freq_sets if k == 1 else [
+            a | b
+            for i, a in enumerate(prev_freq_sets)
+            for b in prev_freq_sets[i + 1:]
+            if len(a | b) == k
+        ]
+        # Deduplicate
+        seen: set = set()
+        unique_cands = []
+        for c in candidates:
+            if c not in seen:
+                seen.add(c)
+                unique_cands.append(c)
+
+        next_freq: list = []
+        for cand in unique_cands:
+            sup = sum(1 for t in txn_sets if cand.issubset(t)) / n
+            if sup >= min_support:
+                freq.append({"itemsets": cand, "support": sup})
+                next_freq.append(cand)
+
+        if not next_freq:
+            break
+        prev_freq_sets = next_freq
+
+    return freq
+
+
+def _assoc_rules(freq_list: list, min_confidence: float, min_lift: float, top_n: int):
+    from itertools import combinations
+
+    support_map = {item["itemsets"]: item["support"] for item in freq_list}
+    rules = []
+
+    for item in freq_list:
+        itemset = item["itemsets"]
+        if len(itemset) < 2:
+            continue
+        for size in range(1, len(itemset)):
+            for ant in combinations(list(itemset), size):
+                ant_set  = frozenset(ant)
+                con_set  = itemset - ant_set
+                ant_sup  = support_map.get(ant_set, 0)
+                con_sup  = support_map.get(con_set, 0)
+                if ant_sup == 0:
+                    continue
+                confidence = item["support"] / ant_sup
+                lift       = confidence / con_sup if con_sup > 0 else 0
+                if confidence >= min_confidence and lift >= min_lift:
+                    conv = (1 - con_sup) / (1 - confidence) if confidence < 1 else float("inf")
+                    rules.append({
+                        "antecedents": sorted(list(ant_set)),
+                        "consequents": sorted(list(con_set)),
+                        "support":    round(item["support"], 4),
+                        "confidence": round(confidence, 4),
+                        "lift":       round(lift, 4),
+                        "conviction": round(conv, 4) if not np.isinf(conv) else 999.0,
+                    })
+
+    rules.sort(key=lambda r: r["lift"], reverse=True)
+    return rules[:top_n]
+
+
+@app.post("/api/market-basket")
+async def market_basket(req: MarketBasketRequest):
+    try:
+        if not req.transactions:
+            raise HTTPException(status_code=400, detail="No transaction data provided.")
+
+        orders: dict = {}
+        for row in req.transactions:
+            orders.setdefault(row.orderId, set()).add(row.productName)
+
+        if len(orders) < 2:
+            raise HTTPException(status_code=400, detail="Need at least 2 orders for basket analysis.")
+
+        transactions = [list(items) for items in orders.values()]
+        all_products = sorted({item for t in transactions for item in t})
+
+        freq_list = _apriori(transactions, min_support=req.min_support, max_len=3)
+
+        if not freq_list:
+            return {
+                "rules": [], "frequent_itemsets": [],
+                "total_orders": len(orders), "total_products": len(all_products),
+                "message": "No frequent itemsets found. Try lowering min_support.",
+            }
+
+        rules_out = _assoc_rules(freq_list, req.min_confidence, req.min_lift, req.top_n)
+
+        freq_out = sorted(freq_list, key=lambda x: x["support"], reverse=True)[:50]
+        freq_out = [{"itemset": sorted(list(f["itemsets"])), "support": round(f["support"], 4)} for f in freq_out]
+
+        return {
+            "rules": rules_out,
+            "frequent_itemsets": freq_out,
+            "total_orders": len(orders),
+            "total_products": len(all_products),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(status_code=500, detail=str(e) + "\n" + traceback.format_exc())
+
+
+# ── Service Segmentation ──────────────────────────────────────────────────
+
+@app.post("/api/service-segments")
+async def service_segments(req: ServiceSegmentRequest):
+    try:
+        if not req.sales:
+            raise HTTPException(status_code=400, detail="No sales data provided.")
+
+        df = pd.DataFrame([{
+            "service":  s.productName,
+            "revenue":  s.totalPrice,
+            "quantity": s.quantity,
+            "date":     s.saleDate,
+        } for s in req.sales])
+
+        summary = (
+            df.groupby("service")
+            .agg(
+                total_revenue=("revenue",  "sum"),
+                order_count=("revenue",    "count"),
+                avg_price=("revenue",      "mean"),
+                total_quantity=("quantity","sum"),
+            )
+            .round(2).reset_index()
+            .sort_values("total_revenue", ascending=False)
+            .reset_index(drop=True)
+        )
+
+        total_rev = float(summary["total_revenue"].sum())
+        summary["revenue_share"] = (summary["total_revenue"] / total_rev).round(4) if total_rev > 0 else 0.0
+
+        cumulative = summary["total_revenue"].cumsum() / total_rev
+        summary["abc_class"] = "C"
+        summary.loc[cumulative <= 0.70,                        "abc_class"] = "A"
+        summary.loc[(cumulative > 0.70) & (cumulative <= 0.90),"abc_class"] = "B"
+
+        services_out = summary.to_dict(orient="records")
+
+        trend_out: dict = {}
+        try:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+            df_v = df.dropna(subset=["date"]).copy()
+            if not df_v.empty:
+                df_v["month"] = df_v["date"].dt.to_period("M").astype(str)
+                for svc, grp in df_v.groupby("service"):
+                    monthly = grp.groupby("month")["revenue"].sum().reset_index()
+                    trend_out[svc] = {
+                        "months":  monthly["month"].tolist(),
+                        "revenue": monthly["revenue"].round(2).tolist(),
+                    }
+        except Exception:
+            pass
+
+        return {
+            "services":         services_out,
+            "total_revenue":    round(total_rev, 2),
+            "total_services":   len(summary),
+            "top_services":     services_out[:5],
+            "bottom_services":  services_out[-5:] if len(services_out) > 5 else [],
+            "trend_by_service": trend_out,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(status_code=500, detail=str(e) + "\n" + traceback.format_exc())
+
+
+# ── Comparative Analysis ──────────────────────────────────────────────────
+
+@app.post("/api/comparative")
+async def comparative_analysis(req: ComparativeRequest):
+    try:
+        paired = [s for s in req.series if s.actual is not None and s.forecast is not None]
+        if len(paired) < 2:
+            raise HTTPException(status_code=400, detail="Need at least 2 periods with both actual and forecast.")
+
+        actuals   = np.array([s.actual   for s in paired], dtype=float)
+        forecasts = np.array([s.forecast for s in paired], dtype=float)
+        threshold = req.threshold_pct / 100.0
+
+        abs_err  = np.abs(actuals - forecasts)
+        pct_err  = np.where(actuals > 0, abs_err / actuals, 0.0)
+        within   = pct_err <= threshold
+
+        mape = float(np.mean(pct_err[actuals > 0]) * 100) if np.any(actuals > 0) else None
+        mae  = float(np.mean(abs_err))
+        rmse = float(np.sqrt(np.mean((actuals - forecasts) ** 2)))
+        bias = float(np.mean(forecasts - actuals))
+        bias_pct = float(np.mean((forecasts - actuals) / actuals[actuals > 0]) * 100) if np.any(actuals > 0) else None
+
+        median_act   = float(np.median(actuals))
+        act_high     = actuals   > median_act
+        fc_high      = forecasts > median_act
+        tp = float(np.sum( act_high &  fc_high))
+        fp = float(np.sum(~act_high &  fc_high))
+        fn = float(np.sum( act_high & ~fc_high))
+        tn = float(np.sum(~act_high & ~fc_high))
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall    = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1        = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+        acc_cls   = (tp + tn) / len(actuals)
+
+        comparison = [
+            {
+                "period":           s.period,
+                "actual":           s.actual,
+                "forecast":         s.forecast,
+                "error":            round(float(abs_err[i]), 2),
+                "pct_error":        round(float(pct_err[i] * 100), 2),
+                "within_threshold": bool(within[i]),
+                "direction":        "over" if forecasts[i] > actuals[i] else ("under" if forecasts[i] < actuals[i] else "exact"),
+            }
+            for i, s in enumerate(paired)
+        ]
+
+        return {
+            "comparison":    comparison,
+            "total_periods": len(paired),
+            "median_actual": round(median_act, 2),
+            "metrics": {
+                "mape":          round(mape, 2) if mape is not None else None,
+                "mae":           round(mae, 2),
+                "rmse":          round(rmse, 2),
+                "bias":          round(bias, 2),
+                "bias_pct":      round(bias_pct, 2) if bias_pct is not None else None,
+                "precision":     round(precision, 4),
+                "recall":        round(recall,    4),
+                "f1":            round(f1,         4),
+                "accuracy":      round(acc_cls,    4),
+                "hit_rate":      round(float(np.mean(within)) * 100, 2),
+                "threshold_pct": req.threshold_pct,
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(status_code=500, detail=str(e) + "\n" + traceback.format_exc())

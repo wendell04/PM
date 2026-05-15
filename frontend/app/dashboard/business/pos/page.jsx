@@ -120,10 +120,10 @@ function IconCartEmpty() {
 function ProductGridSkeleton() {
   const bar = { background: 'var(--dark2)', borderRadius: '4px', opacity: 0.85 };
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.75rem' }}>
       {Array.from({ length: 8 }).map((_, i) => (
         <div key={`sk-${i}`} style={{ ...cardStyle, overflow: 'hidden' }}>
-          <div style={{ height: '120px', background: 'var(--dark2)' }} />
+          <div style={{ height: '90px', background: 'var(--dark2)' }} />
           <div style={{ padding: '0.75rem' }}>
             <div style={{ height: '12px', ...bar, marginBottom: '0.5rem' }} />
             <div style={{ height: '10px', width: '60%', ...bar }} />
@@ -382,8 +382,8 @@ export default function PosPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '1.5rem', alignItems: 'start' }}>
 
-        <div>
-          <div style={{ marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 180px)', minHeight: '400px' }}>
+          <div style={{ marginBottom: '0.75rem', flexShrink: 0 }}>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -393,6 +393,7 @@ export default function PosPage() {
             />
           </div>
 
+          <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'none' }}>
           {isLoading ? (
             <ProductGridSkeleton />
           ) : prodError ? (
@@ -407,7 +408,7 @@ export default function PosPage() {
               No products match your search.
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.75rem' }}>
               {products.map(product => {
                 const price = resolvePrice(product, 1, null);
                 const hasVariants = getVariantOptions(product).length > 0;
@@ -428,7 +429,7 @@ export default function PosPage() {
                     onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--gold)'; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}
                   >
-                    <div style={{ height: '120px', background: 'var(--dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' }}>
+                    <div style={{ height: '90px', background: 'var(--dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' }}>
                       {thumb
                         ? (typeof thumb === 'string' && thumb.includes('res.cloudinary.com')
                           ? <Image src={thumb} alt="" fill sizes="(max-width: 768px) 50vw, 200px" style={{ objectFit: 'cover' }} />
@@ -436,11 +437,11 @@ export default function PosPage() {
                           : <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />)
                         : <IconPrintPlaceholder />}
                     </div>
-                    <div style={{ padding: '0.75rem' }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.25rem', lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    <div style={{ padding: '0.5rem 0.6rem' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.2rem', lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                         {product.name}
                       </div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--gold)', fontWeight: 700 }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--gold)', fontWeight: 700 }}>
                         {hasVariants ? 'Select variant' : (price !== null ? formatPrice(price) : '—')}
                       </div>
                     </div>
@@ -449,6 +450,7 @@ export default function PosPage() {
               })}
             </div>
           )}
+          </div>
         </div>
 
         <div style={{ ...cardStyle, padding: '1.25rem', position: 'sticky', top: '1.5rem' }}>
