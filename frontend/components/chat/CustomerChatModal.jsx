@@ -68,7 +68,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   useEffect(() => {
     if (!token || !user) return;
     loadConversations();
-    const id = setInterval(loadConversations, 15000);
+    const id = setInterval(loadConversations, 8000);
     return () => clearInterval(id);
   }, [loadConversations]);
 
@@ -94,10 +94,10 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     load();
   }, [activeConv?._id, token]);
 
-  // Message polling (2s fallback)
+  // Message polling — 1.5s fallback, normalized ID to handle {$oid} objects
   useEffect(() => {
     if (!activeConv || activeConv._id?.startsWith('new_') || activeConv._id === 'support_auto' || !token) return;
-    const convId = activeConv._id;
+    const convId = nid(activeConv._id);
     const poll = async () => {
       try {
         const data = await getMessages(token, convId);
@@ -108,7 +108,8 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
         });
       } catch { /* silent */ }
     };
-    const id = setInterval(poll, 2000);
+    poll();
+    const id = setInterval(poll, 1500);
     return () => clearInterval(id);
   }, [activeConv?._id, token]);
 
@@ -120,12 +121,13 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     return () => clearInterval(id);
   }, [token]);
 
-  // WebSocket real-time
+  // WebSocket real-time — normalized conversation ID
   useEffect(() => {
     if (!user || !token || !activeConv || activeConv._id?.startsWith('new_') || activeConv._id === 'support_auto') return;
     const echo = getEcho(token);
     if (!echo) return;
-    const channel = echo.private(`conversation.${activeConv._id}`);
+    const convId = nid(activeConv._id);
+    const channel = echo.private(`conversation.${convId}`);
     channel.listen('.message.sent', (data) => {
       const msg = normalizeMsg(data.message);
       setMessages(prev => prev.find(m => m._id === msg._id) ? prev : [...prev, msg]);
@@ -232,16 +234,24 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   return (
     <>
       {/* Floating launcher */}
-      <button type="button" className={`cw-launcher ${open ? 'cw-launcher--open' : ''}`} onClick={() => setOpen(o => !o)} aria-label={open ? 'Close chat' : 'Open chat'}>
+      <button
+        type="button"
+        className={`cw-launcher ${open ? 'cw-launcher--open' : ''}`}
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          if (next && conversations.length > 0 && view === 'home') setView('messages');
+        }}
+        aria-label={open ? 'Close chat' : 'Open chat'}
+      >
         {open ? (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <polyline points="18 15 12 9 6 15" />
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
           </svg>
         ) : (
           <>
-            <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
-              <circle cx="15" cy="15" r="15" fill="#d4a843" />
-              <text x="15" y="21" textAnchor="middle" fontSize="17" fontWeight="900" fontFamily="system-ui,sans-serif" fill="#000">P</text>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
             {unreadTotal > 0 && (
               <span className="cw-launcher-badge">{unreadTotal > 99 ? '99+' : unreadTotal}</span>
@@ -262,7 +272,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" /></svg>
                 </button>
                 <img src="/logos/PersonalizeMe logo.png" alt="" className="cw-home-logo" />
-                <div className="cw-home-greeting">Hi there</div>
+                <div className="cw-home-greeting">Hi{user?.firstName ? `, ${user.firstName}` : ' there'}</div>
                 <div className="cw-home-tagline">How can we help?</div>
               </div>
               <div className="cw-home-body">

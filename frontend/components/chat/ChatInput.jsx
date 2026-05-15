@@ -4,13 +4,14 @@ import React, { useState, useRef, useEffect } from 'react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-const ChatInput = ({ onSendMessage, isSending, activeConversation, token }) => {
+const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTyping }) => {
   const [text, setText] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [previewFile, setPreviewFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const fileInputRef = useRef(null);
+  const typingThrottleRef = useRef(null);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -177,7 +178,13 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token }) => {
 
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (onTyping && !typingThrottleRef.current) {
+              onTyping();
+              typingThrottleRef.current = setTimeout(() => { typingThrottleRef.current = null; }, 2000);
+            }
+          }}
           placeholder="Type a message..."
           className="text-input custom-scrollbar"
           rows={1}

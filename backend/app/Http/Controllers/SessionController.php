@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 
 class SessionController extends Controller
@@ -70,6 +71,12 @@ class SessionController extends Controller
 
             $token->delete();
 
+            Log::info('security.session_revoked', [
+                'user_id'          => (string) $user->_id,
+                'revoked_token_id' => $id,
+                'ip'               => $request->ip(),
+            ]);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Session revoked.',
@@ -91,9 +98,14 @@ class SessionController extends Controller
             $user = $request->user();
             $currentId = $user->currentAccessToken()->id;
 
-            $user->tokens()
-                ->where('id', '!=', $currentId)
-                ->delete();
+            $revokedCount = $user->tokens()->where('id', '!=', $currentId)->count();
+            $user->tokens()->where('id', '!=', $currentId)->delete();
+
+            Log::info('security.sessions_revoked_all', [
+                'user_id'       => (string) $user->_id,
+                'revoked_count' => $revokedCount,
+                'ip'            => $request->ip(),
+            ]);
 
             return response()->json([
                 'success' => true,

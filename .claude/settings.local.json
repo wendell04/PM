@@ -44,7 +44,10 @@
       "Bash(Get-Content \"C:\\\\Users\\\\Joji\\\\.claude\\\\projects\\\\d--PM\\\\93f41485-6377-4c41-9000-7e18ec89ec5c.jsonl\")",
       "Bash(Select-Object -Last 100)",
       "PowerShell(\\(Get-Content \"D:\\\\PM\\\\frontend\\\\app\\\\shop\\\\profile\\\\page.jsx\"\\).Count)",
-      "PowerShell(\\(Get-Content \"D:\\\\PM\\\\frontend\\\\app\\\\dashboard\\\\business\\\\settings\\\\page.jsx\"\\).Count)"
+      "PowerShell(\\(Get-Content \"D:\\\\PM\\\\frontend\\\\app\\\\dashboard\\\\business\\\\settings\\\\page.jsx\"\\).Count)",
+      "Bash(Get-ChildItem -Path \"D:\\\\PM\\\\frontend\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(grep -E \"\\\\.\\(php|js|jsx\\)$\")"
     ]
   }
 }

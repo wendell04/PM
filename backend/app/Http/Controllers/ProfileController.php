@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 
 class ProfileController extends Controller
 {
@@ -31,12 +32,24 @@ class ProfileController extends Controller
 
             $san = fn(string $v) => htmlspecialchars(strip_tags(trim($v)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
+            $changedFields = [];
+            if ($user->email !== $request->email) $changedFields[] = 'email';
+            if ($user->phoneNumber !== $request->phoneNumber) $changedFields[] = 'phoneNumber';
+
             $user->firstName   = $san($request->firstName);
             $user->lastName    = $san($request->lastName);
             $user->email       = $request->email;
             $user->phoneNumber = $request->phoneNumber;
             $user->address     = $san($request->address);
             $user->save();
+
+            if (!empty($changedFields)) {
+                Log::info('security.profile_contact_changed', [
+                    'user_id' => (string) $user->_id,
+                    'changed' => $changedFields,
+                    'ip'      => request()->ip(),
+                ]);
+            }
 
             return $this->successResponse('Profile updated successfully.', [
                 'firstName' => $user->firstName,
@@ -65,7 +78,7 @@ class ProfileController extends Controller
 
             $request->validate([
                 'currentPassword' => 'required|string',
-                'password' => 'required|string|min:8|confirmed',
+                'password' => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
             ]);
 
             if (!Hash::check($request->currentPassword, $user->password)) {
@@ -74,6 +87,12 @@ class ProfileController extends Controller
 
             $user->password = Hash::make($request->password);
             $user->save();
+
+            Log::info('security.password_changed', [
+                'user_id' => (string) $user->_id,
+                'email'   => $user->email,
+                'ip'      => request()->ip(),
+            ]);
 
             return $this->successResponse('Password changed successfully.');
         } catch (\Illuminate\Validation\ValidationException $e) {

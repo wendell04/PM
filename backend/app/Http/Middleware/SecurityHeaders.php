@@ -39,7 +39,7 @@ class SecurityHeaders
             implode('; ', [
                 "default-src 'self'",
                 "script-src 'self'",
-                "style-src 'self' 'unsafe-inline'",
+                "style-src 'self'",
                 "img-src 'self' data: https://res.cloudinary.com",
                 "font-src 'self'",
                 "connect-src 'self'",

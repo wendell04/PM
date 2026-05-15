@@ -25,6 +25,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn() => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Forward unhandled exceptions to Sentry (no-op if DSN not configured)
+        $exceptions->report(function (\Throwable $e) {
+            if (app()->bound('sentry') && app('sentry')->getHub()->getClient()) {
+                \Sentry\captureException($e);
+            }
+        })->stop();
+
         // Handle unauthenticated requests — return 401 JSON
         // instead of redirecting to non-existent login route
         $exceptions->render(function (AuthenticationException $e, $request) {

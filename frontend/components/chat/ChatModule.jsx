@@ -20,6 +20,8 @@ const ChatModule = ({ user, token, addToCart }) => {
   const [typingUsers, setTypingUsers] = useState({});
   const typingTimeoutRefs = useRef({});
   const conversationChannelRef = useRef(null);
+  // Ref keeps handleNewMessage free of stale closure on activeConversation
+  const activeConvRef = useRef(null);
 
   const isAdmin = useMemo(() => user?.role === 'admin' || user?.role === 'owner', [user]);
 
@@ -50,12 +52,18 @@ const ChatModule = ({ user, token, addToCart }) => {
       if (!prev) {
         return !isAdmin && data.length > 0 ? data[0] : null;
       }
-      const realMatch = data.find(
-        c => !c._id.startsWith('new_') && c._id !== 'support_auto' && c.other_user?.id === prev.other_user?.id
-      );
-      if (realMatch) return realMatch;
-      const stillExists = data.find(c => c._id === prev._id);
-      return stillExists ?? prev;
+      // Always try exact _id match first — prevents accidentally switching conversations
+      const sameConv = data.find(c => nid(c._id) === nid(prev._id));
+      if (sameConv) return sameConv;
+      // Only fall back to other_user match for temporary placeholder conversations
+      if (prev._id.startsWith('new_') || prev._id === 'support_auto') {
+        const realMatch = data.find(
+          c => !c._id.startsWith('new_') && c._id !== 'support_auto'
+            && nid(c.other_user?.id) === nid(prev.other_user?.id)
+        );
+        if (realMatch) return realMatch;
+      }
+      return prev;
     });
   }, [token, isAdmin]);
 
@@ -75,12 +83,12 @@ const ChatModule = ({ user, token, addToCart }) => {
     loadConversations();
   }, [loadConversations]);
 
-  // Conversation list polling — refreshes last_seen_at for online status
+  // Conversation list polling — refreshes sidebar and online status
   useEffect(() => {
     if (!token) return;
     const id = setInterval(async () => {
       try { await applyConversations(); } catch { /* ignore */ }
-    }, 20000);
+    }, 8000);
     return () => clearInterval(id);
   }, [token, applyConversations]);
 
@@ -91,6 +99,9 @@ const ChatModule = ({ user, token, addToCart }) => {
     const id = setInterval(() => sendHeartbeat(token), 30000);
     return () => clearInterval(id);
   }, [token]);
+
+  // Keep ref in sync — always points to latest activeConversation
+  useEffect(() => { activeConvRef.current = activeConversation; }, [activeConversation]);
 
   // Clear typing indicator when conversation switches
   useEffect(() => {
@@ -127,14 +138,14 @@ const ChatModule = ({ user, token, addToCart }) => {
     loadMessages();
   }, [activeConversation?._id, token]);
 
-  // Message polling — 2s fallback for real-time delivery
+  // Message polling — 1.5s fallback for real-time delivery
   useEffect(() => {
     if (!activeConversation ||
         activeConversation._id === 'support_auto' ||
         activeConversation._id.startsWith('new_') ||
         !token) return;
 
-    const convId = activeConversation._id;
+    const convId = nid(activeConversation._id); // normalize so {$oid} objects work
     const poll = async () => {
       try {
         const data = await getMessages(token, convId);
@@ -146,8 +157,8 @@ const ChatModule = ({ user, token, addToCart }) => {
       } catch { /* ignore */ }
     };
 
-    poll(); // immediate check so messages appear without waiting for first interval
-    const id = setInterval(poll, 2000);
+    poll();
+    const id = setInterval(poll, 1500);
     return () => clearInterval(id);
   }, [activeConversation?._id, token]);
 
@@ -166,62 +177,64 @@ const ChatModule = ({ user, token, addToCart }) => {
     return () => { echo.leave('presence-online'); };
   }, [user, token]);
 
+  // Stable message handler — uses ref so it never has a stale activeConversation
+  const handleNewMessage = useCallback((data) => {
+    const newMessage = normalizeMsg(data.message);
+    const curr = activeConvRef.current;
+    if (curr) {
+      const currId = nid(curr._id);
+      if (newMessage.conversation_id === currId ||
+          curr._id.startsWith('new_') ||
+          curr._id === 'support_auto') {
+        setMessages(prev => {
+          if (prev.find(m => m._id === newMessage._id)) return prev;
+          return [...prev, newMessage];
+        });
+      }
+    }
+    // Always refresh sidebar so unread counts and previews update
+    try { applyConversations(); } catch { /* ignore */ }
+  }, [applyConversations]); // stable — no activeConversation dep needed
+
+  // Admin-wide channel — stays subscribed regardless of which conversation is open
   useEffect(() => {
-    if (!user || !token) return;
+    if (!user || !token || !isAdmin) return;
+    const echo = getEcho(token);
+    if (!echo) return;
+    const ch = echo.private('admin.chat');
+    ch.listen('.message.sent', handleNewMessage);
+    return () => { ch.stopListening('.message.sent'); };
+  }, [user, token, isAdmin, handleNewMessage]);
+
+  // Conversation-specific channel — switches when active conversation changes
+  useEffect(() => {
+    if (!user || !token || !activeConversation ||
+        activeConversation._id.startsWith('new_') ||
+        activeConversation._id === 'support_auto') return;
     const echo = getEcho(token);
     if (!echo) return;
 
-    const handleNewMessage = (data) => {
-      const newMessage = normalizeMsg(data.message);
-      if (activeConversation && newMessage.conversation_id === activeConversation._id) {
-        setMessages(prev => {
-          if (prev.find(m => m._id === newMessage._id)) return prev;
-          return [...prev, newMessage];
-        });
-      } else if (
-        activeConversation &&
-        (activeConversation._id.startsWith('new_') || activeConversation._id === 'support_auto')
-      ) {
-        setMessages(prev => {
-          if (prev.find(m => m._id === newMessage._id)) return prev;
-          return [...prev, newMessage];
-        });
-      }
-      loadConversations();
-    };
-
-    let adminChannel = null;
-    if (isAdmin) {
-      adminChannel = echo.private('admin.chat');
-      adminChannel.listen('.message.sent', handleNewMessage);
-    }
-
-    let conversationChannel = null;
-    if (activeConversation && !activeConversation._id.startsWith('new_') && activeConversation._id !== 'support_auto') {
-      conversationChannel = echo.private(`conversation.${activeConversation._id}`);
-      conversationChannel.listen('.message.sent', handleNewMessage);
-      conversationChannel.listenForWhisper('typing', (data) => {
-        const uid = String(data.userId || '');
-        if (!uid) return;
-        setTypingUsers(prev => ({ ...prev, [uid]: data.name || 'Someone' }));
-        if (typingTimeoutRefs.current[uid]) clearTimeout(typingTimeoutRefs.current[uid]);
-        typingTimeoutRefs.current[uid] = setTimeout(() => {
-          setTypingUsers(prev => { const u = { ...prev }; delete u[uid]; return u; });
-          delete typingTimeoutRefs.current[uid];
-        }, 3000);
-      });
-      conversationChannelRef.current = conversationChannel;
-    }
+    const convId = nid(activeConversation._id);
+    const ch = echo.private(`conversation.${convId}`);
+    ch.listen('.message.sent', handleNewMessage);
+    ch.listenForWhisper('typing', (data) => {
+      const uid = String(data.userId || '');
+      if (!uid) return;
+      setTypingUsers(prev => ({ ...prev, [uid]: data.name || 'Someone' }));
+      if (typingTimeoutRefs.current[uid]) clearTimeout(typingTimeoutRefs.current[uid]);
+      typingTimeoutRefs.current[uid] = setTimeout(() => {
+        setTypingUsers(prev => { const u = { ...prev }; delete u[uid]; return u; });
+        delete typingTimeoutRefs.current[uid];
+      }, 3000);
+    });
+    conversationChannelRef.current = ch;
 
     return () => {
       conversationChannelRef.current = null;
-      if (conversationChannel) {
-        conversationChannel.stopListening('.message.sent');
-        conversationChannel.stopListeningForWhisper('typing');
-      }
-      if (adminChannel) adminChannel.stopListening('.message.sent');
+      ch.stopListening('.message.sent');
+      ch.stopListeningForWhisper('typing');
     };
-  }, [activeConversation?._id, user, token, isAdmin, loadConversations]);
+  }, [activeConversation?._id, user, token, handleNewMessage]);
 
   const handleSelectConversation = useCallback((conv) => {
     if (conv._id?.startsWith('new_')) {

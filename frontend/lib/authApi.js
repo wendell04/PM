@@ -7,6 +7,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 // Import timeout helper
 import { fetchWithTimeout } from "./fetchWithTimeout";
+import { sanitizePayload } from "./sanitize";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC AUTH ENDPOINTS
@@ -19,6 +20,8 @@ import { fetchWithTimeout } from "./fetchWithTimeout";
  */
 export async function register(userData) {
   try {
+    const { password, password_confirmation, ...textFields } = userData;
+    const sanitized = { ...sanitizePayload(textFields), password, password_confirmation };
     const response = await fetchWithTimeout(
       `${API_URL}/api/register`,
       {
@@ -26,7 +29,7 @@ export async function register(userData) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(userData),
+        body: JSON.stringify(sanitized),
       },
       15000,
     ); // 15 second timeout for registration
@@ -357,7 +360,7 @@ export async function contact(data) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(sanitizePayload(data)),
       },
       30000,
     );
@@ -429,7 +432,7 @@ export async function updateProfile(token, profileData) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(profileData),
+        body: JSON.stringify(sanitizePayload(profileData)),
       },
       30000,
     );

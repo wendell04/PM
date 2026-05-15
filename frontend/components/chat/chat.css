@@ -782,22 +782,18 @@
    Chat Widget (floating bubble + slide-up panel)
    ══════════════════════════════════════════════════════════════ */
 
-/* Floating launcher button — offset-shadow style */
+/* Floating launcher button */
 .cw-launcher {
   position: fixed;
   bottom: 28px;
   right: 28px;
   z-index: 1400;
-  width: 62px;
-  height: 62px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  /* Layered shadow: soft ambient + strong offset for the "lifted card" look */
   background: #d4a843;
   border: none;
-  box-shadow:
-    4px 6px 0px #8a6a1c,          /* hard offset — bottom-right */
-    0 12px 32px rgba(0,0,0,0.55), /* ambient depth */
-    0 2px 6px rgba(0,0,0,0.4);    /* close contact shadow */
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3), 0 1px 4px rgba(0,0,0,0.2);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -805,64 +801,48 @@
   overflow: visible;
   padding: 0;
   color: #000;
-  transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.18s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .cw-launcher:hover {
-  transform: translate(-1px, -2px);
-  box-shadow:
-    6px 9px 0px #8a6a1c,
-    0 18px 40px rgba(0,0,0,0.6),
-    0 4px 8px rgba(0,0,0,0.45);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.2);
   background: #e0b44e;
 }
 
 .cw-launcher:active {
-  transform: translate(2px, 3px);
-  box-shadow:
-    2px 3px 0px #8a6a1c,
-    0 6px 16px rgba(0,0,0,0.45),
-    0 1px 3px rgba(0,0,0,0.3);
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
 }
 
 .cw-launcher--open {
-  background: #1e1e1e;
-  color: #ccc;
-  box-shadow:
-    4px 6px 0px #0a0a0a,
-    0 12px 32px rgba(0,0,0,0.55),
-    0 2px 6px rgba(0,0,0,0.4);
+  background: #333;
+  color: #fff;
 }
 
 .cw-launcher--open:hover {
-  background: #2a2a2a;
+  background: #444;
   color: #fff;
-  transform: translate(-1px, -2px);
-  box-shadow:
-    6px 9px 0px #0a0a0a,
-    0 18px 40px rgba(0,0,0,0.6),
-    0 4px 8px rgba(0,0,0,0.45);
 }
 
 .cw-launcher-badge {
   position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 20px;
-  height: 20px;
-  border-radius: 10px;
+  top: -3px;
+  right: -3px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
   background: #ef4444;
   color: #fff;
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 900;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 5px;
-  border: 2.5px solid #d4a843;
+  padding: 0 4px;
+  border: 2px solid #d4a843;
   pointer-events: none;
   line-height: 1;
-  box-shadow: 1px 2px 0 #8a6a1c;
 }
 
 /* Panel */
@@ -1545,6 +1525,141 @@
   background: rgba(212,168,67,0.04);
   border-color: rgba(212,168,67,0.14);
   color: #777;
+}
+
+/* ── Light mode overrides ──────────────────────────────────────────────────── */
+html.light .cw-launcher--open {
+  background: #e5e5e5;
+  color: #333;
+}
+html.light .cw-launcher--open:hover {
+  background: #d8d8d8;
+  color: #111;
+}
+html.light .cw-launcher-badge {
+  border-color: #d4a843;
+}
+
+html.light .cw-panel {
+  background: #ffffff;
+  border-color: #e0e0e0;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.14);
+}
+
+html.light .cw-home-header {
+  background: linear-gradient(150deg, #faf5e8 0%, #f5edd4 50%, #faf5e8 100%);
+  border-bottom-color: rgba(212,168,67,0.25);
+}
+html.light .cw-home-greeting { color: #111; }
+html.light .cw-home-tagline  { color: #b8922a; }
+html.light .cw-home-logo {
+  background: rgba(212,168,67,0.08);
+  border-color: rgba(212,168,67,0.25);
+}
+
+html.light .cw-close {
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.1);
+  color: #555;
+}
+html.light .cw-close:hover {
+  background: rgba(0,0,0,0.1);
+  color: #111;
+}
+
+html.light .cw-home-body { background: #f7f7f7; }
+html.light .cw-home-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); }
+
+html.light .cw-send-msg-row {
+  background: #ffffff;
+  border-color: #e0e0e0;
+  color: #111;
+}
+html.light .cw-send-msg-row:hover {
+  background: rgba(212,168,67,0.06);
+  border-color: rgba(212,168,67,0.4);
+}
+html.light .cw-send-msg-title { color: #111; }
+html.light .cw-send-msg-sub   { color: #666; }
+
+html.light .cw-faq-section {
+  background: #ffffff;
+  border-color: #e0e0e0;
+}
+html.light .cw-faq-label {
+  color: #888;
+  border-bottom-color: #e0e0e0;
+}
+html.light .cw-faq-item {
+  color: #222;
+  border-bottom-color: #efefef;
+}
+html.light .cw-faq-item:hover { background: rgba(0,0,0,0.03); }
+
+html.light .cw-nav-header {
+  background: #f5f5f5;
+  border-bottom-color: #e0e0e0;
+  color: #111;
+}
+html.light .cw-back { color: #444; }
+html.light .cw-nav-title { color: #111; }
+
+html.light .cw-msgs-body  { background: #f7f7f7; }
+html.light .cw-no-msgs div { color: #333; }
+
+html.light .cw-conv-item {
+  background: #ffffff;
+  border-color: #e8e8e8;
+  color: #111;
+}
+html.light .cw-conv-item:hover { background: #f0f0f0; }
+html.light .cw-conv-name    { color: #111; }
+html.light .cw-conv-preview { color: #666; }
+html.light .cw-conv-time    { color: #999; }
+html.light .cw-conv-avatar  {
+  background: #e0e0e0;
+  color: #555;
+}
+
+html.light .cw-chat-header {
+  background: #f5f5f5;
+  border-bottom-color: #e0e0e0;
+}
+html.light .cw-chat-name   { color: #111; }
+html.light .cw-chat-status { color: #666; }
+
+html.light .cw-messages-area { background: #f7f7f7; }
+
+html.light .cw-bubble--them {
+  background: #ffffff;
+  border-color: #e0e0e0;
+  color: #111;
+}
+html.light .cw-bubble--me {
+  background: #d4a843;
+  color: #000;
+}
+html.light .cw-bubble-time { color: #999; }
+
+html.light .cw-chat-input-row {
+  background: #f5f5f5;
+  border-top-color: #e0e0e0;
+}
+html.light .cw-chat-input-row textarea {
+  background: #ffffff;
+  border-color: #ddd;
+  color: #111;
+}
+html.light .cw-chat-input-row textarea::placeholder { color: #aaa; }
+
+html.light .cw-new-conv-btn {
+  background: #ffffff;
+  border-color: #e0e0e0;
+  color: #111;
+}
+html.light .cw-new-conv-btn:hover {
+  background: rgba(212,168,67,0.06);
+  border-color: rgba(212,168,67,0.4);
 }
 
 .welcome-feature svg { color: rgba(212,168,67,0.45); }
