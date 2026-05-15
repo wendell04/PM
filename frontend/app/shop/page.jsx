@@ -579,9 +579,9 @@ export default function ShopPage() {
               <p className="shop-showcase-sub">Curated picks for every occasion</p>
             </div>
             <div className="shop-showcase-grid">
-              {collections.map(col => (
+              {collections.map((col, idx) => (
                 <button
-                  key={col.id ?? col._id}
+                  key={col._id || col.id || col.slug || col.title || String(idx)}
                   className="shop-showcase-card"
                   onClick={() => handleSelectCollection(col)}
                 >
@@ -624,9 +624,9 @@ export default function ShopPage() {
           >
             All Products
           </button>
-          {collections.map(col => (
+          {collections.map((col, idx) => (
             <button
-              key={col.id ?? col._id}
+              key={col._id || col.id || col.slug || col.title || String(idx)}
               className={`shop-collection-tab${selectedCollection?.slug === col.slug ? ' active' : ''}`}
               onClick={() => handleSelectCollection(col)}
             >
@@ -684,9 +684,9 @@ export default function ShopPage() {
         </div>
       ) : (
         <div className="shop-products-grid">
-          {filtered.map(product => (
+          {filtered.map((product, idx) => (
             <ProductCard
-              key={product.id ?? product._id}
+              key={product._id || product.id || String(idx)}
               product={product}
               onAddToCart={handleAddToCart}
               flashSale={flashSales[product._id] ?? flashSales[product.id] ?? null}
@@ -741,7 +741,7 @@ export default function ShopPage() {
                   Select Variant
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {quickAddProduct.combinations.map(combo => {
+                  {quickAddProduct.combinations.map((combo, cIdx) => {
                     const isSelected = quickVariant?.id === combo.id;
                     const comboLabel = combo.name || combo.label || Object.values(combo.combo || {}).join(' / ') || 'Variant';
                     const variantQty = quickAddProduct.variantStock?.[combo.id] != null
@@ -770,7 +770,7 @@ export default function ShopPage() {
                     })();
                     return (
                       <button
-                        key={combo.id}
+                        key={combo.id || combo.name || String(cIdx)}
                         disabled={isOOS}
                         onClick={() => {
                           if (isOOS) return;
