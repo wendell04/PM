@@ -26,7 +26,7 @@ class ProductController extends Controller
         $variantCanProduce  = null;
         $variantAvailableQty = null;
 
-        // ── Multi-variant BOM product ─────────────────────────────────────────
+        // ── Multi-variant BOM product (bomGroupName) ──────────────────────────
         if (!empty($product->bomGroupName)) {
             try {
                 $boms = \App\Models\BillOfMaterial::where('productGroupName', $product->bomGroupName)->get();
@@ -58,6 +58,50 @@ class ProductController extends Controller
                 }
             } catch (\Exception $e) {
                 Log::warning('computeAvailability variant BOM failed', ['productId' => (string) $product->_id, 'error' => $e->getMessage()]);
+            }
+        }
+        // ── Multi-variant BOM product (per-combination bomId) ─────────────────
+        elseif (!empty($product->combinations)) {
+            $combinations = is_array($product->combinations) ? $product->combinations : [];
+            $hasBomCombos = collect($combinations)->contains(fn($c) => !empty($c['bomId'] ?? null));
+            if ($hasBomCombos) {
+                $variantCanProduce  = [];
+                $variantAvailableQty = [];
+                foreach ($combinations as $combo) {
+                    $comboId = $combo['id'] ?? null;
+                    $bomId   = $combo['bomId'] ?? null;
+                    if (!$comboId) continue;
+                    if (!$bomId) {
+                        $variantCanProduce[$comboId]  = 9999;
+                        $variantAvailableQty[$comboId] = 9999;
+                        continue;
+                    }
+                    try {
+                        $bom = \App\Models\BillOfMaterial::find($bomId);
+                        $min = PHP_INT_MAX;
+                        foreach ($bom?->components ?? [] as $component) {
+                            $inv = Inventory::find($component['inventoryId'] ?? null);
+                            if (!$inv || $inv->isOnDemand) continue;
+                            $qpu = (float) ($component['qty'] ?? 0);
+                            if ($qpu <= 0) continue;
+                            $min = min($min, (int) floor(($inv->stockQty ?? 0) / $qpu));
+                        }
+                        $cp = $min === PHP_INT_MAX ? 0 : $min;
+                        $variantCanProduce[$comboId] = $cp;
+                        $backorder = (bool) ($product->variantBackorder[$comboId] ?? false);
+                        if ($backorder) {
+                            $variantAvailableQty[$comboId] = 9999;
+                        } else {
+                            $manualCap = isset($product->variantStock[$comboId]) && (int) $product->variantStock[$comboId] > 0
+                                ? (int) $product->variantStock[$comboId]
+                                : null;
+                            $variantAvailableQty[$comboId] = $manualCap !== null ? min($cp, $manualCap) : $cp;
+                        }
+                    } catch (\Exception $e) {
+                        $variantCanProduce[$comboId]  = 0;
+                        $variantAvailableQty[$comboId] = 0;
+                    }
+                }
             }
         }
         // ── Single BOM product ────────────────────────────────────────────────

@@ -207,6 +207,7 @@ Route::middleware(['auth:sanctum', 'isAdmin'])->group(function () {
 
     // ─── Inventory ───────────────────────────────────────────────────────────
     Route::get('/admin/inventory/recent-movements',   [InventoryController::class, 'recentMovements']);
+    Route::get('/admin/inventory/stock-outs',         [InventoryController::class, 'stockOuts']);
     Route::get('/admin/inventory',                    [InventoryController::class, 'index']);
     Route::post('/admin/inventory',                   [InventoryController::class, 'store']);
     Route::get('/admin/inventory/{id}',               [InventoryController::class, 'show']);

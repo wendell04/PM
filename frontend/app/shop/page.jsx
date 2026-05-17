@@ -208,7 +208,7 @@ function ProductCard({ product, onAddToCart, flashSale }) {
         {/* Info */}
         <div className="shop-product-info">
           <h3 className="shop-product-name">
-            {product.subCategoryName || product.name || 'Unnamed Product'}
+            {product.name || product.subCategoryName || 'Unnamed Product'}
           </h3>
 
           <p className="shop-product-description">

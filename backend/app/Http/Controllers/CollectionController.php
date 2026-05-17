@@ -34,9 +34,10 @@ class CollectionController extends Controller
     private function serialize(Collection $col, bool $withCount = false): array
     {
         $raw = $col->getAttributes();
+        $cid = isset($raw['id']) ? (string) $raw['id'] : (isset($raw['_id']) ? (string) $raw['_id'] : '');
         $out = [
-            'id'          => isset($raw['_id']) ? (string) $raw['_id'] : '',
-            '_id'         => isset($raw['_id']) ? (string) $raw['_id'] : '',
+            'id'          => $cid,
+            '_id'         => $cid,
             'title'       => (string) ($raw['title'] ?? ''),
             'slug'        => (string) ($raw['slug'] ?? ''),
             'description' => (string) ($raw['description'] ?? ''),
@@ -239,7 +240,7 @@ class CollectionController extends Controller
                     $raw   = $c->getAttributes();
                     $count = count($this->resolveProductIds($c));
                     return [
-                        'id'          => isset($raw['_id']) ? (string) $raw['_id'] : '',
+                        'id'          => isset($raw['id']) ? (string) $raw['id'] : (isset($raw['_id']) ? (string) $raw['_id'] : ''),
                         'title'       => (string) ($raw['title'] ?? ''),
                         'slug'        => (string) ($raw['slug'] ?? ''),
                         'description' => (string) ($raw['description'] ?? ''),
@@ -291,7 +292,7 @@ class CollectionController extends Controller
 
             $raw = $col->getAttributes();
             return $this->successResponse('Collection fetched.', [
-                'id'          => isset($raw['_id']) ? (string) $raw['_id'] : '',
+                'id'          => isset($raw['id']) ? (string) $raw['id'] : (isset($raw['_id']) ? (string) $raw['_id'] : ''),
                 'title'       => (string) ($raw['title'] ?? ''),
                 'slug'        => (string) ($raw['slug'] ?? ''),
                 'description' => (string) ($raw['description'] ?? ''),

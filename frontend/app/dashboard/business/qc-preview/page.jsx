@@ -13,58 +13,36 @@
  * This is a PREVIEW with mock data.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchJobOrders } from '@/lib/jobOrderApi';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
-const MOCK_QC_JOBS = [
-  {
-    id: 'JO-2026-042',
-    orderId: 'ORD-2026-003',
-    customer: 'Pedro Reyes',
-    items: [
-      { name: 'Sticker Pack A4', qty: 50 },
-      { name: 'Custom Ceramic Mug 11oz', qty: 8 },
-    ],
-    designFile: 'sticker-artwork.pdf',
-    targetDate: '2026-04-14',
-    isRush: true,
-    submittedBy: 'Production Team A',
-    submittedAt: '2026-04-12T14:00',
-    productionPhotos: ['production-1.jpg', 'production-2.jpg'],
-    notes: 'Rush order — event on April 20',
-  },
-  {
-    id: 'JO-2026-040',
-    orderId: 'ORD-2026-007',
-    customer: 'Carmen Reyes',
-    items: [
-      { name: 'Canvas Totebag', qty: 30 },
-    ],
-    designFile: 'event-logo.png',
-    targetDate: '2026-04-16',
-    isRush: false,
-    submittedBy: 'Production Team B',
-    submittedAt: '2026-04-13T10:00',
-    productionPhotos: [],
-    notes: '',
-  },
-  {
-    id: 'JO-2026-039',
-    orderId: 'ORD-2026-008',
-    customer: 'Miguel Santos',
-    items: [
-      { name: 'Magic Mug Black 15oz', qty: 20 },
-      { name: 'Sticker Pack A4', qty: 25 },
-    ],
-    designFile: 'mug-design.ai',
-    targetDate: '2026-04-13',
-    isRush: false,
-    submittedBy: 'Production Team A',
-    submittedAt: '2026-04-11T16:00',
-    productionPhotos: ['production-3.jpg'],
-    notes: '',
-  },
-];
+function normalizeJobForQC(jo) {
+  const prod = jo.product || {};
+  const items = Array.isArray(jo.items) && jo.items.length > 0
+    ? jo.items.map(i => ({ name: i.product_name || i.productName || i.name || '', qty: Number(i.qty || i.quantity || 1) }))
+    : prod.name
+      ? [{ name: prod.name + (prod.variant ? ` (${prod.variant})` : ''), qty: Number(prod.quantity || 1) }]
+      : [];
+  const fp = jo.designFilePath || jo.design_file_path || null;
+  return {
+    _id:             String(jo.id ?? jo._id),
+    id:              jo.joId || String(jo.id ?? jo._id),
+    orderId:         jo.orderId || '',
+    customer:        jo.order?.userSnapshot?.name || jo.order?.customer?.name || jo.customerName || '—',
+    items,
+    designFile:      fp ? fp.split('/').pop() : null,
+    targetDate:      jo.targetCompletion || null,
+    isRush:          !!jo.isRush,
+    submittedBy:     jo.assignedTo || '',
+    submittedAt:     jo.updatedAt || jo.completedAt || null,
+    productionPhotos: jo.productionPhotos || [],
+    notes:           jo.notes || '',
+  };
+}
+
+const QC_STATUSES = new Set(['qc_pending', 'qc pending', 'qc-pending', 'pending qc', 'quality_check', 'quality check']);
 
 function formatDate(d) {
   if (!d) return '—';
@@ -77,6 +55,7 @@ function formatTime(d) {
 }
 
 export default function QCPreviewPage() {
+  const { token } = useAuth();
   const [jobs, setJobs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -85,22 +64,26 @@ export default function QCPreviewPage() {
   const [defectNotes, setDefectNotes] = useState('');
   const [qcNotes, setQcNotes] = useState('');
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        await new Promise((r) => setTimeout(r, 120));
-        if (!cancelled) setJobs(MOCK_QC_JOBS);
-      } catch (err) {
-        if (!cancelled) setError(err.message || 'Failed to load');
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const loadJobs = useCallback(async () => {
+    if (!token) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await fetchJobOrders(token);
+      const all = Array.isArray(data) ? data : (data?.data ?? []);
+      const qcJobs = all.filter(jo => {
+        const s = (jo.joStatus || jo.status || '').toLowerCase();
+        return QC_STATUSES.has(s) || s.includes('qc') || s.includes('quality');
+      });
+      setJobs(qcJobs.map(normalizeJobForQC));
+    } catch (err) {
+      setError(err.message || 'Failed to load job orders');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { loadJobs(); }, [loadJobs]);
 
   if (isLoading) {
     return (

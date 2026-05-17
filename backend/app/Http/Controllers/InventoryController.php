@@ -66,33 +66,25 @@ class InventoryController extends Controller
                 return $query->orderBy('category', 'asc')
                                ->orderBy('name', 'asc')
                                ->get([
-                                   '_id',
-                                   'name',
-                                   'sku',
-                                   'uom',
-                                   'category',
-                                   'stockQty',
-                                   'minStockLevel',
-                                   'baseCost',
-                                   'averageCost',
-                                   'lastUnitCost',
-                                   'procurementType',
-                                   'hasVariants',
-                                   'parentId',
-                                   'isActive',
-                                   'batches',
-                                   'isOnDemand',
-                                   'supplierId',
-                                   'supplierName',
-                                   'reservedQty',
-                                   'consumedQty',
-                                   'badOrderQty',
-                                   'variantTypes',
-                                   'variantCombo',
-                                   'allowBackorder',
-                                   'createdAt',
-                                   'updatedAt',
-                               ]);
+                                   '_id', 'name', 'sku', 'uom', 'category',
+                                   'stockQty', 'minStockLevel', 'baseCost',
+                                   'averageCost', 'lastUnitCost', 'procurementType',
+                                   'hasVariants', 'parentId', 'isActive', 'batches',
+                                   'isOnDemand', 'supplierId', 'supplierName',
+                                   'reservedQty', 'consumedQty', 'badOrderQty',
+                                   'variantTypes', 'variantCombo', 'allowBackorder',
+                                   'createdAt', 'updatedAt',
+                               ])
+                               ->map(function ($item) {
+                                   $raw = $item->toArray();
+                                   $raw['batches'] = array_values(
+                                       array_map(
+                                           fn($b) => is_array($b) ? $b : (array) $b,
+                                           is_iterable($item->batches ?? null) ? (array) $item->batches : []
+                                       )
+                                   );
+                                   return $raw;
+                               });
             });
 
             return $this->successResponse('Inventory fetched successfully.', $inventory);
@@ -477,40 +469,55 @@ class InventoryController extends Controller
             $absQty  = abs($quantity);
 
             if ($quantity < 0) {
-                // ── SUBTRACT: FIFO deduction from batches ──────────────────────────
-                // Sort batches by dateReceived ascending (true FIFO)
-                usort($batches, function ($a, $b) {
-                    return strtotime($a['dateReceived'] ?? '0') <=> strtotime($b['dateReceived'] ?? '0');
-                });
+                $specificBatchId = $validated['batchId'] ?? null;
+                $batchDeductions = [];
 
-                // Compute available stock from batches
-                $available = array_reduce($batches, function ($carry, $b) {
-                    return $carry + ($b['remainingQty'] ?? $b['goodQty'] ?? 0);
-                }, 0);
+                if ($specificBatchId) {
+                    // ── SPECIFIC BATCH deduction ───────────────────────────────────
+                    $found = false;
+                    foreach ($batches as &$batch) {
+                        if (($batch['batchId'] ?? null) === $specificBatchId) {
+                            $batchQty = (int) ($batch['remainingQty'] ?? $batch['goodQty'] ?? 0);
+                            if ($batchQty < $absQty) {
+                                throw new \Exception("Insufficient stock in selected batch (available: {$batchQty}).");
+                            }
+                            $batch['remainingQty'] = $batchQty - $absQty;
+                            $batchDeductions[] = ['batchId' => $batch['batchId'] ?? null, 'qty' => $absQty, 'unitCost' => $batch['unitCost'] ?? 0];
+                            $found = true;
+                            break;
+                        }
+                    }
+                    unset($batch);
+                    if (!$found) {
+                        throw new \Exception('Selected batch not found.');
+                    }
+                } else {
+                    // ── FIFO deduction from batches ────────────────────────────────
+                    // Sort batches by dateReceived ascending (true FIFO)
+                    usort($batches, function ($a, $b) {
+                        return strtotime($a['dateReceived'] ?? '0') <=> strtotime($b['dateReceived'] ?? '0');
+                    });
 
-                if ($available < $absQty) {
-                    throw new \Exception('Insufficient stock.');
+                    $available = array_reduce($batches, function ($carry, $b) {
+                        return $carry + ($b['remainingQty'] ?? $b['goodQty'] ?? 0);
+                    }, 0);
+
+                    if ($available < $absQty) {
+                        throw new \Exception('Insufficient stock.');
+                    }
+
+                    $remaining = $absQty;
+                    foreach ($batches as &$batch) {
+                        if ($remaining <= 0) break;
+                        $batchQty = $batch['remainingQty'] ?? $batch['goodQty'] ?? 0;
+                        if ($batchQty <= 0) continue;
+                        $deduct = min($batchQty, $remaining);
+                        $batch['remainingQty'] = $batchQty - $deduct;
+                        $remaining -= $deduct;
+                        $batchDeductions[] = ['batchId' => $batch['batchId'] ?? null, 'qty' => $deduct, 'unitCost' => $batch['unitCost'] ?? 0];
+                    }
+                    unset($batch);
                 }
-
-                $remaining       = $absQty;
-                $batchDeductions = []; // per-batch log for history
-
-                foreach ($batches as &$batch) {
-                    if ($remaining <= 0) break;
-                    $batchQty = $batch['remainingQty'] ?? $batch['goodQty'] ?? 0;
-                    if ($batchQty <= 0) continue;
-                    $deduct = min($batchQty, $remaining);
-                    $batch['remainingQty'] = $batchQty - $deduct;
-                    $remaining -= $deduct;
-
-                    // Record which batch was consumed, how much, and at what cost
-                    $batchDeductions[] = [
-                        'batchId'   => $batch['batchId']  ?? null,
-                        'qty'       => $deduct,
-                        'unitCost'  => $batch['unitCost'] ?? 0,
-                    ];
-                }
-                unset($batch);
 
                 $newStock = max(0, ($inventory->stockQty ?? 0) - $absQty);
 
@@ -548,6 +555,16 @@ class InventoryController extends Controller
 
             $historyType = $quantity < 0 ? 'deduction' : 'addition';
 
+            // Resolve performedBy: prefer request value, fall back to auth user
+            $performedBy = $validated['performedBy'] ?? null;
+            if (!$performedBy) {
+                $u = $request->user();
+                if ($u) {
+                    $performedBy = $u->name ?? trim(($u->firstName ?? '') . ' ' . ($u->lastName ?? ''));
+                    if ($performedBy === '') $performedBy = $u->email ?? null;
+                }
+            }
+
             if ($quantity < 0 && !empty($batchDeductions)) {
                 // Per-batch history records for full FIFO traceability
                 // runningRemaining starts at pre-deduction stock and decrements per batch
@@ -573,7 +590,7 @@ class InventoryController extends Controller
                         'remarks'       => isset($validated['remarks'])
                             ? htmlspecialchars(strip_tags(trim($validated['remarks'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
                             : null,
-                        'performedBy'   => $validated['performedBy'] ?? null,
+                        'performedBy'   => $performedBy,
                         'createdAt'     => now(),
                     ]);
                 }
@@ -598,7 +615,7 @@ class InventoryController extends Controller
                     'remarks'       => isset($validated['remarks'])
                         ? htmlspecialchars(strip_tags(trim($validated['remarks'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
                         : null,
-                    'performedBy'   => $validated['performedBy'] ?? null,
+                    'performedBy'   => $performedBy,
                     'createdAt'     => now(),
                 ]);
             }
@@ -621,7 +638,7 @@ class InventoryController extends Controller
                     'remarks'      => isset($validated['remarks'])
                         ? htmlspecialchars(strip_tags(trim($validated['remarks'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
                         : '',
-                    'performedBy'  => $validated['performedBy'] ?? null,
+                    'performedBy'  => $performedBy,
                     'createdAt'    => now(),
                 ]);
             } catch (\Exception $auditEx) {
@@ -635,6 +652,42 @@ class InventoryController extends Controller
             return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while adjusting stock.');
+        }
+    }
+
+    public function stockOuts(Request $request)
+    {
+        try {
+            $history = StockHistory::where('type', 'deduction')
+                ->orderBy('createdAt', 'desc')
+                ->get();
+
+            $inventoryIds = $history->pluck('inventoryId')->unique()->filter()->values()->toArray();
+            $inventoryMap = Inventory::whereIn('_id', $inventoryIds)
+                ->get(['_id', 'name'])
+                ->keyBy(fn($i) => (string) $i->_id);
+
+            $result = $history->map(function ($h) use ($inventoryMap) {
+                $inv = $inventoryMap[(string) ($h->inventoryId ?? '')] ?? null;
+                return [
+                    '_id'          => (string) $h->_id,
+                    'inventoryId'  => (string) ($h->inventoryId ?? ''),
+                    'materialName' => $inv ? $inv->name : '',
+                    'quantity'     => (int) ($h->quantity ?? 0),
+                    'unitCost'     => (float) ($h->unitCost ?? 0),
+                    'totalCost'    => (float) ($h->totalCost ?? 0),
+                    'reason'       => $h->reason ?? '',
+                    'type'         => $h->type ?? 'deduction',
+                    'invoiceNumber'=> $h->invoiceNumber ?? null,
+                    'remarks'      => $h->remarks ?? null,
+                    'performedBy'  => $h->performedBy ?? null,
+                    'createdAt'    => $h->createdAt ? $h->createdAt->toIso8601String() : null,
+                ];
+            })->values()->toArray();
+
+            return $this->successResponse('Stock outs fetched.', $result);
+        } catch (\Exception $e) {
+            return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching stock outs.');
         }
     }
 

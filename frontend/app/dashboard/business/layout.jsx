@@ -504,20 +504,41 @@ export default function BusinessDashboardLayout({ children }) {
       permKey: "pos",
       icon: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z",
     },
+    {
+      name: "Job Orders",
+      href: "/dashboard/business/job-orders",
+      permKey: "orders",
+      icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
+    },
+    { type: "divider", label: "Production" },
+    {
+      name: "Production",
+      href: "/dashboard/business/production-preview",
+      permKey: "orders",
+      icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
+    },
+    {
+      name: "Quality Control",
+      href: "/dashboard/business/qc-preview",
+      permKey: "orders",
+      icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z",
+    },
     { type: "divider", label: "Store" },
     {
       name: "Inventory",
       permKey: "inventory",
-      icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
+      icon: "M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18",
       children: [
-        {
-          name: "Master Data",
-          href: "/dashboard/business/inventory/master-data",
-        },
-        { name: "Stock In", href: "/dashboard/business/inventory/stock-in" },
-        { name: "Overview", href: "/dashboard/business/inventory/stocks" },
-        { name: "Bad Orders", href: "/dashboard/business/inventory/returns" },
+        { name: "Master Data", href: "/dashboard/business/inventory-v2?tab=materials",    matchTabs: ['materials','vendors','bom']                    },
+        { name: "Overview",    href: "/dashboard/business/inventory-v2?tab=productstock", matchTabs: ['productstock','stockin','goods','actual']       },
+        { name: "Bad Orders",  href: "/dashboard/business/inventory-v2?tab=badorders",    matchTabs: ['badorders']                                    },
       ],
+    },
+    {
+      name: "New Catalog",
+      href: "/dashboard/business/products-v2",
+      permKey: "products",
+      icon: "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10",
     },
     {
       name: "Products",
@@ -543,16 +564,31 @@ export default function BusinessDashboardLayout({ children }) {
         },
       ],
     },
+    { type: "divider", label: "Finance" },
     {
-      name: "Finance",
+      name: "Sales",
+      href: "/dashboard/business/sales",
       permKey: "sales",
-      icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
-      children: [
-        { name: "Sales", href: "/dashboard/business/sales" },
-        { name: "Payments", href: "/dashboard/business/payments", adminOnly: true },
-        { name: "Reports", href: "/dashboard/business/reports" },
-        { name: "Forecast", href: "/dashboard/business/ssa-forecast" },
-      ],
+      icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+    },
+    {
+      name: "Payments",
+      href: "/dashboard/business/payments",
+      permKey: "sales",
+      adminOnly: true,
+      icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",
+    },
+    {
+      name: "Reports",
+      href: "/dashboard/business/reports",
+      permKey: "sales",
+      icon: "M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+    },
+    {
+      name: "Forecast",
+      href: "/dashboard/business/ssa-forecast",
+      permKey: "sales",
+      icon: "M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z",
     },
     { type: "divider", label: "Admin" },
     {
@@ -597,7 +633,17 @@ export default function BusinessDashboardLayout({ children }) {
   };
 
   const isChildActive = (children) => {
-    return children.some((child) => pathname === child.href);
+    const fullHref = typeof window !== 'undefined'
+      ? window.location.pathname + window.location.search
+      : pathname;
+    const currentTab = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('tab')
+      : null;
+    return children.some((child) => {
+      if (!child.href) return false;
+      if (child.matchTabs && currentTab && child.matchTabs.includes(currentTab)) return true;
+      return child.href === pathname || child.href === fullHref;
+    });
   };
 
   const getInitials = (user) => {
@@ -983,8 +1029,18 @@ export default function BusinessDashboardLayout({ children }) {
                         </svg>
                       </button>
                       <div className={`sidebar-nav-children ${isExpanded ? "expanded" : ""}`}>
-                        {allChildren.map((child) => {
+                        {allChildren.map((child, ci) => {
+                          if (child.type === 'section') {
+                            return (
+                              <div key={`sec-${ci}`} style={{ fontSize: '9px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '10px 16px 3px', opacity: 0.6 }}>
+                                {child.label}
+                              </div>
+                            );
+                          }
                           const childOk = isAdminOwner || !child.permKey || can(child.permKey);
+                          const fullHref = typeof window !== 'undefined' ? window.location.pathname + window.location.search : pathname;
+                          const currentTab = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
+                          const isActive = (child.matchTabs && currentTab && child.matchTabs.includes(currentTab)) || child.href === pathname || child.href === fullHref;
                           if (!childOk) {
                             return (
                               <div key={child.name} className="sidebar-nav-child" style={{ opacity: 0.4, cursor: "not-allowed", display: "flex", alignItems: "center" }}>
@@ -994,7 +1050,7 @@ export default function BusinessDashboardLayout({ children }) {
                             );
                           }
                           return (
-                            <Link key={child.name} href={child.href} className={`sidebar-nav-child ${pathname === child.href ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
+                            <Link key={child.name} href={child.href} className={`sidebar-nav-child ${isActive ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
                               <span className="nav-text">{child.name}</span>
                             </Link>
                           );
@@ -1002,11 +1058,16 @@ export default function BusinessDashboardLayout({ children }) {
                       </div>
                       <div className="sidebar-nav-flyout">
                         <div className="sidebar-nav-flyout-title">{item.name}</div>
-                        {allChildren.filter(c => isAdminOwner || !c.permKey || can(c.permKey)).map((child) => (
-                          <Link key={child.href} href={child.href} className={`sidebar-nav-child ${pathname === child.href ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
-                            <span className="nav-text">{child.name}</span>
-                          </Link>
-                        ))}
+                        {allChildren.filter(c => !c.type && (isAdminOwner || !c.permKey || can(c.permKey))).map((child) => {
+                          const fullHref = typeof window !== 'undefined' ? window.location.pathname + window.location.search : pathname;
+                          const currentTab = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
+                          const isActive = (child.matchTabs && currentTab && child.matchTabs.includes(currentTab)) || child.href === pathname || child.href === fullHref;
+                          return (
+                            <Link key={child.href} href={child.href} className={`sidebar-nav-child ${isActive ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
+                              <span className="nav-text">{child.name}</span>
+                            </Link>
+                          );
+                        })}
                       </div>
                     </div>
                   );
