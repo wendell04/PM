@@ -129,8 +129,6 @@ const LandingPage = ({onEnterShop}) => {
   const [navHoverLoading, setNavHoverLoading]     = useState(false);
 
   const [colSetIdx, setColSetIdx]         = useState(0);
-  const [colSetProducts, setColSetProducts] = useState([]);
-  const [colSetLoading, setColSetLoading] = useState(false);
   const [colPaused, setColPaused]         = useState(false);
   const colIntervalRef                    = useRef(null);
 
@@ -315,18 +313,6 @@ const LandingPage = ({onEnterShop}) => {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!landingCollections.length) return;
-    const firstCol = landingCollections[colSetIdx * 4];
-    if (!firstCol?.slug) return;
-    setColSetLoading(true);
-    setColSetProducts([]);
-    fetch(`${API_URL}/api/storefront/collections/${firstCol.slug}`)
-      .then(r => r.json())
-      .then(d => setColSetProducts(Array.isArray(d?.data?.products) ? d.data.products : []))
-      .catch(() => setColSetProducts([]))
-      .finally(() => setColSetLoading(false));
-  }, [colSetIdx, landingCollections]);
 
   useEffect(() => {
     const totalSets = Math.ceil(landingCollections.length / 4);
@@ -1060,20 +1046,32 @@ const handleForgotResetPassword = async () => {
   ];
 
   const effectiveSlides = heroBanners.length > 0
-    ? heroBanners.map(b => ({
-        tag:        null,
-        image:      b.image || null,
-        titleParts: [{ text: b.headline || '', plain: true }],
-        subtitle:   b.subtext || '',
-        cta:        b.ctaLabel ? { label: b.ctaLabel, href: b.ctaLink || '#' } : null,
-        cta2:       null,
-      }))
+    ? heroBanners.map(b => {
+        const parts = [];
+        if (b.headline) parts.push({ text: b.headline, plain: true });
+        if (b.headlineAccent) parts.push({ text: b.headlineAccent, className: `${b.headlineAccentColor || 'gold'}-text` });
+        if (b.headlineAccent2) parts.push({ text: b.headlineAccent2, className: `${b.headlineAccent2Color || 'gold'}-text` });
+        return {
+          tag:           b.tag || null,
+          image:         b.image || null,
+          imagePosition: b.imagePosition || 'center center',
+          titleParts:    parts.length > 0 ? parts : [{ text: '', plain: true }],
+          subtitle:      b.subtext || '',
+          cta:           b.ctaLabel  ? { label: b.ctaLabel,  href: b.ctaLink  || '#' } : null,
+          cta2:          b.cta2Label ? { label: b.cta2Label, href: b.cta2Link || '#' } : null,
+        };
+      })
     : heroSlides;
 
-  const currentBannerImage = effectiveSlides[heroSlide]?.image ?? null;
+  const currentBannerImage    = effectiveSlides[heroSlide]?.image ?? null;
+  const currentBannerPosition = effectiveSlides[heroSlide]?.imagePosition ?? 'center center';
 
-  const colTotalSets = Math.ceil(landingCollections.length / 4);
-  const colCurrentSet = landingCollections.slice(colSetIdx * 4, colSetIdx * 4 + 4);
+  const landingOrdered = [...landingCollections]
+    .filter(c => c.landing_order != null)
+    .sort((a, b) => a.landing_order - b.landing_order);
+  const colSource = landingOrdered.length > 0 ? landingOrdered : landingCollections;
+  const colTotalSets = Math.ceil(colSource.length / 4);
+  const colCurrentSet = colSource.slice(colSetIdx * 4, colSetIdx * 4 + 4);
 
   // ─── JSX ──────────────────────────────────────────────────────────────────────
   return (
@@ -1458,7 +1456,7 @@ const handleForgotResetPassword = async () => {
             <img
               src={currentBannerImage}
               alt=""
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 20%' }}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: currentBannerPosition }}
             />
           ) : (
             <div className="hero-image-slider">
@@ -1551,7 +1549,7 @@ const handleForgotResetPassword = async () => {
                   onClick={() => router.push(`/shop?collection=${col.slug}`)}
                 >
                   {col.image ? (
-                    <img src={col.image} alt={col.title} />
+                    <img src={col.image} alt={col.title} style={{ objectPosition: col.landing_image_position || 'center center' }} />
                   ) : (
                     <div className="lp-pinnacle-card-ph" />
                   )}

@@ -279,10 +279,18 @@ class OrderController extends Controller
                 // Determine the BOM to validate against
                 $bom = null;
                 if (!empty($bomProd->bomGroupName) && $variantId) {
-                    // variantId IS the BOM _id — find directly by _id
                     $bom = BillOfMaterial::find($variantId);
                 } elseif (!empty($bomProd->bomId)) {
                     $bom = BillOfMaterial::find($bomProd->bomId);
+                }
+                // per-combination bomId: each combo stores its own bomId
+                if (!$bom && $variantId && !empty($bomProd->combinations)) {
+                    foreach ($bomProd->combinations as $combo) {
+                        if ((string) ($combo['id'] ?? $combo['_id'] ?? '') === (string) $variantId && !empty($combo['bomId'])) {
+                            $bom = BillOfMaterial::find($combo['bomId']);
+                            break;
+                        }
+                    }
                 }
 
                 if (!$bom || empty($bom->components)) continue;
@@ -366,6 +374,8 @@ class OrderController extends Controller
                     'qty'         => $qty,
                     'newStockQty' => (int) ($updated->stockQty ?? 0),
                     'unitCost'    => (float) ($inv->averageCost ?? 0),
+                    'productId'   => (string) $prod->_id,
+                    'productName' => $prod->name ?? '',
                 ];
             }
 
@@ -417,6 +427,10 @@ class OrderController extends Controller
                         'reason'       => 'sale_reserved',
                         'type'         => 'deduction',
                         'performedBy'  => 'system',
+                        'orderId'      => (string) $order->_id,
+                        'productId'    => $r['productId'],
+                        'productName'  => $r['productName'],
+                        'customerName' => $order->userSnapshot['name'] ?? '',
                         'remarks'      => 'Order: ' . (string) $order->_id,
                         'createdAt'    => now(),
                     ]);
@@ -433,10 +447,18 @@ class OrderController extends Controller
                 try {
                     $bom = null;
                     if (!empty($prod->bomGroupName) && $variantId) {
-                        // variantId IS the BOM _id — find directly by _id (more reliable than double-where)
                         $bom = BillOfMaterial::find($variantId);
                     } elseif (!empty($prod->bomId)) {
                         $bom = BillOfMaterial::find($prod->bomId);
+                    }
+                    // per-combination bomId: each combo stores its own bomId
+                    if (!$bom && $variantId && !empty($prod->combinations)) {
+                        foreach ($prod->combinations as $combo) {
+                            if ((string) ($combo['id'] ?? $combo['_id'] ?? '') === (string) $variantId && !empty($combo['bomId'])) {
+                                $bom = BillOfMaterial::find($combo['bomId']);
+                                break;
+                            }
+                        }
                     }
                     if (!$bom || empty($bom->components)) continue;
                     foreach ($bom->components as $component) {
@@ -445,11 +467,14 @@ class OrderController extends Controller
                         $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
                         if ($deductQty <= 0) continue;
                         $this->deductInventoryFIFO(
-                            inventory: $rawInv,
-                            qty:       $deductQty,
-                            reason:    'sale_reserved',
-                            unitPrice: 0.0,
-                            orderId:   (string) $order->_id,
+                            inventory:    $rawInv,
+                            qty:          $deductQty,
+                            reason:       'sale_reserved',
+                            unitPrice:    0.0,
+                            orderId:      (string) $order->_id,
+                            productId:    (string) $prod->_id,
+                            productName:  $prod->name ?? '',
+                            customerName: $order->userSnapshot['name'] ?? '',
                         );
                     }
                 } catch (\Exception $bomErr) {
@@ -935,6 +960,9 @@ class OrderController extends Controller
         string $reason,
         float $unitPrice = 0.0,
         ?string $orderId = null,
+        ?string $productId = null,
+        ?string $productName = null,
+        ?string $customerName = null,
     ): void {
         $qty = max(0, $qty);
         if ($qty <= 0) return;
@@ -967,6 +995,10 @@ class OrderController extends Controller
                 'totalCost'    => ($inventory->averageCost ?? 0) * $qty,
                 'reason'       => $reason,
                 'type'         => 'deduction',
+                'orderId'      => $orderId,
+                'productId'    => $productId,
+                'productName'  => $productName,
+                'customerName' => $customerName,
                 'remarks'      => $orderId ? "Order: {$orderId}" : null,
                 'createdAt'    => now(),
             ]);
@@ -1027,6 +1059,10 @@ class OrderController extends Controller
                 'type'         => 'deduction',
                 'batchId'      => $bd['batchId'],
                 'sellingPrice' => $unitPrice,
+                'orderId'      => $orderId,
+                'productId'    => $productId,
+                'productName'  => $productName,
+                'customerName' => $customerName,
                 'remarks'      => $orderId ? "Order: {$orderId}" : null,
                 'performedBy'  => 'system',
                 'createdAt'    => now(),

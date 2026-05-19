@@ -9,7 +9,7 @@ function toSlug(str) {
   return str.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
-const EMPTY_FORM = { title: '', slug: '', description: '', image: '', isPublished: false, productIds: [] };
+const EMPTY_FORM = { title: '', slug: '', description: '', image: '', isPublished: false, productIds: [], landing_order: null, landing_image_position: null };
 
 // ── Toggle ────────────────────────────────────────────────────────────────────
 
@@ -257,6 +257,70 @@ function CollectionModal({ existing, onClose, onSave, products, token }) {
                   </div>
                 </div>
                 <Toggle on={form.isPublished} onChange={v => set('isPublished', v)} />
+              </div>
+
+              {/* Landing Page Section */}
+              <div style={{ borderTop: '1px solid #f0f1f2', paddingTop: '14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>Landing Page</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '12px 14px', background: '#f9fafb', borderRadius: '8px', border: '1px solid #f0f1f2', marginBottom: '10px' }}>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>Show on Landing Page</div>
+                    <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
+                      {form.landing_order ? `Order position: ${form.landing_order}` : 'Not shown on landing page'}
+                    </div>
+                  </div>
+                  <Toggle
+                    on={form.landing_order != null}
+                    onChange={v => set('landing_order', v ? 99 : null)}
+                  />
+                </div>
+                {form.landing_order != null && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div>
+                      <label style={{ ...LabelStyle, marginBottom: '4px' }}>Order Position</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="number" min="1" max="100"
+                          value={form.landing_order ?? ''}
+                          onChange={e => set('landing_order', Math.max(1, parseInt(e.target.value) || 1))}
+                          style={{ ...S.input, width: '80px', textAlign: 'center' }}
+                        />
+                        <span style={{ fontSize: '11px', color: '#9ca3af' }}>Every 4 = 1 dot page</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ ...LabelStyle, marginBottom: '6px' }}>Image Focus Point</label>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', width: '120px' }}>
+                        {[
+                          ['top left','top center','top right'],
+                          ['center left','center center','center right'],
+                          ['bottom left','bottom center','bottom right'],
+                        ].flat().map(pos => {
+                          const active = (form.landing_image_position || 'center center') === pos;
+                          return (
+                            <button key={pos} type="button" title={pos}
+                              onClick={() => set('landing_image_position', pos)}
+                              style={{
+                                width: '36px', height: '36px', borderRadius: '5px',
+                                border: `2px solid ${active ? '#c9973f' : '#e1e3e5'}`,
+                                background: active ? 'rgba(201,151,63,0.12)' : '#f9fafb',
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}>
+                              <div style={{
+                                width: '8px', height: '8px', borderRadius: '50%',
+                                background: active ? '#c9973f' : '#d1d5db',
+                              }} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
+                        {form.landing_image_position || 'center center'}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
             </div>

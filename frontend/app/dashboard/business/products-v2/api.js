@@ -65,13 +65,15 @@ export function normProduct(raw, collectionMap = {}) {
 
 export function normCollection(raw) {
   return {
-    id:          String(raw._id ?? raw.id ?? ''),
-    title:       raw.title ?? '',
-    slug:        raw.slug ?? '',
-    description: raw.description ?? '',
-    image:       raw.image ?? '',
-    isPublished: !!(raw.isPublished),
-    productIds:  Array.isArray(raw.productIds) ? raw.productIds.map(String) : [],
+    id:                     String(raw._id ?? raw.id ?? ''),
+    title:                  raw.title ?? '',
+    slug:                   raw.slug ?? '',
+    description:            raw.description ?? '',
+    image:                  raw.image ?? '',
+    isPublished:            !!(raw.isPublished),
+    productIds:             Array.isArray(raw.productIds) ? raw.productIds.map(String) : [],
+    landing_order:          raw.landing_order ?? null,
+    landing_image_position: raw.landing_image_position ?? null,
   };
 }
 

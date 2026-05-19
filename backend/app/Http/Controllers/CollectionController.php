@@ -37,18 +37,20 @@ class CollectionController extends Controller
         $raw = $col->getAttributes();
         $cid = isset($raw['id']) ? (string) $raw['id'] : (isset($raw['_id']) ? (string) $raw['_id'] : '');
         $out = [
-            'id'          => $cid,
-            '_id'         => $cid,
-            'title'       => (string) ($raw['title'] ?? ''),
-            'slug'        => (string) ($raw['slug'] ?? ''),
-            'description' => (string) ($raw['description'] ?? ''),
-            'image'       => $raw['image'] ?? null,
-            'type'        => 'manual',
-            'productIds'  => isset($raw['productIds']) ? array_map('strval', (array) $raw['productIds']) : [],
-            'isPublished' => (bool) ($raw['isPublished'] ?? false),
-            'sortOrder'   => (int) ($raw['sortOrder'] ?? 0),
-            'created_at'  => $raw['created_at'] ?? null,
-            'updated_at'  => $raw['updated_at'] ?? null,
+            'id'                     => $cid,
+            '_id'                    => $cid,
+            'title'                  => (string) ($raw['title'] ?? ''),
+            'slug'                   => (string) ($raw['slug'] ?? ''),
+            'description'            => (string) ($raw['description'] ?? ''),
+            'image'                  => $raw['image'] ?? null,
+            'type'                   => 'manual',
+            'productIds'             => isset($raw['productIds']) ? array_map('strval', (array) $raw['productIds']) : [],
+            'isPublished'            => (bool) ($raw['isPublished'] ?? false),
+            'sortOrder'              => (int) ($raw['sortOrder'] ?? 0),
+            'landing_order'          => isset($raw['landing_order']) ? (int) $raw['landing_order'] : null,
+            'landing_image_position' => $raw['landing_image_position'] ?? null,
+            'created_at'             => $raw['created_at'] ?? null,
+            'updated_at'             => $raw['updated_at'] ?? null,
         ];
         if ($withCount) {
             $out['productCount'] = count($this->resolveProductIds($col));
@@ -84,25 +86,29 @@ class CollectionController extends Controller
             if (!$this->hasPermission($request, 'products')) return $this->unauthorizedResponse();
 
             $validated = $request->validate([
-                'title'       => 'required|string|max:255',
-                'description' => 'nullable|string|max:5000',
-                'image'       => 'nullable|string',
-                'productIds'  => 'nullable|array',
-                'isPublished' => 'nullable|boolean',
-                'sortOrder'   => 'nullable|integer',
+                'title'                  => 'required|string|max:255',
+                'description'            => 'nullable|string|max:5000',
+                'image'                  => 'nullable|string',
+                'productIds'             => 'nullable|array',
+                'isPublished'            => 'nullable|boolean',
+                'sortOrder'              => 'nullable|integer',
+                'landing_order'          => 'nullable|integer|min:1',
+                'landing_image_position' => 'nullable|string|max:40',
             ]);
 
             $slug = $this->makeSlug($validated['title']);
 
             $col = Collection::create([
-                'title'       => trim($validated['title']),
-                'slug'        => $slug,
-                'description' => $validated['description'] ?? '',
-                'image'       => $validated['image'] ?? null,
-                'type'        => 'manual',
-                'productIds'  => $validated['productIds'] ?? [],
-                'isPublished' => $validated['isPublished'] ?? false,
-                'sortOrder'   => $validated['sortOrder'] ?? 0,
+                'title'                  => trim($validated['title']),
+                'slug'                   => $slug,
+                'description'            => $validated['description'] ?? '',
+                'image'                  => $validated['image'] ?? null,
+                'type'                   => 'manual',
+                'productIds'             => $validated['productIds'] ?? [],
+                'isPublished'            => $validated['isPublished'] ?? false,
+                'sortOrder'              => $validated['sortOrder'] ?? 0,
+                'landing_order'          => $validated['landing_order'] ?? null,
+                'landing_image_position' => $validated['landing_image_position'] ?? null,
             ]);
 
             return $this->successResponse('Collection created.', $this->serialize($col, true), 201);
@@ -124,23 +130,27 @@ class CollectionController extends Controller
             if (!$col) return $this->notFoundResponse('Collection');
 
             $validated = $request->validate([
-                'title'       => 'sometimes|string|max:255',
-                'description' => 'nullable|string|max:5000',
-                'image'       => 'nullable|string',
-                'productIds'  => 'nullable|array',
-                'isPublished' => 'nullable|boolean',
-                'sortOrder'   => 'nullable|integer',
+                'title'                  => 'sometimes|string|max:255',
+                'description'            => 'nullable|string|max:5000',
+                'image'                  => 'nullable|string',
+                'productIds'             => 'nullable|array',
+                'isPublished'            => 'nullable|boolean',
+                'sortOrder'              => 'nullable|integer',
+                'landing_order'          => 'nullable|integer|min:1',
+                'landing_image_position' => 'nullable|string|max:40',
             ]);
 
             if (isset($validated['title'])) {
                 $col->title = trim($validated['title']);
                 $col->slug  = $this->makeSlug($validated['title'], $id);
             }
-            if (array_key_exists('description', $validated)) $col->description = $validated['description'] ?? '';
-            if (array_key_exists('image', $validated))       $col->image       = $validated['image'];
-            if (array_key_exists('productIds', $validated))  $col->productIds  = $validated['productIds'] ?? [];
-            if (isset($validated['isPublished']))             $col->isPublished = $validated['isPublished'];
-            if (isset($validated['sortOrder']))               $col->sortOrder   = $validated['sortOrder'];
+            if (array_key_exists('description', $validated))            $col->description            = $validated['description'] ?? '';
+            if (array_key_exists('image', $validated))                  $col->image                  = $validated['image'];
+            if (array_key_exists('productIds', $validated))             $col->productIds             = $validated['productIds'] ?? [];
+            if (isset($validated['isPublished']))                        $col->isPublished            = $validated['isPublished'];
+            if (isset($validated['sortOrder']))                          $col->sortOrder              = $validated['sortOrder'];
+            if (array_key_exists('landing_order', $validated))          $col->landing_order          = $validated['landing_order'];
+            if (array_key_exists('landing_image_position', $validated)) $col->landing_image_position = $validated['landing_image_position'];
 
             $col->save();
 
@@ -246,12 +256,14 @@ class CollectionController extends Controller
                             ->where('isPublished', true)
                             ->count();
                     return [
-                        'id'          => isset($raw['id']) ? (string) $raw['id'] : (isset($raw['_id']) ? (string) $raw['_id'] : ''),
-                        'title'       => (string) ($raw['title'] ?? ''),
-                        'slug'        => (string) ($raw['slug'] ?? ''),
-                        'description' => (string) ($raw['description'] ?? ''),
-                        'image'       => $raw['image'] ?? null,
-                        'productCount'=> $count,
+                        'id'                     => isset($raw['id']) ? (string) $raw['id'] : (isset($raw['_id']) ? (string) $raw['_id'] : ''),
+                        'title'                  => (string) ($raw['title'] ?? ''),
+                        'slug'                   => (string) ($raw['slug'] ?? ''),
+                        'description'            => (string) ($raw['description'] ?? ''),
+                        'image'                  => $raw['image'] ?? null,
+                        'productCount'           => $count,
+                        'landing_order'          => isset($raw['landing_order']) ? (int) $raw['landing_order'] : null,
+                        'landing_image_position' => $raw['landing_image_position'] ?? null,
                     ];
                 })
                 ->values()

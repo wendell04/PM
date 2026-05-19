@@ -15,7 +15,8 @@ import ProductStockTab    from './ProductStockTab';
 import StockInTab         from './StockInTab';
 import GoodsStockTab      from './GoodsStockTab';
 import ActualStockTab     from './ActualStockTab';
-import BadOrdersTab       from './BadOrdersTab';
+import BadOrdersTab          from './BadOrdersTab';
+import StockOutHistoryTab    from './StockOutHistoryTab';
 
 const TAB_GROUPS = {
   'master-data': [
@@ -24,10 +25,11 @@ const TAB_GROUPS = {
     { id:'bom',          label:'Product Creation' },
   ],
   'overview': [
-    { id:'productstock', label:'Product Stock'    },
-    { id:'stockin',      label:'Stock In'         },
-    { id:'goods',        label:'Goods Stock'      },
-    { id:'actual',       label:'Actual Stock'     },
+    { id:'productstock', label:'Product Stock'      },
+    { id:'stockin',      label:'Stock In'           },
+    { id:'goods',        label:'Goods Stock'        },
+    { id:'actual',       label:'Actual Stock'       },
+    { id:'stockout',     label:'Stock Out History'  },
   ],
   'badorders': [
     { id:'badorders',    label:'Bad Orders'       },
@@ -170,6 +172,12 @@ export default function InventoryV2() {
           stockOuts={stockOuts} setStockOuts={setStockOuts}
           token={token} onRefresh={refresh}
           toast={toast}
+        />
+      )}
+      {tab === 'stockout'   && (
+        <StockOutHistoryTab
+          stockOuts={stockOuts}
+          materials={materials}
         />
       )}
       {tab === 'badorders'  && (

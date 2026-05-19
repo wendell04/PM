@@ -88,21 +88,29 @@ export function normReturn(r) {
 
 export function normStockOut(h) {
   const id = String(h._id ?? h.id ?? '');
+  const orderId = h.orderId ?? null;
   return {
     id,
-    ref:       h.invoiceNumber
-      ? `INV-${h.invoiceNumber}`
-      : `ADJ-${id.slice(-6).toUpperCase()}`,
-    type:      h.reason === 'production' ? 'production' : 'adjustment',
-    matId:     String(h.inventoryId ?? ''),
-    matName:   h.materialName ?? '',
-    date:      (h.createdAt ?? '').split('T')[0],
-    qty:         Number(h.quantity ?? 0),
-    reason:      h.reason ?? '',
-    unitCost:    Number(h.unitCost ?? 0),
-    totalCost:   Number(h.totalCost ?? 0),
-    notes:       h.remarks ?? '',
-    performedBy: h.performedBy ?? null,
+    ref: orderId
+      ? `ORD-${String(orderId).slice(-6).toUpperCase()}`
+      : h.invoiceNumber
+        ? `INV-${h.invoiceNumber}`
+        : `ADJ-${id.slice(-6).toUpperCase()}`,
+    type:         orderId ? 'sale' : h.reason === 'production' ? 'production' : 'adjustment',
+    matId:        String(h.inventoryId ?? ''),
+    matName:      h.materialName ?? '',
+    date:         (h.createdAt ?? '').split('T')[0],
+    qty:          Number(h.quantity ?? 0),
+    remainingQty: Number(h.remainingQty ?? 0),
+    reason:       h.reason ?? '',
+    unitCost:     Number(h.unitCost ?? 0),
+    totalCost:    Number(h.totalCost ?? 0),
+    notes:        h.remarks ?? '',
+    performedBy:  h.performedBy ?? null,
+    orderId,
+    productId:    h.productId ?? null,
+    productName:  h.productName ?? '',
+    customerName: h.customerName ?? '',
   };
 }
 

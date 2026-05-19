@@ -20,11 +20,14 @@ class Collection extends Model
         'productIds',
         'isPublished',
         'sortOrder',
+        'landing_order',
+        'landing_image_position',
     ];
 
     protected $casts = [
-        'isPublished' => 'boolean',
-        'sortOrder'   => 'integer',
+        'isPublished'   => 'boolean',
+        'sortOrder'     => 'integer',
+        'landing_order' => 'integer',
     ];
 
     protected $attributes = [

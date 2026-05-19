@@ -27,6 +27,10 @@ class StockHistory extends Model
         'remarks',
         'type',
         'performedBy',
+        'orderId',
+        'productId',
+        'productName',
+        'customerName',
         'createdAt',
     ];
 

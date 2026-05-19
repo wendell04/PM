@@ -342,6 +342,7 @@ export default function BannerManagementPage() {
   const fileInputRef = useRef(null);
   const carouselIntervalRef = useRef(null);
 
+  const [activePage, setActivePage] = useState('shop');
   const [banners, setBanners] = useState([]);
   const [activeBannerId, setActiveBannerIdLocal] = useState(null);
   const [editedBanner, setEditedBanner] = useState(null);
@@ -408,19 +409,26 @@ export default function BannerManagementPage() {
     }
   };
 
+  const filteredBanners = banners.filter(b => {
+    const showOn = b.showOn || 'both';
+    if (activePage === 'shop')    return showOn === 'shop' || showOn === 'both';
+    if (activePage === 'landing') return showOn === 'landing' || showOn === 'both';
+    return true;
+  });
+
   // Create new banner via API
   const createNewBanner = async () => {
-    if (banners.length >= MAX_BANNERS) {
+    if (filteredBanners.length >= MAX_BANNERS) {
       setModal({
         type: 'error',
         title: 'Banner Limit Reached',
-        message: `You can only have up to ${MAX_BANNERS} banners at a time. Delete an existing banner to add a new one.`,
+        message: `You can only have up to ${MAX_BANNERS} banners per page. Delete an existing banner to add a new one.`,
       });
       return;
     }
     setIsLoading(true);
     try {
-      const newBanner = await apiCreateBanner(createDefaultBanner(), token);
+      const newBanner = await apiCreateBanner({ ...createDefaultBanner(), showOn: activePage === 'landing' ? 'landing' : 'shop' }, token);
       const updatedBanners = [...banners, newBanner];
       setBanners(updatedBanners);
       selectBanner(newBanner._id || newBanner.id);
@@ -849,6 +857,23 @@ export default function BannerManagementPage() {
         }
       `}</style>
 
+      {/* Page Tabs */}
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '1.5rem', background: 'var(--dark2)', padding: '4px', borderRadius: '10px', width: 'fit-content' }}>
+        {[{ key: 'shop', label: 'Shop (/shop)' }, { key: 'landing', label: 'Landing (Homepage)' }].map(tab => (
+          <button key={tab.key} type="button" onClick={() => { setActivePage(tab.key); setActiveBannerIdLocal(null); setEditedBanner(null); }}
+            style={{
+              padding: '6px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer',
+              fontSize: '0.82rem', fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
+              background: activePage === tab.key ? 'var(--dark)' : 'transparent',
+              color: activePage === tab.key ? 'var(--white)' : 'var(--gray)',
+              boxShadow: activePage === tab.key ? '0 1px 4px rgba(0,0,0,0.18)' : 'none',
+              transition: 'all 0.15s',
+            }}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {/* Header */}
       <div className="banner-header">
         <div className="banner-actions">
@@ -890,15 +915,15 @@ export default function BannerManagementPage() {
               <h2 className="banner-card-title">Banner Queue</h2>
             </div>
             <div className="banner-list">
-              {banners.map((banner, index) => (
+              {filteredBanners.map((banner, index) => (
                 <div
                   key={banner.id}
                   className={`banner-item ${activeBannerId === banner.id ? 'active' : ''} ${!banner.isVisible ? 'inactive' : ''}`}
                   onClick={() => selectBanner(banner.id)}
                 >
                   <div className="banner-order-btns">
-                    <button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(index, -1); }} disabled={index === 0 || isSubmitting} title="Move up">▲</button>
-                    <button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(index, 1); }} disabled={index === banners.length - 1 || isSubmitting} title="Move down">▼</button>
+                    <button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(banners.indexOf(banner), -1); }} disabled={index === 0 || isSubmitting} title="Move up">▲</button>
+                    <button className="banner-order-btn" onClick={(e) => { e.stopPropagation(); moveBanner(banners.indexOf(banner), 1); }} disabled={index === filteredBanners.length - 1 || isSubmitting} title="Move down">▼</button>
                   </div>
                   <div className="banner-item-thumbnail">
                     {banner.image ? <Image src={banner.image} alt={banner.name} width={48} height={48} style={{ objectFit: "cover" }} unoptimized /> : <span>No Image</span>}
@@ -924,7 +949,7 @@ export default function BannerManagementPage() {
                   </div>
                 </div>
               ))}
-              {banners.length === 0 && (
+              {filteredBanners.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray)' }}>
                   No banners yet. Create your first banner!
                 </div>
@@ -933,14 +958,14 @@ export default function BannerManagementPage() {
             <button
               className="banner-add-btn"
               onClick={createNewBanner}
-              disabled={banners.length >= MAX_BANNERS}
-              style={{ opacity: banners.length >= MAX_BANNERS ? 0.5 : 1, cursor: banners.length >= MAX_BANNERS ? 'not-allowed' : 'pointer' }}
+              disabled={filteredBanners.length >= MAX_BANNERS}
+              style={{ opacity: filteredBanners.length >= MAX_BANNERS ? 0.5 : 1, cursor: filteredBanners.length >= MAX_BANNERS ? 'not-allowed' : 'pointer' }}
             >
               <span>+</span>
-              {banners.length >= MAX_BANNERS ? `Max ${MAX_BANNERS} banners reached` : 'Add New Banner'}
-              {banners.length > 0 && (
+              {filteredBanners.length >= MAX_BANNERS ? `Max ${MAX_BANNERS} banners reached` : `Add ${activePage === 'landing' ? 'Landing' : 'Shop'} Banner`}
+              {filteredBanners.length > 0 && (
                 <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--gray)', fontWeight: 400 }}>
-                  {banners.length}/{MAX_BANNERS}
+                  {filteredBanners.length}/{MAX_BANNERS}
                 </span>
               )}
             </button>
@@ -1041,26 +1066,105 @@ export default function BannerManagementPage() {
               <h3 className="banner-editor-card-title">Content</h3>
               <div className="banner-form-group">
                 <label className="banner-form-label">Banner Name <span className="banner-char-count">{editedBanner?.name?.length || 0}/50</span></label>
-                <input type="text" className="banner-form-input" value={editedBanner?.name || ''} onChange={(e) => updateField('name', e.target.value.slice(0, 50))} onKeyDown={e => { if (e.key === 'Enter' && !isLive) { e.preventDefault(); saveChanges(); } }} placeholder="Internal name for this banner..." maxLength={50} disabled={isLive} />
+                <input type="text" className="banner-form-input" value={editedBanner?.name || ''} onChange={(e) => updateField('name', e.target.value.slice(0, 50))} placeholder="Internal name for this banner..." maxLength={50} disabled={isLive} />
               </div>
+
+              {/* Landing-only: Tag pill */}
+              {activePage === 'landing' && (
+                <div className="banner-form-group">
+                  <label className="banner-form-label">Tag Pill <span className="banner-char-count">{editedBanner?.tag?.length || 0}/40</span></label>
+                  <input type="text" className="banner-form-input" value={editedBanner?.tag || ''} onChange={(e) => updateField('tag', e.target.value.slice(0, 40))} placeholder="e.g. Fast Turnaround, Bulk Orders Welcome…" maxLength={40} disabled={isLive} />
+                </div>
+              )}
+
               <div className="banner-form-group">
-                <label className="banner-form-label">Headline <span className="banner-char-count">{editedBanner?.headline?.length || 0}/60</span></label>
-                <input type="text" className="banner-form-input" value={editedBanner?.headline || ''} onChange={(e) => updateField('headline', e.target.value.slice(0, 60))} onKeyDown={e => { if (e.key === 'Enter' && !isLive) { e.preventDefault(); saveChanges(); } }} placeholder="Main headline text..." maxLength={60} disabled={isLive} />
+                <label className="banner-form-label">Headline (white part) <span className="banner-char-count">{editedBanner?.headline?.length || 0}/60</span></label>
+                <input type="text" className="banner-form-input" value={editedBanner?.headline || ''} onChange={(e) => updateField('headline', e.target.value.slice(0, 60))} placeholder="Main headline text..." maxLength={60} disabled={isLive} />
               </div>
+
+              {/* Landing-only: Accent parts with color pickers */}
+              {activePage === 'landing' && (
+                <>
+                  <div className="banner-form-group">
+                    <label className="banner-form-label">Headline Accent <span className="banner-char-count">{editedBanner?.headlineAccent?.length || 0}/60</span></label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input type="text" className="banner-form-input" style={{ flex: 1 }} value={editedBanner?.headlineAccent || ''} onChange={(e) => updateField('headlineAccent', e.target.value.slice(0, 60))} placeholder="Colored word(s) appended to headline…" maxLength={60} disabled={isLive} />
+                      <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                        {['gold', 'red', 'white'].map(c => {
+                          const bg = c === 'gold' ? '#c9973f' : c === 'red' ? '#dc2626' : '#f5f5f5';
+                          const active = (editedBanner?.headlineAccentColor || 'gold') === c;
+                          return (
+                            <button key={c} type="button" title={c} onClick={() => updateField('headlineAccentColor', c)}
+                              style={{ width: '28px', height: '28px', borderRadius: '6px', border: `2px solid ${active ? 'var(--white)' : 'transparent'}`, background: bg, cursor: 'pointer', flexShrink: 0 }} />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="banner-form-group">
+                    <label className="banner-form-label">Headline Accent 2 (optional) <span className="banner-char-count">{editedBanner?.headlineAccent2?.length || 0}/60</span></label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input type="text" className="banner-form-input" style={{ flex: 1 }} value={editedBanner?.headlineAccent2 || ''} onChange={(e) => updateField('headlineAccent2', e.target.value.slice(0, 60))} placeholder="Optional third word/phrase…" maxLength={60} disabled={isLive} />
+                      <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                        {['gold', 'red', 'white'].map(c => {
+                          const bg = c === 'gold' ? '#c9973f' : c === 'red' ? '#dc2626' : '#f5f5f5';
+                          const active = (editedBanner?.headlineAccent2Color || 'gold') === c;
+                          return (
+                            <button key={c} type="button" title={c} onClick={() => updateField('headlineAccent2Color', c)}
+                              style={{ width: '28px', height: '28px', borderRadius: '6px', border: `2px solid ${active ? 'var(--white)' : 'transparent'}`, background: bg, cursor: 'pointer', flexShrink: 0 }} />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div className="banner-form-group">
                 <label className="banner-form-label">Subtext <span className="banner-char-count">{editedBanner?.subtext?.length || 0}/200</span></label>
-                <textarea className="banner-form-textarea" value={editedBanner?.subtext || ''} onChange={(e) => updateField('subtext', e.target.value.slice(0, 200))} placeholder="Description or supporting text..." rows={4} maxLength={200} disabled={isLive} />
+                <textarea className="banner-form-textarea" value={editedBanner?.subtext || ''} onChange={(e) => updateField('subtext', e.target.value.slice(0, 200))} placeholder="Description or supporting text..." rows={3} maxLength={200} disabled={isLive} />
               </div>
               <div className="banner-form-row">
                 <div className="banner-form-group">
-                  <label className="banner-form-label">Button Text <span className="banner-char-count">{editedBanner?.ctaLabel?.length || 0}/30</span></label>
-                  <input type="text" className="banner-form-input" value={editedBanner?.ctaLabel || ''} onChange={(e) => updateField('ctaLabel', e.target.value.slice(0, 30))} onKeyDown={e => { if (e.key === 'Enter' && !isLive) { e.preventDefault(); saveChanges(); } }} placeholder="CTA button..." maxLength={30} disabled={isLive} />
+                  <label className="banner-form-label">Button 1 Text <span className="banner-char-count">{editedBanner?.ctaLabel?.length || 0}/30</span></label>
+                  <input type="text" className="banner-form-input" value={editedBanner?.ctaLabel || ''} onChange={(e) => updateField('ctaLabel', e.target.value.slice(0, 30))} placeholder="Primary CTA..." maxLength={30} disabled={isLive} />
                 </div>
                 <div className="banner-form-group">
-                  <label className="banner-form-label">Button Link</label>
-                  <input type="text" className="banner-form-input" value={editedBanner?.ctaLink || ''} onChange={(e) => updateField('ctaLink', e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !isLive) { e.preventDefault(); saveChanges(); } }} placeholder="/shop or /contact..." disabled={isLive} />
+                  <label className="banner-form-label">Button 1 Link</label>
+                  <input type="text" className="banner-form-input" value={editedBanner?.ctaLink || ''} onChange={(e) => updateField('ctaLink', e.target.value)} placeholder="/shop or /contact..." disabled={isLive} />
                 </div>
               </div>
+              {activePage === 'landing' && (
+                <div className="banner-form-row">
+                  <div className="banner-form-group">
+                    <label className="banner-form-label">Button 2 Text <span className="banner-char-count">{editedBanner?.cta2Label?.length || 0}/30</span></label>
+                    <input type="text" className="banner-form-input" value={editedBanner?.cta2Label || ''} onChange={(e) => updateField('cta2Label', e.target.value.slice(0, 30))} placeholder="Secondary CTA (optional)..." maxLength={30} disabled={isLive} />
+                  </div>
+                  <div className="banner-form-group">
+                    <label className="banner-form-label">Button 2 Link</label>
+                    <input type="text" className="banner-form-input" value={editedBanner?.cta2Link || ''} onChange={(e) => updateField('cta2Link', e.target.value)} placeholder="#how-it-works..." disabled={isLive} />
+                  </div>
+                </div>
+              )}
+
+              {/* Landing-only: Image focus point */}
+              {activePage === 'landing' && (
+                <div className="banner-form-group">
+                  <label className="banner-form-label">Image Focus Point</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '4px', width: '120px', marginTop: '6px' }}>
+                    {['top left','top center','top right','center left','center center','center right','bottom left','bottom center','bottom right'].map(pos => {
+                      const active = (editedBanner?.imagePosition || 'center center') === pos;
+                      return (
+                        <button key={pos} type="button" title={pos} onClick={() => updateField('imagePosition', pos)}
+                          style={{ width: '36px', height: '36px', borderRadius: '5px', border: `2px solid ${active ? 'var(--gold)' : 'var(--border)'}`, background: active ? 'rgba(212,168,67,0.12)' : 'var(--dark2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: active ? 'var(--gold)' : 'var(--gray)' }} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '4px' }}>{editedBanner?.imagePosition || 'center center'}</p>
+                </div>
+              )}
             </div>
 
             {/* Schedule */}

@@ -674,6 +674,7 @@ class InventoryController extends Controller
                     'inventoryId'  => (string) ($h->inventoryId ?? ''),
                     'materialName' => $inv ? $inv->name : '',
                     'quantity'     => (int) ($h->quantity ?? 0),
+                    'remainingQty' => (int) ($h->remainingQty ?? 0),
                     'unitCost'     => (float) ($h->unitCost ?? 0),
                     'totalCost'    => (float) ($h->totalCost ?? 0),
                     'reason'       => $h->reason ?? '',
@@ -681,6 +682,10 @@ class InventoryController extends Controller
                     'invoiceNumber'=> $h->invoiceNumber ?? null,
                     'remarks'      => $h->remarks ?? null,
                     'performedBy'  => $h->performedBy ?? null,
+                    'orderId'      => $h->orderId ?? null,
+                    'productId'    => $h->productId ?? null,
+                    'productName'  => $h->productName ?? null,
+                    'customerName' => $h->customerName ?? null,
                     'createdAt'    => $h->createdAt ? $h->createdAt->toIso8601String() : null,
                 ];
             })->values()->toArray();

@@ -11,9 +11,17 @@ class Banner extends Model
 
     protected $fillable = [
         'headline',
+        'headlineAccent',
+        'headlineAccentColor',
+        'headlineAccent2',
+        'headlineAccent2Color',
+        'tag',
         'subtext',
         'ctaLabel',
         'ctaLink',
+        'cta2Label',
+        'cta2Link',
+        'imagePosition',
         'image',
         'isVisible',
         'status',
