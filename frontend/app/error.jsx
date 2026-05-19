@@ -47,8 +47,8 @@ export default function Error({ error, reset }) {
         >
           Try again
         </button>
-        <a
-          href="/"
+        <button
+          onClick={() => { window.location.href = '/'; }}
           style={{
             padding: '8px 20px',
             background: 'rgba(255,255,255,0.06)',
@@ -57,11 +57,11 @@ export default function Error({ error, reset }) {
             color: 'inherit',
             fontWeight: 600,
             fontSize: '0.875rem',
-            textDecoration: 'none',
+            cursor: 'pointer',
           }}
         >
           Go home
-        </a>
+        </button>
       </div>
     </div>
   );

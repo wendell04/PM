@@ -525,12 +525,6 @@ export default function JobOrdersPage() {
           alignItems: 'center', marginBottom: '24px',
           flexWrap: 'wrap', gap: '16px',
         }}>
-          <div>
-            <h1 className="page-title">Job Orders</h1>
-            <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: 'var(--gray)' }}>
-              Track and manage production job orders
-            </p>
-          </div>
           <button
             onClick={openCreate}
             className="btn-primary"
@@ -623,7 +617,7 @@ export default function JobOrdersPage() {
                       style={{
                         height: '56px',
                         borderRadius: '8px',
-                        background: 'rgba(255,255,255,0.04)',
+                        background: 'var(--dark2)',
                         animation: 'joPageSkel 1.5s ease-in-out infinite',
                       }}
                     />

@@ -1115,17 +1115,7 @@ export default function SSAForecastPage() {
   return (
     <ErrorBoundary>
       <div className="page-content-wrapper">
-        <div className="page-header">
-          <div className="page-header-content">
-            <div>
-              <h1 className="page-title">Sales Forecast</h1>
-              <p className="page-subtitle">
-                Predict future trends using live data powered by Singular
-                Spectrum Analysis.
-              </p>
-            </div>
-          </div>
-        </div>
+
 
         {/* ── Analytics tab navigation ──────────────────────────────────── */}
         <div className="ssa-tab-nav">

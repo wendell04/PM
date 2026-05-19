@@ -107,14 +107,16 @@ export default function ProductionPreviewPage() {
   if (isLoading) {
     return (
       <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
+        <style>{`@keyframes ppPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }`}</style>
         {[...Array(5)].map((_, i) => (
           <div
             key={i}
             style={{
               height: '56px',
-              background: 'rgba(255,255,255,0.04)',
+              background: 'var(--dark2)',
               borderRadius: '8px',
               marginBottom: '0.5rem',
+              animation: 'ppPageSkel 1.5s ease-in-out infinite',
             }}
           />
         ))}
@@ -151,19 +153,6 @@ export default function ProductionPreviewPage() {
   return (
     <ErrorBoundary>
     <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Page Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>
-          Home › Production › My Jobs
-        </div>
-        <h1 className="page-title">
-          Production Dashboard
-        </h1>
-        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--gray)' }}>
-          Your assigned job orders. Start, track progress, and submit for QC.
-        </p>
-      </div>
-
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
         {[

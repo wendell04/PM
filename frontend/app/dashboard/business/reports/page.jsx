@@ -583,11 +583,6 @@ export default function ReportsPage() {
         }
       `}</style>
       <div style={{ maxWidth: '960px', margin: '0 auto', padding: '2rem 1rem' }}>
-        <div className="page-header">
-          <h1 className="page-title">Reports</h1>
-          <p className="page-subtitle">Business intelligence and data exports.</p>
-        </div>
-
         {!token && (
           <p style={{ color: 'var(--gray)', fontSize: '0.9rem' }}>Sign in to load reports.</p>
         )}

@@ -56,6 +56,8 @@ export default function ProductDetailPage() {
   const [reqError, setReqError] = useState('');
   const [reqSuccess, setReqSuccess] = useState(false);
   const [reqType, setReqType] = useState('upload'); // 'upload' | 'request'
+  const [customTcAccepted, setCustomTcAccepted] = useState(false);
+  const [recommendations, setRecommendations] = useState([]);
 
   const id = params?.id;
 
@@ -141,6 +143,33 @@ export default function ProductDetailPage() {
     };
     fetchFlashSale();
   }, [product]);
+
+  // Recommendations — stale-while-revalidate with shuffle
+  useEffect(() => {
+    if (!id) return;
+    let active = true;
+    const shuffle = (list) => [...list].sort(() => Math.random() - 0.5);
+    const apply = (list) => {
+      const pool = list.filter(p => String(p._id || p.id) !== String(id));
+      if (active && pool.length) setRecommendations(shuffle(pool).slice(0, 6));
+    };
+    let hasCache = false;
+    try {
+      const cached = sessionStorage.getItem('pmp_products_cache');
+      if (cached) { apply(JSON.parse(cached)); hasCache = true; }
+    } catch {}
+    (async () => {
+      try {
+        const res = await fetchWithTimeout(`${API_URL}/api/products`, {}, 10000);
+        if (!res.ok || !active) return;
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+        try { sessionStorage.setItem('pmp_products_cache', JSON.stringify(list)); } catch {}
+        if (!hasCache && active) apply(list);
+      } catch {}
+    })();
+    return () => { active = false; };
+  }, [id]);
 
   // Helpers
   function getTiers(p) {
@@ -402,7 +431,7 @@ export default function ProductDetailPage() {
   const effectiveMinQty = product?.minOrderQty || 1;
 
   const effectiveMaxQty = (() => {
-    if (!product?.trackInventory || product?.stockStatus === 'upon-order') return 9999;
+    if (!product?.trackInventory || product?.isMadeToOrder || product?.stockStatus === 'upon-order') return 9999;
     const comboId = resolveCombinationId(selectedVariants);
     // Multi-variant BOM: use live per-variant availableQty from server
     if (product?.variantAvailableQty && comboId != null && product.variantAvailableQty[comboId] != null) {
@@ -462,7 +491,7 @@ export default function ProductDetailPage() {
 
       {/* Back button */}
       <button
-        onClick={() => router.back()}
+        onClick={() => router.push('/shop')}
         style={{
           background: 'none', border: 'none',
           color: 'var(--gray)', cursor: 'pointer',
@@ -826,7 +855,7 @@ export default function ProductDetailPage() {
                     )}
                   </div>
                   {quantity > 1 && (
-                    <div style={{ fontSize: '0.82rem', color: 'rgba(229,226,225,0.55)', marginTop: '0.25rem' }}>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--gray)', marginTop: '0.25rem' }}>
                       Total: <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{formatPeso(unitPrice * quantity)}</span>
                     </div>
                   )}
@@ -861,15 +890,17 @@ export default function ProductDetailPage() {
             {!product.isMadeToOrder && (() => {
               const LOW = 10;
               const comboId = resolveCombinationId(selectedVariants);
-              const variantQty = comboId != null && product?.variantStock?.[comboId] != null
-                ? Number(product.variantStock[comboId])
+              const variantQty = comboId != null && product?.variantAvailableQty?.[comboId] != null
+                ? Number(product.variantAvailableQty[comboId])
                 : null;
-              const displayQty = variantQty ?? product.stock ?? null;
+              const displayQty = variantQty ?? product.availableQty ?? null;
+
+              const BADGE_GOLD = { color: '#b8922f', background: 'rgba(212,168,67,0.12)', border: '1px solid rgba(212,168,67,0.35)' };
 
               if (product.stockStatus === 'upon-order') {
                 return (
                   <div style={{ display: 'flex' }}>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
                       Upon Order
                     </span>
                   </div>
@@ -878,7 +909,7 @@ export default function ProductDetailPage() {
               if (isOutOfStock) {
                 return (
                   <div style={{ display: 'flex' }}>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#dc2626', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
                       Out of Stock
                     </span>
                   </div>
@@ -888,20 +919,20 @@ export default function ProductDetailPage() {
                 return (
                   <div>
                     <div style={{ display: 'flex' }}>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
                         Only {displayQty} left!
                       </span>
                     </div>
-                    <div style={{ marginTop: '0.5rem', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${Math.min(100, (displayQty / LOW) * 100)}%`, background: '#f59e0b', borderRadius: '2px', transition: 'width 0.3s' }} />
+                    <div style={{ marginTop: '0.5rem', height: '4px', background: 'rgba(212,168,67,0.15)', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${Math.min(100, (displayQty / LOW) * 100)}%`, background: '#d4a843', borderRadius: '2px', transition: 'width 0.3s' }} />
                     </div>
                   </div>
                 );
               }
               return (
                 <div style={{ display: 'flex' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#4ade80', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
-                    {displayQty != null ? `${displayQty} in stock` : 'In Stock'}
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, ...BADGE_GOLD, borderRadius: '999px', padding: '0.25rem 0.75rem' }}>
+                    {displayQty != null && displayQty > 0 ? `${displayQty} units available` : 'In Stock'}
                   </span>
                 </div>
               );
@@ -952,6 +983,7 @@ export default function ProductDetailPage() {
                 </div>
               ))
             )}
+
 
             {/* Quantity input — hidden when out of stock */}
             {!isOutOfStock && <div>
@@ -1098,9 +1130,6 @@ export default function ProductDetailPage() {
                         width: '100%', fontFamily: "'Outfit', sans-serif",
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                       }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                        <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                      </svg>
                       {isOutOfStock ? 'Out of Stock' : 'Place Custom Order'}
                     </button>
                     <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--gray)', margin: 0, lineHeight: 1.5 }}>
@@ -1126,9 +1155,6 @@ export default function ProductDetailPage() {
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                         transition: 'opacity 0.15s',
                       }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                        {addedToCart ? <polyline points="20 6 9 17 4 12"/> : (<><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></>)}
-                      </svg>
                       {isOutOfStock ? 'Out of Stock' : addedToCart ? 'Added to Cart!' : 'Add to Cart'}
                     </button>
                     <button
@@ -1144,9 +1170,6 @@ export default function ProductDetailPage() {
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                         opacity: 0.85,
                       }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                      </svg>
                       {isOutOfStock ? 'Out of Stock' : 'Checkout'}
                     </button>
                   </>
@@ -1246,10 +1269,107 @@ export default function ProductDetailPage() {
         </div>
       )}
 
+      {/* ── Recommendations ───────────────────────────── */}
+      {recommendations.length > 0 && (
+        <div style={{ marginTop: '2.5rem' }}>
+          <h2 style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray)', margin: '0 0 1rem', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            You may also like
+          </h2>
+          <div className="rec-grid">
+            {recommendations.map(rec => {
+              const recId = rec._id || rec.id;
+              const mode = rec.priceType || rec.pricingMode || 'fixed';
+              const recPrice = (() => {
+                if (mode === 'inquiry') return 'Price on request';
+                const tiers = rec.priceTiers ?? rec.tiers ?? [];
+                if (mode === 'tiered' && tiers.length) {
+                  const all = tiers.flatMap(t => t.price != null ? [parseFloat(t.price)] : Object.values(t.prices||{}).map(Number)).filter(v => v > 0);
+                  if (!all.length) return 'Price on request';
+                  const [mn, mx] = [Math.min(...all), Math.max(...all)];
+                  return mn === mx ? formatPeso(mn) : `${formatPeso(mn)} – ${formatPeso(mx)}`;
+                }
+                const vp = Object.values(rec.variantPrices||{}).map(Number).filter(v => v > 0);
+                if (vp.length) { const [mn, mx] = [Math.min(...vp), Math.max(...vp)]; return mn === mx ? formatPeso(mn) : `${formatPeso(mn)} – ${formatPeso(mx)}`; }
+                const price = parseFloat(rec.flatPrice || rec.price);
+                return price > 0 ? formatPeso(price) : 'Price on request';
+              })();
+              return (
+                <a key={recId} href={`/shop/products/${recId}`} className="rec-card">
+                  <div className="rec-img">
+                    {rec.thumbnail || rec.images?.[0] ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={rec.thumbnail || rec.images[0]} alt={rec.name || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray)' }}>
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ padding: '8px 8px 10px' }}>
+                    <div className="rec-name">
+                      {rec.name || rec.subCategoryName || 'Product'}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--gold)', fontWeight: 600 }}>
+                      {recPrice}
+                    </div>
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
+        }
+        .rec-grid {
+          display: grid;
+          grid-template-columns: repeat(6, 1fr);
+          gap: 14px;
+        }
+        .rec-card {
+          text-decoration: none;
+          display: block;
+          border-radius: 12px;
+          background: var(--dark2);
+          border: 1px solid var(--border);
+          overflow: hidden;
+          transition: transform 0.18s ease, box-shadow 0.18s ease;
+        }
+        .rec-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+          border-color: rgba(212,168,67,0.35);
+        }
+        .rec-img {
+          aspect-ratio: 1/1;
+          overflow: hidden;
+          background: var(--dark2);
+        }
+        .rec-img img { transition: transform 0.22s ease; }
+        .rec-card:hover .rec-img img { transform: scale(1.04); }
+        .rec-name {
+          font-size: 0.8rem;
+          font-weight: 700;
+          color: var(--white);
+          margin-bottom: 4px;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          min-height: 2.4em;
+          line-height: 1.2;
+        }
+        @media (max-width: 900px) {
+          .rec-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 540px) {
+          .rec-grid { grid-template-columns: repeat(2, 1fr); }
         }
       `}</style>
 

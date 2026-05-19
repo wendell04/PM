@@ -138,13 +138,6 @@ export default function PaymentsPage() {
     <ErrorBoundary>
       <div style={{ maxWidth: '1080px', margin: '0 auto', padding: '2rem 1rem' }}>
 
-        <div style={{ marginBottom: '24px' }}>
-          <h1 className="page-title">Payments</h1>
-          <p style={{ color: 'var(--gray)', fontSize: '0.875rem', margin: '4px 0 0' }}>
-            Track payments, downpayments, and outstanding balances.
-          </p>
-        </div>
-
         {/* Summary cards */}
         {!loading && !error && (
           <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>

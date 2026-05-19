@@ -143,9 +143,7 @@ export default function DashboardOverviewPage() {
   });
 
   const fetchDashboard = useCallback(async () => {
-    const activeToken = token ||
-      sessionStorage.getItem('auth_token') ||
-      localStorage.getItem('auth_token');
+    const activeToken = token || localStorage.getItem('auth_token');
     if (!activeToken) return;
     try {
       const headers = {

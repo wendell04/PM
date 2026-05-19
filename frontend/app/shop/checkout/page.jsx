@@ -8,6 +8,7 @@ import { useCart } from '@/context/CartContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import '@/app/shop/shop.css';
 import { applyVoucher } from '@/lib/voucherApi';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const AddressBook = dynamic(() => import('@/components/profile/AddressBook'), { ssr: false });
 
@@ -64,6 +65,7 @@ function CardLogosBig() {
 export default function CheckoutPage() {
   const router = useRouter();
   const { token, currentUser } = useAuth();
+  const { theme } = useTheme();
   const { clearCart } = useCart();
 
   // Cart payload (loaded from sessionStorage)
@@ -293,12 +295,14 @@ export default function CheckoutPage() {
     : grandTotal;
   const remainingBalance = (downpaymentRequired && !payFull) ? Math.round((grandTotal - amountDue) * 100) / 100 : 0;
 
-  // Auto-switch away from COD when downpayment is required
+  const cartAllowsCOD = items.every(i => (i.product?.allowCOD ?? true) !== false);
+
+  // Auto-switch away from COD when not allowed or downpayment required
   useEffect(() => {
-    if (downpaymentRequired && paymentMethod === 'cod') {
+    if (paymentMethod === 'cod' && (!cartAllowsCOD || downpaymentRequired)) {
       setPaymentMethod('gcash');
     }
-  }, [downpaymentRequired, paymentMethod]);
+  }, [cartAllowsCOD, downpaymentRequired, paymentMethod]);
 
   async function handleApplyVoucher() {
     if (!voucherInput.trim()) return;
@@ -1274,7 +1278,7 @@ export default function CheckoutPage() {
             filterImg: true,
             icon: null,
           },
-        ].filter(opt => !downpaymentRequired || opt.id !== 'cod')).map(opt => {
+        ].filter(opt => opt.id !== 'cod' || (cartAllowsCOD && !downpaymentRequired))).map(opt => {
           const isSelected = paymentMethod === opt.id;
           const isEWallet = opt.id === 'gcash' || opt.id === 'paymaya';
           const showPanel = isEWallet && isSelected;
@@ -1285,7 +1289,7 @@ export default function CheckoutPage() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: '0.875rem',
                   padding: '0.875rem 1rem', borderRadius: '10px', cursor: 'pointer',
-                  border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.07)'}`,
+                  border: `1px solid ${isSelected ? opt.accent : 'var(--border)'}`,
                   background: isSelected ? opt.accentBg : 'var(--dark)',
                   marginBottom: showPanel ? '0' : '0.625rem', transition: 'all 0.18s',
                 }}
@@ -1293,8 +1297,8 @@ export default function CheckoutPage() {
                 {/* Logo / icon box */}
                 <div style={{
                   width: '44px', height: '44px', borderRadius: '10px', flexShrink: 0,
-                  background: opt.logo ? (isSelected ? opt.accentBg : 'rgba(255,255,255,0.05)') : (isSelected ? opt.accentBg : 'rgba(255,255,255,0.04)'),
-                  border: `1px solid ${isSelected ? opt.accent : 'rgba(255,255,255,0.06)'}`,
+                  background: opt.logo ? (isSelected ? opt.accentBg : 'var(--dark2)') : (isSelected ? opt.accentBg : 'var(--dark2)'),
+                  border: `1px solid ${isSelected ? opt.accent : 'var(--border)'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: isSelected ? opt.accent : 'var(--gray)',
                   overflow: 'hidden', transition: 'all 0.18s',
@@ -1306,7 +1310,7 @@ export default function CheckoutPage() {
                         style={{
                           width: '30px', height: '30px', objectFit: 'contain',
                           ...(opt.filterImg
-                            ? { filter: 'brightness(0) invert(1)', opacity: isSelected ? 1 : 0.45 }
+                            ? { filter: theme === 'light' ? 'brightness(0) opacity(0.55)' : 'brightness(0) invert(1)', opacity: isSelected ? 1 : 0.45 }
                             : { borderRadius: '6px' }),
                         }}
                       />
@@ -1561,14 +1565,7 @@ export default function CheckoutPage() {
             {paymentMethod === 'card' ? 'Processing...' : 'Placing Order...'}
           </>
         ) : (
-          <>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-              <line x1="3" y1="6" x2="21" y2="6"/>
-              <path d="M16 10a4 4 0 0 1-8 0"/>
-            </svg>
-            {paymentMethod === 'cod' ? 'Place Order' : paymentMethod === 'gcash' ? 'Pay with GCash' : paymentMethod === 'paymaya' ? 'Pay with Maya' : 'Pay with Card'}
-          </>
+          paymentMethod === 'cod' ? 'Place Order' : paymentMethod === 'gcash' ? 'Pay with GCash' : paymentMethod === 'paymaya' ? 'Pay with Maya' : 'Pay with Card'
         )}
       </button>
 

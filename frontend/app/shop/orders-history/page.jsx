@@ -691,31 +691,7 @@ export default function OrdersHistoryPage() {
 
   // ── Render ──────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--dark)' }}>
-
-      {/* Sticky breadcrumb nav */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 50, borderBottom: '1px solid var(--border)', background: 'rgba(12,12,12,0.92)', backdropFilter: 'blur(14px)' }}>
-        <div style={{ maxWidth: '900px', margin: '0 auto', padding: '0 16px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem' }}>
-            <Link href="/shop/profile" style={{ color: 'var(--gray)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', transition: 'color 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--white)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--gray)'}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              Account
-            </Link>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-            <span style={{ color: 'var(--white)', fontWeight: 600 }}>My Orders</span>
-          </div>
-          <Link href="/shop" style={{ display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--gold)', fontSize: '0.8rem', fontWeight: 600, textDecoration: 'none', padding: '5px 12px', borderRadius: '6px', border: '1px solid rgba(212,168,67,0.25)', background: 'rgba(212,168,67,0.06)', transition: 'all 0.15s' }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(212,168,67,0.12)'; e.currentTarget.style.borderColor = 'rgba(212,168,67,0.4)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(212,168,67,0.06)'; e.currentTarget.style.borderColor = 'rgba(212,168,67,0.25)'; }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-            Browse Shop
-          </Link>
-        </div>
-      </div>
+    <div style={{ minHeight: '100vh' }}>
 
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '28px 16px 48px' }}>
 

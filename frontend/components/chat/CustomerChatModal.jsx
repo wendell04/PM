@@ -44,6 +44,7 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   const [unreadTotal, setUnreadTotal] = useState(0);
   const typingTimeoutRefs = useRef({});
   const conversationChannelRef = useRef(null);
+  const activeConvRef = useRef(null);
   const scrollRef = useRef(null);
   const pendingFaqRef = useRef(null);
 
@@ -53,6 +54,9 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
     }
   }, [messages, Object.keys(typingUsers).length]);
 
+  // Keep ref in sync — used in loadConversations to avoid stale closure
+  useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
+
   const loadConversations = useCallback(async () => {
     if (!token || !user) return;
     try {
@@ -60,6 +64,28 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
       const convs = await getConversations(token);
       setConversations(convs);
       setUnreadTotal(convs.reduce((s, c) => s + (c.unread_count || 0), 0));
+
+      // Detect new messages for the active conversation via timestamp
+      const curr = activeConvRef.current;
+      if (curr && !curr._id?.startsWith('new_') && curr._id !== 'support_auto') {
+        const fresh = convs.find(c => nid(c._id) === nid(curr._id));
+        if (fresh) {
+          const prevAt = curr.last_message_at ?? '';
+          const newAt = fresh.last_message_at ?? '';
+          if (newAt && prevAt !== newAt) {
+            try {
+              const msgs = await getMessages(token, nid(fresh._id));
+              setMessages(prev => {
+                const normalized = msgs.map(normalizeMsg);
+                const freshIds = new Set(normalized.map(m => m._id));
+                const pending = prev.filter(m => m.pending && !freshIds.has(m._id));
+                return [...normalized, ...pending];
+              });
+            } catch { /* silent */ }
+          }
+          setActiveConv(fresh);
+        }
+      }
     } catch { /* silent */ } finally {
       setIsLoadingConvs(false);
     }
@@ -102,9 +128,11 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
       try {
         const data = await getMessages(token, convId);
         setMessages(prev => {
-          const ids = new Set(prev.map(m => m._id));
-          const fresh = data.map(normalizeMsg).filter(m => !ids.has(m._id));
-          return fresh.length > 0 ? [...prev, ...fresh] : prev;
+          const confirmedIds = new Set(data.map(m => normalizeMsg(m)._id));
+          const withoutStale = prev.filter(m => !m.pending || !confirmedIds.has(m._id));
+          const existingIds = new Set(withoutStale.map(m => m._id));
+          const fresh = data.map(normalizeMsg).filter(m => !existingIds.has(m._id));
+          return fresh.length > 0 ? [...withoutStale, ...fresh] : withoutStale.length !== prev.length ? withoutStale : prev;
         });
       } catch { /* silent */ }
     };
@@ -161,16 +189,36 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
   }, [user]);
 
   const handleSendMessage = async (payload) => {
+    const tempId = `pending_${Date.now()}`;
+    const isNewConv = activeConv._id?.startsWith('new_') || activeConv._id === 'support_auto';
+
+    // Optimistic: show bubble immediately
+    const optimistic = normalizeMsg({
+      _id: tempId,
+      conversation_id: activeConv._id || '',
+      sender_id: String(user?.id || user?._id || ''),
+      type: payload.type || 'text',
+      body: payload.body || '',
+      file_url: payload.file_url || null,
+      metadata: payload.metadata || null,
+      created_at: new Date().toISOString(),
+      pending: true,
+    });
+    setMessages(prev => [...prev, optimistic]);
+    setIsSending(true);
+
     try {
-      setIsSending(true);
       const actualPayload = { ...payload };
-      if (activeConv._id?.startsWith('new_') || activeConv._id === 'support_auto') {
+      if (isNewConv) {
         actualPayload.recipient_id = activeConv.other_user.id;
         delete actualPayload.conversation_id;
       }
       const newMessage = normalizeMsg(await sendMessage(token, actualPayload));
-      setMessages(prev => [...prev, newMessage]);
-      if (activeConv._id?.startsWith('new_') || activeConv._id === 'support_auto') {
+
+      // Replace optimistic bubble with real confirmed message
+      setMessages(prev => prev.map(m => m._id === tempId ? newMessage : m));
+
+      if (isNewConv) {
         const convs = await getConversations(token);
         const real = convs.find(c => c._id === newMessage.conversation_id);
         if (real) setActiveConv(real);
@@ -178,14 +226,15 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
       }
     } catch (err) {
       console.error('Failed to send message:', err);
+      setMessages(prev => prev.map(m => m._id === tempId ? { ...m, failed: true, pending: false } : m));
     } finally {
       setIsSending(false);
     }
   };
 
   const openConversation = (conv) => {
+    if (activeConv?._id !== conv._id) setMessages([]);
     setActiveConv(conv);
-    setMessages([]);
     setTypingUsers({});
     setView('chat');
   };
@@ -443,9 +492,18 @@ const CustomerChatWidget = ({ user, token, addToCart, onlineUsers = new Set(), o
 
                       const body = msg.body || msg.text || msg.message || '';
                       return (
-                        <div key={msgKey} className={`cw-bubble-wrap ${isMe ? 'me' : 'them'}`}>
+                        <div key={msgKey} className={`cw-bubble-wrap ${isMe ? 'me' : 'them'}`}
+                          style={msg.pending ? { opacity: 0.6 } : msg.failed ? { opacity: 0.7 } : undefined}>
                           <div className={`cw-bubble ${isMe ? 'me' : 'them'}`}>{body}</div>
-                          <div className="cw-bubble-time">{formatTime(msg.created_at)}</div>
+                          <div className="cw-bubble-time">
+                            {msg.failed ? (
+                              <span style={{ color: '#ef4444' }}>Failed to send</span>
+                            ) : msg.pending ? (
+                              <span>Sending…</span>
+                            ) : (
+                              formatTime(msg.created_at)
+                            )}
+                          </div>
                         </div>
                       );
                     })}

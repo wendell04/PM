@@ -79,10 +79,10 @@ export default function CustomDropdown({ value, onChange, options, placeholder =
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0.625rem 0.75rem',
-          background: disabled ? 'rgba(255,255,255,0.03)' : isOpen ? 'rgba(212,168,67,0.1)' : 'rgba(255,255,255,0.06)',
-          border: `1px solid ${disabled ? 'rgba(255,255,255,0.05)' : isOpen ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.1)'}`,
+          background: disabled ? 'var(--dark3)' : isOpen ? 'rgba(212,168,67,0.1)' : 'var(--dark2)',
+          border: `1px solid ${disabled ? 'var(--border)' : isOpen ? 'rgba(212,168,67,0.4)' : 'var(--border)'}`,
           borderRadius: '8px',
-          color: disabled ? 'rgba(255,255,255,0.3)' : isOpen ? '#D4A843' : '#E5E2E1',
+          color: disabled ? 'var(--gray)' : isOpen ? '#D4A843' : 'var(--white)',
           fontSize: '0.85rem',
           cursor: disabled ? 'not-allowed' : 'pointer',
           outline: 'none',
@@ -117,12 +117,12 @@ export default function CustomDropdown({ value, onChange, options, placeholder =
             top: 'calc(100% + 4px)',
             left: 0,
             right: 0,
-            background: 'var(--dark)',
+            background: 'var(--dark2)',
             border: '1px solid var(--border)',
             borderRadius: '10px',
             overflow: 'hidden',
             zIndex: 1000,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
           }}
         >
           {/* Selected option header (only if something is selected) */}
@@ -153,14 +153,14 @@ export default function CustomDropdown({ value, onChange, options, placeholder =
                     padding: '0.625rem 0.75rem',
                     background: 'transparent',
                     border: 'none',
-                    color: '#E5E2E1',
+                    color: 'var(--white)',
                     fontSize: '0.85rem',
                     textAlign: 'left',
                     cursor: 'pointer',
                     transition: 'background 0.15s',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                    e.currentTarget.style.background = 'rgba(212,168,67,0.08)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = 'transparent';

@@ -186,7 +186,8 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
     }
 
     return (
-      <div key={msgKey} className={`bubble ${isMe ? 'me' : 'them'}`}>
+      <div key={msgKey} className={`bubble ${isMe ? 'me' : 'them'}`}
+        style={msg.pending ? { opacity: 0.6 } : msg.failed ? { opacity: 0.7 } : undefined}>
         {msg.type === 'image' && msg.file_url ? (
           <div style={{ display: 'block', overflow: 'hidden', borderRadius: '10px', marginBottom: '8px', lineHeight: 0 }}>
             <img
@@ -199,8 +200,14 @@ const ChatWindow = ({ activeConversation, messages, user, isLoading, isAdmin, on
         ) : msg.body ? (
           <div style={{ wordBreak: 'break-word' }}>{msg.body}</div>
         ) : null}
-        <div className="bubble-time">
-          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        <div className="bubble-time" style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+          {msg.failed ? (
+            <span style={{ color: '#ef4444', fontSize: '10px' }}>Failed to send</span>
+          ) : msg.pending ? (
+            <span style={{ fontSize: '10px', opacity: 0.7 }}>Sending…</span>
+          ) : (
+            new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          )}
         </div>
       </div>
     );

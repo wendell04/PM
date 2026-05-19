@@ -117,13 +117,6 @@ export default function CustomersPage() {
     <ErrorBoundary>
       <div style={{ maxWidth: '960px', margin: '0 auto', padding: '2rem 1rem' }}>
 
-        <div style={{ marginBottom: '24px' }}>
-          <h1 className="page-title">Customer Accounts</h1>
-          <p style={{ color: 'var(--gray)', fontSize: '0.875rem', margin: '4px 0 0' }}>
-            View and manage all registered customer accounts.
-          </p>
-        </div>
-
         {/* Unlock Requests — always visible section */}
         {!loading && (
           <div style={{

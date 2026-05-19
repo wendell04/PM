@@ -206,6 +206,16 @@ class OrderController extends Controller
 
             $paymentMethod = $validated['paymentMethod'] ?? 'cod';
 
+            // ── COD guard — reject if any product disallows COD ──────────
+            if ($paymentMethod === 'cod') {
+                foreach ($validated['items'] as $item) {
+                    $prod = Product::find($item['productId'] ?? null);
+                    if ($prod && $prod->allowCOD === false) {
+                        return $this->errorResponse('One or more items in your order do not allow Cash on Delivery.', 422);
+                    }
+                }
+            }
+
             // ── Voucher discount — atomic claim ───────────────────────────
             $discountAmount = 0.0;
             $appliedVoucher = null;

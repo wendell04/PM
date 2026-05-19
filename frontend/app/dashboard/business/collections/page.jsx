@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { S, ICONS, ConfirmModal, PaginationBar, SearchBar, SummaryCard, ToastContainer, useToast, usePagination } from '../inventory-v2/shared';
 import { loadProductsAndCollections, createCollection, updateCollection, deleteCollection, toggleCollectionPublish, normCollection } from '../products-v2/api';
+import { uploadImage } from '@/lib/productApi';
 
 function toSlug(str) {
   return str.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -90,13 +91,27 @@ function ProductPicker({ selected, onChange, products }) {
 
 // ── Collection Add/Edit Modal ─────────────────────────────────────────────────
 
-function CollectionModal({ existing, onClose, onSave, products }) {
+function CollectionModal({ existing, onClose, onSave, products, token }) {
   const [form, setForm]             = useState(existing ? { ...existing } : { ...EMPTY_FORM });
   const [slugManual, setSlugManual] = useState(!!existing);
   const [tab, setTab]               = useState('basic');
-  const [imgErr, setImgErr]         = useState(false);
+  const [imgUploading, setImgUploading] = useState(false);
+  const [imgUrlMode, setImgUrlMode] = useState(false);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleImageFile = async (file) => {
+    if (!file) return;
+    setImgUploading(true);
+    try {
+      const result = await uploadImage(file, 'pmp-products', token);
+      set('image', result.url ?? result.secure_url ?? result);
+    } catch {
+      // silent — user can retry
+    } finally {
+      setImgUploading(false);
+    }
+  };
 
   const handleTitle = (v) => {
     set('title', v);
@@ -183,13 +198,51 @@ function CollectionModal({ existing, onClose, onSave, products }) {
               </div>
 
               <div>
-                <label style={LabelStyle}>Cover Image URL</label>
-                <input value={form.image} onChange={e => { set('image', e.target.value); setImgErr(false); }}
-                  placeholder="https://…" style={S.input} />
-                {form.image && !imgErr && (
-                  <img src={form.image} alt="preview" onError={() => setImgErr(true)}
-                    style={{ marginTop: '8px', width: '100%', maxHeight: '140px', objectFit: 'cover',
-                      borderRadius: '8px', border: '1px solid #e1e3e5' }} />
+                <label style={LabelStyle}>Cover Image</label>
+                {form.image ? (
+                  <div style={{ position: 'relative', marginTop: '4px' }}>
+                    <img src={form.image} alt="cover"
+                      style={{ width: '100%', maxHeight: '160px', objectFit: 'cover',
+                        borderRadius: '8px', border: '1px solid #e1e3e5', display: 'block' }} />
+                    <button type="button" onClick={() => set('image', '')}
+                      style={{ position: 'absolute', top: '6px', right: '6px', width: '24px', height: '24px',
+                        borderRadius: '50%', background: 'rgba(0,0,0,0.55)', border: 'none', color: '#fff',
+                        fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handleImageFile(f); }}
+                    onDragOver={e => e.preventDefault()}
+                    onPaste={e => { const f = Array.from(e.clipboardData?.items || []).find(i => i.type.startsWith('image/'))?.getAsFile(); if (f) handleImageFile(f); }}
+                    tabIndex={0}
+                    style={{ marginTop: '4px', border: '1.5px dashed #d1d5db', borderRadius: '8px',
+                      padding: '24px 16px', textAlign: 'center', background: '#fafafa', cursor: 'default', outline: 'none' }}>
+                    {imgUploading ? (
+                      <span style={{ fontSize: '13px', color: '#9ca3af' }}>Uploading…</span>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: '22px', marginBottom: '6px', color: '#d1d5db' }}>↑</div>
+                        <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '10px' }}>
+                          Drag &amp; drop or
+                          <label style={{ marginLeft: '6px', color: '#c9973f', fontWeight: 600, cursor: 'pointer' }}>
+                            Upload image
+                            <input type="file" accept="image/*" style={{ display: 'none' }}
+                              onChange={e => { if (e.target.files?.[0]) handleImageFile(e.target.files[0]); e.target.value = ''; }} />
+                          </label>
+                        </div>
+                        <button type="button" onClick={() => setImgUrlMode(v => !v)}
+                          style={{ fontSize: '11px', color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                          {imgUrlMode ? 'hide URL input' : 'or enter URL'}
+                        </button>
+                        {imgUrlMode && (
+                          <input value={form.image} onChange={e => set('image', e.target.value)}
+                            placeholder="https://…" style={{ ...S.input, marginTop: '8px' }} />
+                        )}
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -347,7 +400,6 @@ export default function CollectionsPage() {
     <div style={S.page}>
 
       <div style={{ ...S.rowBetween, marginBottom: '20px' }}>
-        <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: '#1a1a2e' }}>Collections</h1>
         <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} New Collection</button>
       </div>
 
@@ -484,6 +536,7 @@ export default function CollectionsPage() {
           onClose={() => { setShowModal(false); setEditing(null); }}
           onSave={handleSave}
           products={products}
+          token={token}
         />
       )}
 

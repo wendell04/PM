@@ -48,6 +48,28 @@ const ChatModule = ({ user, token, addToCart }) => {
   const applyConversations = useCallback(async () => {
     const data = await getConversations(token);
     setConversations(data);
+
+    // Detect new messages for the active conversation via timestamp — text comparison misses same-text messages
+    const curr = activeConvRef.current;
+    if (curr && !curr._id.startsWith('new_') && curr._id !== 'support_auto') {
+      const sameConv = data.find(c => nid(c._id) === nid(curr._id));
+      if (sameConv) {
+        const prevAt = curr.last_message_at ?? '';
+        const newAt = sameConv.last_message_at ?? '';
+        if (newAt && prevAt !== newAt) {
+          try {
+            const msgs = await getMessages(token, nid(sameConv._id));
+            setMessages(prev => {
+              const fresh = msgs.map(normalizeMsg);
+              const freshIds = new Set(fresh.map(m => m._id));
+              const pending = prev.filter(m => m.pending && !freshIds.has(m._id));
+              return [...fresh, ...pending];
+            });
+          } catch { /* ignore */ }
+        }
+      }
+    }
+
     setActiveConversation(prev => {
       if (!prev) {
         return !isAdmin && data.length > 0 ? data[0] : null;
@@ -150,9 +172,12 @@ const ChatModule = ({ user, token, addToCart }) => {
       try {
         const data = await getMessages(token, convId);
         setMessages(prev => {
-          const existingIds = new Set(prev.map(m => m._id));
+          const confirmedIds = new Set(data.map(m => normalizeMsg(m)._id));
+          // Remove pending bubbles that have been confirmed by the server
+          const withoutStale = prev.filter(m => !m.pending || !confirmedIds.has(m._id));
+          const existingIds = new Set(withoutStale.map(m => m._id));
           const newOnes = data.map(normalizeMsg).filter(m => !existingIds.has(m._id));
-          return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+          return newOnes.length > 0 ? [...withoutStale, ...newOnes] : withoutStale.length !== prev.length ? withoutStale : prev;
         });
       } catch { /* ignore */ }
     };
@@ -250,22 +275,47 @@ const ChatModule = ({ user, token, addToCart }) => {
   }, [conversations]);
 
   const handleSendMessage = async (payload) => {
+    const tempId = `pending_${Date.now()}`;
+    const isNewConv = activeConversation?._id === 'support_auto' || activeConversation?._id?.startsWith('new_');
+
+    // Optimistic: add bubble immediately before API call
+    const optimistic = normalizeMsg({
+      _id: tempId,
+      conversation_id: activeConversation?._id || '',
+      sender_id: String(user?.id || user?._id || ''),
+      type: payload.type || 'text',
+      body: payload.body || '',
+      file_url: payload.file_url || null,
+      metadata: payload.metadata || null,
+      created_at: new Date().toISOString(),
+      pending: true,
+    });
+    setMessages(prev => [...prev, optimistic]);
+    setIsSending(true);
+
     try {
-      setIsSending(true);
       const actualPayload = { ...payload };
-      if (activeConversation?._id === 'support_auto' || activeConversation?._id?.startsWith('new_')) {
+      if (isNewConv) {
         actualPayload.recipient_id = activeConversation.other_user.id;
         delete actualPayload.conversation_id;
       }
 
       const newMessage = normalizeMsg(await sendMessage(token, actualPayload));
-      setMessages(prev => [...prev, newMessage]);
-      const updatedConvs = await getConversations(token);
-      setConversations(updatedConvs);
-      const newRealConv = updatedConvs.find(c => c._id === newMessage.conversation_id);
-      if (newRealConv) setActiveConversation(newRealConv);
+
+      // Replace optimistic bubble with confirmed message
+      setMessages(prev => prev.map(m => m._id === tempId ? newMessage : m));
+
+      // For new conversations only: fetch real conv and update sidebar
+      if (isNewConv) {
+        const updatedConvs = await getConversations(token);
+        setConversations(updatedConvs);
+        const newRealConv = updatedConvs.find(c => c._id === newMessage.conversation_id);
+        if (newRealConv) setActiveConversation(newRealConv);
+      }
     } catch (error) {
       console.error('Failed to send message:', error);
+      // Mark optimistic bubble as failed
+      setMessages(prev => prev.map(m => m._id === tempId ? { ...m, failed: true, pending: false } : m));
     } finally {
       setIsSending(false);
     }

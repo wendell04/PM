@@ -48,6 +48,7 @@ export function normProduct(raw, collectionMap = {}) {
     tiers,
     collectionIds:      collectionMap[id] ?? [],
     isCustomizable:     !!(raw.isCustom),
+    isFeatured:         !!(raw.isFeatured),
     allowCOD:           !!(raw.allowCOD ?? true),
     isMadeToOrder:      !!(raw.isMadeToOrder),
     downpaymentPct:     Number(raw.downpaymentPercent ?? 0),

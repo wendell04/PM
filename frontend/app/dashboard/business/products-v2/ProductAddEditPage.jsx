@@ -36,6 +36,7 @@ const EMPTY_FORM = {
   collectionIds: [],
   isCustomizable: false, allowCOD: true, isMadeToOrder: false,
   downpaymentPct: '0', hideWhenOutOfStock: false, isPublished: false,
+  isFeatured: false,
   designFee: '', minOrderQty: '1',
 };
 
@@ -359,8 +360,9 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       setVariantImages({});
       return;
     }
-    const tiers = product.tiers?.length
-      ? product.tiers.map(t => ({
+    const rawTiers = product.priceTiers || product.tiers;
+    const tiers = rawTiers?.length
+      ? rawTiers.map(t => ({
           ...t,
           minQty: String(t.minQty),
           maxQty: t.maxQty != null ? String(t.maxQty) : '',
@@ -381,7 +383,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       variants:           product.variants?.length
                             ? product.variants.map(v => ({ id: v.id || uid('v'), name: v.name, bomId: v.bomId || '', price: v.price != null ? String(v.price) : '' }))
                             : [EMPTY_VARIANT()],
-      pricingMode:        product.pricingMode || 'fixed',
+      pricingMode:        product.pricingMode || product.priceType || 'fixed',
       price:              product.price != null ? String(product.price) : '',
       tiers,
       collectionIds:      product.collectionIds || [],
@@ -391,6 +393,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       downpaymentPct:     product.downpaymentPct != null ? String(product.downpaymentPct) : '0',
       hideWhenOutOfStock: product.hideWhenOutOfStock ?? false,
       isPublished:        product.isPublished ?? false,
+      isFeatured:         product.isFeatured ?? false,
       designFee:          product.designFee != null ? String(product.designFee) : '',
       minOrderQty:        product.minOrderQty != null ? String(product.minOrderQty) : '1',
     });
@@ -619,6 +622,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       isCustomizable: f.isCustomizable, allowCOD: f.allowCOD, isMadeToOrder: f.isMadeToOrder,
       downpaymentPct: Number(f.downpaymentPct),
       hideWhenOutOfStock: f.hideWhenOutOfStock, isPublished: f.isPublished,
+      isFeatured: f.isFeatured,
       designFee: f.isCustomizable && f.designFee ? Number(f.designFee) : 0,
       minOrderQty: Number(f.minOrderQty) || 1,
     };
@@ -649,7 +653,7 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ background: '#f4f6f8', minHeight: '100%', paddingBottom: '60px' }}>
+    <div style={{ minHeight: '100%', paddingBottom: '60px' }}>
 
       {/* Sticky top bar */}
       <div style={{ position: 'sticky', top: 0, zIndex: 10, background: '#fff', borderBottom: '1px solid #e1e3e5' }}>
@@ -1198,6 +1202,12 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                   </Field>
                 )}
                 <ToggleRow label="COD Available" hint="Cash on delivery allowed" on={form.allowCOD} onChange={v => setF('allowCOD', v)} />
+                {form.isCustomizable && form.allowCOD && Number(form.downpaymentPct) <= 0 && (
+                  <div style={{ background: '#fef9c3', border: '1px solid #fcd34d', borderRadius: '6px', padding: '8px 12px', fontSize: '12px', color: '#92400e', lineHeight: 1.5 }}>
+                    ⚠ COD without a downpayment is high-risk for custom orders. Consider setting a downpayment % below.
+                  </div>
+                )}
+                <ToggleRow label="Feature on Homepage" hint="Shows in Best Sellers on the landing page" on={form.isFeatured} onChange={v => setF('isFeatured', v)} />
                 <Field label="Downpayment Required (%)" error={errors.downpaymentPct}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <IntegerInput value={form.downpaymentPct} onChange={v => setF('downpaymentPct', v)}
@@ -1215,6 +1225,11 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
                       style={{ ...S.input, width: '70px' }} />
                     <span style={{ fontSize: '11px', color: '#6b7280' }}>units minimum per order</span>
                   </div>
+                  {form.isCustomizable && Number(form.minOrderQty) <= 1 && (
+                    <div style={{ marginTop: '6px', fontSize: '11px', color: '#b45309', background: '#fef9c3', border: '1px solid #fcd34d', borderRadius: '4px', padding: '5px 8px' }}>
+                      ⚠ Customizable products typically require a minimum order. Set an MOQ to protect against unprofitable single-unit orders.
+                    </div>
+                  )}
                 </Field>
               </div>
             </Card>

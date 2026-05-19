@@ -49,6 +49,9 @@ class Product extends Model
         'storeStockCap',
         'createdAt',
         'updatedAt',
+        'allowCOD',
+        'hideWhenOutOfStock',
+        'isFeatured',
     ];
 
     protected $casts = [
@@ -66,11 +69,14 @@ class Product extends Model
         'flatPrice'      => 'float',
         'trackInventory' => 'boolean',
         'stock'          => 'integer',
-        'isPublished'    => 'boolean',
-        'isActive'       => 'boolean',
-        'isArchived'     => 'boolean',
-        'createdAt'      => 'datetime',
-        'updatedAt'      => 'datetime',
+        'isPublished'        => 'boolean',
+        'isActive'           => 'boolean',
+        'isArchived'         => 'boolean',
+        'allowCOD'           => 'boolean',
+        'hideWhenOutOfStock' => 'boolean',
+        'isFeatured'         => 'boolean',
+        'createdAt'          => 'datetime',
+        'updatedAt'          => 'datetime',
     ];
 
     protected $attributes = [
@@ -78,6 +84,9 @@ class Product extends Model
         'isPublished' => false,
         'isArchived'  => false,
         'isCustom'    => false,
+        'allowCOD'    => true,
+        'isFeatured'  => false,
+        'hideWhenOutOfStock' => false,
     ];
 
     public function inventory()

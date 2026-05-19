@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 export const S = {
-  page:      { minHeight:'100vh', background:'#f4f6f8', padding:'24px', fontFamily:'Inter,system-ui,sans-serif', color:'#1a1a2e' },
+  page:      { minHeight:'100vh', fontFamily:'Inter,system-ui,sans-serif', color:'#1a1a2e' },
   card:      { background:'#fff', border:'1px solid #e1e3e5', borderRadius:'10px', padding:'20px' },
   cardSm:    { background:'#fff', border:'1px solid #e1e3e5', borderRadius:'10px', padding:'14px 18px' },
   row:       { display:'flex', alignItems:'center', gap:'12px', flexWrap:'wrap' },

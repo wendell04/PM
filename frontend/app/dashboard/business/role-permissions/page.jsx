@@ -215,14 +215,6 @@ export default function RolePermissionsPage() {
     <ErrorBoundary>
       <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '2rem 1rem' }}>
 
-        {/* Page header */}
-        <div style={{ marginBottom: '1.75rem' }}>
-          <h1 className="page-title" style={{ marginBottom: '4px' }}>Role Permissions</h1>
-          <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--gray)' }}>
-            Control which sections each staff role can access. Dashboard is always granted.
-          </p>
-        </div>
-
         {/* Admin/Owner notice */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: '0.75rem',

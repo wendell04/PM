@@ -14,35 +14,521 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 // ─── Price Helper ─────────────────────────────────────────────────────────────
 function getDisplayPrice(product) {
-  if (product.priceType === 'inquiry') return 'Price on request';
-  if (product.priceType === 'fixed') {
+  const fmt = (n) => `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const mode = product.priceType || product.pricingMode || 'fixed';
+  const tiers = product.priceTiers || product.tiers;
+  if (mode === 'inquiry') return 'Price on request';
+  if (mode === 'fixed') {
     if (product.variantPrices && Object.keys(product.variantPrices).length > 0) {
       const prices = Object.values(product.variantPrices).map(p => parseFloat(p)).filter(p => p > 0);
       if (!prices.length) return 'Price on request';
       const min = Math.min(...prices);
       const max = Math.max(...prices);
-      if (min === max) return `₱${min.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-      return `₱${min.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} – ₱${max.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      return min === max ? fmt(min) : `${fmt(min)} – ${fmt(max)}`;
     }
-    if (product.price) return `₱${parseFloat(product.price).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const p = parseFloat(product.flatPrice || product.price);
+    if (p > 0) return fmt(p);
+    return 'Price on request';
   }
-  if (product.priceType === 'tiered' && product.priceTiers?.length) {
-    const allPrices = product.priceTiers.flatMap(t =>
+  if (mode === 'tiered' && tiers?.length) {
+    const allPrices = tiers.flatMap(t =>
       Object.values(t.prices || {}).map(p => parseFloat(p)).filter(p => p > 0)
     );
     if (!allPrices.length) return 'Price on request';
     const min = Math.min(...allPrices);
     const max = Math.max(...allPrices);
-    if (min === max) return `₱${min.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    return `₱${min.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} – ₱${max.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return min === max ? fmt(min) : `${fmt(min)} – ${fmt(max)}`;
   }
+  const fallback = parseFloat(product.flatPrice || product.price);
+  if (fallback > 0) return fmt(fallback);
   return 'Price on request';
 }
 
+// ─── Quick View Modal ─────────────────────────────────────────────────────────
+function QuickViewModal({ product, flashSale, onClose, onToast }) {
+  const moq = product.minOrderQty || 1;
+  const [selVars, setSelVars] = useState(() => {
+    const init = {};
+    (product.variantGroups || []).forEach(g => {
+      if (g.options?.length) {
+        const o = g.options[0];
+        init[g.id] = typeof o === 'string' ? o : (o.value ?? o.label ?? '');
+      }
+    });
+    return init;
+  });
+  const [qty, setQty] = useState(moq);
+  const [qtyInput, setQtyInput] = useState(String(moq));
+  const [thumbIdx, setThumbIdx] = useState(0);
+  const [reviews, setReviews] = useState([]);
+  const [reviewsAvg, setReviewsAvg] = useState(null);
+  const [reviewsTotalCount, setReviewsTotalCount] = useState(0);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [showReviews, setShowReviews] = useState(false);
+  const [showPricing, setShowPricing] = useState(false);
+  const { addToCart } = useCart();
+  const router = useRouter();
+
+  const images = (() => {
+    const seen = new Set(); const out = [];
+    const add = u => { if (u && !seen.has(u)) { seen.add(u); out.push(u); } };
+    add(product.thumbnail);
+    (product.images || []).forEach(add);
+    Object.values(product.variantImageUrls || {}).forEach(add);
+    return out;
+  })();
+
+  const resolveCombo = (vars) => {
+    if (!product.combinations?.length) return null;
+    const byCombo = product.combinations.find(c =>
+      c.combo && Object.keys(vars).every(k => c.combo[k] === vars[k])
+    );
+    if (byCombo) return byCombo;
+    const vals = Object.values(vars).filter(v => v != null && v !== '');
+    if (!vals.length) return product.combinations[0] ?? null;
+    if (vals.length === 1) return product.combinations.find(c => c.name === vals[0]) ?? null;
+    return product.combinations.find(c => c.name === vals.join(' / ')) ?? null;
+  };
+
+  const getTiers = () => product.priceTiers ?? product.tiers ?? [];
+  const getTierForQty = (q) => {
+    const tiers = getTiers(); if (!tiers.length) return null;
+    const sorted = [...tiers].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0));
+    let match = sorted[sorted.length - 1];
+    for (const t of sorted) {
+      const min = parseInt(t.minQty) || 0;
+      const max = t.maxQty != null && t.maxQty !== '' ? parseInt(t.maxQty) : Infinity;
+      if (q >= min && q <= max) { match = t; break; }
+    }
+    return match;
+  };
+
+  const fmt = n => n == null ? '—' : `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const mode = product.priceType || product.pricingMode || 'fixed';
+  const combo = resolveCombo(selVars);
+  const comboId = combo?.id ?? null;
+
+  const unitPrice = (() => {
+    if (mode === 'tiered') {
+      const tier = getTierForQty(qty);
+      if (!tier) return null;
+      // Old format: tier.price is a single flat value
+      if (tier.price != null) return parseFloat(tier.price) || null;
+      const prices = tier.prices ?? {};
+      if (comboId && prices[comboId] != null) return parseFloat(prices[comboId]) || null;
+      const vals = Object.values(prices).map(v => parseFloat(v)).filter(v => v > 0);
+      return vals.length ? Math.min(...vals) : null;
+    }
+    if (mode === 'fixed') {
+      const vp = product.variantPrices ?? {};
+      if (comboId && vp[comboId]) return parseFloat(vp[comboId]) || null;
+      return parseFloat(product.flatPrice || product.price) || null;
+    }
+    return null;
+  })();
+
+  const priceRange = (() => {
+    const tiers = getTiers();
+    if (mode === 'tiered' && tiers.length) {
+      const all = tiers.flatMap(t => {
+        if (t.price != null) return [parseFloat(t.price)].filter(v => v > 0);
+        return Object.values(t.prices || {}).map(v => parseFloat(v)).filter(v => v > 0);
+      });
+      if (!all.length) return null;
+      return { min: Math.min(...all), max: Math.max(...all) };
+    }
+    if (mode === 'fixed') {
+      const vp = product.variantPrices ?? {};
+      if (Object.keys(vp).length) {
+        const all = Object.values(vp).map(v => parseFloat(v)).filter(v => v > 0);
+        if (!all.length) return null;
+        return { min: Math.min(...all), max: Math.max(...all) };
+      }
+      const u = parseFloat(product.flatPrice || product.price);
+      return u > 0 ? { min: u, max: u } : null;
+    }
+    return null;
+  })();
+
+  const effectiveUnit = flashSale && unitPrice ? Math.max(0,
+    flashSale.discountType === 'percentage' ? unitPrice * (1 - flashSale.discountValue / 100) : unitPrice - flashSale.discountValue
+  ) : unitPrice;
+
+  const isOOS = (() => {
+    if (!product.trackInventory || product.isMadeToOrder || product.stockStatus === 'upon-order') return false;
+    if (comboId != null && product.variantAvailableQty?.[comboId] != null) return Number(product.variantAvailableQty[comboId]) === 0;
+    if (product.availableQty != null) return Number(product.availableQty) === 0;
+    if (comboId != null && product.variantStock?.[comboId] != null) return Number(product.variantStock[comboId]) === 0;
+    return false;
+  })();
+
+  const maxQty = (() => {
+    if (!product.trackInventory || product.isMadeToOrder || product.stockStatus === 'upon-order') return 9999;
+    if (comboId != null && product.variantBackorder?.[comboId]) return 9999;
+    if (comboId != null && product.variantAvailableQty?.[comboId] != null) return Math.max(Number(product.variantAvailableQty[comboId]), 0);
+    if (product.availableQty != null) return Math.max(Number(product.availableQty), 0);
+    if (comboId != null && product.variantStock?.[comboId] != null) return Math.max(Number(product.variantStock[comboId]), 0);
+    return product.stock != null ? Math.max(Number(product.stock), 0) : 9999;
+  })();
+
+  const displayStock = (() => {
+    if (product.isMadeToOrder) return null;
+    if (product.stockStatus === 'upon-order') return { label: 'Upon Order', type: 'gold' };
+    if (isOOS) return { label: 'Out of Stock', type: 'red' };
+    if (comboId != null && product.variantAvailableQty?.[comboId] != null) {
+      const n = Number(product.variantAvailableQty[comboId]);
+      if (n <= 10) return { label: `Only ${n} left!`, type: 'gold' };
+      return { label: `${n} units available`, type: 'gold' };
+    }
+    if (product.availableQty != null && Number(product.availableQty) > 0) {
+      const n = Number(product.availableQty);
+      return { label: n <= 10 ? `Only ${n} left!` : `${n} units available`, type: 'gold' };
+    }
+    return { label: 'In Stock', type: 'gold' };
+  })();
+
+  const buildCart = () => {
+    const variantLabel = combo
+      ? (combo.label || combo.name || Object.values(selVars).join(', ') || null)
+      : (Object.values(selVars).filter(Boolean).join(', ') || null);
+    const basePrice = (comboId && product.variantPrices?.[comboId])
+      ? parseFloat(product.variantPrices[comboId])
+      : parseFloat(product.flatPrice || product.price || 0);
+    const effectivePrice = flashSale ? Math.max(0, flashSale.discountType === 'percentage'
+      ? basePrice * (1 - flashSale.discountValue / 100)
+      : basePrice - flashSale.discountValue) : basePrice;
+    const variantImg = comboId ? (product.variantImageUrls ?? {})[comboId] : null;
+    const productForCart = {
+      ...product,
+      flatPrice: effectivePrice,
+      price: effectivePrice,
+      ...(variantImg ? { thumbnail: variantImg } : {}),
+    };
+    return { productForCart, comboId, variantLabel };
+  };
+
+  const handleAdd = () => {
+    if (isOOS) return;
+    const { productForCart, comboId: cid, variantLabel } = buildCart();
+    addToCart(productForCart, qty, cid, variantLabel, flashSale?._id ?? null);
+    onClose();
+  };
+  const handleCheckout = () => {
+    if (isOOS) return;
+    const { productForCart, comboId: cid, variantLabel } = buildCart();
+    addToCart(productForCart, qty, cid, variantLabel, flashSale?._id ?? null);
+    onClose();
+    router.push('/shop/checkout');
+  };
+
+  const hasGroups = product.variantGroups?.length > 0;
+  const productId = product._id || product.id;
+
+  useEffect(() => {
+    if (!productId) return;
+    setReviewsLoading(true);
+    fetchWithTimeout(`${API_URL}/api/products/${productId}/reviews?page=1&per_page=5`, {}, 10000)
+      .then(data => {
+        if (!data) return;
+        const d = data.data ?? data;
+        setReviews(d.reviews ?? []);
+        setReviewsAvg(d.avgRating ?? null);
+        setReviewsTotalCount(d.total ?? 0);
+      })
+      .catch(() => {})
+      .finally(() => setReviewsLoading(false));
+  }, [productId]);
+
+  return (
+    <div className="shop-qv-backdrop" onClick={onClose}>
+      <div className="shop-qv-modal" onClick={e => e.stopPropagation()}>
+        <button className="shop-qv-close" onClick={onClose}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+
+        <div className="shop-qv-body">
+          {/* Left: large main image + horizontal thumbnail row at bottom */}
+          <div className="shop-qv-left">
+            <div className="shop-qv-main-img">
+              {images.length > 0 ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={images[thumbIdx] || images[0]} alt={product.name || ''} />
+              ) : (
+                <div className="shop-qv-no-img">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                </div>
+              )}
+            </div>
+            {images.length > 1 && (
+              <div className="shop-qv-thumbs-row">
+                {images.slice(0, 6).map((img, i) => (
+                  <button key={i} className={`shop-qv-thumb${thumbIdx === i ? ' active' : ''}`} onClick={() => setThumbIdx(i)}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={img} alt="" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Right: details — mirrors product page layout */}
+          <div className="shop-qv-details">
+            {/* Category + badges row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+              {(product.category || product.categoryName) && (
+                <div className="shop-qv-category">{product.category || product.categoryName}</div>
+              )}
+              {product.isCustom && <span className="shop-qv-badge customizable">CUSTOMIZABLE</span>}
+            </div>
+
+            {/* Name */}
+            <h2 className="shop-qv-title">{product.name || product.subCategoryName || 'Product'}</h2>
+
+            {/* Price */}
+            <div className="shop-qv-price">
+              {mode === 'inquiry' ? (
+                <span className="shop-qv-price-main">Price upon inquiry</span>
+              ) : flashSale && effectiveUnit != null ? (
+                <>
+                  <span className="shop-qv-price-main">{fmt(effectiveUnit)}</span>
+                  <span className="shop-qv-price-orig">{fmt(unitPrice)}</span>
+                  {mode === 'tiered' && <span style={{ fontSize: '0.78rem', color: '#888' }}> / pc</span>}
+                </>
+              ) : unitPrice != null ? (
+                <>
+                  <span className="shop-qv-price-main">
+                    {fmt(unitPrice)}{mode === 'tiered' && <span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#888' }}> / pc</span>}
+                  </span>
+                  {qty > 1 && mode !== 'inquiry' && (
+                    <span style={{ fontSize: '0.82rem', color: '#888' }}>Total: <b style={{ color: '#D4A843' }}>{fmt(unitPrice * qty)}</b></span>
+                  )}
+                </>
+              ) : priceRange ? (
+                <span className="shop-qv-price-main">
+                  {fmt(priceRange.min)}{priceRange.max !== priceRange.min && ` – ${fmt(priceRange.max)}`}
+                  <span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#888' }}> / pc</span>
+                </span>
+              ) : (
+                <span className="shop-qv-price-main">Price on request</span>
+              )}
+            </div>
+
+            {/* Description */}
+            {product.description && <p className="shop-qv-desc">{product.description}</p>}
+
+            <div className="shop-qv-divider" />
+
+            {/* Stock badge */}
+            {displayStock && (
+              <div style={{ display: 'flex' }}>
+                <span className={`shop-qv-stock-badge${displayStock.type === 'red' ? ' oos' : ''}`}>
+                  {displayStock.label}
+                </span>
+              </div>
+            )}
+
+            {/* Variant groups (product page style) */}
+            {hasGroups && product.variantGroups.map(group => (
+              <div key={group.id} className="shop-qv-section">
+                <div className="shop-qv-section-label">{group.name}</div>
+                <div className="shop-qv-variants">
+                  {group.options?.map((opt, oi) => {
+                    const optVal = typeof opt === 'string' ? opt : (opt.value ?? opt.label ?? String(opt));
+                    const optKey = typeof opt === 'string' ? opt : (opt.id ?? oi);
+                    const isSelected = selVars[group.id] === optVal;
+                    return (
+                      <button
+                        key={optKey}
+                        className={`shop-qv-variant-btn${isSelected ? ' active' : ''}`}
+                        onClick={() => {
+                          const next = { ...selVars, [group.id]: optVal };
+                          setSelVars(next);
+                          const c = product.combinations?.find(cb => cb.name === optVal);
+                          const varImg = c?.id ? (product.variantImageUrls ?? {})[c.id] : null;
+                          const idx = varImg ? images.indexOf(varImg) : -1;
+                          if (idx >= 0) setThumbIdx(idx);
+                        }}
+                      >
+                        {optVal}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* Quantity */}
+            {!isOOS && (
+              <div className="shop-qv-section">
+                <div className="shop-qv-qty-row">
+                  <div className="shop-qv-section-label">Quantity</div>
+                  {moq > 1 && <span className="shop-qv-moq">Min. {moq} pcs</span>}
+                </div>
+                <div className="shop-qv-qty">
+                  <button disabled={qty <= moq} onClick={() => { const n = Math.max(moq, qty - 1); setQty(n); setQtyInput(String(n)); }}>−</button>
+                  <input
+                    type="text" inputMode="numeric" value={qtyInput}
+                    onFocus={e => e.target.select()}
+                    onChange={e => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      setQtyInput(raw);
+                      if (!raw) return;
+                      const v = parseInt(raw, 10);
+                      if (!isNaN(v) && v >= moq) { const c = Math.min(v, maxQty); setQty(c); if (String(c) !== raw) setQtyInput(String(c)); }
+                    }}
+                    onBlur={() => {
+                      const v = parseInt(qtyInput, 10);
+                      const c = isNaN(v) || v < moq ? moq : Math.min(v, maxQty);
+                      setQty(c); setQtyInput(String(c));
+                    }}
+                  />
+                  <button disabled={qty >= maxQty} onClick={() => { const n = Math.min(maxQty, qty + 1); setQty(n); setQtyInput(String(n)); }}>+</button>
+                </div>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            {product.isCustom ? (
+              <Link href={`/shop/products/${product.id ?? product._id}`} className="shop-qv-btn-cart" onClick={onClose}>
+                Customize This Product
+              </Link>
+            ) : (
+              <>
+                <button className="shop-qv-btn-cart" disabled={isOOS} onClick={handleAdd}
+                  style={{ opacity: isOOS ? 0.5 : 1, cursor: isOOS ? 'not-allowed' : 'pointer' }}>
+                  {isOOS ? 'Out of Stock' : 'Add to Cart'}
+                </button>
+                <button className="shop-qv-btn-checkout" disabled={isOOS} onClick={handleCheckout}
+                  style={{ opacity: isOOS ? 0.5 : 1, cursor: isOOS ? 'not-allowed' : 'pointer' }}>
+                  Checkout
+                </button>
+              </>
+            )}
+
+            {/* Pricing accordion — tiered products only */}
+            {mode === 'tiered' && getTiers().length > 0 && (
+              <>
+                <div>
+                  <button className="shop-qv-reviews-toggle" onClick={() => setShowPricing(p => !p)}>
+                    <span>Pricing</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      {showPricing ? <line x1="5" y1="12" x2="19" y2="12"/> : <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>}
+                    </svg>
+                  </button>
+                  {showPricing && (
+                    <div style={{ marginTop: '10px' }}>
+                      <p style={{ margin: '0 0 8px', fontSize: '0.77rem', color: '#888', lineHeight: 1.5 }}>Price per piece depends on quantity ordered.</p>
+                      <div style={{ border: '1px solid #e5e5e5', borderRadius: '8px', overflow: 'hidden' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '6px 14px', background: '#f5f5f5', fontSize: '0.65rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                          <span>Quantity</span><span style={{ textAlign: 'right' }}>Unit Price</span>
+                        </div>
+                        {[...getTiers()].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0)).map((tier, i, arr) => {
+                          const isLast = i === arr.length - 1;
+                          const min = parseInt(tier.minQty) || 0;
+                          const max = tier.maxQty != null && tier.maxQty !== '' ? parseInt(tier.maxQty) : Infinity;
+                          const isActive = qty >= min && (isLast || qty <= max);
+                          const tierPrice = (() => {
+                            if (tier.price != null) return parseFloat(tier.price) || null;
+                            const prices = tier.prices ?? {};
+                            if (comboId && prices[comboId] != null) return parseFloat(prices[comboId]) || null;
+                            const vals = Object.values(prices).map(v => parseFloat(v)).filter(v => v > 0);
+                            return vals.length ? Math.min(...vals) : null;
+                          })();
+                          return (
+                            <div key={tier.id ?? i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', padding: '9px 14px', borderTop: '1px solid #e5e5e5', background: isActive ? 'rgba(212,168,67,0.07)' : '#fff' }}>
+                              <span style={{ fontSize: '0.82rem', color: isActive ? '#b8922f' : '#333', fontWeight: isActive ? 700 : 500, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                {`${tier.minQty}${tier.maxQty ? `–${tier.maxQty}` : '+'} pcs`}
+                                {isActive && <span style={{ fontSize: '0.6rem', background: 'rgba(212,168,67,0.15)', color: '#b8922f', padding: '1px 6px', borderRadius: '999px', fontWeight: 700, textTransform: 'uppercase' }}>Your qty</span>}
+                              </span>
+                              <span style={{ fontSize: '0.875rem', fontWeight: 700, color: isActive ? '#b8922f' : '#333', textAlign: 'right' }}>
+                                {tierPrice ? `${fmt(tierPrice)} / pc` : '—'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Reviews accordion */}
+            <div>
+              <button className="shop-qv-reviews-toggle" onClick={() => setShowReviews(p => !p)}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  Reviews
+                  {reviewsTotalCount > 0 && (
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#000', background: '#D4A843', padding: '1px 7px', borderRadius: '999px' }}>
+                      {reviewsTotalCount}
+                    </span>
+                  )}
+                </span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  {showReviews
+                    ? <line x1="5" y1="12" x2="19" y2="12"/>
+                    : <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>}
+                </svg>
+              </button>
+              {showReviews && (
+                <div className="shop-qv-reviews">
+                  {reviewsAvg !== null && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '8px' }}>
+                      {[1,2,3,4,5].map(s => (
+                        <svg key={s} width="13" height="13" viewBox="0 0 24 24"
+                          fill={s <= Math.round(reviewsAvg) ? '#D4A843' : 'none'}
+                          stroke="#D4A843" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                        </svg>
+                      ))}
+                      <span style={{ fontWeight: 700, color: '#D4A843', fontSize: '0.85rem' }}>{reviewsAvg}</span>
+                      <span style={{ fontSize: '0.78rem', color: '#888' }}>({reviewsTotalCount} {reviewsTotalCount === 1 ? 'review' : 'reviews'})</span>
+                    </div>
+                  )}
+                  {reviewsLoading && <div style={{ fontSize: '0.8rem', color: '#999' }}>Loading reviews…</div>}
+                  {!reviewsLoading && reviews.length === 0 && (
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#999' }}>No reviews yet.</p>
+                  )}
+                  {reviews.map((r, i) => (
+                    <div key={i} className="shop-qv-review-card">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                        <div className="shop-qv-avatar">{(r.customerName || 'C').charAt(0).toUpperCase()}</div>
+                        <div>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#111' }}>{r.customerName || 'Customer'}</div>
+                          <div style={{ display: 'flex', gap: '2px' }}>
+                            {[1,2,3,4,5].map(s => (
+                              <svg key={s} width="9" height="9" viewBox="0 0 24 24"
+                                fill={s <= r.rating ? '#D4A843' : 'none'}
+                                stroke="#D4A843" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                              </svg>
+                            ))}
+                          </div>
+                        </div>
+                        <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#aaa' }}>
+                          {r.created_at ? new Date(r.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}
+                        </span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: '#555', lineHeight: 1.55 }}>{r.comment}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Product Card ─────────────────────────────────────────────────────────────
-function ProductCard({ product, onAddToCart, flashSale }) {
+function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
   const [hovered, setHovered] = useState(false);
-  const [isAdding, setIsAdding] = useState(false);
   const hasImage = product.thumbnail || product.images?.length > 0;
   const { cartItems } = useCart();
   const cartQty = cartItems
@@ -68,13 +554,6 @@ function ProductCard({ product, onAddToCart, flashSale }) {
     return () => clearInterval(id);
   }, [flashSale?.endDate]);
 
-  const handleAddToCart = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsAdding(true);
-    onAddToCart(product, flashSale);
-    setTimeout(() => setIsAdding(false), 500);
-  };
 
   return (
     <Link href={`/shop/products/${product.id ?? product._id}`} className="shop-product-card-link">
@@ -106,7 +585,17 @@ function ProductCard({ product, onAddToCart, flashSale }) {
 
           {/* Stock image badge — top left */}
           {(() => {
+            if (product.isMadeToOrder) return (
+              <div className="shop-stock-img-badge in-stock">In Stock</div>
+            );
             const totalStock = (() => {
+              // BOM-computed (from computeAvailability on the API)
+              const vaq = product.variantAvailableQty;
+              if (vaq && Object.keys(vaq).length > 0) {
+                return Object.values(vaq).reduce((s, v) => s + (Number(v) || 0), 0);
+              }
+              if (product.availableQty != null) return Number(product.availableQty);
+              // Manual stock fallback
               const vs = product.variantStock;
               if (vs && Object.keys(vs).length > 0) {
                 return Object.values(vs).reduce((s, v) => s + (Number(v) || 0), 0);
@@ -114,21 +603,17 @@ function ProductCard({ product, onAddToCart, flashSale }) {
               return product.stock ?? null;
             })();
             const hasAnyBackorder = product.variantBackorder && Object.values(product.variantBackorder).some(v => !!v);
-            const isOOS = !product.isMadeToOrder && !hasAnyBackorder && totalStock === 0;
-            const isOnOrder = product.isMadeToOrder;
-            if (isOnOrder) return (
-              <div className="shop-stock-img-badge on-order">Upon Order</div>
-            );
-            if (isOOS) return (
+            if (!hasAnyBackorder && totalStock === 0) return (
               <div className="shop-stock-img-badge out-stock">Out of Stock</div>
             );
             if (totalStock != null && totalStock <= 10) return (
-              <div className="shop-stock-img-badge low-stock">Stock: {totalStock}</div>
+              <div className="shop-stock-img-badge low-stock">{totalStock} pcs left</div>
+            );
+            if (totalStock != null) return (
+              <div className="shop-stock-img-badge in-stock">{totalStock} pcs</div>
             );
             return (
-              <div className="shop-stock-img-badge in-stock">
-                {totalStock != null ? `Stock: ${totalStock}` : 'In Stock'}
-              </div>
+              <div className="shop-stock-img-badge in-stock">In Stock</div>
             );
           })()}
 
@@ -181,28 +666,16 @@ function ProductCard({ product, onAddToCart, flashSale }) {
             </div>
           )}
 
-          {/* Quick Add to Cart — hidden for custom products */}
-          {!product.isCustom && (
-            <button
-              className={`shop-quick-add-btn ${isAdding ? 'adding' : ''}`}
-              onClick={handleAddToCart}
-              title="Add to Cart"
-              onMouseEnter={(e) => e.stopPropagation()}
-              onMouseLeave={(e) => e.stopPropagation()}
-            >
-              {isAdding ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="8" x2="12" y2="16"/>
-                  <line x1="8" y1="12" x2="16" y2="12"/>
-                </svg>
-              )}
-            </button>
-          )}
+          {/* Quick View trigger — circle + button */}
+          <button
+            className="shop-quick-view-btn"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onQuickView(product); }}
+            aria-label="Quick view"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+              <line x1="7" y1="1" x2="7" y2="13"/><line x1="1" y1="7" x2="13" y2="7"/>
+            </svg>
+          </button>
         </div>
 
         {/* Info */}
@@ -286,6 +759,13 @@ export default function ShopPage() {
   const [error, setError]             = useState(null);
   const [category, setCategory]       = useState('All');
   const [toast, setToast]             = useState(null);
+  const [availability, setAvailability] = useState('all');
+  const [sortBy, setSortBy]             = useState('featured');
+  const [priceMin, setPriceMin]         = useState(0);
+  const [priceMax, setPriceMax]         = useState(Infinity);
+  const [sidebarOpen, setSidebarOpen]   = useState(false);
+  const [sortOpen, setSortOpen]         = useState(false);
+  const [showMoreCols, setShowMoreCols] = useState(false);
   const [banners, setBanners]         = useState([]);
   const [currentSlide, setCurrentSlide]   = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
@@ -294,10 +774,12 @@ export default function ShopPage() {
   const [quickFlashSale, setQuickFlashSale]   = useState(null);
   const [quickVariant, setQuickVariant] = useState(null);
   const [quickQty, setQuickQty]         = useState(1);
-  const [collections, setCollections]             = useState([]);
-  const [selectedCollection, setSelectedCollection] = useState(null);
-  const [collectionProducts, setCollectionProducts] = useState([]);
-  const [collectionLoading, setCollectionLoading]   = useState(false);
+  const [productType, setProductType]   = useState('');
+  const [quickViewProduct, setQuickViewProduct] = useState(null);
+  const [collections, setCollections]   = useState([]);
+  const [selectedSlugs, setSelectedSlugs] = useState(new Set());
+  const [colCache, setColCache]           = useState({});
+  const [colLoadingSet, setColLoadingSet] = useState(new Set());
   const { addToCart } = useCart();
   const router = useRouter();
 
@@ -311,8 +793,7 @@ export default function ShopPage() {
   const [shopUser, setShopUser] = useState(null);
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('auth_user')
-        || sessionStorage.getItem('auth_user');
+      const raw = localStorage.getItem('auth_user');
       setShopUser(raw ? JSON.parse(raw) : null);
     } catch { setShopUser(null); }
   }, []);
@@ -326,6 +807,18 @@ export default function ShopPage() {
 
   const carouselRef = useRef(null);
   const autoplayRef = useRef(null);
+  const sortDropdownRef = useRef(null);
+
+  useEffect(() => {
+    if (!sortOpen) return;
+    const handler = (e) => {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target)) {
+        setSortOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [sortOpen]);
 
   useEffect(() => {
     loadProducts();
@@ -414,6 +907,7 @@ export default function ShopPage() {
       const data = await res.json();
       const products = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
       setProducts(products);
+      try { sessionStorage.setItem('pmp_products_cache', JSON.stringify(products)); } catch {}
     } catch (err) {
       setError(err.message);
       setProducts([]);
@@ -431,24 +925,30 @@ export default function ShopPage() {
     } catch {}
   }
 
-  async function handleSelectCollection(col) {
-    setSelectedCollection(col);
+  const handleToggleCol = async (col) => {
+    if (!col) { setSelectedSlugs(new Set()); setCategory('All'); setSearchQuery(''); return; }
+    const slug = col.slug;
+    const next = new Set(selectedSlugs);
+    if (next.has(slug)) {
+      next.delete(slug);
+    } else {
+      next.add(slug);
+      if (!colCache[slug]) {
+        setColLoadingSet(s => { const n = new Set(s); n.add(slug); return n; });
+        try {
+          const res = await fetchWithTimeout(`${API_URL}/api/storefront/collections/${slug}?per_page=60`, {}, 20000);
+          if (res.ok) {
+            const data = await res.json();
+            setColCache(c => ({ ...c, [slug]: data?.data?.products ?? [] }));
+          }
+        } catch {}
+        setColLoadingSet(s => { const n = new Set(s); n.delete(slug); return n; });
+      }
+    }
+    setSelectedSlugs(next);
     setCategory('All');
     setSearchQuery('');
-    if (!col) return;
-    setCollectionLoading(true);
-    try {
-      const res = await fetchWithTimeout(
-        `${API_URL}/api/storefront/collections/${col.slug}?per_page=60`,
-        {},
-        20000
-      );
-      if (!res.ok) { setCollectionLoading(false); return; }
-      const data = await res.json();
-      setCollectionProducts(data?.data?.products ?? []);
-    } catch {}
-    finally { setCollectionLoading(false); }
-  }
+  };
 
   const applyFlashDiscount = (price, sale) => {
     if (!sale || price <= 0) return price;
@@ -478,14 +978,103 @@ export default function ShopPage() {
   };
 
   // Derived values
-  const baseProducts  = selectedCollection ? collectionProducts : products;
-  const isBaseLoading = selectedCollection ? collectionLoading : loading;
+  const getProductPrice = (p) => {
+    const flat = parseFloat(p.flatPrice || p.price);
+    if (flat > 0) return flat;
+    const vp = Object.values(p.variantPrices || {}).map(v => parseFloat(v)).filter(v => v > 0);
+    if (vp.length) return Math.min(...vp);
+    const tiers = p.priceTiers ?? p.tiers ?? [];
+    if (tiers.length) {
+      const all = tiers.flatMap(t => t.price != null ? [parseFloat(t.price)] : Object.values(t.prices || {}).map(Number)).filter(v => v > 0);
+      if (all.length) return Math.min(...all);
+    }
+    return 0;
+  };
+  const getProductMaxPrice = (p) => {
+    const flat = parseFloat(p.flatPrice || p.price);
+    if (flat > 0) return flat;
+    const vp = Object.values(p.variantPrices || {}).map(v => parseFloat(v)).filter(v => v > 0);
+    if (vp.length) return Math.max(...vp);
+    const tiers = p.priceTiers ?? p.tiers ?? [];
+    if (tiers.length) {
+      const all = tiers.flatMap(t => t.price != null ? [parseFloat(t.price)] : Object.values(t.prices || {}).map(Number)).filter(v => v > 0);
+      if (all.length) return Math.max(...all);
+    }
+    return 0;
+  };
+  const allPrices = products.map(p => getProductMaxPrice(p)).filter(v => v > 0);
+  const priceRangeMax = allPrices.length ? Math.max(...allPrices) : 500;
+  const priceFilterActive = priceMin > 0 || priceMax < Infinity;
+  const fullProductMap = Object.fromEntries(products.map(p => [p._id || p.id, p]));
+  const baseProducts = selectedSlugs.size === 0
+    ? products
+    : (() => {
+        const seen = new Set();
+        const out = [];
+        for (const slug of selectedSlugs) {
+          for (const p of (colCache[slug] ?? [])) {
+            const id = p._id || p.id;
+            if (!seen.has(id)) { seen.add(id); out.push(fullProductMap[id] ?? p); }
+          }
+        }
+        return out;
+      })();
+  const isBaseLoading = selectedSlugs.size > 0
+    ? [...selectedSlugs].some(s => !colCache[s])
+    : loading;
+  const activeFilterCount = (availability !== 'all' ? 1 : 0) + selectedSlugs.size + (priceFilterActive ? 1 : 0) + (productType ? 1 : 0);
 
-  const filtered = baseProducts.filter(p =>
-    !searchQuery ||
-    p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.description?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const inStockCount = products.filter(p => {
+    if (p.isMadeToOrder) return true;
+    const vaq = p.variantAvailableQty;
+    if (vaq && Object.keys(vaq).length > 0)
+      return Object.values(vaq).reduce((s, v) => s + (Number(v) || 0), 0) > 0;
+    const qty = p.availableQty ?? p.stock;
+    return qty == null || Number(qty) > 0;
+  }).length;
+  const outStockCount = products.length - inStockCount;
+
+  const filtered = baseProducts
+    .filter(p => {
+      if (searchQuery && !p.name?.toLowerCase().includes(searchQuery.toLowerCase()) && !p.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (availability === 'in-stock') {
+        if (p.isMadeToOrder) return true;
+        const vaq = p.variantAvailableQty;
+        if (vaq && Object.keys(vaq).length > 0) {
+          const t = Object.values(vaq).reduce((s, v) => s + (Number(v) || 0), 0);
+          if (t <= 0) return false;
+        } else if (p.availableQty != null) {
+          if (Number(p.availableQty) <= 0) return false;
+        } else if (p.stock != null) {
+          if (Number(p.stock) <= 0) return false;
+        }
+      }
+      if (availability === 'out-of-stock') {
+        if (p.isMadeToOrder) return false;
+        const vaq = p.variantAvailableQty;
+        if (vaq && Object.keys(vaq).length > 0) {
+          const t = Object.values(vaq).reduce((s, v) => s + (Number(v) || 0), 0);
+          if (t > 0) return false;
+        } else if (p.availableQty != null) {
+          if (Number(p.availableQty) > 0) return false;
+        } else if (p.stock != null) {
+          if (Number(p.stock) > 0) return false;
+        }
+      }
+      if (productType === 'customizable' && !p.isCustom) return false;
+      if (productType === 'ready-made' && p.isCustom) return false;
+      const minPrice = getProductPrice(p);
+      const maxPrice = getProductMaxPrice(p);
+      if (priceMin > 0 && maxPrice > 0 && maxPrice < priceMin) return false;
+      if (priceMax < Infinity && minPrice > priceMax) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'price-asc') return getProductPrice(a) - getProductPrice(b);
+      if (sortBy === 'price-desc') return getProductPrice(b) - getProductPrice(a);
+      if (sortBy === 'newest') return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      return 0;
+    });
 
   return (
     <ErrorBoundary>
@@ -570,130 +1159,359 @@ export default function ShopPage() {
         </div>
       )}
 
-      {/* Collections showcase — visible on landing, hidden once a collection is active */}
-      {collections.length > 0 && !selectedCollection && (
-        <section className="shop-collections-showcase">
-          <div className="shop-showcase-inner">
-            <div className="shop-showcase-header">
-              <h2 className="shop-showcase-title">Shop by Collection</h2>
-              <p className="shop-showcase-sub">Curated picks for every occasion</p>
-            </div>
-            <div className="shop-showcase-grid">
-              {collections.map((col, idx) => (
-                <button
-                  key={col._id || col.id || col.slug || col.title || String(idx)}
-                  className="shop-showcase-card"
-                  onClick={() => handleSelectCollection(col)}
-                >
-                  <div className="shop-showcase-card-img">
-                    {col.image ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img src={col.image} alt={col.title} />
-                    ) : (
-                      <div className="shop-showcase-card-placeholder">
-                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
-                          stroke="currentColor" strokeWidth="1.2"
-                          strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="3" y="3" width="18" height="18" rx="2"/>
-                          <circle cx="8.5" cy="8.5" r="1.5"/>
-                          <polyline points="21 15 16 10 5 21"/>
-                        </svg>
-                      </div>
-                    )}
-                    <div className="shop-showcase-card-overlay" />
-                    <div className="shop-showcase-card-info">
-                      <span className="shop-showcase-card-title">{col.title}</span>
-                      {col.productCount > 0 && (
-                        <span className="shop-showcase-card-count">{col.productCount} items</span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
+      {/* Sidebar + Grid layout */}
+      <div className="shop-body">
 
-      {/* Collections tabs — only shown when collections exist */}
-      {collections.length > 0 && (
-        <div className="shop-collections-nav">
-          <button
-            className={`shop-collection-tab${!selectedCollection ? ' active' : ''}`}
-            onClick={() => handleSelectCollection(null)}
-          >
-            All Products
-          </button>
-          {collections.map((col, idx) => (
-            <button
-              key={col._id || col.id || col.slug || col.title || String(idx)}
-              className={`shop-collection-tab${selectedCollection?.slug === col.slug ? ' active' : ''}`}
-              onClick={() => handleSelectCollection(col)}
-            >
-              {col.title}
-              {col.productCount > 0 && (
-                <span className="shop-collection-tab-count">{col.productCount}</span>
+        {/* ── Mobile filter toggle ── */}
+        <button className="shop-filter-toggle" onClick={() => setSidebarOpen(o => !o)}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="12" y1="18" x2="20" y2="18"/>
+          </svg>
+          Filters
+        </button>
+
+        {/* ── Sidebar ── */}
+        <aside className={`shop-sidebar${sidebarOpen ? ' open' : ''}`}>
+
+          {/* Sidebar header */}
+          <div className="shop-sidebar-head">
+            <span className="shop-sidebar-head-title">
+              Filters
+              {activeFilterCount > 0 && (
+                <span className="shop-sidebar-head-badge">{activeFilterCount}</span>
               )}
-            </button>
-          ))}
-        </div>
-      )}
-
-
-      {/* Results count */}
-      {!isBaseLoading && filtered.length > 0 && (
-        <div className="shop-results-count">
-          {selectedCollection
-            ? `${filtered.length} product${filtered.length !== 1 ? 's' : ''} in "${selectedCollection.title}"`
-            : `Showing ${filtered.length} of ${products.length} products`
-          }
-        </div>
-      )}
-
-      {/* Grid */}
-      {isBaseLoading ? (
-        <div className="shop-products-grid shop-products-grid-loading">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="shop-product-skeleton" />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="shop-empty-state">
-          <div className="shop-empty-icon">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
-              stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
+            </span>
+            {activeFilterCount > 0 && (
+              <button
+                className="shop-sidebar-head-clear"
+                onClick={() => { setAvailability('all'); setSelectedSlugs(new Set()); setPriceMin(0); setPriceMax(Infinity); setProductType(''); }}
+              >
+                Clear
+              </button>
+            )}
           </div>
-          <h3 className="shop-empty-title">
-            {category !== 'All' ? 'No products found' : 'No products available'}
-          </h3>
-          <p className="shop-empty-description">
-            {category !== 'All'
-              ? 'Try adjusting your search or filter to find what you\'re looking for.'
-              : 'Check back later as we\'re constantly adding new products to our store.'}
-          </p>
-          {category !== 'All' && (
+
+          {/* Availability */}
+          <div className="shop-filter-section">
+            <div className="shop-filter-title">Availability</div>
+            {[
+              { val: 'in-stock',     label: 'In Stock',     count: inStockCount },
+              { val: 'out-of-stock', label: 'Out of Stock', count: outStockCount },
+            ].map(opt => {
+              const isActive = availability === opt.val;
+              return (
+                <button
+                  key={opt.val}
+                  className={`shop-filter-check-item${isActive ? ' active' : ''}`}
+                  onClick={() => setAvailability(isActive ? 'all' : opt.val)}
+                >
+                  <span className="shop-filter-check-box">
+                    {isActive && (
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    )}
+                  </span>
+                  <span className="shop-filter-check-label">{opt.label}</span>
+                  <span className="shop-filter-col-count">{opt.count}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Product Type */}
+          <div className="shop-filter-section">
+            <div className="shop-filter-title">Product Type</div>
+            {[
+              { val: 'customizable', label: 'Customizable', count: products.filter(p => p.isCustom).length },
+              { val: 'ready-made',   label: 'Ready Made',   count: products.filter(p => !p.isCustom).length },
+            ].map(opt => {
+              const isActive = productType === opt.val;
+              return (
+                <button
+                  key={opt.val}
+                  className={`shop-filter-check-item${isActive ? ' active' : ''}`}
+                  onClick={() => setProductType(isActive ? '' : opt.val)}
+                >
+                  <span className="shop-filter-check-box">
+                    {isActive && (
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    )}
+                  </span>
+                  <span className="shop-filter-check-label">{opt.label}</span>
+                  <span className="shop-filter-col-count">{opt.count}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Collections */}
+          {collections.length > 0 && (
+            <div className="shop-filter-section">
+              <div className="shop-filter-title">Collections</div>
+              {[{ _id: '__all__', slug: null, title: 'All Products', productCount: products.length }, ...collections]
+                .slice(0, showMoreCols ? undefined : 6)
+                .map((col, idx) => {
+                  const isAll = col.slug === null;
+                  const isActive = isAll ? selectedSlugs.size === 0 : selectedSlugs.has(col.slug);
+                  return (
+                    <button
+                      key={col._id || col.slug || String(idx)}
+                      className={`shop-filter-check-item${isActive ? ' active' : ''}`}
+                      onClick={() => handleToggleCol(isAll ? null : col)}
+                    >
+                      <span className="shop-filter-check-box">
+                        {isActive && (
+                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                        )}
+                      </span>
+                      <span className="shop-filter-check-label">{col.title}</span>
+                      {(col.productCount > 0 || isAll) && (
+                        <span className="shop-filter-col-count">{col.productCount}</span>
+                      )}
+                    </button>
+                  );
+                })
+              }
+              {collections.length + 1 > 6 && (
+                <button className="shop-filter-show-more" onClick={() => setShowMoreCols(o => !o)}>
+                  {showMoreCols
+                    ? 'Show less'
+                    : `Show ${collections.length - 5} more`}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Price Range */}
+          <div className="shop-filter-section">
+            <div className="shop-filter-title">Price Range</div>
+            <div className="shop-range-wrap">
+              <div className="shop-range-hint">The highest price is ₱{priceRangeMax.toLocaleString()}</div>
+              <div className="shop-range-track-wrap">
+                <div className="shop-range-track-bg" />
+                <div
+                  className="shop-range-track-fill"
+                  style={{
+                    left: `${(priceMin / priceRangeMax) * 100}%`,
+                    width: `${((Math.min(priceMax === Infinity ? priceRangeMax : priceMax, priceRangeMax) - priceMin) / priceRangeMax) * 100}%`,
+                  }}
+                />
+                <input
+                  type="range"
+                  className="shop-range-thumb"
+                  min={0} max={priceRangeMax} step={1}
+                  value={priceMin}
+                  onChange={e => {
+                    const v = Math.min(Number(e.target.value), (priceMax === Infinity ? priceRangeMax : priceMax) - 1);
+                    setPriceMin(Math.max(0, v));
+                  }}
+                />
+                <input
+                  type="range"
+                  className="shop-range-thumb"
+                  min={0} max={priceRangeMax} step={1}
+                  value={priceMax === Infinity ? priceRangeMax : priceMax}
+                  onChange={e => {
+                    const v = Math.max(Number(e.target.value), priceMin + 1);
+                    setPriceMax(v >= priceRangeMax ? Infinity : v);
+                  }}
+                />
+              </div>
+              <div className="shop-range-inputs">
+                <div className="shop-range-field">
+                  <span>₱</span>
+                  <input
+                    type="number" min={0} max={(priceMax === Infinity ? priceRangeMax : priceMax) - 1}
+                    value={priceMin}
+                    onChange={e => {
+                      const v = Number(e.target.value);
+                      if (!isNaN(v) && v >= 0) setPriceMin(Math.min(v, (priceMax === Infinity ? priceRangeMax : priceMax) - 1));
+                    }}
+                  />
+                </div>
+                <div className="shop-range-field">
+                  <span>₱</span>
+                  <input
+                    type="number" min={priceMin + 1} max={priceRangeMax}
+                    value={priceMax === Infinity ? priceRangeMax : priceMax}
+                    onChange={e => {
+                      const v = Number(e.target.value);
+                      if (!isNaN(v)) setPriceMax(v >= priceRangeMax ? Infinity : Math.max(v, priceMin + 1));
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Clear all */}
+          {activeFilterCount > 0 && (
             <button
-              onClick={() => { setCategory('All'); }}
-              className="shop-clear-filters-btn"
+              className="shop-filter-clear-btn"
+              onClick={() => { setAvailability('all'); setSelectedSlugs(new Set()); setPriceMin(0); setPriceMax(Infinity); setProductType(''); }}
             >
-              Clear Filters
+              Clear all filters
             </button>
           )}
+        </aside>
+
+        {/* Mobile sidebar backdrop */}
+        {sidebarOpen && <div className="shop-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
+
+        {/* ── Main content ── */}
+        <div className="shop-main">
+
+          {/* Sort bar + active chips (unified toolbar) */}
+          <div className="shop-sort-bar">
+            <div className="shop-sort-bar-left">
+              {activeFilterCount > 0 ? (
+                <>
+                  {availability === 'in-stock' && (
+                    <span className="shop-active-chip">
+                      In Stock
+                      <button onClick={() => setAvailability('all')} aria-label="Remove">
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                    </span>
+                  )}
+                  {availability === 'out-of-stock' && (
+                    <span className="shop-active-chip">
+                      Out of Stock
+                      <button onClick={() => setAvailability('all')} aria-label="Remove">
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                    </span>
+                  )}
+                  {[...selectedSlugs].map(slug => {
+                    const col = collections.find(c => c.slug === slug);
+                    return (
+                      <span key={slug} className="shop-active-chip collection">
+                        {col?.title || slug}
+                        <button onClick={() => handleToggleCol(col || { slug })} aria-label="Remove">
+                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </span>
+                    );
+                  })}
+                  {productType && (
+                    <span className="shop-active-chip">
+                      {productType === 'customizable' ? 'Customizable' : 'Ready Made'}
+                      <button onClick={() => setProductType('')} aria-label="Remove">
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                    </span>
+                  )}
+                  {priceFilterActive && (
+                    <span className="shop-active-chip">
+                      ₱{priceMin.toLocaleString()} – {priceMax < Infinity ? `₱${priceMax.toLocaleString()}` : 'Any'}
+                      <button onClick={() => { setPriceMin(0); setPriceMax(Infinity); }} aria-label="Remove">
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                    </span>
+                  )}
+                  <button
+                    className="shop-active-clear"
+                    onClick={() => { setAvailability('all'); setSelectedSlugs(new Set()); setPriceMin(0); setPriceMax(Infinity); setProductType(''); }}
+                  >
+                    Clear all
+                  </button>
+                </>
+              ) : (
+                <span className="shop-sort-count">
+                  {isBaseLoading ? '' : `${filtered.length} product${filtered.length !== 1 ? 's' : ''}`}
+                  {selectedSlugs.size === 1 && (() => { const col = collections.find(c => c.slug === [...selectedSlugs][0]); return col ? ` in "${col.title}"` : ''; })()}
+                  {selectedSlugs.size > 1 ? ` across ${selectedSlugs.size} collections` : ''}
+                </span>
+              )}
+            </div>
+            <div className="shop-sort-controls">
+              <span className="shop-sort-label">Sort by</span>
+              <div className="shop-sort-dropdown" ref={sortDropdownRef}>
+                <button
+                  className={`shop-sort-trigger${sortOpen ? ' open' : ''}`}
+                  onClick={() => setSortOpen(o => !o)}
+                >
+                  <span>{{
+                    featured: 'Featured',
+                    newest: 'Newest',
+                    'price-asc': 'Price: Low → High',
+                    'price-desc': 'Price: High → Low',
+                  }[sortBy] || 'Featured'}</span>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+                {sortOpen && (
+                  <div className="shop-sort-menu">
+                    {[
+                      { value: 'featured',    label: 'Featured' },
+                      { value: 'newest',      label: 'Newest' },
+                      { value: 'price-asc',   label: 'Price: Low → High' },
+                      { value: 'price-desc',  label: 'Price: High → Low' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        className={`shop-sort-option${sortBy === opt.value ? ' active' : ''}`}
+                        onClick={() => { setSortBy(opt.value); setSortOpen(false); }}
+                      >
+                        {sortBy === opt.value && (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                        )}
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Grid */}
+          {isBaseLoading ? (
+            <div className="shop-products-grid shop-products-grid-loading">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="shop-product-skeleton" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="shop-empty-state">
+              <div className="shop-empty-icon">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
+                  stroke="var(--gold)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+              </div>
+              <h3 className="shop-empty-title">No products found</h3>
+              <p className="shop-empty-description">Try adjusting your filters to find what you&apos;re looking for.</p>
+              <button
+                onClick={() => { setAvailability('all'); setSelectedSlugs(new Set()); setPriceMin(0); setPriceMax(Infinity); setProductType(''); setSortBy('featured'); }}
+                className="shop-clear-filters-btn"
+              >
+                Clear Filters
+              </button>
+            </div>
+          ) : (
+            <div className="shop-products-grid">
+              {filtered.map((product, idx) => (
+                <ProductCard
+                  key={product._id || product.id || String(idx)}
+                  product={product}
+                  onAddToCart={handleAddToCart}
+                  onQuickView={p => setQuickViewProduct(p)}
+                  flashSale={flashSales[product._id] ?? flashSales[product.id] ?? null}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="shop-products-grid">
-          {filtered.map((product, idx) => (
-            <ProductCard
-              key={product._id || product.id || String(idx)}
-              product={product}
-              onAddToCart={handleAddToCart}
-              flashSale={flashSales[product._id] ?? flashSales[product.id] ?? null}
-            />
-          ))}
-        </div>
-      )}
+      </div>
 
       {/* Quick Add Modal */}
       {quickAddProduct && (
@@ -933,6 +1751,16 @@ export default function ShopPage() {
             })()}
           </div>
         </div>
+      )}
+
+      {/* Quick View Modal */}
+      {quickViewProduct && (
+        <QuickViewModal
+          product={quickViewProduct}
+          flashSale={flashSales[quickViewProduct._id] ?? flashSales[quickViewProduct.id] ?? null}
+          onClose={() => setQuickViewProduct(null)}
+          onToast={(msg) => { setToast({ message: msg, type: 'success' }); setTimeout(() => setToast(null), 2000); }}
+        />
       )}
 
       {/* Toast Notification */}

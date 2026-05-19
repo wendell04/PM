@@ -166,6 +166,10 @@ class ProductController extends Controller
                 });
             }
 
+            if ($request->boolean('featured')) {
+                $query->where('isFeatured', true);
+            }
+
             $products = $query->orderBy('createdAt', 'desc')->get();
 
             $data = $products->map(fn($p) => array_merge($p->toArray(), $this->computeAvailability($p)))->values();
@@ -339,6 +343,9 @@ class ProductController extends Controller
                 'downpaymentPercent'  => 'nullable|integer|min:1|max:100',
                 'weightGrams'         => 'nullable|integer|min:1|max:99999',
                 'storeStockCap'       => 'nullable|integer|min:0',
+                'allowCOD'            => 'nullable|boolean',
+                'hideWhenOutOfStock'  => 'nullable|boolean',
+                'isFeatured'          => 'nullable|boolean',
             ]);
 
             // Check for duplicate (same category + subCategoryName)
@@ -494,6 +501,9 @@ class ProductController extends Controller
                 'downpaymentPercent'  => 'nullable|integer|min:1|max:100',
                 'weightGrams'         => 'nullable|integer|min:1|max:99999',
                 'storeStockCap'       => 'nullable|integer|min:0',
+                'allowCOD'            => 'nullable|boolean',
+                'hideWhenOutOfStock'  => 'nullable|boolean',
+                'isFeatured'          => 'nullable|boolean',
             ]);
 
             // Check for duplicate if category/subCategory changed

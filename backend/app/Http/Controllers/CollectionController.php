@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Collection;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -237,8 +238,13 @@ class CollectionController extends Controller
                 ->orderBy('sortOrder', 'asc')
                 ->get()
                 ->map(function ($c) {
-                    $raw   = $c->getAttributes();
-                    $count = count($this->resolveProductIds($c));
+                    $raw        = $c->getAttributes();
+                    $productIds = $this->resolveProductIds($c);
+                    $count = empty($productIds) ? 0
+                        : Product::whereIn('_id', $productIds)
+                            ->where('isActive', true)
+                            ->where('isPublished', true)
+                            ->count();
                     return [
                         'id'          => isset($raw['id']) ? (string) $raw['id'] : (isset($raw['_id']) ? (string) $raw['_id'] : ''),
                         'title'       => (string) ($raw['title'] ?? ''),

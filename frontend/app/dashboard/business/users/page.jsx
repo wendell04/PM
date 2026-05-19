@@ -422,7 +422,6 @@ export default function UserManagementPage() {
           marginBottom: '24px',
         }}
       >
-        <h1 className="page-title">Users</h1>
         <div style={{ display: 'flex', gap: '10px' }}>
           <button
             type="button"

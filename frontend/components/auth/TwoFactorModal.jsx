@@ -18,8 +18,7 @@ function getStoredPendingUser() {
   try {
     const raw =
       sessionStorage.getItem("pmp_pending_user") ||
-      localStorage.getItem("auth_user") ||
-      sessionStorage.getItem("auth_user");
+      localStorage.getItem("auth_user");
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;

@@ -12,7 +12,7 @@ import { fetchWithTimeout } from './fetchWithTimeout';
  * Get authentication token from storage
  */
 function getAuthToken() {
-  return sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
+  return localStorage.getItem('auth_token');
 }
 
 /**

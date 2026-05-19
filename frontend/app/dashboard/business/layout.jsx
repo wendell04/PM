@@ -11,7 +11,7 @@ import {
 } from "@/lib/notificationApi";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useTheme } from "../../../contexts/ThemeContext";
@@ -22,6 +22,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 export default function BusinessDashboardLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get('tab');
   const { logout, currentUser, updateUser, token } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -158,9 +160,7 @@ export default function BusinessDashboardLayout({ children }) {
     setAvatarError("");
 
     try {
-      const token =
-        sessionStorage.getItem("auth_token") ||
-        localStorage.getItem("auth_token");
+      const token = localStorage.getItem("auth_token");
 
       const formData = new FormData();
       formData.append("avatar", file);
@@ -222,9 +222,7 @@ export default function BusinessDashboardLayout({ children }) {
     setSaveError("");
 
     try {
-      const token =
-        sessionStorage.getItem("auth_token") ||
-        localStorage.getItem("auth_token");
+      const token = localStorage.getItem("auth_token");
       const response = await fetchWithTimeout(
         `${API_URL}/api/profile`,
         {
@@ -296,9 +294,7 @@ export default function BusinessDashboardLayout({ children }) {
 
     setIsSavingPassword(true);
     try {
-      const token =
-        sessionStorage.getItem("auth_token") ||
-        localStorage.getItem("auth_token");
+      const token = localStorage.getItem("auth_token");
       await updatePassword(token, {
         currentPassword: passwordForm.currentPassword,
         password: passwordForm.newPassword,
@@ -313,8 +309,6 @@ export default function BusinessDashboardLayout({ children }) {
       setTimeout(() => {
         localStorage.removeItem("auth_token");
         localStorage.removeItem("auth_user");
-        sessionStorage.removeItem("auth_token");
-        sessionStorage.removeItem("auth_user");
         sessionStorage.setItem("justLoggedOut", "true");
         router.replace("/");
       }, 2000);
@@ -443,7 +437,6 @@ export default function BusinessDashboardLayout({ children }) {
     }
   }, [token]);
 
-  const [expandedItems, setExpandedItems] = useState([]);
 
   const permsCacheRef = useRef(null);
 
@@ -523,46 +516,59 @@ export default function BusinessDashboardLayout({ children }) {
       permKey: "orders",
       icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z",
     },
-    { type: "divider", label: "Store" },
+    { type: "divider", label: "Inventory" },
     {
-      name: "Inventory",
+      name: "Master Data",
+      href: "/dashboard/business/inventory-v2?tab=materials",
       permKey: "inventory",
-      icon: "M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18",
-      children: [
-        { name: "Master Data", href: "/dashboard/business/inventory-v2?tab=materials",    matchTabs: ['materials','vendors','bom']                    },
-        { name: "Overview",    href: "/dashboard/business/inventory-v2?tab=productstock", matchTabs: ['productstock','stockin','goods','actual']       },
-        { name: "Bad Orders",  href: "/dashboard/business/inventory-v2?tab=badorders",    matchTabs: ['badorders']                                    },
-      ],
+      matchTabs: ["materials", "vendors", "bom"],
+      icon: "M4 7c0-1.1 3.6-2 8-2s8 .9 8 2v2c0 1.1-3.6 2-8 2s-8-.9-8-2V7zm0 6c0 1.1 3.6 2 8 2s8-.9 8-2m-16 0v4c0 1.1 3.6 2 8 2s8-.9 8-2v-4",
     },
     {
-      name: "New Catalog",
+      name: "Overview",
+      href: "/dashboard/business/inventory-v2?tab=productstock",
+      permKey: "inventory",
+      matchTabs: ["productstock", "stockin", "goods", "actual"],
+      icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+    },
+    {
+      name: "Bad Orders",
+      href: "/dashboard/business/inventory-v2?tab=badorders",
+      permKey: "inventory",
+      matchTabs: ["badorders"],
+      icon: "M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z",
+    },
+    { type: "divider", label: "Products" },
+    {
+      name: "Catalog",
       href: "/dashboard/business/products-v2",
       permKey: "products",
-      icon: "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10",
+      icon: "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253",
     },
     {
-      name: "Products",
+      name: "Collections",
+      href: "/dashboard/business/collections",
       permKey: "products",
-      icon: "M4 6h16M4 10h16M4 14h16M4 18h16",
-      children: [
-        { name: "Catalog",     href: "/dashboard/business/products" },
-        { name: "Collections", href: "/dashboard/business/collections" },
-        { name: "Banners",     href: "/dashboard/business/banners" },
-        { name: "Reviews",     href: "/dashboard/business/reviews" },
-      ],
+      icon: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z",
     },
     {
-      name: "Marketing",
+      name: "Banners",
+      href: "/dashboard/business/banners",
+      permKey: "products",
+      icon: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z",
+    },
+    {
+      name: "Reviews",
+      href: "/dashboard/business/reviews",
+      permKey: "products",
+      icon: "M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z",
+    },
+    {
+      name: "Promotions",
+      href: "/dashboard/business/promotions",
       permKey: "flashSales",
       marketingGroup: true,
-      icon: "M13 10V3L4 14h7v7l9-11h-7z",
-      children: [
-        {
-          name: "Promotions",
-          href: "/dashboard/business/promotions",
-          permKey: "flashSales",
-        },
-      ],
+      icon: "M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z",
     },
     { type: "divider", label: "Finance" },
     {
@@ -590,6 +596,25 @@ export default function BusinessDashboardLayout({ children }) {
       permKey: "sales",
       icon: "M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z",
     },
+    { type: "divider", label: "Users" },
+    {
+      name: "Staff",
+      href: "/dashboard/business/users",
+      permKey: "userManagement",
+      icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
+    },
+    {
+      name: "Customers",
+      href: "/dashboard/business/customers",
+      permKey: "userManagement",
+      icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 7a4 4 0 100 8 4 4 0 000-8z",
+    },
+    {
+      name: "Permissions",
+      href: "/dashboard/business/role-permissions",
+      permKey: "userManagement",
+      icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",
+    },
     { type: "divider", label: "Admin" },
     {
       name: "Messages",
@@ -604,19 +629,6 @@ export default function BusinessDashboardLayout({ children }) {
       icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
     },
     {
-      name: "Users & Roles",
-      permKey: "userManagement",
-      icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 7a4 4 0 100 8 4 4 0 000-8z",
-      children: [
-        { name: "Staff", href: "/dashboard/business/users" },
-        { name: "Customers", href: "/dashboard/business/customers" },
-        {
-          name: "Permissions",
-          href: "/dashboard/business/role-permissions",
-        },
-      ],
-    },
-    {
       name: "Settings",
       href: "/dashboard/business/settings",
       permKey: "dashboard",
@@ -624,27 +636,6 @@ export default function BusinessDashboardLayout({ children }) {
     },
   ];
 
-  const toggleExpanded = (itemName) => {
-    setExpandedItems((prev) =>
-      prev.includes(itemName)
-        ? prev.filter((name) => name !== itemName)
-        : [...prev, itemName],
-    );
-  };
-
-  const isChildActive = (children) => {
-    const fullHref = typeof window !== 'undefined'
-      ? window.location.pathname + window.location.search
-      : pathname;
-    const currentTab = typeof window !== 'undefined'
-      ? new URLSearchParams(window.location.search).get('tab')
-      : null;
-    return children.some((child) => {
-      if (!child.href) return false;
-      if (child.matchTabs && currentTab && child.matchTabs.includes(currentTab)) return true;
-      return child.href === pathname || child.href === fullHref;
-    });
-  };
 
   const getInitials = (user) => {
     if (!user) return "?";
@@ -664,27 +655,33 @@ export default function BusinessDashboardLayout({ children }) {
       "/dashboard/business/orders": "Orders",
       "/dashboard/business/job-orders": "Job Orders",
       "/dashboard/business/pos": "Point of Sale",
-      "/dashboard/business/inventory/master-data": "Master Data",
-      "/dashboard/business/inventory/stock-in": "Stock In",
-      "/dashboard/business/inventory/stocks": "Stock Overview",
-      "/dashboard/business/inventory/returns": "Bad Orders",
-      "/dashboard/business/inventory": "Inventory",
-      "/dashboard/business/products": "Products",
+      "/dashboard/business/inventory-v2": "Inventory",
+      "/dashboard/business/products-v2": "Catalog",
+      "/dashboard/business/collections": "Collections",
       "/dashboard/business/banners": "Banners",
       "/dashboard/business/reviews": "Reviews",
       "/dashboard/business/promotions": "Promotions",
-      "/dashboard/business/flash-sales": "Flash Sales",
-      "/dashboard/business/vouchers": "Vouchers",
+      "/dashboard/business/production-preview": "Production",
+      "/dashboard/business/qc-preview": "Quality Control",
       "/dashboard/business/sales": "Sales",
+      "/dashboard/business/payments": "Payments",
       "/dashboard/business/reports": "Reports",
       "/dashboard/business/ssa-forecast": "Sales Forecast",
+      "/dashboard/business/chat": "Messages",
       "/dashboard/business/audit-logs": "Audit Logs",
-      "/dashboard/business/users": "Users",
-      "/dashboard/business/role-permissions": "Role Permissions",
-      ["/dashboard/business/" + "settings"]: "Settings",
+      "/dashboard/business/users": "Staff",
+      "/dashboard/business/customers": "Customers",
+      "/dashboard/business/role-permissions": "Permissions",
+      "/dashboard/business/settings": "Settings",
     };
+    const tabMap = {
+      materials: "Master Data", vendors: "Master Data", bom: "Master Data",
+      productstock: "Overview", stockin: "Overview", goods: "Overview", actual: "Overview",
+      badorders: "Bad Orders",
+    };
+    if (currentTab && tabMap[currentTab]) return tabMap[currentTab];
     return map[pathname] || "Dashboard";
-  }, [pathname]);
+  }, [pathname, currentTab]);
 
   const sidebarRoleLabel = useMemo(() => {
     const labels = {
@@ -886,24 +883,23 @@ export default function BusinessDashboardLayout({ children }) {
             <div className="sidebar-logo">
               <div className="sidebar-logo-icon" aria-hidden="true">
                 <Image
-                  src="/logos/NEW logo no BG.png"
+                  src="/logos/PersonalizeMe logo.png"
                   alt="PersonalizeMe Prints"
-                  width={36}
-                  height={36}
-                  style={{ objectFit: "contain", display: "block" }}
+                  width={40}
+                  height={40}
+                  style={{ objectFit: "cover", borderRadius: "50%", display: "block" }}
                 />
               </div>
               <div className="sidebar-logo-text">
-                <span className="sidebar-brand-gold">PersonalizeMe</span>
-                <span className="sidebar-brand-muted">Prints</span>
+                PERSONALIZE <span>ME</span><br />PRINTS
               </div>
               <div className="sidebar-logo-monogram" aria-hidden="true">
                 <Image
-                  src="/logos/NEW logo no BG.png"
+                  src="/logos/PersonalizeMe logo.png"
                   alt="PersonalizeMe Prints"
                   width={36}
                   height={36}
-                  style={{ objectFit: "contain", width: "36px", height: "36px", display: "block" }}
+                  style={{ objectFit: "cover", borderRadius: "50%", width: "36px", height: "36px", display: "block" }}
                 />
               </div>
             </div>
@@ -939,18 +935,9 @@ export default function BusinessDashboardLayout({ children }) {
                   setSidebarCollapsed((c) => !c);
                 }
               }}
-              aria-label={
-                sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
-              }
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 {sidebarCollapsed ? (
                   <path d="M9 18l6-6-6-6" />
                 ) : (
@@ -970,7 +957,7 @@ export default function BusinessDashboardLayout({ children }) {
               .map((item) => {
                 if (item.type === "divider") {
                   return (
-                    <div key={`divider-${item.label}`} className="nav-text" style={{ padding: "16px 16px 4px", fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)", userSelect: "none" }}>
+                    <div key={`divider-${item.label}`} className="sidebar-divider-label">
                       {item.label}
                     </div>
                   );
@@ -994,85 +981,6 @@ export default function BusinessDashboardLayout({ children }) {
                     : can(item.permKey ?? "dashboard")
                 );
 
-                if (item.children) {
-                  const allChildren = item.children.filter(c => !c.adminOnly || isAdminOwner);
-                  const isExpanded = expandedItems.includes(item.name);
-                  const activeChildren = allChildren.filter(c => !c.permKey || can(c.permKey));
-                  const hasActiveChild = isChildActive(activeChildren);
-
-                  if (!isAccessible) {
-                    return (
-                      <div key={item.name} className="sidebar-nav-group">
-                        <div className="sidebar-nav-parent" style={{ opacity: 0.4, cursor: "not-allowed", display: "flex", alignItems: "center" }}>
-                          {navIcon}
-                          <span className="nav-text">{item.name}</span>
-                          {lockIcon}
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div key={item.name} className="sidebar-nav-group">
-                      <button
-                        type="button"
-                        className={`sidebar-nav-parent ${hasActiveChild ? "active" : ""}`}
-                        onClick={() => {
-                          if (sidebarCollapsed) setSidebarCollapsed(false);
-                          toggleExpanded(item.name);
-                        }}
-                      >
-                        {navIcon}
-                        <span className="nav-text">{item.name}</span>
-                        <svg className={`nav-chevron ${isExpanded ? "rotated" : ""}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <polyline points="6 9 12 15 18 9" />
-                        </svg>
-                      </button>
-                      <div className={`sidebar-nav-children ${isExpanded ? "expanded" : ""}`}>
-                        {allChildren.map((child, ci) => {
-                          if (child.type === 'section') {
-                            return (
-                              <div key={`sec-${ci}`} style={{ fontSize: '9px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '10px 16px 3px', opacity: 0.6 }}>
-                                {child.label}
-                              </div>
-                            );
-                          }
-                          const childOk = isAdminOwner || !child.permKey || can(child.permKey);
-                          const fullHref = typeof window !== 'undefined' ? window.location.pathname + window.location.search : pathname;
-                          const currentTab = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
-                          const isActive = (child.matchTabs && currentTab && child.matchTabs.includes(currentTab)) || child.href === pathname || child.href === fullHref;
-                          if (!childOk) {
-                            return (
-                              <div key={child.name} className="sidebar-nav-child" style={{ opacity: 0.4, cursor: "not-allowed", display: "flex", alignItems: "center" }}>
-                                <span className="nav-text">{child.name}</span>
-                                {lockIcon}
-                              </div>
-                            );
-                          }
-                          return (
-                            <Link key={child.name} href={child.href} className={`sidebar-nav-child ${isActive ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
-                              <span className="nav-text">{child.name}</span>
-                            </Link>
-                          );
-                        })}
-                      </div>
-                      <div className="sidebar-nav-flyout">
-                        <div className="sidebar-nav-flyout-title">{item.name}</div>
-                        {allChildren.filter(c => !c.type && (isAdminOwner || !c.permKey || can(c.permKey))).map((child) => {
-                          const fullHref = typeof window !== 'undefined' ? window.location.pathname + window.location.search : pathname;
-                          const currentTab = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
-                          const isActive = (child.matchTabs && currentTab && child.matchTabs.includes(currentTab)) || child.href === pathname || child.href === fullHref;
-                          return (
-                            <Link key={child.href} href={child.href} className={`sidebar-nav-child ${isActive ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
-                              <span className="nav-text">{child.name}</span>
-                            </Link>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                }
-
                 if (!isAccessible) {
                   return (
                     <div key={item.name} className="sidebar-nav-item" style={{ opacity: 0.4, cursor: "not-allowed", display: "flex", alignItems: "center" }}>
@@ -1083,8 +991,13 @@ export default function BusinessDashboardLayout({ children }) {
                   );
                 }
 
+                const fullHref = pathname + (currentTab ? `?tab=${currentTab}` : '');
+                const isActive = (item.matchTabs && currentTab && item.matchTabs.includes(currentTab))
+                  || pathname === item.href
+                  || fullHref === item.href;
+
                 return (
-                  <Link key={item.name} href={item.href} className={`sidebar-nav-item ${pathname === item.href ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
+                  <Link key={item.name} href={item.href} className={`sidebar-nav-item ${isActive ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
                     {navIcon}
                     <span className="nav-text">{item.name}</span>
                   </Link>
@@ -1192,10 +1105,10 @@ export default function BusinessDashboardLayout({ children }) {
                     right: 0,
                     width: "360px",
                     maxHeight: "480px",
-                    background: "var(--dark2)",
-                    border: "1px solid var(--border)",
+                    background: "#ffffff",
+                    border: "1px solid rgba(0,0,0,0.1)",
                     borderRadius: "12px",
-                    boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
                     zIndex: 1000,
                     display: "flex",
                     flexDirection: "column",
@@ -1209,7 +1122,7 @@ export default function BusinessDashboardLayout({ children }) {
                       alignItems: "center",
                       justifyContent: "space-between",
                       padding: "1rem 1.25rem",
-                      borderBottom: "1px solid var(--border)",
+                      borderBottom: "1px solid rgba(0,0,0,0.08)",
                       flexShrink: 0,
                     }}
                   >
@@ -1217,20 +1130,22 @@ export default function BusinessDashboardLayout({ children }) {
                       style={{
                         fontWeight: 700,
                         fontSize: "0.95rem",
-                        color: "var(--white)",
+                        color: "#111",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
                       }}
                     >
                       Notifications
                       {unreadCount > 0 && (
                         <span
                           style={{
-                            marginLeft: "0.5rem",
                             padding: "0.1rem 0.5rem",
-                            background: "var(--red)",
+                            background: "#ef4444",
                             borderRadius: "999px",
                             fontSize: "0.72rem",
                             fontWeight: 700,
-                            color: "var(--white)",
+                            color: "#fff",
                           }}
                         >
                           {unreadCount}
@@ -1244,7 +1159,7 @@ export default function BusinessDashboardLayout({ children }) {
                         style={{
                           background: "none",
                           border: "none",
-                          color: "var(--gold)",
+                          color: "#d4a843",
                           fontSize: "0.78rem",
                           cursor: "pointer",
                           fontWeight: 600,
@@ -1256,21 +1171,23 @@ export default function BusinessDashboardLayout({ children }) {
                     )}
                   </div>
 
-                  {/* Panel body */}
+                  {/* Panel body — hidden scrollbar */}
                   <div
                     style={{
                       overflowY: "auto",
                       flex: 1,
+                      scrollbarWidth: "none",
+                      msOverflowStyle: "none",
                     }}
                   >
                     {notifLoading ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
                         {[...Array(4)].map((_, i) => (
                           <div key={i} style={{ padding: "1rem 1.25rem", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-                            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "linear-gradient(90deg,var(--dark2) 25%,var(--dark3,#2a2a2a) 50%,var(--dark2) 75%)", backgroundSize: "400px 100%", animation: "shimmer 1.4s ease-in-out infinite", flexShrink: 0 }} />
+                            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%)", backgroundSize: "400px 100%", animation: "shimmer 1.4s ease-in-out infinite", flexShrink: 0 }} />
                             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                              <div style={{ height: "13px", borderRadius: "4px", background: "linear-gradient(90deg,var(--dark2) 25%,var(--dark3,#2a2a2a) 50%,var(--dark2) 75%)", backgroundSize: "400px 100%", animation: "shimmer 1.4s ease-in-out infinite", width: "75%" }} />
-                              <div style={{ height: "11px", borderRadius: "4px", background: "linear-gradient(90deg,var(--dark2) 25%,var(--dark3,#2a2a2a) 50%,var(--dark2) 75%)", backgroundSize: "400px 100%", animation: "shimmer 1.4s ease-in-out infinite", width: "50%" }} />
+                              <div style={{ height: "13px", borderRadius: "4px", background: "linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%)", backgroundSize: "400px 100%", animation: "shimmer 1.4s ease-in-out infinite", width: "75%" }} />
+                              <div style={{ height: "11px", borderRadius: "4px", background: "linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%)", backgroundSize: "400px 100%", animation: "shimmer 1.4s ease-in-out infinite", width: "50%" }} />
                             </div>
                           </div>
                         ))}
@@ -1280,7 +1197,10 @@ export default function BusinessDashboardLayout({ children }) {
                         style={{
                           padding: "2.5rem 1.25rem",
                           textAlign: "center",
-                          color: "var(--gray)",
+                          color: "#888",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
                         }}
                       >
                         <svg
@@ -1290,21 +1210,12 @@ export default function BusinessDashboardLayout({ children }) {
                           fill="none"
                           stroke="currentColor"
                           strokeWidth="1.5"
-                          style={{ marginBottom: "0.75rem", opacity: 0.4 }}
+                          style={{ marginBottom: "0.75rem", opacity: 0.35 }}
                         >
-                          <path
-                            d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3
-                            9h18s-3-2-3-9"
-                          />
+                          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                           <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                         </svg>
-                        <div
-                          style={{
-                            fontWeight: 600,
-                            color: "var(--white)",
-                            marginBottom: "0.25rem",
-                          }}
-                        >
+                        <div style={{ fontWeight: 600, color: "#333", marginBottom: "0.25rem" }}>
                           No notifications
                         </div>
                         <div style={{ fontSize: "0.8rem" }}>
@@ -1324,26 +1235,23 @@ export default function BusinessDashboardLayout({ children }) {
                             }}
                             style={{
                               padding: "0.875rem 1.25rem",
-                              borderBottom: "1px solid var(--border)",
-                              background: n.is_read
-                                ? "transparent"
-                                : "rgba(212,168,67,0.06)",
+                              borderBottom: "1px solid rgba(0,0,0,0.06)",
+                              background: n.is_read ? "transparent" : "rgba(212,168,67,0.07)",
                               cursor: "pointer",
                               display: "flex",
                               gap: "0.75rem",
                               alignItems: "flex-start",
                               transition: "background 0.15s",
                             }}
+                            onMouseEnter={e => { if (!n.is_read) e.currentTarget.style.background = "rgba(212,168,67,0.12)"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = n.is_read ? "transparent" : "rgba(212,168,67,0.07)"; }}
                           >
-                            {/* Unread dot */}
                             <div
                               style={{
                                 width: "8px",
                                 height: "8px",
                                 borderRadius: "50%",
-                                background: n.is_read
-                                  ? "transparent"
-                                  : "var(--gold)",
+                                background: n.is_read ? "transparent" : "#d4a843",
                                 flexShrink: 0,
                                 marginTop: "5px",
                               }}
@@ -1353,7 +1261,7 @@ export default function BusinessDashboardLayout({ children }) {
                                 style={{
                                   fontWeight: n.is_read ? 400 : 600,
                                   fontSize: "0.875rem",
-                                  color: "var(--white)",
+                                  color: "#222",
                                   marginBottom: "0.2rem",
                                   whiteSpace: "nowrap",
                                   overflow: "hidden",
@@ -1362,32 +1270,16 @@ export default function BusinessDashboardLayout({ children }) {
                               >
                                 {n.title}
                               </div>
-                              <div
-                                style={{
-                                  fontSize: "0.8rem",
-                                  color: "var(--gray)",
-                                  lineHeight: 1.4,
-                                }}
-                              >
+                              <div style={{ fontSize: "0.8rem", color: "#555", lineHeight: 1.4 }}>
                                 {n.message}
                               </div>
-                              <div
-                                style={{
-                                  fontSize: "0.72rem",
-                                  color: "var(--gray)",
-                                  marginTop: "0.35rem",
-                                  opacity: 0.7,
-                                }}
-                              >
-                                {new Date(n.created_at).toLocaleDateString(
-                                  "en-PH",
-                                  {
-                                    month: "short",
-                                    day: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  },
-                                )}
+                              <div style={{ fontSize: "0.72rem", color: "#888", marginTop: "0.35rem" }}>
+                                {new Date(n.created_at).toLocaleDateString("en-PH", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
                               </div>
                             </div>
                           </div>

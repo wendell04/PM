@@ -371,15 +371,6 @@ export default function PosPage() {
     <ErrorBoundary>
     <div style={{ padding: '2rem 1.5rem', maxWidth: '900px', margin: '0 auto' }}>
 
-      {/* Page header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 className="page-title">Point of Sale</h1>
-        <p style={{ color: 'var(--gray)', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>
-          Walk-in counter sales
-          {currentUser?.name ? ` | ${currentUser.name}` : ''}
-        </p>
-      </div>
-
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '1.5rem', alignItems: 'start' }}>
 
         <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 180px)', minHeight: '400px' }}>

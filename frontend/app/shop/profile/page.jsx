@@ -26,8 +26,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 function getLocalUser() {
   try {
-    const raw =
-      localStorage.getItem("auth_user") || sessionStorage.getItem("auth_user");
+    const raw = localStorage.getItem("auth_user");
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -39,7 +38,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
 
   const getStoredTotpConfirmed = () => {
     try {
-      const raw = localStorage.getItem("auth_user") || sessionStorage.getItem("auth_user");
+      const raw = localStorage.getItem("auth_user");
       return raw ? !!(JSON.parse(raw)?.totp_confirmed) : false;
     } catch { return false; }
   };
@@ -61,14 +60,11 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
 
   const updateStoredUser = (updates) => {
     try {
-      const ss = sessionStorage.getItem("auth_user");
-      const ls = localStorage.getItem("auth_user");
-      const key = ss ? sessionStorage : localStorage;
-      const raw = ss || ls;
+      const raw = localStorage.getItem("auth_user");
       if (raw) {
         const u = JSON.parse(raw);
         Object.assign(u, updates);
-        key.setItem("auth_user", JSON.stringify(u));
+        localStorage.setItem("auth_user", JSON.stringify(u));
       }
     } catch {}
   };
@@ -858,8 +854,7 @@ export default function CustomerProfilePage() {
 
     loadSessions();
     // Populate device tokens from stored user
-    const raw =
-      localStorage.getItem("auth_user") || sessionStorage.getItem("auth_user");
+    const raw = localStorage.getItem("auth_user");
   }, [activeTab, token]);
 
   const handleProfileChange = (field, value) => {
@@ -984,8 +979,6 @@ export default function CustomerProfilePage() {
       setTimeout(() => {
         localStorage.removeItem("auth_token");
         localStorage.removeItem("auth_user");
-        sessionStorage.removeItem("auth_token");
-        sessionStorage.removeItem("auth_user");
         sessionStorage.setItem("sessionExpired", "true");
         router.replace("/");
       }, 2000);
@@ -1022,8 +1015,6 @@ export default function CustomerProfilePage() {
       // Clear all local auth state and redirect
       localStorage.removeItem('auth_token');
       localStorage.removeItem('auth_user');
-      sessionStorage.removeItem('auth_token');
-      sessionStorage.removeItem('auth_user');
       logout?.();
       router.replace('/?accountDeleted=1');
     } catch (err) {

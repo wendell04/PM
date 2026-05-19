@@ -157,12 +157,6 @@ export default function AuditLogsPage() {
         {/* Page Header */}
         <div className="page-header">
           <div className="page-header-content">
-            <div>
-              <h1 className="page-title">Audit Logs</h1>
-              <p className="page-subtitle">
-                Stock movement history — restocks, sales, corrections, and returns.
-              </p>
-            </div>
             <button
               onClick={fetchLogs}
               disabled={isLoading}
@@ -416,7 +410,7 @@ export default function AuditLogsPage() {
                   style={{
                     height: '56px',
                     borderRadius: '8px',
-                    background: 'rgba(255,255,255,0.04)',
+                    background: 'var(--dark2)',
                     animation: 'alPageSkel 1.5s ease-in-out infinite',
                   }}
                 />

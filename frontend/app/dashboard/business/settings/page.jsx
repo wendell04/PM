@@ -356,14 +356,11 @@ export default function SettingsPage() {
         setCurrentUser(prev => ({ ...prev, two_factor_enabled: next }));
       }
       try {
-        const ss = sessionStorage.getItem('auth_user');
-        const ls = localStorage.getItem('auth_user');
-        const storage = ss ? sessionStorage : localStorage;
-        const raw = ss || ls;
+        const raw = localStorage.getItem('auth_user');
         if (raw) {
           const u = JSON.parse(raw);
           u.two_factor_enabled = next;
-          storage.setItem('auth_user', JSON.stringify(u));
+          localStorage.setItem('auth_user', JSON.stringify(u));
         }
       } catch {}
     } catch (err) {
@@ -737,16 +734,6 @@ export default function SettingsPage() {
   return (
     <ErrorBoundary>
       <div className="page-content-wrapper">
-
-        {/* Header */}
-        <div className="page-header">
-          <div className="page-header-content">
-            <div>
-              <h1 className="page-title">Settings</h1>
-              <p className="page-subtitle">Manage your profile, avatar, and account security.</p>
-            </div>
-          </div>
-        </div>
 
         <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start', maxWidth: '960px' }}>
           <nav

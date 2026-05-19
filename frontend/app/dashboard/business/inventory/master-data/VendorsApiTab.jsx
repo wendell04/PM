@@ -203,14 +203,14 @@ function normalizeVendorList(list) {
 // ─── Vendor Catalog Modal ──────────────────────────────────
 function VendorCatalogModal({ vendor, materials, inventory, onClose }) {
   const [catalogSearch, setCatalogSearch] = useState('');
-  if (!vendor) return null;
 
   const linkedMaterials = useMemo(
-    () => (materials || []).filter((m) => m.preferredVendorId === vendor.id && !m.parentId),
-    [materials, vendor.id],
+    () => (!vendor ? [] : (materials || []).filter((m) => m.preferredVendorId === vendor.id && !m.parentId)),
+    [materials, vendor],
   );
 
   const batchRows = useMemo(() => {
+    if (!vendor) return [];
     const rows = [];
     const supplierId = vendor.id;
     (inventory || []).forEach((item) => {
@@ -228,7 +228,9 @@ function VendorCatalogModal({ vendor, materials, inventory, onClose }) {
       });
     });
     return rows.sort((a, b) => new Date(b.dateReceived) - new Date(a.dateReceived));
-  }, [inventory, vendor.id]);
+  }, [inventory, vendor]);
+
+  if (!vendor) return null;
 
   const totalSpent = batchRows.reduce((s, r) => s + r.unitCost * r.originalQty, 0);
 

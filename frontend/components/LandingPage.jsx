@@ -126,6 +126,13 @@ const LandingPage = ({onEnterShop}) => {
   const [navProductsLoading, setNavProductsLoading] = useState(false);
   const [hoveredCollection, setHoveredCollection] = useState(null);
   const [collectionProducts, setCollectionProducts] = useState([]);
+  const [navHoverLoading, setNavHoverLoading]     = useState(false);
+
+  const [colSetIdx, setColSetIdx]         = useState(0);
+  const [colSetProducts, setColSetProducts] = useState([]);
+  const [colSetLoading, setColSetLoading] = useState(false);
+  const [colPaused, setColPaused]         = useState(false);
+  const colIntervalRef                    = useRef(null);
 
   // Hero carousel
   const [heroSlide, setHeroSlide] = useState(0);
@@ -307,6 +314,28 @@ const LandingPage = ({onEnterShop}) => {
       .then(d => setLandingCollections(Array.isArray(d?.data) ? d.data : []))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!landingCollections.length) return;
+    const firstCol = landingCollections[colSetIdx * 4];
+    if (!firstCol?.slug) return;
+    setColSetLoading(true);
+    setColSetProducts([]);
+    fetch(`${API_URL}/api/storefront/collections/${firstCol.slug}`)
+      .then(r => r.json())
+      .then(d => setColSetProducts(Array.isArray(d?.data?.products) ? d.data.products : []))
+      .catch(() => setColSetProducts([]))
+      .finally(() => setColSetLoading(false));
+  }, [colSetIdx, landingCollections]);
+
+  useEffect(() => {
+    const totalSets = Math.ceil(landingCollections.length / 4);
+    if (colPaused || totalSets <= 1) return;
+    colIntervalRef.current = setInterval(() => {
+      setColSetIdx(i => (i + 1) % totalSets);
+    }, 20000);
+    return () => clearInterval(colIntervalRef.current);
+  }, [colPaused, landingCollections.length]);
 
 
   // Fetch live banners for hero carousel
@@ -604,9 +633,8 @@ const LandingPage = ({onEnterShop}) => {
       }
 
       // No 2FA required — write to storage now
-      const storage = rememberMe ? localStorage : sessionStorage;
-      storage.setItem('auth_token', data.data.token);
-      storage.setItem('auth_user', JSON.stringify(data.data.user));
+      localStorage.setItem('auth_token', data.data.token);
+      localStorage.setItem('auth_user', JSON.stringify(data.data.user));
       try {
         const bc = new BroadcastChannel('pmp_auth');
         bc.postMessage({ type: 'AUTH_UPDATE', token: data.data.token, user: data.data.user });
@@ -645,9 +673,8 @@ const LandingPage = ({onEnterShop}) => {
       const data = await response.json();
       if (!response.ok) { setVerifyError(data.message || 'Verification failed.'); return; }
       if (pendingAuth) {
-        const storage = pendingAuth.rememberMe ? localStorage : sessionStorage;
-        storage.setItem('auth_token', pendingAuth.token);
-        storage.setItem('auth_user', JSON.stringify(pendingAuth.user));
+        localStorage.setItem('auth_token', pendingAuth.token);
+        localStorage.setItem('auth_user', JSON.stringify(pendingAuth.user));
         try {
           const bc = new BroadcastChannel('pmp_auth');
           bc.postMessage({ type: 'AUTH_UPDATE', token: pendingAuth.token, user: pendingAuth.user });
@@ -882,11 +909,17 @@ const handleForgotResetPassword = async () => {
     const colId = col.id ?? col._id;
     setHoveredCollection(colId);
     setCollectionProducts([]);
+    setNavHoverLoading(true);
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/storefront/collections/${col.slug}`, {}, 10000);
+      const res = await fetchWithTimeout(`${API_URL}/api/storefront/collections/${col.slug}`, {}, 5000);
       const data = await res.json();
-      setCollectionProducts(Array.isArray(data?.data?.products) ? data.data.products : []);
-    } catch {}
+      const prods = Array.isArray(data?.data?.products) ? data.data.products : [];
+      setCollectionProducts(prods);
+    } catch {
+      setCollectionProducts([]);
+    } finally {
+      setNavHoverLoading(false);
+    }
   };
 
   // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -1039,6 +1072,8 @@ const handleForgotResetPassword = async () => {
 
   const currentBannerImage = effectiveSlides[heroSlide]?.image ?? null;
 
+  const colTotalSets = Math.ceil(landingCollections.length / 4);
+  const colCurrentSet = landingCollections.slice(colSetIdx * 4, colSetIdx * 4 + 4);
 
   // ─── JSX ──────────────────────────────────────────────────────────────────────
   return (
@@ -1264,7 +1299,7 @@ const handleForgotResetPassword = async () => {
                               <button
                                 key={p._id || p.id || String(idx)}
                                 className="mega-col-item"
-                                onClick={() => { setHoveredNav(null); router.push('/shop'); }}
+                                onClick={() => { setHoveredNav(null); router.push(`/shop/products/${p._id || p.id}`); }}
                               >
                                 {p.name}
                               </button>
@@ -1307,15 +1342,19 @@ const handleForgotResetPassword = async () => {
                       })}
                     </div>
                     <div className="mega-cat-products">
-                      {collectionProducts.length === 0 ? (
-                        <div className="mega-cat-empty">Hover a category to preview products</div>
+                      {navHoverLoading ? (
+                        <div className="mega-cat-empty">Loading...</div>
+                      ) : collectionProducts.length === 0 ? (
+                        <div className="mega-cat-empty">
+                          {hoveredCollection ? 'No products in this category yet' : 'Hover a category to preview products'}
+                        </div>
                       ) : (
                         <div className="mega-col-products-list">
                           {collectionProducts.map((p, idx) => (
                             <button
                               key={p.id || p._id || String(idx)}
                               className="mega-col-item"
-                              onClick={() => { setHoveredNav(null); router.push('/shop'); }}
+                              onClick={() => { setHoveredNav(null); router.push(`/shop/products/${p.id || p._id}`); }}
                             >
                               {p.name}
                             </button>
@@ -1480,52 +1519,65 @@ const handleForgotResetPassword = async () => {
         </div>
       </section>
 
-      {/* COLLECTIONS SHOWCASE */}
+      {/* COLLECTIONS — Pinnacle-style 4-grid with auto-rotation */}
       {landingCollections.length > 0 && (
-        <section className="lp-collections-section">
+        <section
+          className="lp-pinnacle"
+          onMouseEnter={() => setColPaused(true)}
+          onMouseLeave={() => setColPaused(false)}
+        >
           <div className="container">
-            <div className="lp-collections-header">
+            <div className="lp-pinnacle-hd">
               <div>
-                <h2 className="lp-collections-title">Shop by Collection</h2>
-                <p className="lp-collections-sub">Handpicked products for every occasion</p>
+                <span className="section-tag">Shop by Collection</span>
+                <h2 className="section-title" style={{ marginTop: '0.25rem', marginBottom: 0 }}>
+                  Our <span className="gold-text">Collections</span>
+                </h2>
               </div>
-              <button className="lp-collections-viewall" onClick={handleEnterShop}>
+              <button className="lp-col-viewall-btn" onClick={() => router.push('/shop')}>
                 View all
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
                 </svg>
               </button>
             </div>
-            <div className="lp-collections-grid">
-              {landingCollections.slice(0, 6).map((col, idx) => (
+
+            {/* 4-collection Pinnacle grid */}
+            <div className="lp-pinnacle-grid">
+              {colCurrentSet.map((col, i) => (
                 <button
-                  key={col.id || col._id || col.slug || col.title || String(idx)}
-                  className="lp-collection-card"
-                  onClick={handleEnterShop}
+                  key={col._id || col.id || i}
+                  className={`lp-pinnacle-card lp-pinnacle-card--${['large', 'wide', 'sm-left', 'sm-right'][i]}`}
+                  onClick={() => router.push(`/shop?collection=${col.slug}`)}
                 >
-                  <div className="lp-collection-card-img">
-                    {col.image ? (
-                      <img src={col.image} alt={col.title} />
-                    ) : (
-                      <div className="lp-collection-card-placeholder">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="3" y="3" width="18" height="18" rx="2"/>
-                          <circle cx="8.5" cy="8.5" r="1.5"/>
-                          <polyline points="21 15 16 10 5 21"/>
-                        </svg>
-                      </div>
+                  {col.image ? (
+                    <img src={col.image} alt={col.title} />
+                  ) : (
+                    <div className="lp-pinnacle-card-ph" />
+                  )}
+                  <div className="lp-pinnacle-card-overlay">
+                    <span className="lp-pinnacle-card-title">{col.title}</span>
+                    {col.productCount > 0 && (
+                      <span className="lp-pinnacle-card-count">{col.productCount} items</span>
                     )}
-                    <div className="lp-collection-card-overlay" />
-                    <div className="lp-collection-card-info">
-                      <span className="lp-collection-card-title">{col.title}</span>
-                      {col.productCount > 0 && (
-                        <span className="lp-collection-card-count">{col.productCount} items</span>
-                      )}
-                    </div>
                   </div>
                 </button>
               ))}
             </div>
+
+            {/* Progress dots — only when multiple sets */}
+            {colTotalSets > 1 && (
+              <div className="lp-pinnacle-dots">
+                {Array.from({ length: colTotalSets }).map((_, i) => (
+                  <button
+                    key={i}
+                    className={`lp-pinnacle-dot${colSetIdx === i ? ' active' : ''}`}
+                    onClick={() => setColSetIdx(i)}
+                    aria-label={`Set ${i + 1}`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </section>
       )}

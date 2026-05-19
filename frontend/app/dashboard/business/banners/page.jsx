@@ -658,7 +658,7 @@ export default function BannerManagementPage() {
               style={{
                 height: "56px",
                 borderRadius: "8px",
-                background: "rgba(255,255,255,0.04)",
+                background: "var(--dark2)",
                 animation: "bnPageSkel 1.5s ease-in-out infinite",
               }}
             />
@@ -722,7 +722,7 @@ export default function BannerManagementPage() {
         .banner-upload-text { font-size: 0.875rem; font-weight: 600; }
         .banner-upload-hint { font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.25rem; }
 
-        .banner-preview-container { background: var(--dark); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; position: relative; }
+        .banner-preview-container { --white: #f5f5f5; --black: #0f0f0f; --gray-light: #aaa; --border: rgba(255,255,255,0.08); background: var(--dark); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; overflow: hidden; position: relative; }
         .banner-preview-badge { position: absolute; top: 1rem; left: 1rem; z-index: 10; background: rgba(0, 0, 0, 0.8); padding: 0.375rem 0.75rem; border-radius: 20px; display: flex; align-items: center; gap: 0.5rem; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--white); }
         .banner-preview-indicator { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #ef4444; animation: pulse 2s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
@@ -851,7 +851,6 @@ export default function BannerManagementPage() {
 
       {/* Header */}
       <div className="banner-header">
-        <h1 className="page-title">Banners</h1>
         <div className="banner-actions">
           {isLive ? (
             <button className="banner-btn banner-btn-secondary" onClick={unpublishBanner} disabled={isSubmitting} style={{ opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}>

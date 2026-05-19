@@ -91,6 +91,7 @@ export default function ProductsV2() {
         trackInventory:       true,
         allowCOD:             formData.allowCOD,
         hideWhenOutOfStock:   formData.hideWhenOutOfStock,
+        isFeatured:           formData.isFeatured,
       };
 
       payload.images    = httpImages;
@@ -288,7 +289,7 @@ export default function ProductsV2() {
 
   if (view === 'form') {
     return (
-      <div style={{ background: '#f4f6f8', minHeight: '100%' }}>
+      <div style={{ minHeight: '100%' }}>
         <ProductAddEditPage
           product={formTarget}
           boms={boms}
@@ -316,7 +317,6 @@ export default function ProductsV2() {
     <div style={S.page}>
 
       <div style={{ ...S.rowBetween, marginBottom: '20px' }}>
-        <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: '#1a1a2e' }}>Products</h1>
         <button onClick={openAdd} style={S.btnPrimary}>{ICONS.plus} Add Product</button>
       </div>
 
@@ -518,12 +518,13 @@ function StockBreakdown({ product, boms, materials }) {
 
         return (
           <div key={vi}>
-            {v.label && (
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
-                <span style={{ fontSize:'12px', fontWeight:700, color:'#374151' }}>{v.label}</span>
-                <span style={{ fontSize:'12px', fontWeight:700, color:prodColor }}>{prod} can build</span>
-              </div>
-            )}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
+              {v.label
+                ? <span style={{ fontSize:'12px', fontWeight:700, color:'#374151' }}>{v.label}</span>
+                : <span style={{ fontSize:'12px', color:'#9ca3af' }}>Standalone</span>
+              }
+              <span style={{ fontSize:'12px', fontWeight:700, color:prodColor }}>{prod} can build</span>
+            </div>
             <table style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead>
                 <tr>

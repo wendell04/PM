@@ -155,16 +155,6 @@ function PromotionsInner() {
 
   return (
     <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-        <div>
-          <h1 className="page-title" style={{ margin: 0 }}>Promotions</h1>
-          <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', color: 'var(--gray)' }}>
-            Manage vouchers and flash sales for customers
-          </p>
-        </div>
-      </div>
-
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0', marginBottom: '1.25rem', borderBottom: '1px solid var(--border)' }}>
         {[

@@ -27,12 +27,12 @@ export { useGlobalCart as useCart };
 
 // ─── Auth Helper ──────────────────────────────────────────────────────────────
 function getToken() {
-  return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+  return localStorage.getItem('auth_token');
 }
 
 function getUser() {
   try {
-    const raw = localStorage.getItem('auth_user') || sessionStorage.getItem('auth_user');
+    const raw = localStorage.getItem('auth_user');
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
 }
@@ -903,9 +903,8 @@ export default function ShopLayout({ children }) {
       return;
     }
 
-    const storage = rememberMe ? localStorage : sessionStorage;
-    storage.setItem('auth_token', token);
-    storage.setItem('auth_user', JSON.stringify(userData));
+    localStorage.setItem('auth_token', token);
+    localStorage.setItem('auth_user', JSON.stringify(userData));
     try {
       const bc = new BroadcastChannel('pmp_auth');
       bc.postMessage({ type: 'AUTH_UPDATE', token, user: userData });
@@ -955,9 +954,8 @@ export default function ShopLayout({ children }) {
 
   // Handle successful registration
   const handleRegisterSuccess = async (userData, token, rememberMe = false) => {
-    const storage = rememberMe ? localStorage : sessionStorage;
-    storage.setItem('auth_token', token);
-    storage.setItem('auth_user', JSON.stringify(userData));
+    localStorage.setItem('auth_token', token);
+    localStorage.setItem('auth_user', JSON.stringify(userData));
     try {
       const bc = new BroadcastChannel('pmp_auth');
       bc.postMessage({ type: 'AUTH_UPDATE', token, user: userData });
@@ -1372,8 +1370,6 @@ export default function ShopLayout({ children }) {
     } catch {}
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
-    sessionStorage.removeItem('auth_token');
-    sessionStorage.removeItem('auth_user');
     sessionStorage.removeItem('shop_cart');
     setUser(null);
     sessionStorage.setItem('justLoggedOut', 'true');
@@ -1606,6 +1602,20 @@ export default function ShopLayout({ children }) {
 
             {/* Right side */}
             <div className="shop-navbar-right">
+              {/* Shop button — hidden on storefront browsing pages and landing */}
+              {!(pathname === '/shop' || pathname.startsWith('/shop/products') || pathname.startsWith('/shop/collections') || pathname.startsWith('/shop/search')) && (
+                <Link
+                  href="/shop"
+                  className="shop-navbar-shop-btn"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                    <line x1="3" y1="6" x2="21" y2="6"/>
+                    <path d="M16 10a4 4 0 0 1-8 0"/>
+                  </svg>
+                  <span>Shop</span>
+                </Link>
+              )}
               {/* Cart button + popup */}
               <div style={{ position: 'relative' }}>
                 <button
@@ -2007,9 +2017,8 @@ export default function ShopLayout({ children }) {
             onSuccess={(redirectTo) => {
               // OTP verified — now write credentials to storage
               if (twoFaPendingUser && twoFaToken) {
-                const storage = twoFaPendingRememberMe ? localStorage : sessionStorage;
-                storage.setItem('auth_token', twoFaToken);
-                storage.setItem('auth_user', JSON.stringify(twoFaPendingUser));
+                localStorage.setItem('auth_token', twoFaToken);
+                localStorage.setItem('auth_user', JSON.stringify(twoFaPendingUser));
                 try {
                   const bc = new BroadcastChannel('pmp_auth');
                   bc.postMessage({ type: 'AUTH_UPDATE', token: twoFaToken, user: twoFaPendingUser });

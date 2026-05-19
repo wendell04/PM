@@ -150,6 +150,7 @@ export default function CartPage() {
         requiresDownpayment: item.requiresDownpayment ?? false,
         downpaymentPercent:  item.downpaymentPercent ?? null,
         downpaymentMinQty:   item.downpaymentMinQty ?? null,
+        allowCOD:            item.allowCOD ?? true,
       },
       stockCap: (() => {
         if (!item.trackInventory || item.stockStatus === 'upon-order') return 99;
@@ -303,6 +304,7 @@ export default function CartPage() {
             minOrderQty:         i.product.minOrderQty ?? null,
             requiresDownpayment: i.requiresDownpayment ?? i.product.requiresDownpayment ?? false,
             downpaymentPercent:  i.downpaymentPercent ?? i.product.downpaymentPercent ?? null,
+            allowCOD:            i.allowCOD ?? i.product.allowCOD ?? true,
           },
           variantId:       i.variantId   ?? null,
           variantName:     i.variantName ?? null,

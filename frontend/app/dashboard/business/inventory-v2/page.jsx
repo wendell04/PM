@@ -107,13 +107,6 @@ export default function InventoryV2() {
   return (
     <div style={S.page}>
       <div style={{ marginBottom:'20px' }}>
-        <h1 style={{ margin:0, fontSize:'22px', fontWeight:800, color:'#1a1a2e' }}>
-          Inventory <span style={{ fontSize:'13px', fontWeight:500, color:'#9ca3af', marginLeft:6 }}>{SECTION_LABELS[section]}</span>
-        </h1>
-        {loading && <span style={{ fontSize:'12px', color:'#9ca3af' }}>Loading…</span>}
-      </div>
-
-      <div style={{ marginBottom:'20px' }}>
         <TabBar tabs={visibleTabs} active={tab} onChange={setTab} />
       </div>
 

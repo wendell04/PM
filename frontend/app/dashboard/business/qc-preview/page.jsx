@@ -88,14 +88,16 @@ export default function QCPreviewPage() {
   if (isLoading) {
     return (
       <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
+        <style>{`@keyframes qcPageSkel { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }`}</style>
         {[...Array(5)].map((_, i) => (
           <div
             key={i}
             style={{
               height: '56px',
-              background: 'rgba(255,255,255,0.04)',
+              background: 'var(--dark2)',
               borderRadius: '8px',
               marginBottom: '0.5rem',
+              animation: 'qcPageSkel 1.5s ease-in-out infinite',
             }}
           />
         ))}
@@ -132,17 +134,6 @@ export default function QCPreviewPage() {
   return (
     <ErrorBoundary>
     <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Page Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>
-          Home › Quality Control › Pending
-        </div>
-        <h1 className="page-title">Quality Control Dashboard</h1>
-        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--gray)' }}>
-          Inspect completed job orders. Pass or fail with defect notes.
-        </p>
-      </div>
-
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
         <div style={{ background: 'rgba(6,182,212,0.08)', borderRadius: '12px', padding: '1rem', border: '1px solid rgba(6,182,212,0.2)', textAlign: 'center' }}>

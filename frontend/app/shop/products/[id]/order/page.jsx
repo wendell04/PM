@@ -278,10 +278,11 @@ export default function CustomOrderPage() {
     if (!selectedAddress) {
       setSubmitError('Please select a delivery address.'); return;
     }
-    if (designMode === 'request' && !paymentMethod) {
+    const needsPayment = designMode === 'request' || (designMode === 'upload' && downpaymentRequired);
+    if (needsPayment && !paymentMethod) {
       setSubmitError('Please select a payment method.'); return;
     }
-    if (designMode === 'request' && paymentMethod === 'card') {
+    if (needsPayment && paymentMethod === 'card') {
       const num = cardNumber.replace(/\s/g,'');
       if (num.length < 16) { setSubmitError('Enter a valid 16-digit card number.'); return; }
       if (!cardExpiry || cardExpiry.length < 4) { setSubmitError('Enter a valid expiry date (MM/YY).'); return; }
@@ -306,7 +307,7 @@ export default function CustomOrderPage() {
           : {}),
       };
 
-      if (designMode === 'upload') {
+      if (designMode === 'upload' && !downpaymentRequired) {
         const deliveryAddress = {
           label: selectedAddress.label,
           house_number: selectedAddress.house_number,
@@ -655,14 +656,20 @@ export default function CustomOrderPage() {
             </section>}
 
             {/* Step 4: Payment */}
-            {designMode === 'request' && <section style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
+            {(designMode === 'request' || (designMode === 'upload' && downpaymentRequired)) && <section style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
               <h2 style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>4 — Payment Method</h2>
 
               <div style={{ padding: '0.75rem 1rem', background: 'rgba(212,168,67,0.08)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-                Pay the <strong style={{ color: 'var(--gold)' }}>design fee of {fmt(designFee)}</strong> now. The remaining order balance of <strong style={{ color: 'var(--white)' }}>{fmt(remainingBalance)}</strong> will be collected after design approval.
+                {designMode === 'request'
+                  ? <>Pay the <strong style={{ color: 'var(--gold)' }}>design fee of {fmt(designFee)}</strong> now. The remaining order balance of <strong style={{ color: 'var(--white)' }}>{fmt(remainingBalance)}</strong> will be collected after design approval.</>
+                  : <>A <strong style={{ color: 'var(--gold)' }}>{downpaymentPercent}% downpayment of {fmt(amountDue)}</strong> is required to confirm your custom order. The remaining <strong style={{ color: 'var(--white)' }}>{fmt(remainingBalance)}</strong> will be collected upon completion.</>
+                }
               </div>
 
               {[
+                ...(designMode === 'upload' && downpaymentRequired && product?.allowCOD
+                  ? [{ id: 'cod', label: 'Cash on Delivery', sub: `Pay ₱${amountDue.toLocaleString('en-PH', { minimumFractionDigits: 2 })} downpayment on delivery.`, accent: '#d4a843', accentBg: 'rgba(212,168,67,0.08)', logo: '/logos/cod.png', isCOD: true }]
+                  : []),
                 { id: 'gcash',    label: 'GCash',              sub: "Redirect to GCash to authorize.",   accent: '#0066FF', accentBg: 'rgba(0,102,255,0.07)',    logo: '/logos/Gcash-Logo-1024x1024.png' },
                 { id: 'paymaya', label: 'Maya',               sub: "Redirect to Maya to authorize.",    accent: '#00B14F', accentBg: 'rgba(0,177,79,0.07)',     logo: '/logos/maya logo.png' },
                 { id: 'card',    label: 'Credit / Debit Card', sub: 'Pay with Visa or Mastercard.',     accent: '#9C7BE8', accentBg: 'rgba(156,123,232,0.07)', logo: '/logos/credit-card.svg', filterImg: true },

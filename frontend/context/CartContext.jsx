@@ -111,6 +111,7 @@ export function CartProvider({ children }) {
         ...(product.priceTiers?.length ? { priceTiers: product.priceTiers } : {}),
         image: product.thumbnail || product.images?.[0] || null,
         isCustom: product.isCustom ?? false,
+        allowCOD: product.allowCOD ?? true,
         ...(product.designFee != null ? { designFee: product.designFee } : {}),
         ...(product.minOrderQty != null ? { minOrderQty: product.minOrderQty } : {}),
         ...(product.requiresDownpayment ? { requiresDownpayment: true, downpaymentPercent: product.downpaymentPercent ?? 50 } : {}),

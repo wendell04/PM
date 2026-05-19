@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { containsProfanity } from '../../lib/profanity';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -8,10 +9,12 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
   const [text, setText] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [profanityWarning, setProfanityWarning] = useState(false);
   const [previewFile, setPreviewFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const fileInputRef = useRef(null);
   const typingThrottleRef = useRef(null);
+  const profanityTimerRef = useRef(null);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -20,6 +23,16 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
   const handleSubmit = (e) => {
     if (e) e.preventDefault();
     if (!text.trim() || isSending || isUploading) return;
+
+    if (containsProfanity(text.trim())) {
+      setProfanityWarning(true);
+      if (profanityTimerRef.current) clearTimeout(profanityTimerRef.current);
+      profanityTimerRef.current = setTimeout(() => {
+        setProfanityWarning(false);
+        profanityTimerRef.current = null;
+      }, 3000);
+      return;
+    }
 
     const isVirtual = activeConversation._id === 'support_auto' || activeConversation._id?.startsWith('new_');
     const payload = {
@@ -137,6 +150,11 @@ const ChatInput = ({ onSendMessage, isSending, activeConversation, token, onTypi
           >
             {isUploading ? 'Sending...' : 'Send'}
           </button>
+        </div>
+      )}
+      {profanityWarning && (
+        <div style={{ fontSize: '0.75rem', color: '#ef4444', marginBottom: '6px', padding: '4px 8px', background: 'rgba(239,68,68,0.08)', borderRadius: '6px' }}>
+          Please keep the conversation respectful. Inappropriate language is not allowed.
         </div>
       )}
       {uploadError && (
