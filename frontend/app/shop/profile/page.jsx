@@ -1670,11 +1670,12 @@ export default function CustomerProfilePage() {
 
               // Account completeness
               const completenessItems = [
-                { label: "Profile photo", done: !!(currentUser?.avatar) },
-                { label: "Phone number", done: !!(profileForm.phoneNumber) },
-                { label: "Delivery address", done: overviewAddresses.length > 0 },
-                { label: "Two-factor auth", done: !!twoFactorEnabled },
+                { label: "Profile photo",    done: !!(currentUser?.avatar),          tab: "personal"   },
+                { label: "Phone number",     done: !!(profileForm.phoneNumber),       tab: "personal"   },
+                { label: "Delivery address", done: overviewAddresses.length > 0,     tab: "addresses"  },
+                { label: "Two-factor auth",  done: !!twoFactorEnabled,               tab: "security"   },
               ];
+              const firstIncompleteTab = completenessItems.find(c => !c.done)?.tab ?? "personal";
               const completePct = Math.round((completenessItems.filter(c => c.done).length / completenessItems.length) * 100);
 
               // Active order tracker
@@ -1735,7 +1736,7 @@ export default function CustomerProfilePage() {
                           <div style={{ height: "100%", width: `${completePct}%`, background: completePct === 100 ? "#4ade80" : "var(--gold)", borderRadius: "2px", transition: "width 0.5s ease" }} />
                         </div>
                         {completePct < 100 && (
-                          <button onClick={() => setActiveTab("personal")} style={{ marginTop: "0.4rem", background: "none", border: "none", color: "rgba(212,168,67,0.7)", fontSize: "0.67rem", cursor: "pointer", padding: 0 }}>
+                          <button onClick={() => setActiveTab(firstIncompleteTab)} style={{ marginTop: "0.4rem", background: "none", border: "none", color: "rgba(212,168,67,0.7)", fontSize: "0.67rem", cursor: "pointer", padding: 0 }}>
                             Complete profile →
                           </button>
                         )}
@@ -1745,7 +1746,11 @@ export default function CustomerProfilePage() {
                     {completePct < 100 && (
                       <div style={{ marginTop: "1rem", paddingTop: "0.875rem", borderTop: "1px solid rgba(212,168,67,0.1)", display: "flex", gap: "0.625rem", flexWrap: "wrap" }}>
                         {completenessItems.map((c, i) => (
-                          <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", fontSize: "0.68rem", fontWeight: 500, color: c.done ? "#4ade80" : "var(--gray)", opacity: c.done ? 0.7 : 1 }}>
+                          <span
+                            key={i}
+                            onClick={() => !c.done && setActiveTab(c.tab)}
+                            style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", fontSize: "0.68rem", fontWeight: 500, color: c.done ? "#4ade80" : "rgba(212,168,67,0.8)", opacity: c.done ? 0.7 : 1, cursor: c.done ? "default" : "pointer", textDecoration: c.done ? "none" : "underline", textUnderlineOffset: "2px" }}
+                          >
                             {c.done
                               ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
                               : <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/></svg>
@@ -2011,363 +2016,124 @@ export default function CustomerProfilePage() {
 
             {/* TAB 2: Personal Info */}
             {activeTab === "personal" && (
-              <div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: "1.5rem",
-                  }}
-                >
-                  <h2
-                    style={{
-                      margin: 0,
-                      fontSize: "1.25rem",
-                      color: "var(--white)",
-                    }}
-                  >
-                    Personal Information
-                  </h2>
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                {/* Tab header */}
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", paddingBottom: "1.25rem", borderBottom: "1px solid var(--border)" }}>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "var(--white)", letterSpacing: "-0.01em" }}>Personal Information</h2>
+                    <p style={{ margin: "0.3rem 0 0", fontSize: "0.78rem", color: "var(--gray)" }}>Manage your name, contact details, and display information</p>
+                  </div>
                   {!isEditingProfile ? (
-                    <button
-                      onClick={handleEditProfile}
-                      style={{
-                        padding: "0.5rem 1rem",
-                        background: "transparent",
-                        border: "1px solid var(--border)",
-                        borderRadius: "8px",
-                        color: "var(--white)",
-                        fontSize: "0.875rem",
-                        cursor: "pointer",
-                      }}
-                    >
+                    <button onClick={handleEditProfile} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1rem", background: "rgba(212,168,67,0.1)", border: "1px solid rgba(212,168,67,0.3)", borderRadius: "8px", color: "var(--gold)", fontSize: "0.78rem", fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                       Edit Profile
                     </button>
                   ) : (
-                    <button
-                      onClick={handleCancelEdit}
-                      style={{
-                        padding: "0.5rem 1rem",
-                        background: "transparent",
-                        border: "1px solid var(--border)",
-                        borderRadius: "8px",
-                        color: "var(--gray)",
-                        fontSize: "0.875rem",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Cancel Editing
-                    </button>
+                    <button onClick={handleCancelEdit} style={{ flexShrink: 0, padding: "0.5rem 1rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--gray)", fontSize: "0.78rem", cursor: "pointer" }}>Cancel Editing</button>
                   )}
                 </div>
 
+                {/* Alerts */}
                 {saveSuccess && (
-                  <div
-                    style={{
-                      marginBottom: "1rem",
-                      padding: "0.75rem 1rem",
-                      background: "rgba(34, 197, 94, 0.1)",
-                      border: "1px solid rgba(34, 197, 94, 0.3)",
-                      borderRadius: "8px",
-                      color: "var(--gold)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                    }}
-                  >
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                      <polyline points="22 4 12 14.01 9 11.01" />
-                    </svg>
+                  <div style={{ padding: "0.75rem 1rem", background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.25)", borderRadius: "8px", color: "var(--green)", display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem" }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                     {saveSuccess}
                   </div>
                 )}
-
                 {saveError && (
-                  <div
-                    style={{
-                      marginBottom: "1rem",
-                      padding: "0.75rem 1rem",
-                      background: "rgba(239, 68, 68, 0.1)",
-                      border: "1px solid rgba(239, 68, 68, 0.3)",
-                      borderRadius: "8px",
-                      color: "var(--red)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                    }}
-                  >
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="8" x2="12" y2="12" />
-                      <line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
+                  <div style={{ padding: "0.75rem 1rem", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "8px", color: "var(--red)", display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem" }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     {saveError}
                   </div>
                 )}
 
                 {!isEditingProfile ? (
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: "1rem",
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "var(--gray)",
-                          marginBottom: "0.25rem",
-                        }}
-                      >
-                        First Name
+                  <>
+                    {/* Name section */}
+                    <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", borderLeft: "3px solid rgba(212,168,67,0.5)" }}>
+                      <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(212,168,67,0.04)" }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)" }}>Identity</span>
                       </div>
-                      <div
-                        style={{ fontSize: "0.95rem", color: "var(--white)" }}
-                      >
-                        {profileForm.firstName || "—"}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+                        {[
+                          { label: "First Name", value: profileForm.firstName },
+                          { label: "Last Name",  value: profileForm.lastName  },
+                        ].map((f, i) => (
+                          <div key={i} style={{ padding: "1rem 1.25rem", borderRight: i === 0 ? "1px solid var(--border)" : "none" }}>
+                            <div style={{ fontSize: "0.68rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--gray)", marginBottom: "0.35rem" }}>{f.label}</div>
+                            <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--white)" }}>{f.value || <span style={{ color: "var(--gray)", fontWeight: 400, fontStyle: "italic" }}>Not set</span>}</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                    <div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "var(--gray)",
-                          marginBottom: "0.25rem",
-                        }}
-                      >
-                        Last Name
+
+                    {/* Contact section */}
+                    <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", borderLeft: "3px solid rgba(96,165,250,0.5)" }}>
+                      <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(96,165,250,0.04)" }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                        <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)" }}>Contact</span>
                       </div>
-                      <div
-                        style={{ fontSize: "0.95rem", color: "var(--white)" }}
-                      >
-                        {profileForm.lastName || "—"}
-                      </div>
-                    </div>
-                    <div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "var(--gray)",
-                          marginBottom: "0.25rem",
-                        }}
-                      >
-                        Email
-                      </div>
-                      <div
-                        style={{ fontSize: "0.95rem", color: "var(--white)" }}
-                      >
-                        {profileForm.email || "—"}
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
+                          <div>
+                            <div style={{ fontSize: "0.68rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--gray)", marginBottom: "0.35rem" }}>Email Address</div>
+                            <div style={{ fontSize: "0.925rem", fontWeight: 500, color: "var(--white)" }}>{profileForm.email || "—"}</div>
+                          </div>
+                          <span style={{ flexShrink: 0, fontSize: "0.65rem", fontWeight: 600, padding: "2px 8px", borderRadius: "999px", background: "rgba(255,255,255,0.05)", color: "var(--gray)", border: "1px solid var(--border)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Locked</span>
+                        </div>
+                        <div style={{ padding: "1rem 1.25rem", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
+                          <div>
+                            <div style={{ fontSize: "0.68rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--gray)", marginBottom: "0.35rem" }}>Phone Number</div>
+                            <div style={{ fontSize: "0.925rem", fontWeight: profileForm.phoneNumber ? 500 : 400, color: profileForm.phoneNumber ? "var(--white)" : "var(--gray)", fontStyle: profileForm.phoneNumber ? "normal" : "italic" }}>
+                              {profileForm.phoneNumber || "Not set"}
+                            </div>
+                          </div>
+                          {!profileForm.phoneNumber && (
+                            <button onClick={handleEditProfile} style={{ flexShrink: 0, fontSize: "0.72rem", fontWeight: 600, color: "var(--gold)", background: "rgba(212,168,67,0.1)", border: "1px solid rgba(212,168,67,0.25)", borderRadius: "6px", padding: "3px 10px", cursor: "pointer" }}>+ Add</button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "var(--gray)",
-                          marginBottom: "0.25rem",
-                        }}
-                      >
-                        Phone
-                      </div>
-                      <div
-                        style={{ fontSize: "0.95rem", color: "var(--white)" }}
-                      >
-                        {profileForm.phoneNumber || "—"}
-                      </div>
-                    </div>
-                  </div>
+                  </>
                 ) : (
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: "1rem",
-                    }}
-                  >
-                    <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: "0.8rem",
-                          color: "var(--gray)",
-                          marginBottom: "0.4rem",
-                        }}
-                      >
-                        First Name{" "}
-                        <span style={{ color: "var(--red)" }}>*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={profileForm.firstName}
-                        onChange={(e) =>
-                          handleProfileChange("firstName", e.target.value)
-                        }
-                        style={{
-                          width: "100%",
-                          padding: "0.625rem 0.75rem",
-                          background: "var(--dark)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          color: "var(--white)",
-                          fontSize: "0.875rem",
-                          boxSizing: "border-box",
-                        }}
-                      />
+                  /* Edit form */
+                  <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                    <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(212,168,67,0.04)" }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)" }}>Editing Profile</span>
                     </div>
-                    <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: "0.8rem",
-                          color: "var(--gray)",
-                          marginBottom: "0.4rem",
-                        }}
-                      >
-                        Last Name <span style={{ color: "var(--red)" }}>*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={profileForm.lastName}
-                        onChange={(e) =>
-                          handleProfileChange("lastName", e.target.value)
-                        }
-                        style={{
-                          width: "100%",
-                          padding: "0.625rem 0.75rem",
-                          background: "var(--dark)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          color: "var(--white)",
-                          fontSize: "0.875rem",
-                          boxSizing: "border-box",
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: "0.8rem",
-                          color: "var(--gray)",
-                          marginBottom: "0.4rem",
-                        }}
-                      >
-                        Email Address{" "}
-                        <span
-                          style={{
-                            marginLeft: "0.5rem",
-                            fontSize: "0.75rem",
-                            color: "var(--gray)",
-                          }}
-                        >
-                          (cannot be changed)
-                        </span>
-                      </label>
-                      <input
-                        type="email"
-                        value={profileForm.email}
-                        disabled
-                        style={{
-                          width: "100%",
-                          padding: "0.625rem 0.75rem",
-                          background: "var(--dark3)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          color: "var(--gray)",
-                          fontSize: "0.875rem",
-                          cursor: "not-allowed",
-                          opacity: 0.6,
-                          boxSizing: "border-box",
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: "0.8rem",
-                          color: "var(--gray)",
-                          marginBottom: "0.4rem",
-                        }}
-                      >
-                        Phone Number{" "}
-                        <span style={{ color: "var(--red)" }}>*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={profileForm.phoneNumber}
-                        onChange={(e) =>
-                          handleProfileChange("phoneNumber", e.target.value)
-                        }
-                        style={{
-                          width: "100%",
-                          padding: "0.625rem 0.75rem",
-                          background: "var(--dark)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          color: "var(--white)",
-                          fontSize: "0.875rem",
-                          boxSizing: "border-box",
-                        }}
-                      />
-                    </div>
-                    <div
-                      style={{
-                        gridColumn: "1 / -1",
-                        display: "flex",
-                        gap: "0.75rem",
-                        justifyContent: "flex-end",
-                        paddingTop: "0.5rem",
-                      }}
-                    >
-                      <button
-                        onClick={handleCancelEdit}
-                        style={{
-                          padding: "0.625rem 1.25rem",
-                          background: "transparent",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          color: "var(--gray)",
-                          fontSize: "0.875rem",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSaveProfile}
-                        disabled={isSaving}
-                        style={{
-                          padding: "0.625rem 1.5rem",
-                          background: isSaving ? "var(--dark3)" : "var(--gold)",
-                          border: "none",
-                          borderRadius: "8px",
-                          color: isSaving ? "var(--gray)" : "var(--black)",
-                          fontSize: "0.875rem",
-                          fontWeight: 600,
-                          cursor: isSaving ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        {isSaving ? "Saving..." : "Save Changes"}
-                      </button>
+                    <div style={{ padding: "1.5rem", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
+                          First Name <span style={{ color: "var(--red)" }}>*</span>
+                        </label>
+                        <input type="text" value={profileForm.firstName} onChange={(e) => handleProfileChange("firstName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
+                          Last Name <span style={{ color: "var(--red)" }}>*</span>
+                        </label>
+                        <input type="text" value={profileForm.lastName} onChange={(e) => handleProfileChange("lastName", e.target.value)} style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
+                          Email Address <span style={{ fontSize: "0.68rem", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(cannot be changed)</span>
+                        </label>
+                        <input type="email" value={profileForm.email} disabled style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark3)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--gray)", fontSize: "0.875rem", cursor: "not-allowed", opacity: 0.6, boxSizing: "border-box" }} />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
+                          Phone Number <span style={{ color: "var(--red)" }}>*</span>
+                        </label>
+                        <input type="text" value={profileForm.phoneNumber} onChange={(e) => handleProfileChange("phoneNumber", e.target.value)} placeholder="+639XXXXXXXXX" style={{ width: "100%", padding: "0.625rem 0.75rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--white)", fontSize: "0.875rem", boxSizing: "border-box" }} />
+                      </div>
+                      <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.75rem", justifyContent: "flex-end", paddingTop: "0.25rem", borderTop: "1px solid var(--border)" }}>
+                        <button onClick={handleCancelEdit} style={{ padding: "0.625rem 1.25rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", color: "var(--gray)", fontSize: "0.875rem", cursor: "pointer" }}>Cancel</button>
+                        <button onClick={handleSaveProfile} disabled={isSaving} style={{ padding: "0.625rem 1.5rem", background: isSaving ? "var(--dark3)" : "var(--gold)", border: "none", borderRadius: "8px", color: isSaving ? "var(--gray)" : "var(--black)", fontSize: "0.875rem", fontWeight: 700, cursor: isSaving ? "not-allowed" : "pointer" }}>
+                          {isSaving ? "Saving..." : "Save Changes"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -2376,16 +2142,20 @@ export default function CustomerProfilePage() {
 
             {/* TAB 3: Security */}
             {activeTab === "security" && (
-              <div style={{ maxWidth: "500px" }}>
-                <h2
-                  style={{
-                    margin: "0 0 1.25rem",
-                    fontSize: "1.25rem",
-                    color: "var(--white)",
-                  }}
-                >
-                  Change Password
-                </h2>
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                {/* Security tab header */}
+                <div style={{ paddingBottom: "1.25rem", borderBottom: "1px solid var(--border)" }}>
+                  <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "var(--white)", letterSpacing: "-0.01em" }}>Security Settings</h2>
+                  <p style={{ margin: "0.3rem 0 0", fontSize: "0.78rem", color: "var(--gray)" }}>Manage your password, active devices, and account safety</p>
+                </div>
+
+                {/* Password card */}
+                <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", borderLeft: "3px solid rgba(212,168,67,0.5)" }}>
+                  <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", background: "rgba(212,168,67,0.04)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)" }}>Change Password</span>
+                  </div>
+                  <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
 
                 <div
                   style={{
@@ -2393,7 +2163,7 @@ export default function CustomerProfilePage() {
                     background: "rgba(212, 168, 67, 0.1)",
                     borderRadius: "8px",
                     border: "1px solid rgba(212, 168, 67, 0.3)",
-                    marginBottom: "1.5rem",
+                    marginBottom: "0",
                   }}
                 >
                   <div
@@ -2482,13 +2252,6 @@ export default function CustomerProfilePage() {
                   </div>
                 )}
 
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "1rem",
-                  }}
-                >
                   <div>
                     <label
                       style={{
@@ -2884,83 +2647,36 @@ export default function CustomerProfilePage() {
                   >
                     {isSavingPassword ? "Updating..." : "Update Password"}
                   </button>
-                </div>
+                  </div>{/* end password card inner padding */}
+                </div>{/* end password card */}
 
-                {/* Active Sessions Section */}
-                <div
-                  style={{
-                    marginTop: "2.5rem",
-                    paddingTop: "2rem",
-                    borderTop: "1px solid var(--border)",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: "1.25rem",
-                      flexWrap: "wrap",
-                      gap: "0.75rem",
-                    }}
-                  >
-                    <div>
-                      <h3
-                        style={{
-                          margin: 0,
-                          fontSize: "1rem",
-                          fontWeight: 600,
-                          color: "var(--white)",
-                        }}
-                      >
-                        Active Sessions
-                      </h3>
-                      <p
-                        style={{
-                          margin: "0.25rem 0 0",
-                          fontSize: "0.8rem",
-                          color: "var(--gray)",
-                        }}
-                      >
-                        Devices currently logged into your account.
-                      </p>
+                {/* Active Sessions card */}
+                <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", borderLeft: "3px solid rgba(96,165,250,0.5)" }}>
+                  <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", background: "rgba(96,165,250,0.04)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                      <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)" }}>Active Sessions</span>
+                      <span style={{ fontSize: "0.68rem", color: "var(--gray)" }}>— Devices currently logged in</span>
                     </div>
-                    {sessions.filter((s) => !s.is_current).length > 0 && (
+                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                      {sessions.filter((s) => !s.is_current).length > 0 && (
+                        <button
+                          onClick={handleRevokeAllOthers}
+                          disabled={revokeAllLoading}
+                          style={{ padding: "0.35rem 0.75rem", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "6px", color: "var(--red)", fontSize: "0.72rem", fontWeight: 600, cursor: revokeAllLoading ? "not-allowed" : "pointer", opacity: revokeAllLoading ? 0.6 : 1 }}
+                        >
+                          {revokeAllLoading ? "Revoking..." : "Revoke All Others"}
+                        </button>
+                      )}
                       <button
-                        onClick={handleRevokeAllOthers}
-                        disabled={revokeAllLoading}
-                        style={{
-                          padding: "0.5rem 1rem",
-                          background: "rgba(239,68,68,0.1)",
-                          border: "1px solid rgba(239,68,68,0.3)",
-                          borderRadius: "8px",
-                          color: "var(--red)",
-                          fontSize: "0.8rem",
-                          fontWeight: 600,
-                          cursor: revokeAllLoading ? "not-allowed" : "pointer",
-                          opacity: revokeAllLoading ? 0.6 : 1,
-                          transition: "all 0.2s",
-                        }}
+                        onClick={() => setSessionsOpen((v) => !v)}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--gold)", fontSize: "0.78rem", fontWeight: 600, padding: "0.25rem 0.5rem" }}
                       >
-                        {revokeAllLoading ? "Revoking..." : "Revoke All Others"}
+                        {sessionsOpen ? "Hide" : "Show"}
                       </button>
-                    )}
-                    <button
-                      onClick={() => setSessionsOpen((v) => !v)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        color: "var(--gold)",
-                        fontSize: "0.8rem",
-                        fontWeight: 600,
-                        padding: "0.25rem 0.5rem",
-                      }}
-                    >
-                      {sessionsOpen ? "Hide" : "Show"}
-                    </button>
+                    </div>
                   </div>
-
+                  <div style={{ padding: "1rem 1.25rem" }}>
                   {sessionsOpen && (
                     <>
                       {sessionsSuccess && (
@@ -3224,7 +2940,8 @@ export default function CustomerProfilePage() {
                       )}
                     </>
                   )}
-                </div>
+                  </div>{/* end sessions card inner padding */}
+                </div>{/* end sessions card */}
               </div>
             )}
 
@@ -3420,7 +3137,15 @@ export default function CustomerProfilePage() {
             )}
 
             {/* TAB 4: Addresses */}
-            {activeTab === "addresses" && <AddressBook />}
+            {activeTab === "addresses" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                <div style={{ paddingBottom: "1.25rem", borderBottom: "1px solid var(--border)" }}>
+                  <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "var(--white)", letterSpacing: "-0.01em" }}>Saved Addresses</h2>
+                  <p style={{ margin: "0.3rem 0 0", fontSize: "0.78rem", color: "var(--gray)" }}>Manage your delivery addresses for faster checkout</p>
+                </div>
+                <AddressBook />
+              </div>
+            )}
           </div>
         </section>
       </main>
