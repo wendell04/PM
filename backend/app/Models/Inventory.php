@@ -29,9 +29,6 @@ class Inventory extends Model
         'reservedQty'  => 'integer',
         'consumedQty'  => 'integer',
         'badOrderQty'  => 'integer',
-        'batches'      => 'array',
-        'variantTypes' => 'array',
-        'variantCombo' => 'array',
         'createdAt' => 'datetime',
         'updatedAt' => 'datetime',
     ];

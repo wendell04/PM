@@ -13,67 +13,44 @@
  * This is a PREVIEW with mock data.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchJobOrders } from '@/lib/jobOrderApi';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
-const MOCK_JOBS = [
-  {
-    id: 'JO-2026-045',
-    orderId: 'ORD-2026-001',
-    customer: 'Juan Dela Cruz',
-    items: [
-      { name: 'Custom Ceramic Mug 11oz', qty: 10 },
-      { name: 'Magic Mug Black 15oz', qty: 5 },
-    ],
-    designFile: 'company-logo.png',
-    targetDate: '2026-04-15',
-    isRush: false,
-    status: 'queued',
-    assignedTo: 'Production Team A',
-    notes: 'Custom name printing on all mugs',
-    timeline: [
-      { action: 'JO Created', date: '2026-04-11T09:00', by: 'Admin' },
-    ],
-  },
-  {
-    id: 'JO-2026-042',
-    orderId: 'ORD-2026-003',
-    customer: 'Pedro Reyes',
-    items: [
-      { name: 'Sticker Pack A4', qty: 50 },
-      { name: 'Custom Ceramic Mug 11oz', qty: 8 },
-    ],
-    designFile: 'sticker-artwork.pdf',
-    targetDate: '2026-04-14',
-    isRush: true,
-    status: 'in_progress',
-    assignedTo: 'Production Team A',
-    notes: 'Rush order — event on April 20',
-    timeline: [
-      { action: 'JO Created', date: '2026-04-09T08:00', by: 'Admin' },
-      { action: 'Started', date: '2026-04-10T10:00', by: 'You' },
-    ],
-  },
-  {
-    id: 'JO-2026-038',
-    orderId: 'ORD-2026-004',
-    customer: 'Ana Garcia',
-    items: [
-      { name: 'Custom Ceramic Mug 11oz', qty: 10 },
-    ],
-    designFile: null,
-    targetDate: '2026-04-12',
-    isRush: false,
-    status: 'completed',
-    assignedTo: 'Production Team B',
-    notes: '',
-    timeline: [
-      { action: 'JO Created', date: '2026-04-06T09:00', by: 'Admin' },
-      { action: 'Started', date: '2026-04-07T10:00', by: 'You' },
-      { action: 'Marked Complete', date: '2026-04-10T11:00', by: 'You', note: 'Sent to QC' },
-    ],
-  },
-];
+function normalizeJobForProduction(jo) {
+  const raw = jo.joStatus || jo.status || 'Queued';
+  const status = raw === 'In Progress' ? 'in_progress'
+               : raw === 'Queued'      ? 'queued'
+               : raw.toLowerCase().startsWith('qc') ? 'completed'
+               : raw.toLowerCase().replace(/\s+/g, '_');
+  const prod = jo.product || {};
+  const items = Array.isArray(jo.items) && jo.items.length > 0
+    ? jo.items.map(i => ({ name: i.product_name || i.productName || i.name || '', qty: Number(i.qty || i.quantity || 1) }))
+    : prod.name
+      ? [{ name: prod.name + (prod.variant ? ` (${prod.variant})` : ''), qty: Number(prod.quantity || 1) }]
+      : [];
+  const fp = jo.designFilePath || jo.design_file_path || null;
+  return {
+    _id:        String(jo.id ?? jo._id),
+    id:         jo.joId || String(jo.id ?? jo._id),
+    orderId:    jo.orderId || '',
+    customer:   jo.order?.userSnapshot?.name || jo.order?.customer?.name || jo.customerName || '—',
+    items,
+    designFile: fp ? fp.split('/').pop() : null,
+    targetDate: jo.targetCompletion || null,
+    isRush:     !!jo.isRush,
+    status,
+    assignedTo: jo.assignedTo || '',
+    notes:      jo.notes || '',
+    timeline:   (jo.statusHistory || jo.timeline || []).map(t => ({
+      action: t.action || t.status || t.event || '',
+      date:   t.date || t.createdAt || '',
+      by:     t.by || t.updatedBy || t.user || '',
+      note:   t.note || t.notes || '',
+    })),
+  };
+}
 
 const STATUS_CONFIG = {
   queued: { label: 'Queued', color: 'var(--color-text-warning)', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
@@ -92,28 +69,29 @@ function formatTime(d) {
 }
 
 export default function ProductionPreviewPage() {
+  const { token } = useAuth();
   const [jobs, setJobs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        await new Promise((r) => setTimeout(r, 120));
-        if (!cancelled) setJobs(MOCK_JOBS);
-      } catch (err) {
-        if (!cancelled) setError(err.message || 'Failed to load');
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const loadJobs = useCallback(async () => {
+    if (!token) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await fetchJobOrders(token);
+      const all = Array.isArray(data) ? data : (data?.data ?? []);
+      setJobs(all.map(normalizeJobForProduction));
+    } catch (err) {
+      setError(err.message || 'Failed to load job orders');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { loadJobs(); }, [loadJobs]);
 
   const filtered = useMemo(() => {
     if (filterStatus === 'all') return jobs;

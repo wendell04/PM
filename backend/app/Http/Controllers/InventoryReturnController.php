@@ -59,7 +59,7 @@ class InventoryReturnController extends Controller
                 return [
                     'pendingCount'    => InventoryReturn::where('status', 'pending')->count(),
                     'replacedCount'   => InventoryReturn::where('status', 'replaced')->count(),
-                    'writtenOffCount' => InventoryReturn::where('status', 'written_off')->count(),
+                    'writtenOffCount' => InventoryReturn::whereIn('status', ['written_off', 'refunded'])->count(),
                     'totalLoss'       => (float) InventoryReturn::sum('totalLoss'),
                 ];
             });
@@ -94,7 +94,7 @@ class InventoryReturnController extends Controller
                 'quantity'      => 'required_without:qty|integer|min:1',
                 'qty'           => 'nullable|integer|min:1',
                 'notes'         => 'nullable|string|max:500',
-                'status'        => 'nullable|in:pending,replaced,written_off',
+                'status'        => 'nullable|in:pending,replaced,written_off,refunded',
             ]);
 
             $materialId = $validated['materialId'] ?? $validated['inventoryId'] ?? null;
@@ -153,7 +153,7 @@ class InventoryReturnController extends Controller
             }
 
             $validated = $request->validate([
-                'status' => 'required|in:pending,replaced,written_off',
+                'status' => 'required|in:pending,replaced,written_off,refunded',
                 'notes'  => 'nullable|string|max:500',
             ]);
 
@@ -167,104 +167,69 @@ class InventoryReturnController extends Controller
                 $inventoryReturn->notes = htmlspecialchars(strip_tags(trim($validated['notes'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             }
 
-            // Replacement received: restore stock to inventory batches + audit trail
+            // Written off / refunded: permanently remove from stock (items are gone either way)
             if (
-                $validated['status'] === 'replaced'
-                && $previousStatus !== 'replaced'
+                in_array($validated['status'], ['written_off', 'refunded'])
+                && !in_array($previousStatus, ['written_off', 'refunded'])
             ) {
                 $materialId = $inventoryReturn->materialId ?? $inventoryReturn->inventoryId;
                 $qty = (int) ($inventoryReturn->quantity ?? $inventoryReturn->qty ?? 0);
-                $unitCost = (float) ($inventoryReturn->unitCost ?? 0);
 
                 if ($materialId && $qty > 0) {
                     $inventory = Inventory::find($materialId);
                     if ($inventory) {
-                        $batches = $inventory->batches ?? [];
-                        if (!is_array($batches)) {
-                            $batches = [];
-                        }
-
-                        if (count($batches) === 0) {
-                            $batches[] = [
-                                'batchId'       => (string) \Illuminate\Support\Str::uuid(),
-                                'invoiceNumber' => null,
-                                'supplierId'    => $inventoryReturn->vendorId ?? $inventory->supplierId ?? null,
-                                'vendorName'    => $inventoryReturn->vendorName ?? $inventory->supplierName ?? null,
-                                'goodQty'       => $qty,
-                                'remainingQty'  => $qty,
-                                'qtyDamaged'    => 0,
-                                'unitCost'      => $unitCost > 0 ? $unitCost : ($inventory->averageCost ?? 0),
-                                'dateReceived'  => now()->toISOString(),
-                                'createdAt'     => now()->toISOString(),
-                            ];
-                        } else {
-                            usort($batches, function ($a, $b) {
-                                return strtotime($b['dateReceived'] ?? '0') <=> strtotime($a['dateReceived'] ?? '0');
-                            });
-                            $idx = 0;
-                            $curRem = (int) ($batches[$idx]['remainingQty'] ?? $batches[$idx]['goodQty'] ?? 0);
-                            $curGood = (int) ($batches[$idx]['goodQty'] ?? $curRem);
-                            $batches[$idx]['remainingQty'] = $curRem + $qty;
-                            $batches[$idx]['goodQty'] = $curGood + $qty;
-                        }
-
                         $oldStock = (int) ($inventory->stockQty ?? 0);
-                        $newStock = $oldStock + $qty;
-                        $inventory->batches = $batches;
+                        $newStock = max(0, $oldStock - $qty);
                         $inventory->stockQty = $newStock;
-
-                        if ($unitCost > 0 && $newStock > 0) {
-                            $currentTotalCost = ($inventory->averageCost ?? 0) * $oldStock;
-                            $inventory->averageCost = ($currentTotalCost + $unitCost * $qty) / $newStock;
-                        }
-
                         $inventory->updatedAt = now();
                         $inventory->save();
 
                         $performedBy = 'system';
                         $u = $request->user();
                         if ($u) {
-                            $performedBy = $u->name
-                                ?? trim(($u->firstName ?? '') . ' ' . ($u->lastName ?? ''));
-                            if ($performedBy === '') {
-                                $performedBy = $u->email ?? 'system';
-                            }
+                            $performedBy = $u->name ?? trim(($u->firstName ?? '') . ' ' . ($u->lastName ?? ''));
+                            if ($performedBy === '') $performedBy = $u->email ?? 'system';
                         }
 
                         StockHistory::create([
                             'inventoryId'  => (string) $inventory->_id,
                             'quantity'     => $qty,
                             'remainingQty' => $newStock,
-                            'unitCost'     => $unitCost,
-                            'totalCost'    => $unitCost * $qty,
-                            'reason'       => 'return',
-                            'remarks'      => 'Bad order replacement received from vendor',
+                            'unitCost'     => (float) ($inventoryReturn->unitCost ?? 0),
+                            'totalCost'    => (float) ($inventoryReturn->unitCost ?? 0) * $qty,
+                            'reason'       => $validated['status'] === 'refunded' ? 'adjustment' : 'writeoff',
+                            'remarks'      => $validated['status'] === 'refunded' ? 'Bad order refunded — items removed from stock' : 'Bad order written off',
                             'performedBy'  => $performedBy,
-                            'type'         => 'in',
+                            'type'         => 'out',
                             'createdAt'    => now(),
                         ]);
+
                         try {
                             AuditLog::create([
                                 'inventoryId'  => (string) $inventory->_id,
                                 'productName'  => $inventory->name ?? 'Unknown',
                                 'category'     => $inventory->category ?? 'Uncategorized',
-                                'reason'       => 'return',
+                                'reason'       => 'writeoff',
                                 'quantity'     => $qty,
                                 'stockBefore'  => $oldStock,
                                 'stockAfter'   => $newStock,
-                                'unitCost'     => (float) $unitCost,
-                                'totalCost'    => (float) ($unitCost * $qty),
-                                'supplierId'   => $inventoryReturn->vendorId ?? null,
-                                'remarks'      => 'Bad order replacement received from vendor',
+                                'unitCost'     => (float) ($inventoryReturn->unitCost ?? 0),
+                                'totalCost'    => (float) ($inventoryReturn->unitCost ?? 0) * $qty,
+                                'remarks'      => 'Bad order written off',
                                 'performedBy'  => $performedBy,
                                 'createdAt'    => now(),
                             ]);
                         } catch (\Exception $auditEx) {
-                            \Illuminate\Support\Facades\Log::warning('AuditLog write failed (InventoryReturnController@update)', ['error' => $auditEx->getMessage()]);
+                            \Illuminate\Support\Facades\Log::warning('AuditLog write failed (InventoryReturnController@update written_off)', ['error' => $auditEx->getMessage()]);
                         }
                     }
                 }
             }
+
+            // Replaced: net-zero stock change.
+            // The defective units are already counted in stockQty (they were never deducted when BO was created).
+            // Vendor returns equivalent replacement units — defective out, replacement in = same count.
+            // stockQty stays unchanged; only the pending BO is cleared by the status update.
 
             $inventoryReturn->save();
 

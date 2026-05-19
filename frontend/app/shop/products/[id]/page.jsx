@@ -80,7 +80,8 @@ export default function ProductDetailPage() {
           const initial = {};
           p.variantGroups.forEach(g => {
             if (g.options?.length) {
-              initial[g.id] = g.options[0].value;
+              const o = g.options[0];
+              initial[g.id] = typeof o === 'string' ? o : (o.value ?? o.label ?? '');
             }
           });
           setSelectedVariants(initial);
@@ -236,12 +237,20 @@ export default function ProductDetailPage() {
   // Design upload removed — users attach design files at checkout via FormData.
   // Legacy order-request submit removed — flow is cart + checkout.
 
-  // Resolve combination from selectedVariants → { id, label }
+  // Resolve combination from selectedVariants → { id, name, bomId, ... }
   function resolveCombo(variants) {
     if (!product?.combinations?.length) return null;
-    return product.combinations.find(c =>
-      Object.keys(variants).every(k => c.combo?.[k] === variants[k])
-    ) ?? null;
+    // Old format: explicit combo map per combination
+    const byCombo = product.combinations.find(c =>
+      c.combo && Object.keys(variants).every(k => c.combo[k] === variants[k])
+    );
+    if (byCombo) return byCombo;
+    // New format: match by name
+    const vals = Object.values(variants).filter(v => v != null && v !== '' && v !== undefined);
+    if (vals.length === 0) return product.combinations[0] ?? null;
+    if (vals.length === 1) return product.combinations.find(c => c.name === vals[0]) ?? null;
+    const joined = vals.join(' / ');
+    return product.combinations.find(c => c.name === joined) ?? null;
   }
 
   function resolveVariantName(variants) {
@@ -359,7 +368,7 @@ export default function ProductDetailPage() {
         items: [{
           product: {
             _id:                  product._id ?? product.id,
-            name:                 product.subCategoryName || product.name,
+            name:                 product.name || product.subCategoryName,
             images: [
               ...(product.thumbnail ? [product.thumbnail] : []),
               ...(product.images || []),
@@ -399,6 +408,11 @@ export default function ProductDetailPage() {
     if (product?.variantAvailableQty && comboId != null && product.variantAvailableQty[comboId] != null) {
       return Math.max(product.variantAvailableQty[comboId], 0);
     }
+    // No combo selected yet but variant stock data exists — use max so product isn't shown as OOS before selection
+    if (product?.variantAvailableQty && comboId == null) {
+      const vals = Object.values(product.variantAvailableQty).map(v => Number(v) || 0);
+      if (vals.length > 0) return Math.max(...vals);
+    }
     // Single BOM product
     if (product?.canProduce != null) return Math.max(product.availableQty ?? 0, 0);
     // Variant product (no BOM)
@@ -422,7 +436,6 @@ export default function ProductDetailPage() {
   const tiers = product ? getTiers(product) : [];
   const sortedTiers = [...tiers].sort((a, b) => (parseInt(a.minQty) || 0) - (parseInt(b.minQty) || 0));
 
-  // Variant image: use per-variant image if configured, else fall back to main thumbnail
   const activeComboId = product ? resolveCombinationId(selectedVariants) : null;
   const variantImage = (() => {
     if (!activeComboId || !product?.variantImageUrls) return null;
@@ -430,12 +443,17 @@ export default function ProductDetailPage() {
       ?? product.variantImageUrls[String(activeComboId)]
       ?? null;
   })();
-  const displayImages = product
-    ? [
-        variantImage ?? product.thumbnail,
-        ...(product.images || []).filter(u => u && u !== (variantImage ?? product.thumbnail)),
-      ].filter(Boolean)
-    : [];
+  // Stable image list — order never changes when switching variants
+  const displayImages = (() => {
+    if (!product) return [];
+    const seen = new Set();
+    const result = [];
+    const add = (url) => { if (url && typeof url === 'string' && !seen.has(url)) { seen.add(url); result.push(url); } };
+    add(product.thumbnail);
+    (product.images || []).forEach(add);
+    Object.values(product.variantImageUrls || {}).forEach(add);
+    return result;
+  })();
 
   return (
     <>
@@ -767,8 +785,7 @@ export default function ProductDetailPage() {
               fontSize: '1.75rem', fontWeight: 800,
               color: 'var(--white)', margin: 0,
               lineHeight: 1.2 }}>
-              {product.subCategoryName
-                || product.name || 'Product'}
+              {product.name || product.subCategoryName || 'Product'}
             </h1>
 
             {/* Price display */}
@@ -904,25 +921,33 @@ export default function ProductDetailPage() {
                   </div>
                   <div style={{ display: 'flex',
                     gap: '0.5rem', flexWrap: 'wrap' }}>
-                    {group.options?.map(opt => (
-                      <button
-                        key={opt.id}
-                        onClick={() => {
-                          setSelectedVariants(prev => ({ ...prev, [group.id]: opt.value }));
-                          setActiveImage(0);
-                        }}
-                        style={{
-                          padding: '0.4rem 0.875rem',
-                          borderRadius: '8px', cursor: 'pointer',
-                          fontSize: '0.875rem', fontWeight: 600,
-                          border: selectedVariants[group.id] === opt.value ? '2px solid var(--gold)' : '1px solid var(--border)',
-                          background: selectedVariants[group.id] === opt.value ? 'var(--gold)' : 'var(--dark2)',
-                          color: selectedVariants[group.id] === opt.value ? '#000' : 'var(--white)',
-                          transition: 'all 0.15s',
-                        }}>
-                        {opt.value}
-                      </button>
-                    ))}
+                    {group.options?.map((opt, oi) => {
+                      const optVal = typeof opt === 'string' ? opt : (opt.value ?? opt.label ?? String(opt));
+                      const optKey = typeof opt === 'string' ? opt : (opt.id ?? oi);
+                      const isSelected = selectedVariants[group.id] === optVal;
+                      return (
+                        <button
+                          key={optKey}
+                          onClick={() => {
+                            setSelectedVariants(prev => ({ ...prev, [group.id]: optVal }));
+                            const combo = product?.combinations?.find(c => c.name === optVal);
+                            const varImg = combo?.id ? (product?.variantImageUrls ?? {})[combo.id] : null;
+                            const idx = varImg ? displayImages.indexOf(varImg) : -1;
+                            setActiveImage(idx >= 0 ? idx : 0);
+                          }}
+                          style={{
+                            padding: '0.4rem 0.875rem',
+                            borderRadius: '8px', cursor: 'pointer',
+                            fontSize: '0.875rem', fontWeight: 600,
+                            border: isSelected ? '2px solid var(--gold)' : '1px solid var(--border)',
+                            background: isSelected ? 'var(--gold)' : 'var(--dark2)',
+                            color: isSelected ? '#000' : 'var(--white)',
+                            transition: 'all 0.15s',
+                          }}>
+                          {optVal}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               ))
