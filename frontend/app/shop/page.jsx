@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useCart } from './layout';
@@ -777,11 +777,15 @@ export default function ShopPage() {
   const [productType, setProductType]   = useState('');
   const [quickViewProduct, setQuickViewProduct] = useState(null);
   const [collections, setCollections]   = useState([]);
-  const [selectedSlugs, setSelectedSlugs] = useState(new Set());
-  const [colCache, setColCache]           = useState({});
-  const [colLoadingSet, setColLoadingSet] = useState(new Set());
   const { addToCart } = useCart();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [selectedSlugs, setSelectedSlugs] = useState(() => {
+    const col = searchParams.get('collection');
+    return col ? new Set([col]) : new Set();
+  });
+  const [colCache, setColCache]           = useState({});
+  const [colLoadingSet, setColLoadingSet] = useState(new Set());
 
   useEffect(() => {
     const handleSearch = (e) => setSearchQuery(e.detail?.query ?? '');
@@ -924,6 +928,18 @@ export default function ShopPage() {
       setCollections(Array.isArray(data?.data) ? data.data : []);
     } catch {}
   }
+
+  // Pre-load cache for collection slug that came from URL on mount
+  useEffect(() => {
+    const col = searchParams.get('collection');
+    if (!col) return;
+    setColLoadingSet(s => { const n = new Set(s); n.add(col); return n; });
+    fetchWithTimeout(`${API_URL}/api/storefront/collections/${col}?per_page=60`, {}, 20000)
+      .then(r => r.json())
+      .then(data => setColCache(c => ({ ...c, [col]: data?.data?.products ?? [] })))
+      .catch(() => {})
+      .finally(() => setColLoadingSet(s => { const n = new Set(s); n.delete(col); return n; }));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleCol = async (col) => {
     if (!col) { setSelectedSlugs(new Set()); setCategory('All'); setSearchQuery(''); return; }
