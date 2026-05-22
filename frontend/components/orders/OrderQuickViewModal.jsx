@@ -558,9 +558,58 @@ export default function OrderQuickViewModal({
                         ₱{parseFloat(order.totalAmount ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                       </span>
                     </div>
-
                   </div>
                 </div>
+
+                {/* Update Status — admin only, left column */}
+                {mode === 'admin' && (
+                  <div>
+                    <h4 style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.75rem' }}>
+                      Update Status
+                    </h4>
+                    {['pending_design', 'revision_requested'].includes(order.orderStatus) ? (
+                      <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic' }}>
+                        Status updates via design draft upload
+                      </span>
+                    ) : ['awaiting_payment', 'ready_for_delivery'].includes(order.orderStatus) ? (
+                      <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic' }}>
+                        Waiting for customer payment
+                      </span>
+                    ) : getAvailableStatuses(order).length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <select
+                          value={selectedStatus}
+                          onChange={e => setSelectedStatus(e.target.value)}
+                          style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', fontSize: '0.875rem', cursor: 'pointer' }}
+                        >
+                          <option value={order.orderStatus}>
+                            {getStatusBadge(order.orderStatus).label || order.orderStatus} (current)
+                          </option>
+                          {getAvailableStatuses(order).map(s => (
+                            <option key={s} value={s} style={{ background: 'var(--dark)', color: 'var(--white)' }}>
+                              {getStatusBadge(s).label || s}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => selectedStatus !== order.orderStatus && setConfirmStatus(selectedStatus)}
+                          disabled={isUpdating || selectedStatus === order.orderStatus}
+                          style={{ width: '100%', padding: '0.5rem', background: isUpdating || selectedStatus === order.orderStatus ? 'var(--border)' : 'var(--gold)', border: 'none', borderRadius: '6px', color: isUpdating || selectedStatus === order.orderStatus ? 'var(--gray)' : 'var(--dark)', fontSize: '0.875rem', fontWeight: 700, cursor: isUpdating || selectedStatus === order.orderStatus ? 'not-allowed' : 'pointer' }}
+                        >
+                          {isUpdating ? 'Updating...' : 'Update Status'}
+                        </button>
+                        {updateError && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--red)' }}>{updateError}</div>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic' }}>
+                        {['Cancelled','Returned','Paid','Delivered','delivered'].includes(order.orderStatus)
+                          ? 'No further updates' : 'Managed via action buttons'}
+                      </span>
+                    )}
+                  </div>
+                )}
 
               </div>
 
@@ -1146,70 +1195,6 @@ export default function OrderQuickViewModal({
           )}
         </div>
 
-        {/* Footer (Admin mode only) */}
-        {mode === 'admin' && !isLoading && !error && order && (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px',
-              padding: '1rem 1.5rem',
-              borderTop: '1px solid var(--border)',
-              background: 'var(--dark2)',
-            }}
-          >
-            {/* Order status row */}
-            {['pending_design', 'revision_requested'].includes(order.orderStatus) ? (
-              <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic' }}>
-                Status updates via design draft upload above
-              </span>
-            ) : ['awaiting_payment', 'ready_for_delivery'].includes(order.orderStatus) ? (
-              <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic' }}>
-                Waiting for customer payment — status will advance automatically once paid
-              </span>
-            ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--gray)', fontWeight: 600, minWidth: '100px' }}>
-                Update Status:
-              </span>
-              {getAvailableStatuses(order).length > 0 ? (
-                <>
-                  <select
-                    value={selectedStatus}
-                    onChange={e => setSelectedStatus(e.target.value)}
-                    style={{ padding: '0.5rem 0.75rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--white)', fontSize: '0.875rem', cursor: 'pointer', minWidth: '160px' }}
-                  >
-                    <option value={order.orderStatus} style={{ color: 'var(--gray)' }}>
-                      {getStatusBadge(order.orderStatus).label || order.orderStatus} (current)
-                    </option>
-                    {getAvailableStatuses(order).map(s => (
-                      <option key={s} value={s} style={{ background: 'var(--dark)', color: 'var(--white)' }}>
-                        {getStatusBadge(s).label || s}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => selectedStatus !== order.orderStatus && setConfirmStatus(selectedStatus)}
-                    disabled={isUpdating || selectedStatus === order.orderStatus}
-                    style={{ padding: '0.5rem 1.25rem', background: isUpdating || selectedStatus === order.orderStatus ? 'var(--border)' : 'var(--gold)', border: 'none', borderRadius: '6px', color: isUpdating || selectedStatus === order.orderStatus ? 'var(--gray)' : 'var(--dark)', fontSize: '0.875rem', fontWeight: 600, cursor: isUpdating || selectedStatus === order.orderStatus ? 'not-allowed' : 'pointer' }}
-                  >
-                    {isUpdating ? 'Updating...' : 'Update'}
-                  </button>
-                </>
-              ) : (
-                <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontStyle: 'italic' }}>
-                  {['Cancelled', 'Returned', 'Paid', 'Delivered', 'delivered'].includes(order.orderStatus) ? 'No further updates' : 'Managed via action buttons above'}
-                </span>
-              )}
-            </div>
-            )}
-            {updateError && (
-              <div style={{ fontSize: '0.75rem', color: 'var(--red)' }}>
-                {updateError}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
 

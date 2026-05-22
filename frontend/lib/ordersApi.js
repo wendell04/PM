@@ -90,10 +90,17 @@ function normalizeOrder(apiOrder) {
   // Compute product name summary
   let productName = 'No items';
   if (items.length === 1) {
-    productName = items[0].product_name || items[0].productName || 'Product';
+    const name    = items[0].product_name || items[0].productName || 'Product';
+    const variant = items[0].variantName  || items[0].variant_name || null;
+    productName   = variant ? `${name} — ${variant}` : name;
   } else if (items.length > 1) {
-    const firstName = items[0].product_name || items[0].productName || 'Product';
-    productName = `${firstName} +${items.length - 1} more`;
+    const names       = items.map(i => i.product_name || i.productName || 'Product');
+    const uniqueNames = [...new Set(names)];
+    if (uniqueNames.length === 1) {
+      productName = `${uniqueNames[0]} ×${items.length}`;
+    } else {
+      productName = `${uniqueNames[0]} +${uniqueNames.length - 1} more`;
+    }
   }
 
   // Compute total quantity
@@ -130,6 +137,7 @@ function normalizeOrder(apiOrder) {
 
   return {
     id: apiOrder._id || apiOrder.id,
+    isArchived: !!(apiOrder.isArchived),
     orderNumber: apiOrder.order_number || apiOrder.orderId,
     customer: {
       name:  apiOrder.userSnapshot?.name  || apiOrder.customer?.name  || apiOrder.customerName  || 'Unknown',
@@ -196,6 +204,7 @@ export async function fetchAllOrdersNew(token, opts = {}) {
     const page = opts.page != null ? Math.max(1, parseInt(String(opts.page), 10) || 1) : 1;
     const limit = opts.limit != null ? Math.min(200, Math.max(1, parseInt(String(opts.limit), 10) || 50)) : 50;
     const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (opts.showArchived) qs.set('showArchived', '1');
     const response = await fetchWithTimeout(`${API_URL}/api/orders?${qs}`, {
       method: 'GET',
       headers: {
@@ -487,7 +496,7 @@ export async function recordOrderPayment(orderId, payload, token) {
 export { fetchAllOrdersNew as fetchAllOrders };
 
 /**
- * Hard-delete an order (admin/owner only)
+ * Soft-delete (archive) an order (admin/owner only)
  * Maps to DELETE /api/admin/orders/{id}
  */
 export async function deleteOrder(orderId, token) {
@@ -500,7 +509,7 @@ export async function deleteOrder(orderId, token) {
   }, 15000);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || err.message || 'Failed to delete order');
+    throw new Error(err.error || err.message || 'Failed to archive order');
   }
   return res.json();
 }

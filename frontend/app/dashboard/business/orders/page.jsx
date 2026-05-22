@@ -1,1713 +1,1191 @@
-/**
- * Orders Admin Page
- * Connects to backend API via ordersApi.js
- */
-
 'use client';
 
 import ErrorBoundary from '../../../../components/ErrorBoundary';
-import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchAllOrdersNew, updateOrder as updateOrderApi, updateJobOrderStatus, deleteOrder as deleteOrderApi } from '@/lib/ordersApi';
+import { fetchAllOrdersNew, updateJobOrderStatus, deleteOrder as deleteOrderApi } from '@/lib/ordersApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
-import { getStatusBadge } from '@/lib/utils/orderHelpers';
-import CustomDropdown from '@/app/components/CustomDropdown';
+import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
 
-const OrderQuickViewModal = dynamic(
-  () => import('@/components/orders/OrderQuickViewModal'),
-  { ssr: false },
-);
+const API_URL    = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const POLL_MS    = 30000;
+const PAGE_LIMIT = 500;
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const YEARS = [2025, 2026, 2027, 2028];
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+// ── Config ────────────────────────────────────────────────────────────────────
 
-export default function OrdersPage() {
-  const { token } = useAuth();
-  const [orders, setOrders] = useState([]);
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('All');
-  const [dateFilter, setDateFilter] = useState('this-month'); // 'today', 'this-week', 'this-month', 'custom'
-  const [customDateRange, setCustomDateRange] = useState({ fromMonth: 0, toMonth: 0, year: 2025 });
-  const [expandedIds, setExpandedIds] = useState(new Set());
-  const [showJOQueuing, setShowJOQueuing] = useState(false);
-  const [showPrintModal, setShowPrintModal] = useState(false);
-  const [selectedJO, setSelectedJO] = useState(null);
-  const [rowsPerPage, setRowsPerPage] = useState(20);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [deleteTargetId, setDeleteTargetId] = useState(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState('');
+const STATUS_TABS = ['All','Pending','In Production','For Delivery','Delivered','Returned','Cancelled'];
 
-  // Print modal form state
-  const [printDescription, setPrintDescription] = useState('');
-  const [printDesignImages, setPrintDesignImages] = useState([]); // Multiple images
-  const [loadError, setLoadError] = useState('');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const skipPollRef = useRef(false);
-  const ORDERS_PAGE_SIZE = 500;
+const STATUS_CFG = {
+  'Pending':       { bg:'#fff7ed', color:'#c2410c', border:'#fdba74'  },
+  'In Production': { bg:'#eef4ff', color:'#2c4a8c', border:'#bfcfee'  },
+  'For Delivery':  { bg:'#f5f3ff', color:'#5b21b6', border:'#ddd6fe'  },
+  'Delivered':     { bg:'#f0fdf4', color:'#166534', border:'#bbf7d0'  },
+  'Cancelled':     { bg:'#fef2f2', color:'#991b1b', border:'#fecaca'  },
+  'Returned':      { bg:'#fff0f0', color:'#b45309', border:'#fca5a5'  },
+};
 
-  // Order Quick View Modal state
-  const [selectedOrderId, setSelectedOrderId] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+const PAY_CFG = {
+  paid:    { bg:'#f0fdf4', color:'#166534', border:'#bbf7d0', label:'Paid'    },
+  partial: { bg:'#fff7ed', color:'#c2410c', border:'#fdba74', label:'Partial' },
+  unpaid:  { bg:'#fef2f2', color:'#991b1b', border:'#fecaca', label:'Unpaid'  },
+};
 
-  // Payment modal state
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentTarget, setPaymentTarget] = useState(null); // full order object
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [paymentNote, setPaymentNote] = useState('');
-  const [paymentError, setPaymentError] = useState('');
-  const [isPaymentSubmitting, setIsPaymentSubmitting] = useState(false);
+// ── Mini components ───────────────────────────────────────────────────────────
 
-  // Extract fetch orders logic into named function (paginated; poll skips after "Load more")
-  const fetchOrders = useCallback(
-    async () => {
-      setIsRefreshing(true);
-      skipPollRef.current = false;
-      setLoadError('');
-      try {
-        const data = await fetchAllOrdersNew(token, { page: 1, limit: ORDERS_PAGE_SIZE });
-        setOrders(Array.isArray(data) ? data : []);
-      } catch (error) {
-        console.error('Failed to load orders:', error);
-        setLoadError('Failed to load orders. Please refresh the page.');
-        setOrders([]);
-      } finally {
-        setIsRefreshing(false);
-      }
-    },
-    [token],
-  );
-
-  // Load orders from API on mount
-  useEffect(() => {
-    if (!token) return;
-    fetchOrders();
-  }, [token, fetchOrders]);
-
-  // Auto-refresh every 30s
-  const pollRef = useRef(null);
-  useEffect(() => {
-    if (!token) return;
-    pollRef.current = setInterval(() => {
-      if (!isRefreshing && !skipPollRef.current) {
-        fetchOrders();
-      }
-    }, 30000);
-    return () => clearInterval(pollRef.current);
-  }, [token, isRefreshing, fetchOrders]);
-
-  const filtered = orders.filter(o => {
-    const matchSearch = !search || o.customerName?.toLowerCase().includes(search.toLowerCase()) || o.id?.toLowerCase().includes(search.toLowerCase()) || o.productName?.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === 'All' || o.orderStatus === filterStatus;
-    
-    // Date filter
-    let matchDate = true;
-    const orderDate = new Date(o.createdAt);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    orderDate.setHours(0, 0, 0, 0);
-    
-    if (dateFilter === 'today') {
-      matchDate = orderDate.getTime() === today.getTime();
-    } else if (dateFilter === 'this-week') {
-      const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-      matchDate = orderDate >= weekAgo;
-    } else if (dateFilter === 'this-month') {
-      matchDate = orderDate.getMonth() === today.getMonth() && orderDate.getFullYear() === today.getFullYear();
-    } else if (dateFilter === 'custom') {
-      const fromMonth = customDateRange.fromMonth;
-      const toMonth = customDateRange.toMonth;
-      const year = customDateRange.year;
-      matchDate = orderDate.getFullYear() === year && orderDate.getMonth() >= fromMonth && orderDate.getMonth() <= toMonth;
-    }
-    
-    return matchSearch && matchStatus && matchDate;
-  });
-
-  // Sort filtered orders - newest to oldest
-  const sorted = [...filtered].sort((a, b) => {
-    const dateA = new Date(a.createdAt);
-    const dateB = new Date(b.createdAt);
-    return dateB - dateA; // Descending (newest first)
-  });
-
-  const totalOrders = sorted.length;
-  const pendingOrders = sorted.filter(o => o.orderStatus === 'Pending').length;
-  const inProduction = sorted.filter(o => o.orderStatus === 'In Production').length;
-  const forDelivery = sorted.filter(o => o.orderStatus === 'For Delivery').length;
-  const delivered = sorted.filter(o => o.orderStatus === 'Delivered').length;
-  const returned = sorted.filter(o => o.orderStatus === 'Returned').length;
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / rowsPerPage));
-  const safePage = Math.min(currentPage, totalPages);
-  const paginated = sorted.slice((safePage - 1) * rowsPerPage, safePage * rowsPerPage);
-
-  const getPaymentBadge = (status) => {
-    if (status === 'paid')    return { label: 'Paid',    color: 'var(--green)', bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.3)'  };
-    if (status === 'partial') return { label: 'Partial', color: 'var(--gold)', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.3)' };
-    return                           { label: 'Unpaid',  color: 'var(--red)', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.3)' };
-  };
-
+function StatusBadge({ status }) {
+  const c = STATUS_CFG[status] ?? { bg:'#f3f4f6', color:'#374151', border:'#e5e7eb' };
   return (
-    <ErrorBoundary>
-      <div className="page-content-wrapper">
-      {/* Page Header */}
-      <div className="page-header">
-
-        {/* Stats */}
-        <div className="inventory-summary">
-          <div className="summary-card">
-            <div className="summary-content">
-              <span className="summary-value">{totalOrders}</span>
-              <span className="summary-label">Total Orders</span>
-            </div>
-          </div>
-          <div className="summary-card">
-            <div className="summary-content">
-              <span className="summary-value">{pendingOrders}</span>
-              <span className="summary-label">Pending</span>
-            </div>
-          </div>
-          <div className="summary-card">
-            <div className="summary-content">
-              <span className="summary-value">{inProduction}</span>
-              <span className="summary-label">In Production</span>
-            </div>
-          </div>
-          <div className="summary-card">
-            <div className="summary-content">
-              <span className="summary-value">{forDelivery}</span>
-              <span className="summary-label">For Delivery</span>
-            </div>
-          </div>
-          <div className="summary-card summary-card-success">
-            <div className="summary-content">
-              <span className="summary-value">{delivered}</span>
-              <span className="summary-label">Delivered</span>
-            </div>
-          </div>
-          <div className="summary-card summary-card-danger">
-            <div className="summary-content">
-              <span className="summary-value">{returned}</span>
-              <span className="summary-label">Returned</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {isRefreshing && (
-        <div className="text-sm text-gray-500" style={{ marginBottom: '0.5rem' }}>
-          Refreshing...
-        </div>
-      )}
-
-      {/* Table card — filter + table + pagination inside one container */}
-      <div style={{
-        border: '1px solid var(--border)',
-        borderRadius: '10px',
-        overflow: 'hidden',
-        marginBottom: '1rem',
-      }}>
-        {/* Filters toolbar */}
-        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div className="search-wrapper" style={{ flex: '1', minWidth: '180px', maxWidth: '280px' }}>
-            <span className="search-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-              </svg>
-            </span>
-            <input className="search-input" placeholder="Search orders..." value={search} onChange={e => { setSearch(e.target.value); setCurrentPage(1); }} />
-            {search && <button className="search-clear" onClick={() => setSearch('')}>×</button>}
-          </div>
-
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <CustomDropdown
-              value={filterStatus}
-              onChange={v => { setFilterStatus(v); setCurrentPage(1); }}
-              options={[
-                'All','Pending','In Production','For Delivery','Delivered','Returned','Cancelled',
-                'pending_design','proof_sent','revision_requested','design_approved','awaiting_production','in_production','ready_for_pickup','shipped',
-              ].map(s => ({ value: s, label: s }))}
-              style={{ minWidth: '150px' }}
-            />
-
-            <CustomDropdown
-              value={dateFilter}
-              onChange={v => setDateFilter(v)}
-              options={[
-                { value: 'today', label: 'Today' },
-                { value: 'this-week', label: 'This Week' },
-                { value: 'this-month', label: 'This Month' },
-                { value: 'custom', label: 'Custom Range' },
-              ]}
-              style={{ minWidth: '130px' }}
-            />
-
-            {dateFilter === 'custom' && (
-              <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-                <CustomDropdown
-                  value={String(customDateRange.fromMonth)}
-                  onChange={v => setCustomDateRange(prev => ({ ...prev, fromMonth: parseInt(v) }))}
-                  options={MONTHS.map((m, i) => ({ value: String(i), label: m }))}
-                  style={{ minWidth: '110px' }}
-                />
-                <span style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>to</span>
-                <CustomDropdown
-                  value={String(customDateRange.toMonth)}
-                  onChange={v => setCustomDateRange(prev => ({ ...prev, toMonth: parseInt(v) }))}
-                  options={MONTHS.map((m, i) => ({ value: String(i), label: m }))}
-                  style={{ minWidth: '110px' }}
-                />
-                <CustomDropdown
-                  value={String(customDateRange.year)}
-                  onChange={v => setCustomDateRange(prev => ({ ...prev, year: parseInt(v) }))}
-                  options={YEARS.map(y => ({ value: String(y), label: String(y) }))}
-                  style={{ minWidth: '90px' }}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Table */}
-      <div style={{
-        WebkitOverflowScrolling: 'touch',
-        boxSizing: 'border-box',
-        scrollbarWidth: 'thin',
-        scrollbarColor: 'var(--gold) var(--dark2)',
-        width: '0',
-        minWidth: '100%',
-        display: 'block',
-        overflowX: 'auto',
-      }}>
-        {loadError && (
-          <div className="text-red-500 text-sm" style={{ marginBottom: '1rem' }}>
-            {loadError}
-          </div>
-        )}
-        <table className="inventory-table" style={{ fontFamily: 'inherit' }}>
-          <thead>
-            <tr>
-              <th style={{ width: '28px' }}></th>
-              <th className="table-header" style={{ whiteSpace: 'nowrap' }}>Order Ref #</th>
-              <th className="table-col-category">Product Type</th>
-              <th className="table-col-category">Customer</th>
-              <th className="table-col-stock">Product</th>
-              <th className="table-col-min" style={{ textAlign: 'center' }}>Qty</th>
-              <th className="table-col-min">Total</th>
-              <th className="table-col-status">Status</th>
-              <th className="table-col-min">Date</th>
-              <th style={{ width: '90px' }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.length === 0 ? (
-              <tr>
-                <td colSpan={10}>
-                  <div className="empty-state">
-                    <div className="empty-icon">
-                      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
-                      </svg>
-                    </div>
-                    <h3 className="empty-title">No orders found</h3>
-                    <p className="empty-description">Try adjusting your search or filter.</p>
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              paginated.map(o => {
-                const deliveredPaid = o.orderStatus === 'Delivered' && o.paymentStatus === 'paid';
-                const rawBadge = getStatusBadge(o.orderStatus);
-                const statusBadge = deliveredPaid
-                  ? { ...rawBadge, color: '#4ade80', bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.4)' }
-                  : rawBadge;
-                const isExpanded = expandedIds.has(o.id);
-
-                return (
-                  <React.Fragment key={o.id}>
-                    <tr className="inventory-table-row">
-                      <td style={{ width: '28px', cursor: 'pointer' }} onClick={() => {
-                        setExpandedIds(prev => {
-                          const next = new Set(prev);
-                          if (next.has(o.id)) {
-                            next.delete(o.id);
-                          } else {
-                            next.add(o.id);
-                          }
-                          return next;
-                        });
-                      }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                          style={{ color: 'var(--gray)', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'block' }}>
-                          <path d="M9 18l6-6-6-6"/>
-                        </svg>
-                      </td>
-                      <td className="table-cell" style={{
-                        fontSize: '0.75rem',
-                        fontFamily: 'monospace',
-                        color: 'var(--gold)',
-                        letterSpacing: '0.04em',
-                        whiteSpace: 'nowrap',
-                      }}>
-                        #{String(o.id ?? o._id ?? '').slice(-8).toUpperCase()}
-                      </td>
-                      <td className="table-cell">
-                        {o.isCustom ? (
-                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '999px', background: 'rgba(99,102,241,0.12)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)', whiteSpace: 'nowrap' }}>
-                            Customized
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '999px', background: 'rgba(74,222,128,0.08)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)', whiteSpace: 'nowrap' }}>
-                            Ready Made
-                          </span>
-                        )}
-                      </td>
-                      <td className="table-cell">
-                        <div style={{ fontWeight: 500 }}>{o.customerName}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>{o.customerContact}</div>
-                      </td>
-                      <td className="table-cell">
-                        <div>{o.productName}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>{o.category}</div>
-                      </td>
-                      <td className="table-cell" style={{ textAlign: 'center', color: 'var(--gray)' }}>{o.quantity} pcs</td>
-                      <td className="table-cell">
-                        <div style={{ color: 'var(--gold)', fontSize: '1rem', fontWeight: 600 }}>₱{Number(o.totalAmount ?? o.totalPrice ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                        {(() => {
-                          const pb = getPaymentBadge(o.paymentStatus);
-                          return (
-                            <span style={{
-                              display: 'inline-block',
-                              marginTop: '0.25rem',
-                              fontSize: '0.65rem',
-                              fontWeight: 600,
-                              padding: '0.1rem 0.45rem',
-                              borderRadius: '10px',
-                              color: pb.color,
-                              background: pb.bg,
-                              border: `1px solid ${pb.border}`,
-                            }}>
-                              {pb.label}
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td className="table-cell">
-                        <span className="stock-status-badge" style={{ color: statusBadge.color, background: statusBadge.bg, borderColor: statusBadge.border }}>
-                          {statusBadge.label}
-                        </span>
-                      </td>
-                      <td className="table-cell" style={{ fontSize: '0.72rem', color: 'var(--gray)', whiteSpace: 'nowrap' }}>
-                        {o.createdAt ? new Date(o.createdAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
-                      </td>
-                      <td className="table-cell" style={{ textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'center' }}>
-                          <button
-                            onClick={() => {
-                              setSelectedOrderId(o.id);
-                              setIsModalOpen(true);
-                            }}
-                            style={{
-                              padding: '0.25rem 0.625rem',
-                              fontSize: '0.75rem',
-                              background: 'transparent',
-                              border: '1px solid var(--gold)',
-                              borderRadius: '4px',
-                              color: 'var(--gold)',
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            View
-                          </button>
-                          {['Cancelled', 'Delivered', 'Returned'].includes(o.orderStatus) && (
-                            <button
-                              onClick={() => { setDeleteTargetId(o.id); setDeleteError(''); }}
-                              title="Delete order"
-                              style={{
-                                padding: '0.25rem 0.375rem',
-                                background: 'transparent',
-                                border: '1px solid rgba(248,113,113,0.4)',
-                                borderRadius: '4px',
-                                color: 'var(--red)',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                              }}
-                            >
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <tr>
-                        <td colSpan={10} style={{ padding: 0, background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid var(--border)' }}>
-                          <div style={{ padding: '1rem 1.25rem 1.25rem', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
-                            {/* Customer Info */}
-                            <div>
-                              <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Customer</div>
-                              <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5 }}>
-                                <div style={{ fontWeight: 600 }}>{o.customerName}</div>
-                                <div style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>{o.customerContact}</div>
-                                <div style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>{o.customerEmail}</div>
-                              </div>
-                            </div>
-                            
-                            {/* Order Details */}
-                            <div>
-                              <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Order Details</div>
-                              <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5 }}>
-                                <div style={{ fontWeight: 600 }}>{o.productName}</div>
-                                <div style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>Category: {o.category}</div>
-                                <div style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>Variant: {o.variant || 'N/A'}</div>
-                                <div style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>Qty: {o.quantity} pcs</div>
-                              </div>
-                            </div>
-                            
-                            {/* Job Order Details */}
-                            {o.joId && (
-                              <div>
-                                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem', fontWeight: 600 }}>Job Order</div>
-                                <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.5 }}>
-                                  <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{o.joId}</div>
-                                  <div style={{ color: o.isRush ? 'var(--orange)' : 'var(--white)', fontWeight: 600 }}>{o.isRush ? 'Rush' : 'Standard'}</div>
-                                  <div style={{ color: 'var(--gray)', fontSize: '0.75rem' }}>Target: {o.targetCompletion ? new Date(o.targetCompletion).toLocaleDateString() : 'N/A'}</div>
-                                  {(() => {
-                                    const today = new Date();
-                                    today.setHours(0, 0, 0, 0);
-                                    const targetDate = o.targetCompletion ? new Date(o.targetCompletion) : null;
-                                    const isDelayed = targetDate && targetDate < today;
-                                    const daysLeft = targetDate ? Math.ceil((targetDate - today) / (1000 * 60 * 60 * 24)) : null;
-                                    const daysLate = isDelayed ? Math.abs(daysLeft) : 0;
-                                    
-                                    if (isDelayed) {
-                                      return (
-                                        <>
-                                          <div style={{ color: 'var(--red)', fontWeight: 600 }}>Priority</div>
-                                          <div style={{ color: 'var(--red)', fontSize: '0.75rem', fontWeight: 600 }}>{daysLate} day{daysLate !== 1 ? 's' : ''} late</div>
-                                        </>
-                                      );
-                                    }
-                                    return (
-                                      <>
-                                        <div style={{ color: o.joStatus === 'In Progress' ? 'var(--indigo)' : 'var(--gold)', fontWeight: 600 }}>{o.joStatus || 'Queued'}</div>
-                                        <div style={{ color: 'var(--gray)', fontSize: '0.75rem', fontWeight: 600 }}>{daysLeft} day{daysLeft !== 1 ? 's' : ''} left</div>
-                                      </>
-                                    );
-                                  })()}
-                                </div>
-                              </div>
-                            )}
-                            
-                            {/* Payment Breakdown */}
-                            <div>
-                              <div style={{ fontSize: '0.85rem', color: 'var(--white)', lineHeight: 1.7 }}>
-                                {Number(o.discountAmount) > 0 && (
-                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--gray)' }}>Subtotal</span>
-                                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{(Number(o.totalAmount ?? o.totalPrice ?? 0) + Number(o.discountAmount ?? 0)).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                  </div>
-                                )}
-                                {Number(o.discountAmount) > 0 && (
-                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--green)' }}>Voucher{o.voucherCode ? ` (${o.voucherCode})` : ''}</span>
-                                    <span style={{ color: 'var(--green)', fontWeight: 600 }}>−₱{Number(o.discountAmount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                  </div>
-                                )}
-                                {Number(o.shippingFee) > 0 && (
-                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--gray)' }}>Shipping</span>
-                                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{Number(o.shippingFee).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                  </div>
-                                )}
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <span style={{ color: 'var(--gray)' }}>Total</span>
-                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{Number(o.totalAmount ?? o.totalPrice ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <span style={{ color: 'var(--gray)' }}>Paid</span>
-                                  <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{Number(o.downPayment ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <span style={{ color: 'var(--gray)' }}>Balance</span>
-                                  <span style={{ color: (o.balance ?? 0) <= 0 ? 'var(--green)' : 'var(--gold)', fontWeight: 600 }}>₱{Number(o.balance ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                </div>
-                                {Array.isArray(o.paymentHistory) && o.paymentHistory.length > 0 && (
-                                  <div style={{ marginTop: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '0.5rem' }}>
-                                    <div style={{ fontSize: '0.65rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>History</div>
-                                    {o.paymentHistory.map((p, idx) => (
-                                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '0.2rem' }}>
-                                        <span style={{ color: 'var(--gray)' }}>{p.method} {p.note ? `| ${p.note}` : ''}</span>
-                                        <span style={{ color: 'var(--green)', fontWeight: 600 }}>+₱{Number(p.amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination — inside card */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.625rem 1rem', borderTop: '1px solid var(--border)', gap: '1rem', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--gray)' }}>
-          <span>Rows per page:</span>
-          <select
-            value={rowsPerPage}
-            onChange={e => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-            style={{ padding: '0.2rem 0.4rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--white)', fontSize: '0.8rem', cursor: 'pointer' }}
-          >
-            {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.8rem', color: 'var(--gray)' }}>
-          <span>{sorted.length === 0 ? '0' : `${(safePage - 1) * rowsPerPage + 1}–${Math.min(safePage * rowsPerPage, sorted.length)}`} of {sorted.length}</span>
-          <button
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            disabled={safePage <= 1}
-            style={{ padding: '0.25rem 0.5rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '4px', color: safePage <= 1 ? 'var(--gray)' : 'var(--white)', cursor: safePage <= 1 ? 'not-allowed' : 'pointer', fontSize: '0.8rem' }}
-          >‹</button>
-          <span style={{ color: 'var(--white)', fontWeight: 600 }}>{safePage} / {totalPages}</span>
-          <button
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            disabled={safePage >= totalPages}
-            style={{ padding: '0.25rem 0.5rem', background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '4px', color: safePage >= totalPages ? 'var(--gray)' : 'var(--white)', cursor: safePage >= totalPages ? 'not-allowed' : 'pointer', fontSize: '0.8rem' }}
-          >›</button>
-        </div>
-      </div>
-
-      </div>{/* end table card */}
-
-      {/* JO Queuing Modal */}
-      {showJOQueuing && (
-        <div className="modal-overlay" onClick={() => setShowJOQueuing(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '900px', width: '90%' }}>
-            <div className="modal-header">
-              <h2 className="modal-title">Job Order Queuing</h2>
-              <button className="modal-close" onClick={() => setShowJOQueuing(false)}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-
-            <div className="modal-body" style={{ maxHeight: '500px', overflowY: 'auto' }}>
-              {/* Priority Legend */}
-              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'var(--red)' }}></div>
-                  <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>Delayed</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'var(--orange)' }}></div>
-                  <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>Rush Order</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'var(--gold)' }}></div>
-                  <span style={{ fontSize: '0.875rem', color: 'var(--white)' }}>Near Deadline</span>
-                </div>
-              </div>
-
-              {/* JO Cards - Sorted by priority (Delayed first, then Rush, then by deadline) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {orders
-                  .filter(o => o.downPayment > 0 && o.orderStatus === 'In Production' && o.joStatus !== 'Completed')
-                  .sort((a, b) => {
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    
-                    // Calculate days status for each
-                    const targetA = a.targetCompletion ? new Date(a.targetCompletion) : null;
-                    const targetB = b.targetCompletion ? new Date(b.targetCompletion) : null;
-                    
-                    const isDelayedA = targetA && targetA < today;
-                    const isDelayedB = targetB && targetB < today;
-                    
-                    const daysLeftA = targetA ? Math.ceil((targetA - today) / (1000 * 60 * 60 * 24)) : 999;
-                    const daysLeftB = targetB ? Math.ceil((targetB - today) / (1000 * 60 * 60 * 24)) : 999;
-                    
-                    const daysLateA = isDelayedA ? Math.abs(daysLeftA) : 0;
-                    const daysLateB = isDelayedB ? Math.abs(daysLeftB) : 0;
-
-                    // Delayed orders first (most delayed first)
-                    if (isDelayedA && !isDelayedB) return -1;
-                    if (!isDelayedA && isDelayedB) return 1;
-                    if (isDelayedA && isDelayedB) return daysLateB - daysLateA; // Most delayed first
-                    
-                    // Rush orders next
-                    if (a.isRush && !b.isRush) return -1;
-                    if (!a.isRush && b.isRush) return 1;
-                    
-                    // Then by days left (nearest deadline first)
-                    return daysLeftA - daysLeftB;
-                  })
-                  .map(o => {
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    const targetDate = o.targetCompletion ? new Date(o.targetCompletion) : null;
-                    const isDelayed = targetDate && targetDate < today;
-                    const daysLeft = targetDate ? Math.ceil((targetDate - today) / (1000 * 60 * 60 * 24)) : null;
-                    const daysLate = isDelayed ? Math.abs(daysLeft) : 0;
-                    
-                    // Priority colors: Delayed (red) > Rush (orange) > Near Deadline (yellow)
-                    const isUrgent = !isDelayed && daysLeft !== null && daysLeft <= 2;
-                    const priorityColor = isDelayed ? 'var(--red)' : (o.isRush ? 'var(--orange)' : (isUrgent ? 'var(--gold)' : 'transparent'));
-                    const priorityTextColor = isDelayed ? 'var(--red)' : (o.isRush ? 'var(--orange)' : (isUrgent ? 'var(--gold)' : 'var(--white)'));
-                    const statusColor = o.joStatus === 'In Progress' ? 'var(--indigo)' : 'var(--gold)';
-
-                    return (
-                      <div key={o.id} style={{
-                        padding: '1rem',
-                        background: 'rgba(0,0,0,0.2)',
-                        borderRadius: '8px',
-                        border: `2px solid ${priorityColor === 'transparent' ? 'rgba(255,255,255,0.2)' : priorityColor}`,
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 1fr 1fr',
-                        gap: '1rem',
-                        alignItems: 'center'
-                      }}>
-                        {/* Left: Order Info */}
-                        <div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>
-                            {o.joId || 'Pending JO'}
-                          </div>
-                          <div style={{ fontWeight: 600, color: 'var(--white)', marginBottom: '0.25rem' }}>
-                            {o.customerName}
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
-                            {o.productName} × {o.quantity} pcs
-                          </div>
-                        </div>
-
-                        {/* Center: Timeline */}
-                        <div style={{ textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>
-                            {isDelayed ? (
-                              <span style={{ color: 'var(--red)', fontWeight: 700 }}>DELAYED</span>
-                            ) : o.isRush ? (
-                              'RUSH ORDER'
-                            ) : (
-                              'Standard'
-                            )}
-                          </div>
-                          {o.targetCompletion && (
-                            <div style={{ fontSize: '0.875rem', color: priorityTextColor }}>
-                              Due: {new Date(o.targetCompletion).toLocaleDateString()}
-                            </div>
-                          )}
-                          {daysLeft !== null && (
-                            <div style={{ fontSize: '0.75rem', color: isDelayed ? 'var(--red)' : (daysLeft <= 2 ? 'var(--red)' : 'var(--gray)') }}>
-                              {isDelayed
-                                ? `${daysLate} day${daysLate !== 1 ? 's' : ''} late`
-                                : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`
-                              }
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Right: Status & Actions */}
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{
-                            display: 'inline-block',
-                            padding: '0.25rem 0.75rem',
-                            borderRadius: '12px',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            background: isDelayed 
-                              ? 'rgba(248, 113, 113, 0.2)' 
-                              : (statusColor === 'var(--indigo)' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(250, 204, 21, 0.2)'),
-                            color: isDelayed ? 'var(--red)' : statusColor,
-                            marginBottom: '0.5rem'
-                          }}>
-                            {isDelayed ? 'Priority' : (o.joStatus || 'Queued')}
-                          </div>
-                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                            <button
-                              className="btn-sm btn-secondary"
-                              onClick={() => {
-                                setSelectedJO(o);
-                                setPrintDescription('');
-                                setPrintDesignImages([]);
-                                setShowPrintModal(true);
-                              }}
-                              style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                            >
-                              Print
-                            </button>
-                            {!isDelayed && o.joStatus !== 'In Progress' && (
-                              <button
-                                className="btn-sm btn-primary"
-                                onClick={async () => {
-                                  if (!o.joId) return;
-                                  try {
-                                    await updateJobOrderStatus(o.joId, 'In Progress', token);
-                                  } catch (err) {
-                                    setLoadError(err.message || 'Failed to start job order. Please try again.');
-                                    return;
-                                  }
-                                  setOrders(prev => prev.map(ord =>
-                                    ord.id === o.id ? { ...ord, joStatus: 'In Progress' } : ord
-                                  ));
-                                }}
-                                style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                              >
-                                Start
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
-
-            <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => setShowJOQueuing(false)}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Print JO Modal */}
-      {showPrintModal && selectedJO && (
-        <div className="modal-overlay" onClick={() => setShowPrintModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '800px', width: '90%' }}>
-            <div className="modal-header">
-              <h2 className="modal-title">Job Order - {selectedJO.joId || 'PENDING'}</h2>
-              <button className="modal-close" onClick={() => setShowPrintModal(false)}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-
-            <div className="modal-body">
-              {/* JO Header */}
-              <div style={{ textAlign: 'center', marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '2px solid var(--border)' }}>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--white)', marginBottom: '0.5rem', letterSpacing: '2px' }}>PERSONALIZE ME</h2>
-                <div style={{ fontSize: '0.875rem', color: 'var(--gray)', letterSpacing: '1px' }}>Job Order for Production</div>
-              </div>
-
-              {/* JO Info - Priority & Target */}
-              <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(249, 250, 251, 0.1)', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>JO ID</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--white)' }}>{selectedJO.joId || 'PENDING'}</div>
-                  </div>
-                  <div style={{
-                    padding: '0.5rem 1.25rem',
-                    borderRadius: '20px',
-                    fontSize: '0.875rem',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    border: '2px solid',
-                    color: selectedJO.isRush ? 'var(--red)' : '#10b981',
-                    borderColor: selectedJO.isRush ? 'var(--red)' : '#10b981',
-                    background: selectedJO.isRush ? 'rgba(248, 113, 113, 0.1)' : 'rgba(16, 185, 129, 0.1)'
-                  }}>
-                    {selectedJO.isRush ? 'RUSH ORDER' : 'STANDARD'}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Target Completion Date</div>
-                  <div style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--white)' }}>
-                    {selectedJO.targetCompletion ? new Date(selectedJO.targetCompletion).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Customer Info */}
-              <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 600 }}>Customer Information</div>
-                <div style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--white)', marginBottom: '0.75rem' }}>{selectedJO.customerName}</div>
-                <div style={{ fontSize: '0.875rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>{selectedJO.customerContact}</div>
-                <div style={{ fontSize: '0.875rem', color: 'var(--gray)' }}>{selectedJO.customerEmail}</div>
-              </div>
-
-              {/* Product Specifications */}
-              <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(217, 119, 6, 0.1)', borderRadius: '8px', border: '2px solid rgba(217, 119, 6, 0.3)' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--gold-dark)', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 600, borderBottom: '2px solid var(--gold-dark)', paddingBottom: '0.5rem' }}>Product Specifications (For Production)</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem' }}>
-                  <div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Product Name</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--white)' }}>{selectedJO.productName}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Category</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--white)' }}>{selectedJO.category}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Variant / Specs</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--white)' }}>{selectedJO.variant || 'N/A'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Quantity to Produce</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--gold-dark)' }}>{selectedJO.quantity} pcs</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Design File & Description */}
-              <div style={{ marginBottom: '2rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Design for Printing</div>
-                
-                {/* Design Images Upload */}
-                <div style={{ marginBottom: '1rem' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>Design File Images (Optional)</div>
-                  <div style={{ 
-                    border: '2px dashed var(--border)', 
-                    borderRadius: '8px', 
-                    padding: '1.5rem',
-                    textAlign: 'center',
-                    background: printDesignImages.length > 0 ? 'rgba(99, 102, 241, 0.1)' : 'rgba(0,0,0,0.2)',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s'
-                  }}
-                  onClick={() => document.getElementById('designImagesInput').click()}
-                  >
-                    {printDesignImages.length > 0 ? (
-                      <div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.75rem' }}>
-                          {printDesignImages.length} image{printDesignImages.length > 1 ? 's' : ''} uploaded - Click to add more
-                        </div>
-                        <div style={{ 
-                          display: 'grid', 
-                          gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-                          gap: '0.75rem',
-                          marginBottom: '0.75rem'
-                        }}>
-                          {printDesignImages.map((img, idx) => (
-                            <div key={idx} style={{ position: 'relative' }}>
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={img} 
-                                alt={`Design ${idx + 1}`} 
-                                style={{ 
-                                  width: '100%', 
-                                  aspectRatio: '1:1', 
-                                  objectFit: 'cover', 
-                                  borderRadius: '8px',
-                                  border: '1px solid var(--border)'
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setPrintDesignImages(printDesignImages.filter((_, i) => i !== idx));
-                                }}
-                                style={{
-                                  position: 'absolute',
-                                  top: '-6px',
-                                  right: '-6px',
-                                  background: 'var(--red)',
-                                  border: '2px solid var(--dark)',
-                                  borderRadius: '50%',
-                                  width: '24px',
-                                  height: '24px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  color: 'white',
-                                  fontSize: '0.875rem',
-                                  fontWeight: 'bold',
-                                  cursor: 'pointer',
-                                  padding: 0
-                                }}
-                              >
-                                ×
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPrintDesignImages([]);
-                          }}
-                          style={{
-                            background: 'rgba(248, 113, 113, 0.2)',
-                            border: '1px solid rgba(248, 113, 113, 0.4)',
-                            borderRadius: '6px',
-                            padding: '0.25rem 0.75rem',
-                            color: 'var(--red)',
-                            fontSize: '0.75rem',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Remove All Images
-                        </button>
-                      </div>
-                    ) : (
-                      <div>
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--gray)', marginBottom: '0.75rem' }}>
-                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                          <circle cx="8.5" cy="8.5" r="1.5"/>
-                          <polyline points="21 15 16 10 5 21"/>
-                        </svg>
-                        <div style={{ fontSize: '0.875rem', color: 'var(--white)', marginBottom: '0.25rem' }}>Click to upload design images</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>PNG, JPG, GIF - Multiple images supported (Optional)</div>
-                      </div>
-                    )}
-                    <input
-                      id="designImagesInput"
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      style={{ display: 'none' }}
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        if (files.length > 0) {
-                          const newImages = [];
-                          let loaded = 0;
-                          
-                          files.forEach((file) => {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              if (event.target?.result) {
-                                newImages.push(event.target.result);
-                              }
-                              loaded++;
-                              if (loaded === files.length) {
-                                setPrintDesignImages([...printDesignImages, ...newImages]);
-                              }
-                            };
-                            reader.readAsDataURL(file);
-                          });
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Description Input */}
-                <div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginBottom: '0.5rem' }}>Print Description / Notes (Optional)</div>
-                  <textarea
-                    className="form-input"
-                    value={printDescription}
-                    onChange={(e) => setPrintDescription(e.target.value)}
-                    placeholder="Add any special instructions for printing..."
-                    rows={3}
-                    style={{
-                      background: 'var(--dark)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '6px',
-                      padding: '0.75rem',
-                      color: 'var(--white)',
-                      fontSize: '0.875rem',
-                      width: '100%',
-                      resize: 'vertical'
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => setShowPrintModal(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => {
-                  const escHtml = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
-                  const printWindow = window.open('', '', 'width=800,height=600');
-                  
-                  // Get design images HTML if any - FLEXIBLE (maintains original aspect ratio)
-                  const designImagesHtml = printDesignImages.length > 0 
-                    ? `<div style="margin: 20px 0; padding: 15px; border: 2px solid #333; border-radius: 8px; page-break-inside: avoid;">
-                        <h3 style="margin: 0 0 15px 0; color: #000; font-size: 14px; text-transform: uppercase; border-bottom: 2px solid #000; padding-bottom: 5px;">Design References (${printDesignImages.length} image${printDesignImages.length > 1 ? 's' : ''})</h3>
-                        <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-start;">
-                          ${printDesignImages.map(img => `<div style="flex: 0 1 auto; width: calc(33.333% - 10px); min-width: 150px; max-width: 250px;">
-                            <img src="${img}" alt="" style="width: 100%; height: auto; display: block; border: 1px solid #ddd; border-radius: 4px;" />
-                          </div>`).join('')}
-                        </div>
-                      </div>` 
-                    : '';
-                  
-                  // Get description HTML if any
-                  const descriptionHtml = printDescription.trim()
-                    ? `<div style="margin: 20px 0; padding: 15px; border: 2px solid #333; border-radius: 8px;">
-                        <h3 style="margin: 0 0 10px 0; color: #000; font-size: 14px; text-transform: uppercase;">Print Instructions</h3>
-                        <p style="margin: 0; color: #000; font-size: 13px; white-space: pre-wrap; line-height: 1.5;">${escHtml(printDescription)}</p>
-                      </div>`
-                    : '';
-                  
-                  printWindow.document.write(`
-                    <html>
-                      <head>
-                        <title>Job Order - ${selectedJO.joId || 'PENDING'}</title>
-                        <style>
-                          @media print {
-                            @page { margin: 0.5in; }
-                          }
-                          body { 
-                            font-family: Arial, sans-serif; 
-                            padding: 30px; 
-                            color: #000; 
-                            background: #fff;
-                            line-height: 1.5;
-                          }
-                          h1 { 
-                            font-size: 24px; 
-                            font-weight: bold; 
-                            margin: 0 0 5px 0; 
-                            text-align: center;
-                            text-transform: uppercase;
-                            letter-spacing: 2px;
-                          }
-                          h2 { 
-                            font-size: 14px; 
-                            margin: 0 0 25px 0; 
-                            text-align: center;
-                            color: #666;
-                            font-weight: normal;
-                            letter-spacing: 1px;
-                          }
-                          h3 {
-                            font-size: 14px;
-                            font-weight: bold;
-                            margin: 0 0 10px 0;
-                            text-transform: uppercase;
-                            border-bottom: 2px solid #000;
-                            padding-bottom: 5px;
-                          }
-                          .section {
-                            margin: 20px 0;
-                            padding: 15px;
-                            border: 2px solid #333;
-                            border-radius: 8px;
-                            page-break-inside: avoid;
-                          }
-                          .grid-2 {
-                            display: grid;
-                            grid-template-columns: 1fr 1fr;
-                            gap: 20px;
-                          }
-                          .label {
-                            font-size: 11px;
-                            color: #666;
-                            text-transform: uppercase;
-                            margin-bottom: 5px;
-                            font-weight: 600;
-                          }
-                          .value {
-                            font-size: 14px;
-                            color: #000;
-                            font-weight: 600;
-                          }
-                          .value-large {
-                            font-size: 16px;
-                            font-weight: bold;
-                          }
-                          .footer {
-                            margin-top: 30px;
-                            padding-top: 20px;
-                            border-top: 2px solid #000;
-                            text-align: center;
-                            font-size: 11px;
-                            color: #666;
-                          }
-                          .priority-badge {
-                            display: inline-block;
-                            padding: 6px 16px;
-                            border-radius: 20px;
-                            font-size: 12px;
-                            font-weight: bold;
-                            text-transform: uppercase;
-                            border: 2px solid;
-                          }
-                        </style>
-                      </head>
-                      <body>
-                        <h1>PERSONALIZE ME</h1>
-                        <h2>Job Order for Production</h2>
-                        
-                        <div class="section" style="background: #f9fafb;">
-                          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <div>
-                              <div class="label">JO ID</div>
-                              <div class="value-large">${selectedJO.joId || 'PENDING'}</div>
-                            </div>
-                            <div>
-                              <span class="priority-badge" style="color: ${selectedJO.isRush ? '#dc2626' : '#059669'}; border-color: ${selectedJO.isRush ? '#dc2626' : '#059669'}; background: ${selectedJO.isRush ? '#fef2f2' : '#f0fdf4'};">
-                                ${selectedJO.isRush ? 'RUSH ORDER' : 'STANDARD'}
-                              </span>
-                            </div>
-                          </div>
-                          <div class="label">Target Completion Date</div>
-                          <div class="value-large">${selectedJO.targetCompletion ? new Date(selectedJO.targetCompletion).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}</div>
-                        </div>
-                        
-                        <div class="section">
-                          <h3>Customer Information</h3>
-                          <div style="margin-top: 10px;">
-                            <div class="label">Customer Name</div>
-                            <div class="value-large">${selectedJO.customerName}</div>
-                            <div style="margin-top: 10px;">
-                              <div class="label">Contact Number</div>
-                              <div class="value">${selectedJO.customerContact}</div>
-                            </div>
-                            <div style="margin-top: 10px;">
-                              <div class="label">Email Address</div>
-                              <div class="value">${selectedJO.customerEmail}</div>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        <div class="section" style="border-color: var(--gold-dark);">
-                          <h3 style="color: var(--gold-dark); border-color: var(--gold-dark);">Product Specifications (For Production)</h3>
-                          <div class="grid-2" style="margin-top: 15px;">
-                            <div>
-                              <div class="label">Product Name</div>
-                              <div class="value-large">${selectedJO.productName}</div>
-                            </div>
-                            <div>
-                              <div class="label">Category</div>
-                              <div class="value">${selectedJO.category}</div>
-                            </div>
-                            <div>
-                              <div class="label">Variant / Specs</div>
-                              <div class="value-large">${selectedJO.variant || 'N/A'}</div>
-                            </div>
-                            <div>
-                              <div class="label">Quantity to Produce</div>
-                              <div class="value-large" style="color: var(--gold-dark); font-size: 20px;">${selectedJO.quantity} pcs</div>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        ${designImagesHtml}
-                        ${descriptionHtml}
-                        
-                        <div class="footer">
-                          <div><strong>Printed:</strong> ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
-                          <div style="margin-top: 8px;">Internal Production Document • For manufacturing use only</div>
-                        </div>
-                      </body>
-                    </html>
-                  `);
-                  printWindow.document.close();
-                  setTimeout(() => {
-                    printWindow.print();
-                  }, 250);
-                  setShowPrintModal(false);
-                }}
-              >
-                Print
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirm Modal */}
-      {deleteTargetId && (
-        <div className="modal-overlay" onClick={() => { setDeleteTargetId(null); setDeleteError(''); }}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px', width: '90%' }}>
-            <div className="modal-header">
-              <h2 className="modal-title" style={{ color: 'var(--red)' }}>Delete Order</h2>
-              <button className="modal-close" onClick={() => { setDeleteTargetId(null); setDeleteError(''); }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-            <div className="modal-body">
-              <p style={{ fontSize: '0.95rem', color: 'var(--white)', lineHeight: 1.6 }}>
-                Permanently delete order <span style={{ fontFamily: 'monospace', color: 'var(--gold)' }}>#{String(deleteTargetId).slice(-8).toUpperCase()}</span>? This cannot be undone.
-              </p>
-              {deleteError && (
-                <p style={{ marginTop: '0.75rem', fontSize: '0.82rem', color: 'var(--red)' }}>{deleteError}</p>
-              )}
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => { setDeleteTargetId(null); setDeleteError(''); }} disabled={isDeleting}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isDeleting}
-                style={{ padding: '0.5rem 1.25rem', background: isDeleting ? 'var(--border)' : 'var(--red)', border: 'none', borderRadius: '6px', color: isDeleting ? 'var(--gray)' : '#fff', fontWeight: 600, fontSize: '0.875rem', cursor: isDeleting ? 'not-allowed' : 'pointer', opacity: isDeleting ? 0.7 : 1 }}
-                onClick={async () => {
-                  setIsDeleting(true);
-                  setDeleteError('');
-                  try {
-                    await deleteOrderApi(deleteTargetId, token);
-                    setOrders(prev => prev.filter(o => o.id !== deleteTargetId));
-                    setDeleteTargetId(null);
-                  } catch (err) {
-                    setDeleteError(err.message || 'Failed to delete order.');
-                  } finally {
-                    setIsDeleting(false);
-                  }
-                }}
-              >
-                {isDeleting ? 'Deleting…' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* [removed bulk-select modals] */}
-      {false && (
-        <div className="modal-overlay" onClick={() => { setShowUnpaidWarning(false); setPendingStatusUpdate(null); }}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '90%' }}>
-            <div className="modal-header">
-              <h2 className="modal-title" style={{ color: 'var(--gold)' }}>Downpayment Required</h2>
-              <button className="modal-close" onClick={() => { setShowUnpaidWarning(false); setPendingStatusUpdate(null); }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <div style={{ padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-                <p style={{ fontSize: '0.95rem', color: 'var(--white)', lineHeight: 1.6 }}>
-                  <strong>Cannot proceed:</strong> One or more selected orders have no downpayment recorded. All custom orders require at least a partial payment before production can begin.
-                </p>
-                <p style={{ fontSize: '0.875rem', color: 'var(--gray)', marginTop: '0.75rem' }}>
-                  Please collect and record a downpayment for the affected orders, then try again.
-                </p>
-              </div>
-            </div>
-
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => { setShowUnpaidWarning(false); setPendingStatusUpdate(null); }}
-              >
-                Understood
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* DEPRECATED — Courier Modal (removed; status updates go through View modal) */}
-      {false && (
-        <div className="modal-overlay">
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', width: '90%' }}>
-            <div className="modal-header">
-              <h2 className="modal-title" style={{ color: 'var(--gold)' }}>Assign Courier</h2>
-              <button className="modal-close" onClick={() => { setShowCourierModal(false); setPendingDeliveryOrders(null); }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div>
-                <label style={{ fontSize: '0.875rem', color: 'var(--gray)', display: 'block', marginBottom: '0.5rem' }}>
-                  Courier <span style={{ color: 'var(--red)' }}>*</span>
-                </label>
-                <select
-                  value={courierName}
-                  onChange={e => { setCourierName(e.target.value); setCourierError(''); }}
-                  style={{
-                    width: '100%',
-                    padding: '0.625rem 0.75rem',
-                    background: 'var(--dark2)',
-                    border: `1px solid ${courierError ? 'var(--red)' : 'var(--border)'}`,
-                    borderRadius: '6px',
-                    color: 'var(--white)',
-                    fontSize: '0.95rem',
-                  }}
-                >
-                  <option value="">Select courier...</option>
-                  <option value="J&T Express">J&T Express</option>
-                  <option value="Ninja Van">Ninja Van</option>
-                  <option value="Lalamove">Lalamove</option>
-                  <option value="Grab Express">Grab Express</option>
-                  <option value="LBC">LBC</option>
-                  <option value="Other">Other</option>
-                </select>
-                {courierError && (
-                  <p style={{ fontSize: '0.8rem', color: 'var(--red)', marginTop: '0.375rem' }}>{courierError}</p>
-                )}
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.875rem', color: 'var(--gray)', display: 'block', marginBottom: '0.5rem' }}>
-                  Tracking Number <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={trackingNumber}
-                  onChange={e => setTrackingNumber(e.target.value)}
-                  placeholder="e.g. JT1234567890"
-                  style={{
-                    width: '100%',
-                    padding: '0.625rem 0.75rem',
-                    background: 'var(--dark2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '6px',
-                    color: 'var(--white)',
-                    fontSize: '0.95rem',
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => { setShowCourierModal(false); setPendingDeliveryOrders(null); }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={isSubmitting}
-                style={{ opacity: isSubmitting ? 0.6 : 1 }}
-                onClick={async () => {
-                  if (!courierName) {
-                    setCourierError('Please select a courier before proceeding.');
-                    return;
-                  }
-                  if (isSubmitting) return;
-                  setIsSubmitting(true);
-                  try {
-                    const updatePromises = Array.from(pendingDeliveryOrders).map(async (orderId) => {
-                      const res = await fetchWithTimeout(`${API_URL}/api/orders/${orderId}/status`, {
-                        method: 'PATCH',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          Authorization: `Bearer ${token}`,
-                        },
-                        body: JSON.stringify({
-                          orderStatus: 'For Delivery',
-                          courierName,
-                          trackingNumber: trackingNumber || null,
-                        }),
-                      }, 15000);
-                      if (!res.ok) {
-                        const err = await res.json().catch(() => ({}));
-                        throw new Error(err.message || err.error || 'Failed to update order');
-                      }
-                      const data = await res.json();
-                      const orderObj = orders.find(o => o.id === orderId || o._id === orderId);
-                      if (orderObj?.joId) {
-                        await updateJobOrderStatus(orderObj.joId, 'Completed', token);
-                      }
-                      return data.order;
-                    });
-                    const updatedOrders = await Promise.all(updatePromises);
-                    setOrders(prev => prev.map(ord => {
-                      if (pendingDeliveryOrders.has(ord.id)) {
-                        const apiUpdated = updatedOrders.find(u => u && (u._id === ord.id || u.id === ord.id));
-                        return apiUpdated ? { ...ord, ...apiUpdated, id: ord.id } : { ...ord, orderStatus: 'For Delivery', courierName, trackingNumber: trackingNumber || null };
-                      }
-                      return ord;
-                    }));
-                    setSelectedOrders(new Set());
-                    setShowCourierModal(false);
-                    setPendingDeliveryOrders(null);
-                  } catch (error) {
-                    console.error('Failed to assign courier:', error);
-                    setOrders(prev => prev.map(ord => {
-                      if (pendingDeliveryOrders.has(ord.id)) {
-                        return { ...ord, orderStatus: 'For Delivery', courierName, trackingNumber: trackingNumber || null };
-                      }
-                      return ord;
-                    }));
-                    setSelectedOrders(new Set());
-                    setShowCourierModal(false);
-                    setPendingDeliveryOrders(null);
-                  } finally {
-                    setIsSubmitting(false);
-                  }
-                }}
-              >
-                {isSubmitting ? 'Updating...' : 'Confirm & Send for Delivery'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Record Payment Modal */}
-      {showPaymentModal && paymentTarget && (
-        <div className="modal-overlay" onClick={() => { setShowPaymentModal(false); setPaymentTarget(null); }}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px', width: '90%' }}>
-            <div className="modal-header">
-              <h2 className="modal-title" style={{ color: 'var(--gold)' }}>Record Payment</h2>
-              <button className="modal-close" onClick={() => { setShowPaymentModal(false); setPaymentTarget(null); }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {/* Order summary */}
-              <div style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', fontSize: '0.82rem' }}>
-                <div style={{ color: 'var(--gray)', marginBottom: '0.25rem', fontFamily: 'monospace' }}>{paymentTarget.id}</div>
-                <div style={{ color: 'var(--white)', fontWeight: 600 }}>{paymentTarget.customerName}</div>
-                <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem' }}>
-                  <div>
-                    <span style={{ color: 'var(--gray)' }}>Total </span>
-                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{Number(paymentTarget.totalAmount ?? paymentTarget.totalPrice ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                  <div>
-                    <span style={{ color: 'var(--gray)' }}>Balance </span>
-                    <span style={{ color: 'var(--gold)', fontWeight: 600 }}>₱{Number(paymentTarget.balance ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Amount */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Amount <span style={{ color: 'var(--red)' }}>*</span>
-                </label>
-                <input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={paymentAmount}
-                  onChange={e => { setPaymentAmount(e.target.value); setPaymentError(''); }}
-                  onKeyDown={e => { if (['e','E','+','-'].includes(e.key)) e.preventDefault(); }}
-                  placeholder="e.g. 500"
-                  style={{
-                    width: '100%', padding: '0.625rem 0.875rem',
-                    background: 'var(--dark2)',
-                    border: `1px solid ${paymentError ? 'var(--red)' : 'var(--border)'}`,
-                    borderRadius: '8px', color: 'var(--white)',
-                    fontSize: '0.875rem', boxSizing: 'border-box',
-                  }}
-                />
-                {paymentError && (
-                  <p style={{ fontSize: '0.78rem', color: 'var(--red)', marginTop: '0.375rem' }}>{paymentError}</p>
-                )}
-              </div>
-
-              {/* Method */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Method <span style={{ color: 'var(--red)' }}>*</span>
-                </label>
-                <select
-                  value={paymentMethod}
-                  onChange={e => setPaymentMethod(e.target.value)}
-                  style={{
-                    width: '100%', padding: '0.625rem 0.75rem',
-                    background: 'var(--dark2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '8px', color: 'var(--white)',
-                    fontSize: '0.875rem',
-                  }}
-                >
-                  <option value="cash" style={{ background: 'var(--dark)' }}>Cash</option>
-                  <option value="gcash" style={{ background: 'var(--dark)' }}>GCash</option>
-                  <option value="bank_transfer" style={{ background: 'var(--dark)' }}>Bank Transfer</option>
-                  <option value="cod" style={{ background: 'var(--dark)' }}>COD</option>
-                </select>
-              </div>
-
-              {/* Note */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Note <span style={{ color: 'var(--gray)', fontWeight: 400, textTransform: 'none' }}>(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={paymentNote}
-                  onChange={e => setPaymentNote(e.target.value)}
-                  placeholder="e.g. Downpayment, reference #12345"
-                  style={{
-                    width: '100%', padding: '0.625rem 0.875rem',
-                    background: 'var(--dark2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '8px', color: 'var(--white)',
-                    fontSize: '0.875rem', boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => { setShowPaymentModal(false); setPaymentTarget(null); }}
-                disabled={isPaymentSubmitting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={isPaymentSubmitting}
-                style={{ opacity: isPaymentSubmitting ? 0.6 : 1 }}
-                onClick={async () => {
-                  const amt = parseFloat(paymentAmount);
-                  if (!paymentAmount || isNaN(amt) || amt <= 0) {
-                    setPaymentError('Please enter a valid amount greater than 0.');
-                    return;
-                  }
-                  if (isPaymentSubmitting) return;
-                  setIsPaymentSubmitting(true);
-                  try {
-                    const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${paymentTarget.id}/record-payment`, {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`,
-                      },
-                      body: JSON.stringify({
-                        amount: amt,
-                        method: paymentMethod,
-                        note: paymentNote || null,
-                      }),
-                    }, 15000);
-                    if (!res.ok) {
-                      const err = await res.json().catch(() => ({}));
-                      setPaymentError(err.error || err.message || 'Failed to record payment.');
-                      return;
-                    }
-                    const data = await res.json();
-                    const updated = data.order ?? data.data ?? null;
-                    setOrders(prev => prev.map(ord =>
-                      ord.id === paymentTarget.id
-                        ? { ...ord, ...(updated ?? {}), id: ord.id }
-                        : ord
-                    ));
-                    setShowPaymentModal(false);
-                    setPaymentTarget(null);
-                  } catch {
-                    setPaymentError('Network error. Please try again.');
-                  } finally {
-                    setIsPaymentSubmitting(false);
-                  }
-                }}
-              >
-                {isPaymentSubmitting ? 'Recording...' : 'Confirm Payment'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Order Quick View Modal */}
-      <OrderQuickViewModal
-        orderId={selectedOrderId}
-        mode="admin"
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setSelectedOrderId(null);
-        }}
-        onStatusUpdated={fetchOrders}
-        onOrderDeleted={(id) => {
-          setOrders(prev => prev.filter(o => o.id !== id));
-          setIsModalOpen(false);
-          setSelectedOrderId(null);
-        }}
-      />
-    </div>
-    </ErrorBoundary>
+    <span style={{ ...S.badge, background:c.bg, color:c.color, border:`1px solid ${c.border}`, fontSize:'11px' }}>
+      {status}
+    </span>
   );
 }
 
-/**
- * =============================================================================
- * MONGODB SCHEMA REFERENCE
- * =============================================================================
- * 
- * // models/Order.js
- * const orderSchema = new mongoose.Schema({
- *   orderId: { type: String, required: true, unique: true }, // e.g., 'ORD-001'
- *   customer: {
- *     name: { type: String, required: true },
- *     contact: { type: String, required: true },
- *     email: { type: String, required: true }
- *   },
- *   product: {
- *     name: { type: String, required: true },
- *     category: { type: String, required: true },
- *     variant: String,
- *     unitPrice: { type: Number, required: true }
- *   },
- *   quantity: { type: Number, required: true },
- *   totalPrice: { type: Number, required: true },
- *   downPayment: { type: Number, default: 0 },
- *   balance: { type: Number, required: true },
- *   orderStatus: { 
- *     type: String, 
- *     enum: ['Pending', 'In Production', 'For Delivery', 'Delivered', 'Returned', 'Cancelled'],
- *     default: 'Pending'
- *   },
- *   joStatus: { 
- *     type: String, 
- *     enum: ['Queued', 'In Progress', 'Completed', null],
- *     default: null
- *   },
- *   isRush: { type: Boolean, default: false },
- *   targetCompletion: Date,
- *   paymentDate: Date,
- *   designFile: String, // URL or file path
- *   designNotes: String,
- *   checkoutRestricted: { type: Boolean, default: true },
- *   joId: String, // Job Order ID (e.g., 'JOB-001')
- * }, {
- *   timestamps: true // Adds createdAt and updatedAt automatically
- * });
- * 
- * // Indexes for performance
- * orderSchema.index({ createdAt: -1 });
- * orderSchema.index({ orderStatus: 1 });
- * orderSchema.index({ 'customer.name': 1 });
- * orderSchema.index({ joStatus: 1, orderStatus: 1 }); // For JO Schedule query
- * 
- * // Virtual for days left
- * orderSchema.virtual('daysLeft').get(function() {
- *   if (!this.targetCompletion) return null;
- *   return Math.ceil((this.targetCompletion - new Date()) / (1000 * 60 * 60 * 24));
- * });
- * 
- * // Methods
- * orderSchema.methods.canTransitionTo = function(newStatus) {
- *   const transitions = {
- *     'Pending': ['In Production', 'Cancelled'],
- *     'In Production': ['For Delivery', 'Cancelled'],
- *     'For Delivery': ['Delivered', 'Returned'],
- *     'Delivered': [],
- *     'Returned': [],
- *     'Cancelled': []
- *   };
- *   return transitions[this.orderStatus]?.includes(newStatus) || false;
- * };
- * 
- * =============================================================================
- */
+function PayBadge({ status }) {
+  const c = PAY_CFG[status] ?? PAY_CFG.unpaid;
+  return (
+    <span style={{ ...S.badge, background:c.bg, color:c.color, border:`1px solid ${c.border}`, fontSize:'10px' }}>
+      {c.label}
+    </span>
+  );
+}
+
+function TypeBadge({ isCustom }) {
+  return isCustom
+    ? <span style={{ ...S.badge, background:'#ede9fe', color:'#5b21b6', border:'1px solid #ddd6fe', fontSize:'10px' }}>Custom</span>
+    : <span style={{ ...S.badge, background:'#f0fdf4', color:'#166534', border:'1px solid #bbf7d0', fontSize:'10px' }}>Ready Made</span>;
+}
+
+function Chevron({ open }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.5"
+      style={{ transform:open ? 'rotate(180deg)' : 'none', transition:'transform .2s', flexShrink:0 }}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+function InfoRow({ label, value, mono }) {
+  if (!value && value !== 0) return null;
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', padding:'3px 0' }}>
+      <span style={{ color:'#6b7280' }}>{label}</span>
+      <span style={{ color:'#1a1a2e', fontWeight:600, fontFamily: mono ? 'monospace' : undefined }}>{value}</span>
+    </div>
+  );
+}
+
+// ── Modal shell ───────────────────────────────────────────────────────────────
+
+function Modal({ children, onClose, maxWidth = 480 }) {
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', zIndex:1000,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ ...S.card, width:'100%', maxWidth, maxHeight:'90vh', overflowY:'auto',
+        boxShadow:'0 20px 60px rgba(0,0,0,.18)', padding:'24px' }}
+        onClick={e => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ModalHeader({ title, onClose }) {
+  return (
+    <div style={{ ...S.rowBetween, marginBottom:'20px', paddingBottom:'14px', borderBottom:'1px solid #e1e3e5' }}>
+      <div style={{ fontWeight:700, fontSize:'15px', color:'#1a1a2e' }}>{title}</div>
+      <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#6b7280', display:'flex', padding:'4px' }}>
+        {ICONS.x}
+      </button>
+    </div>
+  );
+}
+
+function ModalFooter({ children }) {
+  return (
+    <div style={{ display:'flex', justifyContent:'flex-end', gap:'8px', marginTop:'24px',
+      paddingTop:'16px', borderTop:'1px solid #e1e3e5' }}>
+      {children}
+    </div>
+  );
+}
+
+// ── Record Payment Modal ──────────────────────────────────────────────────────
+
+function PaymentModal({ order, onClose, onSuccess }) {
+  const { token } = useAuth();
+  const [amount,      setAmount]      = useState('');
+  const [method,      setMethod]      = useState('cash');
+  const [note,        setNote]        = useState('');
+  const [error,       setError]       = useState('');
+  const [submitting,  setSubmitting]  = useState(false);
+
+  const handleSubmit = async () => {
+    const amt = parseFloat(amount);
+    if (!amount || isNaN(amt) || amt <= 0) { setError('Enter a valid amount.'); return; }
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${order.id}/record-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify({ amount: amt, method, note: note || null }),
+      }, 15000);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? d.message ?? 'Failed to record payment.');
+        return;
+      }
+      const data = await res.json();
+      onSuccess(data.order ?? data.data ?? null);
+      onClose();
+    } catch { setError('Network error. Please try again.'); }
+    finally  { setSubmitting(false); }
+  };
+
+  const fmt = n => Number(n ?? 0).toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 });
+
+  return (
+    <Modal onClose={onClose} maxWidth={440}>
+      <ModalHeader title="Record Payment" onClose={onClose} />
+
+      <div style={{ ...S.noteInfo, marginBottom:'16px' }}>
+        <div style={{ fontWeight:600, marginBottom:'4px' }}>{order.customerName}</div>
+        <div style={{ display:'flex', gap:'20px', fontSize:'12px' }}>
+          <span>Total: <strong>₱{fmt(order.totalAmount ?? order.totalPrice)}</strong></span>
+          <span>Balance: <strong>₱{fmt(order.balance)}</strong></span>
+        </div>
+      </div>
+
+      <div style={S.col}>
+        <div>
+          <div style={S.label}>Amount *</div>
+          <input type="number" min="0.01" step="0.01" value={amount}
+            onChange={e => { setAmount(e.target.value); setError(''); }}
+            onKeyDown={e => ['e','E','+','-'].includes(e.key) && e.preventDefault()}
+            placeholder="0.00"
+            style={{ ...S.input, marginTop:'4px', ...(error ? { border:'1px solid #e05252' } : {}) }} />
+          {error && <div style={S.errText}>{error}</div>}
+        </div>
+        <div>
+          <div style={S.label}>Method *</div>
+          <div style={{ marginTop:'4px' }}>
+            <CustomSelect
+              value={method}
+              onChange={v => setMethod(v)}
+              options={[
+                { value:'cash',          label:'Cash'          },
+                { value:'gcash',         label:'GCash'         },
+                { value:'bank_transfer', label:'Bank Transfer' },
+                { value:'paymongo',      label:'PayMongo'      },
+                { value:'cod',           label:'COD'           },
+              ]}
+            />
+          </div>
+        </div>
+        <div>
+          <div style={S.label}>Note <span style={{ fontWeight:400, textTransform:'none', color:'#9ca3af' }}>(optional)</span></div>
+          <input type="text" value={note} onChange={e => setNote(e.target.value)}
+            placeholder="e.g. Downpayment, ref #12345"
+            style={{ ...S.input, marginTop:'4px' }} />
+        </div>
+      </div>
+
+      <ModalFooter>
+        <button onClick={onClose} disabled={submitting} style={S.btnGhost}>Cancel</button>
+        <button onClick={handleSubmit} disabled={submitting}
+          style={{ ...S.btnPrimary, opacity: submitting ? 0.6 : 1 }}>
+          {submitting ? 'Recording…' : 'Confirm Payment'}
+        </button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+// ── Archive Confirm Modal ─────────────────────────────────────────────────────
+
+function ArchiveModal({ orderId, onClose, onArchived }) {
+  const { token } = useAuth();
+  const [archiving, setArchiving] = useState(false);
+  const [error,     setError]     = useState('');
+
+  const handleArchive = async () => {
+    setArchiving(true); setError('');
+    try {
+      await deleteOrderApi(orderId, token);
+      onArchived(orderId);
+      onClose();
+    } catch (e) { setError(e.message || 'Failed to archive order.'); }
+    finally     { setArchiving(false); }
+  };
+
+  return (
+    <Modal onClose={onClose} maxWidth={400}>
+      <ModalHeader title="Archive Order" onClose={onClose} />
+      <p style={{ fontSize:'13px', color:'#374151', lineHeight:1.6 }}>
+        Archive order{' '}
+        <span style={{ fontFamily:'monospace', fontWeight:700, color:'#c2410c' }}>
+          #{String(orderId).slice(-8).toUpperCase()}
+        </span>?{' '}
+        The order will be hidden but kept for records. You can restore it later via the Archived filter.
+      </p>
+      {error && <div style={{ ...S.errText, marginTop:'8px' }}>{error}</div>}
+      <ModalFooter>
+        <button onClick={onClose} disabled={archiving} style={S.btnGhost}>Cancel</button>
+        <button onClick={handleArchive} disabled={archiving} style={{ ...S.btnDanger, opacity: archiving ? 0.6 : 1 }}>
+          {archiving ? 'Archiving…' : 'Archive'}
+        </button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+// ── JO Queuing Modal ──────────────────────────────────────────────────────────
+
+function JOQueueModal({ orders, token, onClose, onJOUpdated, onPrintJO }) {
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  const joOrders = orders
+    .filter(o => o.downPayment > 0 && o.orderStatus === 'In Production' && o.joStatus !== 'Completed')
+    .sort((a, b) => {
+      const tA = a.targetCompletion ? new Date(a.targetCompletion) : null;
+      const tB = b.targetCompletion ? new Date(b.targetCompletion) : null;
+      const dA = tA ? Math.ceil((tA - today)/(86400000)) : 999;
+      const dB = tB ? Math.ceil((tB - today)/(86400000)) : 999;
+      const lA = tA && tA < today, lB = tB && tB < today;
+      if (lA && !lB) return -1; if (!lA && lB) return 1;
+      if (lA && lB)  return Math.abs(dA) - Math.abs(dB);
+      if (a.isRush && !b.isRush) return -1; if (!a.isRush && b.isRush) return 1;
+      return dA - dB;
+    });
+
+  return (
+    <Modal onClose={onClose} maxWidth={820}>
+      <ModalHeader title="Job Order Queue" onClose={onClose} />
+
+      <div style={{ display:'flex', gap:'8px', marginBottom:'16px', flexWrap:'wrap' }}>
+        {[
+          { color:'#991b1b', bg:'#fef2f2', label:'Delayed'       },
+          { color:'#c2410c', bg:'#fff7ed', label:'Rush Order'     },
+          { color:'#c9973f', bg:'#fefce8', label:'Near Deadline'  },
+        ].map(p => (
+          <div key={p.label} style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'#6b7280' }}>
+            <div style={{ width:'10px', height:'10px', borderRadius:'2px', background:p.color }} />
+            {p.label}
+          </div>
+        ))}
+      </div>
+
+      {joOrders.length === 0
+        ? <EmptyState message="No active job orders" sub="Orders in production will appear here." />
+        : (
+          <div style={S.col}>
+            {joOrders.map(o => {
+              const target   = o.targetCompletion ? new Date(o.targetCompletion) : null;
+              const daysLeft = target ? Math.ceil((target - today)/86400000) : null;
+              const isLate   = target && target < today;
+              const isUrgent = !isLate && daysLeft !== null && daysLeft <= 2;
+              const border   = isLate ? '#fca5a5' : o.isRush ? '#fdba74' : isUrgent ? '#fde68a' : '#e1e3e5';
+
+              return (
+                <div key={o.id} style={{ ...S.card, border:`2px solid ${border}`, padding:'14px 18px',
+                  display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'16px', alignItems:'center' }}>
+                  <div>
+                    <div style={{ fontSize:'11px', color:'#9ca3af', fontFamily:'monospace', marginBottom:'3px' }}>{o.joId || 'No JO assigned'}</div>
+                    <div style={{ fontWeight:700, fontSize:'13px', color:'#1a1a2e' }}>{o.customerName}</div>
+                    <div style={{ fontSize:'12px', color:'#6b7280', marginTop:'2px' }}>{o.productName} × {o.quantity}</div>
+                  </div>
+                  <div style={{ textAlign:'center' }}>
+                    {isLate
+                      ? <span style={{ ...S.badge, background:'#fef2f2', color:'#991b1b', border:'1px solid #fecaca' }}>
+                          DELAYED — {Math.abs(daysLeft)}d late
+                        </span>
+                      : o.isRush
+                        ? <span style={{ ...S.badge, background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74' }}>RUSH</span>
+                        : <span style={{ ...S.badge, background:'#f3f4f6', color:'#374151', border:'1px solid #e5e7eb' }}>Standard</span>
+                    }
+                    {target && (
+                      <div style={{ fontSize:'11px', color: isLate ? '#991b1b' : '#6b7280', marginTop:'4px' }}>
+                        Due {target.toLocaleDateString('en-PH', { month:'short', day:'numeric' })}
+                        {daysLeft !== null && !isLate && ` · ${daysLeft}d left`}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display:'flex', gap:'6px', justifyContent:'flex-end', alignItems:'center' }}>
+                    <StatusBadge status={o.joStatus || 'Queued'} />
+                    <button onClick={() => onPrintJO(o)} style={S.btnSmGhost}>Print</button>
+                    {o.joStatus !== 'In Progress' && (
+                      <button style={S.btnSm} onClick={async () => {
+                        if (!o.joId) return;
+                        await updateJobOrderStatus(o.joId, 'In Progress', token).catch(() => {});
+                        onJOUpdated(o.id, 'In Progress');
+                      }}>Start</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      }
+      <ModalFooter>
+        <button onClick={onClose} style={S.btnGhost}>Close</button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+// ── Print JO Modal ────────────────────────────────────────────────────────────
+
+function PrintJOModal({ order, onClose }) {
+  const [description,   setDescription]   = useState('');
+  const [designImages,  setDesignImages]  = useState([]);
+
+  const addFiles = files => {
+    Array.from(files).forEach(file => {
+      const r = new FileReader();
+      r.onload = e => e.target?.result && setDesignImages(p => [...p, e.target.result]);
+      r.readAsDataURL(file);
+    });
+  };
+
+  const handlePrint = () => {
+    const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const imgsHtml = designImages.length
+      ? `<div style="margin:20px 0;padding:15px;border:2px solid #333;border-radius:8px">
+          <h3 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:5px">Design References (${designImages.length})</h3>
+          <div style="display:flex;flex-wrap:wrap;gap:10px">
+            ${designImages.map(img => `<img src="${img}" style="width:calc(33.333% - 10px);min-width:120px;max-width:220px;height:auto;border:1px solid #ddd;border-radius:4px"/>`).join('')}
+          </div></div>`
+      : '';
+    const descHtml = description.trim()
+      ? `<div style="margin:20px 0;padding:15px;border:2px solid #333;border-radius:8px">
+          <h3 style="margin:0 0 8px;font-size:13px;text-transform:uppercase">Instructions</h3>
+          <p style="margin:0;font-size:12px;white-space:pre-wrap">${esc(description)}</p></div>`
+      : '';
+
+    const w = window.open('','','width=800,height=600');
+    w.document.write(`<html><head><title>JO — ${order.joId||'PENDING'}</title>
+      <style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:20px;color:#000}
+      h2{text-align:center;letter-spacing:2px;margin:0 0 4px}
+      .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}
+      .label{font-size:10px;text-transform:uppercase;color:#555;margin-bottom:3px}
+      .val{font-size:14px;font-weight:700}.sep{border-top:2px solid #000;margin:16px 0}
+      @media print{body{margin:10px}}</style></head>
+      <body>
+        <h2>PERSONALIZE ME</h2>
+        <div style="text-align:center;font-size:11px;color:#555;letter-spacing:1px;margin-bottom:16px">Job Order for Production</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div><div class="label">JO ID</div><div style="font-size:20px;font-weight:700">${order.joId||'PENDING'}</div></div>
+          <div style="padding:6px 16px;border:2px solid ${order.isRush?'#dc2626':'#059669'};border-radius:20px;font-weight:700;font-size:12px;color:${order.isRush?'#dc2626':'#059669'};text-transform:uppercase">${order.isRush?'RUSH ORDER':'STANDARD'}</div>
+        </div>
+        ${order.targetCompletion ? `<div style="margin-bottom:12px"><div class="label">Target Completion</div><div class="val">${new Date(order.targetCompletion).toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div></div>` : ''}
+        <div class="sep"></div>
+        <div><div class="label">Customer</div><div class="val">${esc(order.customerName)}</div>
+        <div style="font-size:12px;color:#555;margin-top:2px">${esc(order.customerContact||'')} ${order.customerEmail?'· '+esc(order.customerEmail):''}</div></div>
+        <div class="sep"></div>
+        <div style="padding:12px;border:2px solid #d97706;border-radius:6px;margin:12px 0">
+          <div class="label" style="color:#d97706;border-bottom:1px solid #d97706;padding-bottom:4px;margin-bottom:10px">Product Specifications</div>
+          <div class="grid">
+            <div><div class="label">Product</div><div class="val">${esc(order.productName||'')}</div></div>
+            <div><div class="label">Category</div><div class="val">${esc(order.category||'')}</div></div>
+            <div><div class="label">Variant</div><div class="val">${esc(order.variant||'N/A')}</div></div>
+            <div><div class="label">Quantity</div><div style="font-size:22px;font-weight:700;color:#d97706">${order.quantity} pcs</div></div>
+          </div>
+        </div>
+        ${imgsHtml}${descHtml}
+        <div style="margin-top:24px;padding-top:12px;border-top:1px solid #ccc;font-size:10px;color:#777">
+          Printed: ${new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'})}
+          &nbsp;·&nbsp; Internal Production Document
+        </div>
+      </body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 250);
+    onClose();
+  };
+
+  return (
+    <Modal onClose={onClose} maxWidth={600}>
+      <ModalHeader title={`Print Job Order — ${order.joId || 'PENDING'}`} onClose={onClose} />
+
+      <div style={{ ...S.col, gap:'16px' }}>
+        <div style={{ ...S.card, background:'#f8f9fa', padding:'12px 16px' }}>
+          <div style={{ fontWeight:700, fontSize:'13px', marginBottom:'6px' }}>{order.customerName}</div>
+          <div style={{ fontSize:'12px', color:'#6b7280' }}>{order.productName} × {order.quantity} pcs</div>
+        </div>
+
+        <div>
+          <div style={{ ...S.label, marginBottom:'6px' }}>Design Images <span style={{ fontWeight:400, textTransform:'none', color:'#9ca3af' }}>(optional)</span></div>
+          <div style={{ border:'2px dashed #d1d5db', borderRadius:'8px', padding:'16px', textAlign:'center',
+            background: designImages.length ? '#f8f9fa' : '#fafbfc', cursor:'pointer' }}
+            onClick={() => document.getElementById('_joDesignInput').click()}>
+            {designImages.length > 0
+              ? (
+                <div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(80px,1fr))', gap:'8px', marginBottom:'8px' }}>
+                    {designImages.map((img, i) => (
+                      <div key={i} style={{ position:'relative' }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={img} alt="" style={{ width:'100%', aspectRatio:'1/1', objectFit:'cover', borderRadius:'6px', border:'1px solid #e1e3e5' }} />
+                        <button type="button" onClick={e => { e.stopPropagation(); setDesignImages(p => p.filter((_,j)=>j!==i)); }}
+                          style={{ position:'absolute', top:'-6px', right:'-6px', width:'18px', height:'18px',
+                            background:'#e05252', border:'2px solid #fff', borderRadius:'50%', color:'#fff',
+                            fontSize:'10px', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize:'11px', color:'#6b7280' }}>Click to add more</div>
+                </div>
+              )
+              : (
+                <div>
+                  <div style={{ fontSize:'13px', color:'#374151', marginBottom:'4px' }}>Click to upload design images</div>
+                  <div style={{ fontSize:'11px', color:'#9ca3af' }}>PNG, JPG — multiple supported</div>
+                </div>
+              )
+            }
+            <input id="_joDesignInput" type="file" accept="image/*" multiple style={{ display:'none' }}
+              onChange={e => { if (e.target.files?.length) addFiles(e.target.files); e.target.value=''; }} />
+          </div>
+        </div>
+
+        <div>
+          <div style={{ ...S.label, marginBottom:'6px' }}>Print Instructions <span style={{ fontWeight:400, textTransform:'none', color:'#9ca3af' }}>(optional)</span></div>
+          <textarea value={description} onChange={e => setDescription(e.target.value)}
+            placeholder="Special instructions for production…"
+            rows={3} style={S.textarea} />
+        </div>
+      </div>
+
+      <ModalFooter>
+        <button onClick={onClose} style={S.btnGhost}>Cancel</button>
+        <button onClick={handlePrint} style={S.btnPrimary}>{ICONS.download} Print</button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+// ── Section label helper ──────────────────────────────────────────────────────
+
+function SectionLabel({ children }) {
+  return (
+    <div style={{ fontSize:'11px', fontWeight:700, color:'#6b7280', textTransform:'uppercase',
+      letterSpacing:'.5px', marginBottom:'8px' }}>
+      {children}
+    </div>
+  );
+}
+
+// ── Status transition map ─────────────────────────────────────────────────────
+
+function getAvailableStatuses(o) {
+  if (!o) return [];
+  const s = o.orderStatus;
+  const isCOD = (o.paymentMethod || '').toLowerCase() === 'cod';
+  if (o.isCustom) {
+    return ({
+      pending_review:      ['awaiting_payment'],
+      design_approved:     ['awaiting_payment'],
+      awaiting_production: ['In Production'],
+      'In Production':     ['for_qc'],
+      for_qc:              o.paymentStatus === 'paid' ? ['For Delivery'] : ['ready_for_delivery'],
+      'For Delivery':      ['Delivered'],
+    })[s] ?? [];
+  }
+  if (isCOD) {
+    return ({
+      Pending:        ['Processing', 'Cancelled'],
+      Processing:     ['For Delivery', 'Cancelled'],
+      'For Delivery': ['Delivered'],
+      Delivered:      o.paymentStatus === 'paid' ? [] : ['Returned'],
+    })[s] ?? [];
+  }
+  return ({
+    Pending:        ['Processing', 'Cancelled'],
+    Processing:     ['For Delivery', 'Cancelled'],
+    'For Delivery': ['Delivered'],
+    Delivered:      ['Returned'],
+  })[s] ?? [];
+}
+
+// ── Expanded Order Detail ─────────────────────────────────────────────────────
+
+function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
+  const fmt = n => Number(n ?? 0).toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 });
+
+  const today    = new Date(); today.setHours(0,0,0,0);
+  const canDelete = ['Cancelled','Delivered','Returned'].includes(o.orderStatus);
+
+  const [lo,          setLo]          = useState(o);
+  const [selStatus,   setSelStatus]   = useState(o.orderStatus);
+  const [confirmSt,   setConfirmSt]   = useState(false);
+  const [isUpdating,  setIsUpdating]  = useState(false);
+  const [updateErr,   setUpdateErr]   = useState('');
+  const [designAct,   setDesignAct]   = useState(null);
+  const [designErr,   setDesignErr]   = useState('');
+  const [draftFiles,  setDraftFiles]  = useState([]);
+  const [uploading,   setUploading]   = useState(false);
+
+  useEffect(() => { setLo(o); setSelStatus(o.orderStatus); }, [o]);
+
+  const target   = lo.targetCompletion ? new Date(lo.targetCompletion) : null;
+  const daysLeft = target ? Math.ceil((target - today)/86400000) : null;
+  const isLate   = target && target < today;
+  const available = getAvailableStatuses(lo);
+
+  const handleUpdateStatus = async () => {
+    if (!selStatus || selStatus === lo.orderStatus) return;
+    setIsUpdating(true); setUpdateErr(''); setConfirmSt(false);
+    try {
+      const payload = selStatus === 'Paid' ? { paymentStatus:'paid' } : { orderStatus: selStatus };
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
+        method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify(payload),
+      }, 15000);
+      if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.message || d.error || 'Update failed'); }
+      const updated = selStatus === 'Paid'
+        ? { ...lo, paymentStatus:'paid' }
+        : { ...lo, orderStatus: selStatus };
+      setLo(updated);
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) { setUpdateErr(err.message || 'Update failed'); }
+    finally { setIsUpdating(false); }
+  };
+
+  const handleApproveDesign = async () => {
+    setDesignAct('approving'); setDesignErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/approve-design`,
+        { method:'POST', headers:{ Authorization:`Bearer ${token}` } }, 15000);
+      if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || 'Failed');
+      setLo(p => ({ ...p, designStatus:'approved' }));
+      if (onStatusUpdated) onStatusUpdated(lo.id);
+    } catch (err) { setDesignErr(err.message); }
+    finally { setDesignAct(null); }
+  };
+
+  const handleRejectDesign = async () => {
+    setDesignAct('rejecting'); setDesignErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/reject-design`,
+        { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` }, body: JSON.stringify({ reason: null }) }, 15000);
+      if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || 'Failed');
+      setLo(p => ({ ...p, designStatus:'rejected' }));
+      if (onStatusUpdated) onStatusUpdated(lo.id);
+    } catch (err) { setDesignErr(err.message); }
+    finally { setDesignAct(null); }
+  };
+
+  const handleUploadDesign = async (files) => {
+    if (!files.length) return;
+    setUploading(true); setDesignErr('');
+    try {
+      const form = new FormData();
+      files.forEach(f => form.append('design[]', f));
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}/upload-design`,
+        { method:'POST', headers:{ Authorization:`Bearer ${token}` }, body: form }, 30000);
+      if (!res.ok) throw new Error((await res.json().catch(()=>({}))).message || 'Upload failed');
+      const data = await res.json();
+      const adminDesignUrl = data.order?.adminDesignUrl ?? data.adminDesignUrl ?? null;
+      setLo(p => ({ ...p, adminDesignUrl, orderStatus:'proof_sent', designStatus:'draft_ready' }));
+      setDraftFiles([]);
+      if (onStatusUpdated) onStatusUpdated(lo.id);
+    } catch (err) { setDesignErr(err.message); }
+    finally { setUploading(false); }
+  };
+
+  const hasDesignWork = lo.isCustom || lo.items?.some(i => i.designRequested);
+
+  return (
+    <div style={{ padding:'16px 20px', background:'#f8f9fa', borderBottom:'1px solid #e1e3e5' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
+
+        {/* LEFT — customer + design (if custom) + status */}
+        <div style={{ ...S.card, padding:'14px 16px', display:'flex', flexDirection:'column' }}>
+
+          <SectionLabel>Customer</SectionLabel>
+          <div style={{ fontWeight:700, fontSize:'14px', color:'#1a1a2e', marginBottom:'3px' }}>{lo.customerName}</div>
+          {lo.customerContact && <div style={{ fontSize:'12px', color:'#6b7280' }}>{lo.customerContact}</div>}
+          {lo.customerEmail   && <div style={{ fontSize:'12px', color:'#6b7280', marginBottom:'4px' }}>{lo.customerEmail}</div>}
+
+          {lo.deliveryAddress && (
+            <>
+              <div style={S.divider} />
+              <SectionLabel>Delivery Address</SectionLabel>
+              <div style={{ fontSize:'12px', color:'#374151', lineHeight:1.6 }}>
+                {typeof lo.deliveryAddress === 'object'
+                  ? [lo.deliveryAddress.street, lo.deliveryAddress.barangay && `Brgy. ${lo.deliveryAddress.barangay}`,
+                     lo.deliveryAddress.city, lo.deliveryAddress.province, lo.deliveryAddress.zip].filter(Boolean).join(', ')
+                  : lo.deliveryAddress}
+              </div>
+            </>
+          )}
+
+          {lo.notes && (
+            <>
+              <div style={S.divider} />
+              <div style={{ ...S.note, padding:'8px 12px', fontSize:'12px' }}>
+                <span style={{ fontWeight:600 }}>Notes: </span>{lo.notes}
+              </div>
+            </>
+          )}
+
+          {lo.joId && (
+            <>
+              <div style={S.divider} />
+              <SectionLabel>Job Order</SectionLabel>
+              <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginBottom:'4px' }}>
+                <span style={{ fontFamily:'monospace', fontWeight:700, fontSize:'13px', color:'#1a1a2e' }}>{lo.joId}</span>
+                <StatusBadge status={lo.joStatus || 'Queued'} />
+                {lo.isRush && <span style={{ ...S.badge, background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74', fontSize:'10px' }}>RUSH</span>}
+              </div>
+              {target && (
+                <div style={{ fontSize:'12px', color: isLate ? '#991b1b' : '#6b7280' }}>
+                  Due {target.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })}
+                  {daysLeft !== null && (
+                    <span style={{ fontWeight:600, marginLeft:'6px' }}>
+                      {isLate ? `· ${Math.abs(daysLeft)}d overdue` : `· ${daysLeft}d left`}
+                    </span>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Design workflow — custom orders only */}
+          {hasDesignWork && (
+            <>
+              <div style={S.divider} />
+              <SectionLabel>Design</SectionLabel>
+
+              {lo.designStatus && (
+                <div style={{ marginBottom:'8px' }}>
+                  <span style={{ ...S.badge, fontSize:'11px',
+                    background: lo.designStatus==='approved' ? '#f0fdf4' : lo.designStatus==='rejected' ? '#fef2f2' : '#fff7ed',
+                    color:      lo.designStatus==='approved' ? '#166534' : lo.designStatus==='rejected' ? '#991b1b' : '#c2410c',
+                    border:`1px solid ${lo.designStatus==='approved'?'#bbf7d0':lo.designStatus==='rejected'?'#fecaca':'#fdba74'}` }}>
+                    {lo.designStatus==='approved' ? '✓ Approved'
+                      : lo.designStatus==='rejected' ? '✗ Rejected'
+                      : lo.designStatus==='revision_requested' ? '↩ Revision Requested'
+                      : lo.designStatus==='draft_ready' ? '⏳ Awaiting Review'
+                      : '⏳ Pending'}
+                  </span>
+                </div>
+              )}
+
+              {lo.orderStatus==='revision_requested' && lo.revisionNotes && (
+                <div style={{ ...S.note, background:'#fff7ed', border:'1px solid #fdba74', marginBottom:'8px', fontSize:'12px' }}>
+                  <span style={{ fontWeight:600, color:'#c2410c' }}>↩ Revision: </span>{lo.revisionNotes}
+                </div>
+              )}
+
+              {lo.designFilePath && (
+                <a href={`${API_URL}/storage/${lo.designFilePath}`} target="_blank" rel="noopener noreferrer"
+                  style={{ display:'inline-flex', alignItems:'center', gap:'4px', fontSize:'12px', fontWeight:600, color:'#2563eb', textDecoration:'none', marginBottom:'8px' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  View Customer File
+                </a>
+              )}
+
+              {(!lo.designStatus || lo.designStatus==='pending_review') && lo.designFilePath && (
+                <div style={{ display:'flex', gap:'6px', marginBottom:'8px' }}>
+                  <button onClick={handleApproveDesign} disabled={!!designAct}
+                    style={{ flex:1, padding:'5px 0', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'6px', color:'#166534', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
+                    {designAct==='approving' ? 'Approving…' : '✓ Approve'}
+                  </button>
+                  <button onClick={handleRejectDesign} disabled={!!designAct}
+                    style={{ flex:1, padding:'5px 0', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:'6px', color:'#991b1b', fontSize:'12px', fontWeight:700, cursor:designAct?'not-allowed':'pointer', opacity:designAct?.6:1 }}>
+                    {designAct==='rejecting' ? 'Rejecting…' : '✗ Reject'}
+                  </button>
+                </div>
+              )}
+
+              {lo.items?.some(i => i.designRequested) && (
+                <div>
+                  {lo.adminDesignUrl && !draftFiles.length && (
+                    <div style={{ fontSize:'11px', color:'#6b7280', marginBottom:'6px' }}>
+                      <a href={lo.adminDesignUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ color:'#c9973f', fontWeight:600, textDecoration:'none' }}>View Sent Draft ↗</a>
+                      <span style={{ marginLeft:'6px' }}>— Awaiting review</span>
+                    </div>
+                  )}
+                  {draftFiles.length > 0 ? (
+                    <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
+                      <div style={{ fontSize:'11px', color:'#6b7280' }}>{draftFiles.length} file{draftFiles.length>1?'s':''} ready</div>
+                      <div style={{ display:'flex', gap:'6px' }}>
+                        <button onClick={() => handleUploadDesign(draftFiles)} disabled={uploading}
+                          style={{ flex:1, padding:'5px 0', background:'#c9973f', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:uploading?'not-allowed':'pointer', opacity:uploading?.6:1 }}>
+                          {uploading ? 'Sending…' : `Send ${draftFiles.length} File${draftFiles.length>1?'s':''}`}
+                        </button>
+                        <button onClick={() => setDraftFiles([])} disabled={uploading}
+                          style={{ padding:'5px 10px', background:'transparent', border:'1px solid #e1e3e5', borderRadius:'6px', color:'#6b7280', fontSize:'12px', cursor:'pointer' }}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label style={{ cursor:'pointer', display:'inline-block' }}>
+                      <div style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'4px 10px', border:'1px solid #c9973f', borderRadius:'6px', color:'#c9973f', fontSize:'12px', fontWeight:700, cursor:'pointer' }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+                        Upload Draft
+                      </div>
+                      <input type="file" accept="image/*,video/*,.pdf,.ai,.psd,.svg" multiple style={{ display:'none' }}
+                        onChange={e => { const f=Array.from(e.target.files??[]).slice(0,5); if(f.length) setDraftFiles(f); e.target.value=''; }} />
+                    </label>
+                  )}
+                </div>
+              )}
+              {designErr && <div style={{ fontSize:'11px', color:'#991b1b', marginTop:'4px' }}>{designErr}</div>}
+            </>
+          )}
+
+          {/* Update Status */}
+          <div style={S.divider} />
+          <SectionLabel>Update Status</SectionLabel>
+          {['pending_design','revision_requested'].includes(lo.orderStatus) ? (
+            <span style={{ fontSize:'11px', color:'#9ca3af', fontStyle:'italic' }}>Managed via design upload above</span>
+          ) : ['awaiting_payment','ready_for_delivery'].includes(lo.orderStatus) ? (
+            <span style={{ fontSize:'11px', color:'#9ca3af', fontStyle:'italic' }}>Waiting for customer payment</span>
+          ) : available.length > 0 ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+              <CustomSelect
+                value={selStatus}
+                onChange={v => { setSelStatus(v); setConfirmSt(false); setUpdateErr(''); }}
+                options={[
+                  { value: lo.orderStatus, label: `${lo.orderStatus} (current)` },
+                  ...available.map(s => ({ value: s, label: s })),
+                ]}
+              />
+              {!confirmSt ? (
+                <button onClick={() => selStatus !== lo.orderStatus && setConfirmSt(true)}
+                  disabled={selStatus === lo.orderStatus}
+                  style={{ ...S.btnSmGhost, justifyContent:'center', opacity: selStatus===lo.orderStatus?.5:1, cursor: selStatus===lo.orderStatus?'not-allowed':'pointer' }}>
+                  Update Status
+                </button>
+              ) : (
+                <div style={{ display:'flex', gap:'6px' }}>
+                  <button onClick={handleUpdateStatus} disabled={isUpdating}
+                    style={{ flex:1, padding:'6px 0', background:'#c9973f', border:'none', borderRadius:'6px', color:'#fff', fontSize:'12px', fontWeight:700, cursor:isUpdating?'not-allowed':'pointer' }}>
+                    {isUpdating ? 'Updating…' : `→ ${selStatus}`}
+                  </button>
+                  <button onClick={() => { setConfirmSt(false); setSelStatus(lo.orderStatus); }}
+                    style={{ padding:'6px 10px', background:'transparent', border:'1px solid #e1e3e5', borderRadius:'6px', color:'#6b7280', fontSize:'12px', cursor:'pointer' }}>
+                    Cancel
+                  </button>
+                </div>
+              )}
+              {updateErr && <div style={{ fontSize:'11px', color:'#991b1b' }}>{updateErr}</div>}
+            </div>
+          ) : (
+            <span style={{ fontSize:'11px', color:'#9ca3af', fontStyle:'italic' }}>
+              {['Cancelled','Returned','Delivered'].includes(lo.orderStatus) ? 'No further updates' : 'No available transitions'}
+            </span>
+          )}
+        </div>
+
+        {/* RIGHT — order items + payment */}
+        <div style={{ ...S.card, padding:'14px 16px' }}>
+          <SectionLabel>Order</SectionLabel>
+
+          <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginBottom:'12px', paddingBottom:'12px', borderBottom:'1px solid #e1e3e5' }}>
+            {(Array.isArray(lo.items) && lo.items.length > 0 ? lo.items : []).map((item, i) => {
+              const name    = item.productName || item.product_name || '—';
+              const variant = item.variantName || item.variant_name || null;
+              const unit    = Number(item.unitPrice ?? 0);
+              const qty     = Number(item.qty ?? item.quantity ?? 1);
+              const line    = Number(item.lineTotal ?? unit * qty);
+              return (
+                <div key={i} style={{ display:'flex', gap:'10px', alignItems:'flex-start', padding:'8px', background:'#f8f9fa', borderRadius:'6px', border:'1px solid #f0f1f2' }}>
+                  <div style={{ width:'38px', height:'38px', borderRadius:'6px', background:item.thumbnail?'transparent':'#e9ecef', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
+                    {item.thumbnail
+                      ? <img src={item.thumbnail} alt={name} style={{ objectFit:'cover', width:'38px', height:'38px', borderRadius:'6px' }} />
+                      : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#adb5bd" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    }
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:'13px', fontWeight:600, color:'#1a1a2e' }}>{name}</div>
+                    {variant && <div style={{ fontSize:'11px', color:'#6b7280' }}>{variant}</div>}
+                    {item.designRequested && (
+                      <span style={{ fontSize:'10px', fontWeight:700, color:'#c9973f', background:'#fff7ed', padding:'1px 5px', borderRadius:'3px', border:'1px solid #fdba74', marginTop:'2px', display:'inline-block' }}>Design Service</span>
+                    )}
+                  </div>
+                  <div style={{ textAlign:'right', flexShrink:0 }}>
+                    <div style={{ fontSize:'11px', color:'#9ca3af' }}>₱{fmt(unit)} ×{qty}</div>
+                    <div style={{ fontSize:'13px', fontWeight:700, color:'#1a1a2e' }}>₱{fmt(line)}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <SectionLabel>Payment</SectionLabel>
+          {Number(lo.discountAmount) > 0 && (
+            <InfoRow label="Subtotal" value={`₱${fmt(Number(lo.totalAmount??0) + Number(lo.discountAmount))}`} />
+          )}
+          {Number(lo.discountAmount) > 0 && (
+            <InfoRow label={`Voucher${lo.voucherCode ? ` (${lo.voucherCode})` : ''}`} value={`−₱${fmt(lo.discountAmount)}`} />
+          )}
+          {Number(lo.shippingFee) > 0 && (
+            <InfoRow label="Shipping" value={`₱${fmt(lo.shippingFee)}`} />
+          )}
+          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'13px', fontWeight:700, padding:'4px 0', borderTop:'1px solid #e1e3e5', marginTop:'4px' }}>
+            <span style={{ color:'#1a1a2e' }}>Total</span>
+            <span style={{ color:'#c9973f' }}>₱{fmt(lo.totalAmount ?? lo.totalPrice)}</span>
+          </div>
+          <InfoRow label="Paid" value={`₱${fmt(lo.downPayment)}`} />
+          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', padding:'3px 0' }}>
+            <span style={{ color:'#6b7280' }}>Balance</span>
+            <span style={{ fontWeight:700, color: Number(lo.balance??0) <= 0 ? '#166534' : '#c2410c' }}>₱{fmt(lo.balance)}</span>
+          </div>
+
+          {Array.isArray(lo.paymentHistory) && lo.paymentHistory.length > 0 && (
+            <>
+              <div style={S.divider} />
+              <SectionLabel>Payment History</SectionLabel>
+              {lo.paymentHistory.map((p, i) => (
+                <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', padding:'2px 0' }}>
+                  <span style={{ color:'#6b7280' }}>{p.method}{p.note ? ` — ${p.note}` : ''}</span>
+                  <span style={{ color:'#166534', fontWeight:600 }}>+₱{fmt(p.amount)}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Action row */}
+      <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginTop:'12px' }}>
+        {lo.paymentStatus !== 'paid' && (
+          <button onClick={onPayment} style={{ ...S.btnSmGhost, color:'#166534', borderColor:'#bbf7d0' }}>Record Payment</button>
+        )}
+        {canDelete && (
+          <button onClick={onDelete} style={S.btnSmDanger}>{ICONS.trash} Archive</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+export default function OrdersPage() {
+  const { token } = useAuth();
+
+  const [orders,       setOrders]       = useState([]);
+  const [search,       setSearch]       = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [payFilter,    setPayFilter]    = useState('all');
+  const [dateFilter,   setDateFilter]   = useState('this-month');
+  const [customFrom,   setCustomFrom]   = useState('');
+  const [customTo,     setCustomTo]     = useState('');
+  const [expandedId,   setExpandedId]   = useState(null);
+  const [loading,      setLoading]      = useState(true);
+  const [loadError,    setLoadError]    = useState('');
+  const [refreshing,   setRefreshing]   = useState(false);
+
+  // Modals
+  const [payTarget,     setPayTarget]     = useState(null);
+  const [archiveId,     setArchiveId]     = useState(null);
+  const [showJOQueue,   setShowJOQueue]   = useState(false);
+  const [printTarget,   setPrintTarget]   = useState(null);
+  const [showArchived,  setShowArchived]  = useState(false);
+
+  const skipPollRef = useRef(false);
+  const pollRef     = useRef(null);
+
+  const fetchOrders = useCallback(async (silent = false) => {
+    if (!silent) setRefreshing(true);
+    skipPollRef.current = false;
+    setLoadError('');
+    try {
+      const data = await fetchAllOrdersNew(token, { page:1, limit:PAGE_LIMIT, showArchived });
+      setOrders(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setLoadError('Failed to load orders.');
+      console.error(e);
+    } finally {
+      setRefreshing(false);
+      setLoading(false);
+    }
+  }, [token, showArchived]);
+
+  useEffect(() => { if (token) fetchOrders(); }, [token, fetchOrders]);
+
+  useEffect(() => {
+    if (!token) return;
+    pollRef.current = setInterval(() => {
+      if (!refreshing && !skipPollRef.current) fetchOrders(true);
+    }, POLL_MS);
+    return () => clearInterval(pollRef.current);
+  }, [token, refreshing, fetchOrders]);
+
+  // ── Filter + sort ───────────────────────────────────────────────────────────
+
+  const filtered = orders.filter(o => {
+    const q = search.toLowerCase();
+    const matchSearch = !q ||
+      (o.customerName || '').toLowerCase().includes(q) ||
+      (o.id || '').toLowerCase().includes(q) ||
+      (o.productName || '').toLowerCase().includes(q);
+
+    const matchStatus = statusFilter === 'All' || o.orderStatus === statusFilter;
+    const matchPay    = payFilter === 'all' || o.paymentStatus === payFilter;
+
+    let matchDate = true;
+    const d    = new Date(o.createdAt); d.setHours(0,0,0,0);
+    const now  = new Date();            now.setHours(0,0,0,0);
+    if (dateFilter === 'today') {
+      matchDate = d.getTime() === now.getTime();
+    } else if (dateFilter === 'this-week') {
+      matchDate = d >= new Date(now - 7*86400000);
+    } else if (dateFilter === 'this-month') {
+      matchDate = d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    } else if (dateFilter === 'custom' && customFrom && customTo) {
+      const from = new Date(customFrom); from.setHours(0,0,0,0);
+      const to   = new Date(customTo);   to.setHours(23,59,59,999);
+      matchDate  = d >= from && d <= to;
+    }
+
+    return matchSearch && matchStatus && matchPay && matchDate;
+  }).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  // ── Summary counts ──────────────────────────────────────────────────────────
+
+  const counts = {
+    all:          orders.length,
+    pending:      orders.filter(o => o.orderStatus === 'Pending').length,
+    inProduction: orders.filter(o => o.orderStatus === 'In Production').length,
+    forDelivery:  orders.filter(o => o.orderStatus === 'For Delivery').length,
+    delivered:    orders.filter(o => o.orderStatus === 'Delivered').length,
+    cancelled:    orders.filter(o => o.orderStatus === 'Cancelled').length,
+  };
+
+  const { slice, page, perPage, total, setPage, setPerPage } = usePagination(filtered);
+
+  const fmt = n => Number(n ?? 0).toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 });
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+
+  return (
+    <ErrorBoundary>
+      <div style={S.page}>
+
+        {/* Summary cards — click to filter */}
+        <div style={{ display:'flex', gap:'10px', flexWrap:'wrap', marginBottom:'16px' }}>
+          {[
+            { label:'Total Orders',   value:counts.all,          id:'All'           },
+            { label:'Pending',        value:counts.pending,       id:'Pending'       },
+            { label:'In Production',  value:counts.inProduction,  id:'In Production' },
+            { label:'For Delivery',   value:counts.forDelivery,   id:'For Delivery'  },
+            { label:'Delivered',      value:counts.delivered,     id:'Delivered'     },
+            { label:'Cancelled',      value:counts.cancelled,     id:'Cancelled'     },
+          ].map(c => (
+            <div key={c.id} onClick={() => { setStatusFilter(c.id); setPage(1); }}
+              style={{ cursor:'pointer', flex:'1', minWidth:'100px' }}>
+              <SummaryCard label={c.label} value={c.value}
+                accent={statusFilter === c.id}
+                color={statusFilter === c.id ? '#c9973f' : undefined} />
+            </div>
+          ))}
+        </div>
+
+        {/* Status pill tabs */}
+        <div style={{ display:'flex', gap:'4px', background:'#f3f4f6', borderRadius:'8px', padding:'3px', alignSelf:'flex-start', marginBottom:'14px', flexWrap:'wrap' }}>
+          {STATUS_TABS.map(s => (
+            <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
+              style={{ padding:'6px 14px', borderRadius:'6px', border:'none', cursor:'pointer',
+                fontWeight:600, fontSize:'12px',
+                background: statusFilter === s ? '#fff' : 'transparent',
+                color:      statusFilter === s ? '#1a1a2e' : '#6b7280',
+                boxShadow:  statusFilter === s ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
+                transition:'all .15s', whiteSpace:'nowrap',
+              }}>{s}</button>
+          ))}
+        </div>
+
+        {/* Toolbar */}
+        <div style={{ ...S.card, ...S.rowBetween, marginBottom:'10px', padding:'12px 16px' }}>
+          <div style={{ ...S.row, gap:'8px', flex:1 }}>
+            <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }}
+              placeholder="Search order, customer, product…" style={{ width:'260px' }} />
+
+            <CustomSelect
+              value={payFilter}
+              onChange={v => { setPayFilter(v); setPage(1); }}
+              style={{ width:'140px' }}
+              options={[
+                { value:'all',     label:'All Payments' },
+                { value:'paid',    label:'Paid'         },
+                { value:'partial', label:'Partial'      },
+                { value:'unpaid',  label:'Unpaid'       },
+              ]}
+            />
+
+            <CustomSelect
+              value={dateFilter}
+              onChange={v => setDateFilter(v)}
+              style={{ width:'150px' }}
+              options={[
+                { value:'today',      label:'Today'        },
+                { value:'this-week',  label:'This Week'    },
+                { value:'this-month', label:'This Month'   },
+                { value:'all-time',   label:'All Time'     },
+                { value:'custom',     label:'Custom Range' },
+              ]}
+            />
+
+            {dateFilter === 'custom' && (
+              <>
+                <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ ...S.input, width:'140px' }} />
+                <input type="date" value={customTo}   onChange={e => setCustomTo(e.target.value)}   style={{ ...S.input, width:'140px' }} />
+              </>
+            )}
+          </div>
+
+          <div style={S.row}>
+            {refreshing && <span style={{ fontSize:'12px', color:'#9ca3af' }}>Refreshing…</span>}
+            <button onClick={() => setShowJOQueue(true)} style={S.btnSmGhost}>{ICONS.pkg} JO Queue</button>
+            <button
+              onClick={() => setShowArchived(v => !v)}
+              style={{ ...S.btnSmGhost, ...(showArchived ? { background:'#fff7ed', color:'#c2410c', borderColor:'#fdba74' } : {}) }}>
+              {showArchived ? 'Hide Archived' : 'Show Archived'}
+            </button>
+            <button onClick={() => fetchOrders()} style={S.btnSmGhost}>{ICONS.reload}</button>
+            <span style={{ fontSize:'12px', color:'#6b7280', whiteSpace:'nowrap' }}>{total} order{total !== 1 ? 's' : ''}</span>
+          </div>
+        </div>
+
+        {loadError && <div style={{ ...S.note, background:'#fef2f2', border:'1px solid #fecaca', color:'#991b1b', marginBottom:'10px' }}>{loadError}</div>}
+
+        {/* Table */}
+        <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr>
+                  {['','Order Ref','Type','Customer','Product','Qty','Total','Status','Payment','Date'].map((h,i) => (
+                    <th key={i} style={{ ...S.th, ...(i===0 ? {width:'36px'} : {}), textAlign: [5,6,7,8].includes(i) ? 'center' : 'left' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={10} style={{ padding:'40px', textAlign:'center', color:'#9ca3af', fontSize:'13px' }}>Loading orders…</td></tr>
+                ) : total === 0 ? (
+                  <tr><td colSpan={10}>
+                    <EmptyState message="No orders found" sub="Try adjusting your search or filter." />
+                  </td></tr>
+                ) : slice.map(o => {
+                  const isOpen = expandedId === o.id;
+                  const isArch = !!o.isArchived;
+                  return (
+                    <React.Fragment key={o.id}>
+                      <tr style={{ ...S.tr, cursor:'pointer',
+                        background: isOpen ? '#fafbfc' : isArch ? '#f9fafb' : undefined,
+                        opacity: isArch ? 0.65 : 1,
+                        borderBottom: isOpen ? 'none' : undefined }}
+                        onClick={() => setExpandedId(isOpen ? null : o.id)}
+                        onMouseEnter={e => !isOpen && (e.currentTarget.style.background='#fafbfc')}
+                        onMouseLeave={e => !isOpen && (e.currentTarget.style.background= isArch ? '#f9fafb' : '')}>
+
+                        <td style={{ ...S.td, textAlign:'center', width:'36px' }}>
+                          <Chevron open={isOpen} />
+                        </td>
+                        <td style={{ ...S.td, fontFamily:'monospace', fontWeight:700, fontSize:'12px', color:'#c9973f', whiteSpace:'nowrap' }}>
+                          #{String(o.id ?? '').slice(-8).toUpperCase()}
+                        </td>
+                        <td style={{ ...S.td }}>
+                          <TypeBadge isCustom={o.isCustom} />
+                        </td>
+                        <td style={{ ...S.td }}>
+                          <div style={{ fontWeight:600, fontSize:'13px' }}>{o.customerName}</div>
+                          {o.customerContact && <div style={{ fontSize:'11px', color:'#9ca3af' }}>{o.customerContact}</div>}
+                        </td>
+                        <td style={{ ...S.td }}>
+                          <div style={{ fontSize:'13px' }}>{o.productName}</div>
+                          {o.category && <div style={{ fontSize:'11px', color:'#9ca3af' }}>{o.category}</div>}
+                        </td>
+                        <td style={{ ...S.td, textAlign:'center', color:'#6b7280', fontSize:'12px' }}>{o.quantity}</td>
+                        <td style={{ ...S.td, textAlign:'center', fontWeight:700, fontFamily:'monospace', fontSize:'12px', color:'#c9973f', whiteSpace:'nowrap' }}>
+                          ₱{fmt(o.totalAmount ?? o.totalPrice)}
+                        </td>
+                        <td style={{ ...S.td, textAlign:'center' }}>
+                          <StatusBadge status={o.orderStatus} />
+                          {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'#f3f4f6', color:'#6b7280', border:'1px solid #e5e7eb', marginLeft:'4px' }}>Archived</span>}
+                        </td>
+                        <td style={{ ...S.td, textAlign:'center' }}>
+                          <PayBadge status={o.paymentStatus} />
+                        </td>
+                        <td style={{ ...S.td, fontSize:'11px', color:'#9ca3af', whiteSpace:'nowrap' }}>
+                          {o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' }) : '—'}
+                        </td>
+                      </tr>
+
+                      {isOpen && (
+                        <tr key={`${o.id}_detail`}>
+                          <td colSpan={10} style={{ padding:0 }}>
+                            <OrderDetail
+                              o={o}
+                              token={token}
+                              onStatusUpdated={(id, updated) => {
+                                if (updated) setOrders(prev => prev.map(x => x.id === id ? { ...x, ...updated } : x));
+                                else fetchOrders(true);
+                              }}
+                              onPayment={() => setPayTarget(o)}
+                              onDelete={()  => setArchiveId(o.id)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {total > 0 && (
+            <div style={{ padding:'12px 16px', borderTop:'1px solid #f0f1f2' }}>
+              <PaginationBar total={total} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+            </div>
+          )}
+        </div>
+
+        {/* Modals */}
+        {payTarget && (
+          <PaymentModal
+            order={payTarget}
+            onClose={() => setPayTarget(null)}
+            onSuccess={updated => {
+              if (updated) setOrders(prev => prev.map(o => o.id === payTarget.id ? { ...o, ...updated, id:o.id } : o));
+            }}
+          />
+        )}
+
+        {archiveId && (
+          <ArchiveModal
+            orderId={archiveId}
+            onClose={() => setArchiveId(null)}
+            onArchived={id => setOrders(prev => prev.filter(o => o.id !== id))}
+          />
+        )}
+
+        {showJOQueue && (
+          <JOQueueModal
+            orders={orders}
+            token={token}
+            onClose={() => setShowJOQueue(false)}
+            onJOUpdated={(id, status) => setOrders(prev => prev.map(o => o.id === id ? { ...o, joStatus:status } : o))}
+            onPrintJO={o => { setPrintTarget(o); setShowJOQueue(false); }}
+          />
+        )}
+
+        {printTarget && (
+          <PrintJOModal order={printTarget} onClose={() => setPrintTarget(null)} />
+        )}
+
+      </div>
+    </ErrorBoundary>
+  );
+}

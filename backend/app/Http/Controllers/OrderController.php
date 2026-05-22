@@ -635,6 +635,7 @@ class OrderController extends Controller
                         'isRush',
                     ]);
                 }])
+                ->where('isArchived', '!=', true)
                 ->orderBy('createdAt', 'desc');
 
             if ($request->filled('orderStatus')) {
@@ -1092,7 +1093,7 @@ class OrderController extends Controller
 
     /**
      * DELETE /api/admin/orders/{id}
-     * Permanently deletes an order. Owner/Admin only.
+     * Soft-deletes (archives) an order. Owner/Admin only.
      */
     public function hardDelete(Request $request, $id)
     {
@@ -1107,15 +1108,13 @@ class OrderController extends Controller
                 return response()->json(['error' => 'Order not found'], 404);
             }
 
-            if ($order->designFilePath) {
-                try { Storage::disk('public')->delete($order->designFilePath); } catch (\Exception $e) {}
-            }
+            $order->isArchived = true;
+            $order->archivedAt = now();
+            $order->save();
 
-            $order->delete();
-
-            return response()->json(['message' => 'Order deleted']);
+            return response()->json(['message' => 'Order archived']);
         } catch (\Exception $e) {
-            return $this->serverErrorResponse($e, 'Failed to delete order.');
+            return $this->serverErrorResponse($e, 'Failed to archive order.');
         }
     }
 
@@ -1140,11 +1139,18 @@ class OrderController extends Controller
             $page = max((int) $request->input('page', 1), 1);
             $skip = ($page - 1) * $limit;
 
-            $orders = Order::select($this->orderListFields())
+            $showArchived = $request->boolean('showArchived', false);
+
+            $query = Order::select($this->orderListFields())
                 ->orderBy('createdAt', 'desc')
                 ->skip($skip)
-                ->limit($limit)
-                ->get();
+                ->limit($limit);
+
+            if (!$showArchived) {
+                $query->where('isArchived', '!=', true);
+            }
+
+            $orders = $query->get();
 
             return response()->json(['orders' => $orders]);
         } catch (\Exception $e) {
@@ -1424,36 +1430,56 @@ class OrderController extends Controller
             // Restore BOM raw materials deducted at order creation
             foreach ($order->items as $item) {
                 $bomProduct = Product::find($item['productId'] ?? null);
-                if (!$bomProduct || empty($bomProduct->bomId)) continue;
-                try {
+                if (!$bomProduct) continue;
+                $variantId = $item['variantId'] ?? null;
+
+                // Same three-path BOM lookup used at order creation
+                $bom = null;
+                if (!empty($bomProduct->bomGroupName) && $variantId) {
+                    $bom = BillOfMaterial::find($variantId);
+                } elseif (!empty($bomProduct->bomId)) {
                     $bom = BillOfMaterial::find($bomProduct->bomId);
-                    if ($bom && !empty($bom->components)) {
-                        foreach ($bom->components as $component) {
-                            $rawInv = Inventory::find($component['inventoryId'] ?? null);
-                            if (!$rawInv || $rawInv->isOnDemand) continue;
-                            $qty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 0));
-                            if ($qty <= 0) continue;
-                            $updated = DB::connection('mongodb')
-                                ->getCollection('inventories')
-                                ->findOneAndUpdate(
-                                    ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],
-                                    ['$inc' => ['stockQty' => $qty]],
-                                    ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
-                                );
-                            $newQty = (int) ($updated->stockQty ?? (($rawInv->stockQty ?? 0) + $qty));
-                            StockHistory::create([
-                                'inventoryId'  => (string) $rawInv->_id,
-                                'quantity'     => $qty,
-                                'remainingQty' => $newQty,
-                                'unitCost'     => $rawInv->averageCost ?? 0,
-                                'totalCost'    => 0,
-                                'reason'       => 'order_cancelled',
-                                'type'         => 'adjustment',
-                                'performedBy'  => 'system',
-                                'remarks'      => 'Order cancelled (BOM restore): ' . (string) $order->_id,
-                                'createdAt'    => now(),
-                            ]);
+                }
+                if (!$bom && $variantId && !empty($bomProduct->combinations)) {
+                    foreach ($bomProduct->combinations as $combo) {
+                        if ((string) ($combo['id'] ?? $combo['_id'] ?? '') === (string) $variantId && !empty($combo['bomId'])) {
+                            $bom = BillOfMaterial::find($combo['bomId']);
+                            break;
                         }
+                    }
+                }
+
+                if (!$bom || empty($bom->components)) continue;
+                try {
+                    foreach ($bom->components as $component) {
+                        $rawInv = Inventory::find($component['inventoryId'] ?? null);
+                        if (!$rawInv || $rawInv->isOnDemand) continue;
+                        $qty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 0));
+                        if ($qty <= 0) continue;
+                        $updated = DB::connection('mongodb')
+                            ->getCollection('inventories')
+                            ->findOneAndUpdate(
+                                ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],
+                                ['$inc' => ['stockQty' => $qty]],
+                                ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                            );
+                        $newQty = (int) ($updated->stockQty ?? (($rawInv->stockQty ?? 0) + $qty));
+                        StockHistory::create([
+                            'inventoryId'  => (string) $rawInv->_id,
+                            'quantity'     => $qty,
+                            'remainingQty' => $newQty,
+                            'unitCost'     => $rawInv->averageCost ?? 0,
+                            'totalCost'    => 0,
+                            'reason'       => 'order_cancelled',
+                            'type'         => 'adjustment',
+                            'performedBy'  => 'system',
+                            'orderId'      => (string) $order->_id,
+                            'productId'    => (string) ($bomProduct->_id ?? ''),
+                            'productName'  => $bomProduct->name ?? '',
+                            'customerName' => $order->userSnapshot['name'] ?? '',
+                            'remarks'      => 'Order cancelled (BOM restore): ' . (string) $order->_id,
+                            'createdAt'    => now(),
+                        ]);
                     }
                 } catch (\Exception $bomErr) {
                     Log::warning('restoreStockOnCancel: BOM restore failed', [

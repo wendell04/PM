@@ -35,6 +35,8 @@ class Order extends Model
         'discountAmount'       => 'float',
         'isCustomOrder'        => 'boolean',
         'designType'           => 'string',
+        'isArchived'           => 'boolean',
+        'archivedAt'           => 'datetime',
     ];
 
     protected $indexes = [
@@ -54,6 +56,7 @@ class Order extends Model
         'statusHistory'      => [],
         'orderSource'        => 'online',
         'isCustomOrder'      => false,
+        'isArchived'         => false,
     ];
 
     public function getItemsAttribute($value)
