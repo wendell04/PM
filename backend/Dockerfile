@@ -4,7 +4,7 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
-RUN install-php-extensions mongodb ctype curl dom fileinfo filter hash mbstring openssl pcre pdo session tokenizer xml
+RUN install-php-extensions mongodb-^1.21 ctype curl dom fileinfo filter hash mbstring openssl pcre pdo session tokenizer xml
 
 COPY composer.json composer.lock artisan ./
 RUN composer install --optimize-autoloader --no-scripts --no-interaction
