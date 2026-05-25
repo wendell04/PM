@@ -4,7 +4,9 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
-RUN install-php-extensions mongodb-^1.21 ctype curl dom fileinfo filter hash mbstring openssl pcre pdo session tokenizer xml
+RUN apt-get update && apt-get install -y git unzip zip libzip-dev && rm -rf /var/lib/apt/lists/*
+
+RUN install-php-extensions mongodb-^1.21 ctype curl dom fileinfo filter hash mbstring openssl pcre pdo session tokenizer xml zip
 
 COPY composer.json composer.lock artisan ./
 RUN composer install --optimize-autoloader --no-scripts --no-interaction
