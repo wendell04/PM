@@ -6,20 +6,5 @@
 :{$PORT:80} {
     root * /app/public
     encode zstd br gzip
-
-    @options method OPTIONS
-    handle @options {
-        header Access-Control-Allow-Origin "*"
-        header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-        header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Accept, X-XSRF-TOKEN"
-        header Access-Control-Max-Age "86400"
-        respond "" 204
-    }
-
-    header {
-        -Access-Control-Allow-Origin
-        Access-Control-Allow-Origin "*"
-    }
-
     php_server
 }

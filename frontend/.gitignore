@@ -32,3 +32,4 @@ yarn-error.log*
 thumbs.db
 # Build log artifacts
 *.log
+.vercel
