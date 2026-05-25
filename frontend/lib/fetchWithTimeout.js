@@ -9,7 +9,6 @@ export async function fetchWithTimeout(
     const id = setTimeout(() => controller.abort(), timeout);
     try {
       const headers = {
-        'ngrok-skip-browser-warning': '1',
         ...(options.headers || {}),
       };
       const response = await fetch(url, {
