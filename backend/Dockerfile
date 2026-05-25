@@ -1,5 +1,7 @@
 FROM dunglas/frankenphp:php8.2-bookworm
 
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
 WORKDIR /app
 
 RUN install-php-extensions mongodb ctype curl dom fileinfo filter hash mbstring openssl pcre pdo session tokenizer xml
