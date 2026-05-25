@@ -1,0 +1,10 @@
+{
+    frankenphp
+    admin off
+}
+
+:{$PORT:80} {
+    root * /app/public
+    encode zstd br gzip
+    php_server
+}

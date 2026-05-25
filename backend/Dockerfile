@@ -13,9 +13,11 @@ RUN composer install --optimize-autoloader --no-scripts --no-interaction
 
 COPY . .
 
+COPY Caddyfile /etc/caddy/Caddyfile
+
 RUN mkdir -p storage/framework/{sessions,views,cache,testing} storage/logs bootstrap/cache \
     && chmod -R 777 storage bootstrap/cache
 
 EXPOSE 80 443 8080
 
-CMD ["/start-container.sh"]
+CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
