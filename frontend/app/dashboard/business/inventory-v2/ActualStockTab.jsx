@@ -298,7 +298,7 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
         <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
           <SearchBar value={histSearch} onChange={setHistSearch} placeholder="Search material, reason, or ref…" style={{ width:'260px' }} />
           <CustomSelect value={histTypeFilter} onChange={setHistTypeFilter}
-            options={['All','Adjustment','Production']}
+            options={['All','Sale','Adjustment','Production']}
             style={{ width:'140px' }} />
         </div>
       </div>
@@ -323,13 +323,14 @@ export default function ActualStockTab({ materials, batches, setBatches, badOrde
               ) : hSlice.map(s => {
                 const mat = materials.find(m => m.id === s.matId);
                 const isProduction = s.type === 'production';
+                const isSale = s.type === 'sale';
                 return (
                   <tr key={s.id} style={S.tr} onMouseEnter={e => e.currentTarget.style.background='#fafbfc'} onMouseLeave={e => e.currentTarget.style.background=''}>
                     <td style={{ ...S.td, whiteSpace:'nowrap' }}>{formatDate(s.date)}</td>
                     <td style={{ ...S.td, fontFamily:'monospace', fontSize:'12px', color:'#6b7280' }}>{s.ref || '—'}</td>
                     <td style={S.td}>
-                      <span style={{ background: isProduction ? '#f0f4ff' : '#f3f4f6', color: isProduction ? '#1e40af' : '#374151', borderRadius:'5px', padding:'2px 8px', fontSize:'11px', fontWeight:600 }}>
-                        {isProduction ? 'Production' : 'Adjustment'}
+                      <span style={{ background: isProduction ? '#f0f4ff' : isSale ? '#f0fdf4' : '#f3f4f6', color: isProduction ? '#1e40af' : isSale ? '#166534' : '#374151', borderRadius:'5px', padding:'2px 8px', fontSize:'11px', fontWeight:600 }}>
+                        {isProduction ? 'Production' : isSale ? 'Sale' : 'Adjustment'}
                       </span>
                     </td>
                     <td style={{ ...S.td, fontWeight:500 }}>{s.matName}</td>

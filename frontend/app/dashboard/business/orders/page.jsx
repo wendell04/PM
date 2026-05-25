@@ -6,22 +6,29 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchAllOrdersNew, updateJobOrderStatus, deleteOrder as deleteOrderApi } from '@/lib/ordersApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 import { S, ICONS, SearchBar, SummaryCard, PaginationBar, EmptyState, usePagination, CustomSelect } from '../inventory-v2/shared';
+import { getStatusBadge } from '@/lib/utils/orderHelpers';
 
 const API_URL    = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const POLL_MS    = 30000;
 const PAGE_LIMIT = 500;
+const EXPIRY_DAYS = 7;
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const STATUS_TABS = ['All','Pending','In Production','For Delivery','Delivered','Returned','Cancelled'];
 
 const STATUS_CFG = {
-  'Pending':       { bg:'#fff7ed', color:'#c2410c', border:'#fdba74'  },
-  'In Production': { bg:'#eef4ff', color:'#2c4a8c', border:'#bfcfee'  },
-  'For Delivery':  { bg:'#f5f3ff', color:'#5b21b6', border:'#ddd6fe'  },
-  'Delivered':     { bg:'#f0fdf4', color:'#166534', border:'#bbf7d0'  },
-  'Cancelled':     { bg:'#fef2f2', color:'#991b1b', border:'#fecaca'  },
-  'Returned':      { bg:'#fff0f0', color:'#b45309', border:'#fca5a5'  },
+  // Active / in-progress → gold
+  'Pending':            { bg:'rgba(212,168,67,0.08)', color:'#c9973f', border:'rgba(212,168,67,0.3)' },
+  'Processing':         { bg:'rgba(212,168,67,0.08)', color:'#c9973f', border:'rgba(212,168,67,0.3)' },
+  'In Production':      { bg:'rgba(212,168,67,0.08)', color:'#c9973f', border:'rgba(212,168,67,0.3)' },
+  'For QC':             { bg:'rgba(212,168,67,0.08)', color:'#c9973f', border:'rgba(212,168,67,0.3)' },
+  'For Delivery':       { bg:'rgba(212,168,67,0.08)', color:'#c9973f', border:'rgba(212,168,67,0.3)' },
+  // Success → green
+  'Delivered':          { bg:'rgba(34,197,94,0.08)',  color:'#166534', border:'rgba(34,197,94,0.3)'  },
+  // Negative → red
+  'Cancelled':          { bg:'rgba(239,68,68,0.08)',  color:'#991b1b', border:'rgba(239,68,68,0.3)'  },
+  'Returned':           { bg:'rgba(239,68,68,0.08)',  color:'#991b1b', border:'rgba(239,68,68,0.3)'  },
 };
 
 const PAY_CFG = {
@@ -33,10 +40,10 @@ const PAY_CFG = {
 // ── Mini components ───────────────────────────────────────────────────────────
 
 function StatusBadge({ status }) {
-  const c = STATUS_CFG[status] ?? { bg:'#f3f4f6', color:'#374151', border:'#e5e7eb' };
+  const { label, bg, color, border } = getStatusBadge(status);
   return (
-    <span style={{ ...S.badge, background:c.bg, color:c.color, border:`1px solid ${c.border}`, fontSize:'11px' }}>
-      {status}
+    <span style={{ ...S.badge, background:bg, color, border:`1px solid ${border}`, fontSize:'11px' }}>
+      {label}
     </span>
   );
 }
@@ -477,6 +484,14 @@ function SectionLabel({ children }) {
   );
 }
 
+// ── Timeout helper ────────────────────────────────────────────────────────────
+
+function isExpired(order) {
+  if (order.orderStatus !== 'Pending') return false;
+  if (order.paymentStatus === 'paid') return false;
+  return (Date.now() - new Date(order.createdAt).getTime()) / 86400000 >= EXPIRY_DAYS;
+}
+
 // ── Status transition map ─────────────────────────────────────────────────────
 
 function getAvailableStatuses(o) {
@@ -514,8 +529,7 @@ function getAvailableStatuses(o) {
 function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const fmt = n => Number(n ?? 0).toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 });
 
-  const today    = new Date(); today.setHours(0,0,0,0);
-  const canDelete = ['Cancelled','Delivered','Returned'].includes(o.orderStatus);
+  const today = new Date(); today.setHours(0,0,0,0);
 
   const [lo,          setLo]          = useState(o);
   const [selStatus,   setSelStatus]   = useState(o.orderStatus);
@@ -526,8 +540,29 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const [designErr,   setDesignErr]   = useState('');
   const [draftFiles,  setDraftFiles]  = useState([]);
   const [uploading,   setUploading]   = useState(false);
+  const [expiring,    setExpiring]    = useState(false);
+  const [expireErr,   setExpireErr]   = useState('');
 
   useEffect(() => { setLo(o); setSelStatus(o.orderStatus); }, [o]);
+
+  const canDelete  = ['Cancelled','Delivered','Returned'].includes(lo.orderStatus);
+  const canExpire  = lo.orderStatus === 'Pending' && lo.paymentStatus !== 'paid' && isExpired(lo);
+
+  const handleExpire = async () => {
+    setExpiring(true); setExpireErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify({ orderStatus: 'Cancelled', cancellationReason: 'order_expired' }),
+      }, 15000);
+      if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.message || d.error || 'Failed to expire order'); }
+      const updated = { ...lo, orderStatus: 'Cancelled' };
+      setLo(updated);
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) { setExpireErr(err.message || 'Failed to expire order'); }
+    finally { setExpiring(false); }
+  };
 
   const target   = lo.targetCompletion ? new Date(lo.targetCompletion) : null;
   const daysLeft = target ? Math.ceil((target - today)/86400000) : null;
@@ -681,7 +716,7 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               )}
 
               {lo.designFilePath && (
-                <a href={`${API_URL}/storage/${lo.designFilePath}`} target="_blank" rel="noopener noreferrer"
+                <a href={lo.designFilePath?.startsWith('http') ? lo.designFilePath : `${API_URL}/storage/${lo.designFilePath}`} target="_blank" rel="noopener noreferrer"
                   style={{ display:'inline-flex', alignItems:'center', gap:'4px', fontSize:'12px', fontWeight:600, color:'#2563eb', textDecoration:'none', marginBottom:'8px' }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                   View Customer File
@@ -753,8 +788,8 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
                 value={selStatus}
                 onChange={v => { setSelStatus(v); setConfirmSt(false); setUpdateErr(''); }}
                 options={[
-                  { value: lo.orderStatus, label: `${lo.orderStatus} (current)` },
-                  ...available.map(s => ({ value: s, label: s })),
+                  { value: lo.orderStatus, label: `${getStatusBadge(lo.orderStatus).label} (current)` },
+                  ...available.map(s => ({ value: s, label: getStatusBadge(s).label })),
                 ]}
               />
               {!confirmSt ? (
@@ -855,13 +890,20 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
       </div>
 
       {/* Action row */}
-      <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginTop:'12px' }}>
+      <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginTop:'12px', alignItems:'center' }}>
         {lo.paymentStatus !== 'paid' && (
           <button onClick={onPayment} style={{ ...S.btnSmGhost, color:'#166534', borderColor:'#bbf7d0' }}>Record Payment</button>
+        )}
+        {canExpire && (
+          <button onClick={handleExpire} disabled={expiring}
+            style={{ ...S.btnSmDanger, background:'#fff7ed', color:'#c2410c', borderColor:'#fdba74', opacity: expiring ? 0.6 : 1 }}>
+            ⏰ {expiring ? 'Expiring…' : 'Mark Expired'}
+          </button>
         )}
         {canDelete && (
           <button onClick={onDelete} style={S.btnSmDanger}>{ICONS.trash} Archive</button>
         )}
+        {expireErr && <span style={{ fontSize:'11px', color:'#991b1b' }}>{expireErr}</span>}
       </div>
     </div>
   );
@@ -1113,6 +1155,7 @@ export default function OrdersPage() {
                         <td style={{ ...S.td, textAlign:'center' }}>
                           <StatusBadge status={o.orderStatus} />
                           {isArch && <span style={{ ...S.badge, fontSize:'10px', background:'#f3f4f6', color:'#6b7280', border:'1px solid #e5e7eb', marginLeft:'4px' }}>Archived</span>}
+                          {isExpired(o) && <span style={{ ...S.badge, fontSize:'10px', background:'#fff7ed', color:'#c2410c', border:'1px solid #fdba74', marginLeft:'4px' }}>⏰ Expired</span>}
                         </td>
                         <td style={{ ...S.td, textAlign:'center' }}>
                           <PayBadge status={o.paymentStatus} />

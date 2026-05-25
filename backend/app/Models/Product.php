@@ -14,6 +14,7 @@ class Product extends Model
         'inventoryId',
         'bomId',
         'bomGroupName',
+        'type',
         'isCustom',
         'isMadeToOrder',
         'minOrderQty',

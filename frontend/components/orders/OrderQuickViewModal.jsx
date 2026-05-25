@@ -787,7 +787,7 @@ export default function OrderQuickViewModal({
                         Review the customer&apos;s uploaded design file. If it&apos;s print-ready, approve it to notify them to proceed with payment.
                       </div>
                       {order.designFilePath && (
-                        <a href={`${API_URL}/storage/${order.designFilePath}`} target="_blank" rel="noopener noreferrer"
+                        <a href={order.designFilePath?.startsWith('http') ? order.designFilePath : `${API_URL}/storage/${order.designFilePath}`} target="_blank" rel="noopener noreferrer"
                           style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600, color: '#60a5fa', textDecoration: 'none', marginBottom: '0.75rem' }}>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                           View Uploaded File
@@ -1050,7 +1050,7 @@ export default function OrderQuickViewModal({
                     {order.designFilePath && (
                       <div style={{ marginBottom: '0.75rem' }}>
                         <a
-                          href={`${API_URL}/storage/${order.designFilePath}`}
+                          href={order.designFilePath?.startsWith('http') ? order.designFilePath : `${API_URL}/storage/${order.designFilePath}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{

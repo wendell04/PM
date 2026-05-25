@@ -688,13 +688,13 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
+            gridTemplateColumns: "repeat(5, 1fr)",
             gap: "0.75rem",
           }}
         >
           <div
             style={{ ...cardStyle, borderLeft: "3px solid var(--red)", cursor: "pointer" }}
-            onClick={() => router.push("/dashboard/business/inventory")}
+            onClick={() => router.push("/dashboard/business/inventory-v2")}
           >
             <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--red)" }}>
               {inventoryMetrics.outOfStock}
@@ -715,7 +715,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
           </div>
           <div
             style={{ ...cardStyle, borderLeft: "3px solid var(--color-text-warning)", cursor: "pointer" }}
-            onClick={() => router.push("/dashboard/business/inventory")}
+            onClick={() => router.push("/dashboard/business/inventory-v2")}
           >
             <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--color-text-warning)" }}>
               {inventoryMetrics.lowStock}
@@ -736,7 +736,7 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
           </div>
           <div
             style={{ ...cardStyle, borderLeft: "3px solid var(--color-text-warning)", cursor: "pointer" }}
-            onClick={() => router.push("/dashboard/business/inventory/returns")}
+            onClick={() => router.push("/dashboard/business/inventory-v2")}
           >
             <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--color-text-warning)" }}>
               {pendingReturns}
@@ -774,6 +774,20 @@ export default function DashboardOverview({ orderStats, salesSummary, inventory 
             </div>
             <div style={{ fontSize: "0.7rem", color: "var(--gray)", marginTop: "0.25rem" }}>
               Live or visible banners
+            </div>
+          </div>
+          <div
+            style={{ ...cardStyle, borderLeft: `3px solid ${(orderStats?.expiredOrders ?? 0) > 0 ? 'var(--red)' : 'var(--border)'}`, cursor: "pointer" }}
+            onClick={() => router.push("/dashboard/business/orders")}
+          >
+            <div style={{ fontSize: "2rem", fontWeight: 800, color: (orderStats?.expiredOrders ?? 0) > 0 ? "var(--red)" : "var(--gray)" }}>
+              {orderStats?.expiredOrders ?? 0}
+            </div>
+            <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)", marginTop: "0.25rem" }}>
+              Expired Orders
+            </div>
+            <div style={{ fontSize: "0.7rem", color: "var(--gray)", marginTop: "0.25rem" }}>
+              Pending &gt; 7 days unpaid
             </div>
           </div>
         </div>

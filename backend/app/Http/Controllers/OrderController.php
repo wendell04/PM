@@ -194,8 +194,22 @@ class OrderController extends Controller
             $designFilePath = null;
             if ($request->hasFile('design_file') && $request->file('design_file')->isValid()) {
                 try {
-                    $designFilePath = $request->file('design_file')
-                        ->store('designs', 'public');
+                    $cloudName    = config('services.cloudinary.cloud_name');
+                    $uploadPreset = config('services.cloudinary.upload_preset');
+                    $file         = $request->file('design_file');
+                    $ext          = strtolower($file->getClientOriginalExtension());
+                    $resourceType = in_array($ext, ['jpg','jpeg','png','webp','svg']) ? 'image' : 'raw';
+                    $response     = Http::attach(
+                        'file',
+                        file_get_contents($file->getPathname()),
+                        $file->getClientOriginalName()
+                    )->post("https://api.cloudinary.com/v1_1/{$cloudName}/{$resourceType}/upload", [
+                        'upload_preset' => $uploadPreset,
+                        'folder'        => 'pmp-customer-designs',
+                    ]);
+                    if ($response->successful()) {
+                        $designFilePath = $response->json()['secure_url'];
+                    }
                 } catch (\Exception $fileErr) {
                     Log::warning('OrderController@store: design file upload failed', [
                         'error'  => $fileErr->getMessage(),
@@ -1984,10 +1998,22 @@ class OrderController extends Controller
             $designFilePath = $order->designFilePath;
             if ($request->hasFile('design_file') && $request->file('design_file')->isValid()) {
                 try {
-                    if ($designFilePath) {
-                        Storage::disk('public')->delete($designFilePath);
+                    $cloudName    = config('services.cloudinary.cloud_name');
+                    $uploadPreset = config('services.cloudinary.upload_preset');
+                    $file         = $request->file('design_file');
+                    $ext          = strtolower($file->getClientOriginalExtension());
+                    $resourceType = in_array($ext, ['jpg','jpeg','png','webp','svg']) ? 'image' : 'raw';
+                    $response     = Http::attach(
+                        'file',
+                        file_get_contents($file->getPathname()),
+                        $file->getClientOriginalName()
+                    )->post("https://api.cloudinary.com/v1_1/{$cloudName}/{$resourceType}/upload", [
+                        'upload_preset' => $uploadPreset,
+                        'folder'        => 'pmp-customer-designs',
+                    ]);
+                    if ($response->successful()) {
+                        $designFilePath = $response->json()['secure_url'];
                     }
-                    $designFilePath = $request->file('design_file')->store('designs', 'public');
                 } catch (\Exception $fileErr) {
                     Log::warning('reuploadDesign: file upload failed', ['error' => $fileErr->getMessage()]);
                 }

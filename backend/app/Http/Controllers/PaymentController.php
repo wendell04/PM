@@ -783,31 +783,53 @@ class PaymentController extends Controller
 
             // BOM material deduction at order creation
             foreach ($orderItems as $item) {
-                $bomProd = \App\Models\Product::find($item['productId'] ?? null);
-                if (!$bomProd || empty($bomProd->bomId)) continue;
+                $bomProd   = \App\Models\Product::find($item['productId'] ?? null);
+                $variantId = $item['variantId'] ?? null;
+                if (!$bomProd) continue;
                 try {
-                    $bom = \App\Models\BillOfMaterial::find($bomProd->bomId);
-                    if ($bom && !empty($bom->components)) {
-                        foreach ($bom->components as $component) {
-                            $rawInv = Inventory::find($component['inventoryId'] ?? null);
-                            if (!$rawInv || $rawInv->isOnDemand) continue;
-                            $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
-                            if ($deductQty <= 0) continue;
-                            $updatedRaw = DB::connection('mongodb')->getCollection('inventories')
-                                ->findOneAndUpdate(
-                                    ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],
-                                    ['$inc' => ['stockQty' => -$deductQty]],
-                                    ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
-                                );
-                            $newRawQty = (int) ($updatedRaw->stockQty ?? max(0, ($rawInv->stockQty ?? 0) - $deductQty));
-                            StockHistory::create([
-                                'inventoryId' => (string) $rawInv->_id, 'quantity' => $deductQty,
-                                'remainingQty' => $newRawQty, 'unitCost' => $rawInv->averageCost ?? 0,
-                                'totalCost' => 0, 'reason' => 'sale_reserved', 'type' => 'deduction',
-                                'performedBy' => 'system', 'remarks' => 'Order: ' . (string) $order->_id,
-                                'createdAt' => now(),
-                            ]);
+                    $bom = null;
+                    if (!empty($bomProd->bomGroupName) && $variantId) {
+                        $bom = \App\Models\BillOfMaterial::find($variantId);
+                    } elseif (!empty($bomProd->bomId)) {
+                        $bom = \App\Models\BillOfMaterial::find($bomProd->bomId);
+                    }
+                    if (!$bom && $variantId && !empty($bomProd->combinations)) {
+                        foreach ($bomProd->combinations as $combo) {
+                            if ((string) ($combo['id'] ?? $combo['_id'] ?? '') === (string) $variantId && !empty($combo['bomId'])) {
+                                $bom = \App\Models\BillOfMaterial::find($combo['bomId']);
+                                break;
+                            }
                         }
+                    }
+                    if (!$bom || empty($bom->components)) continue;
+                    foreach ($bom->components as $component) {
+                        $rawInv = Inventory::find($component['inventoryId'] ?? null);
+                        if (!$rawInv || $rawInv->isOnDemand) continue;
+                        $deductQty = (int) round(($component['qty'] ?? 0) * ($item['qty'] ?? 1));
+                        if ($deductQty <= 0) continue;
+                        $updatedRaw = DB::connection('mongodb')->getCollection('inventories')
+                            ->findOneAndUpdate(
+                                ['_id' => new \MongoDB\BSON\ObjectId((string) $rawInv->_id)],
+                                ['$inc' => ['stockQty' => -$deductQty]],
+                                ['returnDocument' => \MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+                            );
+                        $newRawQty = (int) ($updatedRaw->stockQty ?? max(0, ($rawInv->stockQty ?? 0) - $deductQty));
+                        StockHistory::create([
+                            'inventoryId' => (string) $rawInv->_id,
+                            'quantity'    => $deductQty,
+                            'remainingQty'=> $newRawQty,
+                            'unitCost'    => $rawInv->averageCost ?? 0,
+                            'totalCost'   => ($rawInv->averageCost ?? 0) * $deductQty,
+                            'reason'      => 'sale_reserved',
+                            'type'        => 'deduction',
+                            'orderId'      => (string) $order->_id,
+                            'productId'    => $item['productId'] ?? null,
+                            'productName'  => $bomProd->name ?? '',
+                            'customerName' => trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')),
+                            'performedBy'  => 'system',
+                            'remarks'      => 'Order: ' . (string) $order->_id,
+                            'createdAt'   => now(),
+                        ]);
                     }
                 } catch (\Exception $bomErr) {
                     Log::warning('initiatePayment: BOM deduction failed', [

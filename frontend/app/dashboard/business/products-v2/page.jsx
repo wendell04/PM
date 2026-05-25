@@ -196,8 +196,8 @@ export default function ProductsV2() {
       const mn = Math.min(...all), mx = Math.max(...all);
       return mn === mx ? formatCurrency(mn) : `${formatCurrency(mn)} - ${formatCurrency(mx)}`;
     }
-    if (p.type === 'multi-variant') {
-      const prices = (p.variants || []).map(v => v.price).filter(v => v > 0);
+    if (p.type === 'multi-variant' || p.combinations?.length) {
+      const prices = (p.combinations || p.variants || []).map(v => v.price).filter(v => v > 0);
       if (!prices.length) return '--';
       const mn = Math.min(...prices), mx = Math.max(...prices);
       return mn === mx ? formatCurrency(mn) : `${formatCurrency(mn)} - ${formatCurrency(mx)}`;
@@ -247,8 +247,8 @@ export default function ProductsV2() {
     if (p.type === 'standalone' && p.bomId) {
       const bom = boms.find(b => b.id === p.bomId);
       units = bom ? calcProducible(bom, matMap) : null;
-    } else if (p.type === 'multi-variant' && p.variants?.length) {
-      const vals = p.variants.map(v => {
+    } else if ((p.type === 'multi-variant' || p.combinations?.length) && (p.combinations || p.variants)?.length) {
+      const vals = (p.combinations || p.variants).map(v => {
         const bom = boms.find(b => b.id === v.bomId);
         return bom ? calcProducible(bom, matMap) : null;
       }).filter(v => v !== null);
@@ -380,7 +380,7 @@ export default function ProductsV2() {
                       <div>
                         <div style={{ fontWeight: 600, fontSize: '14px' }}>{p.name}</div>
                         <div style={{ fontSize: '11px', color: '#9ca3af' }}>
-                          {p.type === 'multi-variant' ? `${p.variants?.length || 0} variants` : 'Standalone'}
+                          {(p.type === 'multi-variant' || p.combinations?.length) ? `${(p.combinations || p.variants)?.length || 0} variants` : 'Standalone'}
                         </div>
                       </div>
                     </div>
@@ -483,8 +483,8 @@ function StockBreakdown({ product, boms, materials }) {
   }, [boms]);
 
   const variants = useMemo(() => {
-    if (product.type === 'multi-variant') {
-      return (product.variants || []).map(v => {
+    if (product.type === 'multi-variant' || product.combinations?.length) {
+      return (product.combinations || product.variants || []).map(v => {
         const bom  = bomMap[v.bomId];
         const prod = bom ? calcProducible(bom, matMap) : null;
         return { label: v.name, bom, producible: prod };

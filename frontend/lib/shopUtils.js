@@ -67,12 +67,15 @@ export function StatusBadge({ status }) {
   return (
     <span style={{
       display: 'inline-block',
-      background: `${s.color}22`,
+      background: `${s.color}18`,
       color: s.color,
+      border: `1px solid ${s.color}55`,
       borderRadius: '999px',
-      padding: '0.25rem 0.75rem',
-      fontSize: '0.75rem',
+      padding: '0.2rem 0.7rem',
+      fontSize: '0.72rem',
       fontWeight: 700,
+      letterSpacing: '0.01em',
+      whiteSpace: 'nowrap',
     }}>
       {s.label}
     </span>

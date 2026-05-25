@@ -378,11 +378,11 @@ export default function ProductAddEditPage({ product, boms, batches = [], materi
       name:               product.name || '',
       description:        product.description || '',
       images:             mergedImages,
-      type:               product.type || 'standalone',
+      type:               product.type || (product.combinations?.length || product.variants?.length ? 'multi-variant' : 'standalone'),
       bomId:              product.bomId || '',
-      variants:           product.variants?.length
-                            ? product.variants.map(v => ({ id: v.id || uid('v'), name: v.name, bomId: v.bomId || '', price: v.price != null ? String(v.price) : '' }))
-                            : [EMPTY_VARIANT()],
+      variants:           (product.variants?.length ? product.variants : product.combinations?.length ? product.combinations : null)
+                            ?.map(v => ({ id: v.id || uid('v'), name: v.name, bomId: v.bomId || '', price: v.price != null ? String(v.price) : '' }))
+                            ?? [EMPTY_VARIANT()],
       pricingMode:        product.pricingMode || product.priceType || 'fixed',
       price:              product.price != null ? String(product.price) : '',
       tiers,

@@ -15,12 +15,12 @@ const SECTION_META = [
   { key: 'orders',        label: 'Orders',         href: '/dashboard/business/orders',         icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', desc: 'View and manage customer orders' },
   { key: 'jobOrders',     label: 'Job Orders',     href: '/dashboard/business/job-orders',     icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10', desc: 'Track and update production job orders' },
   { key: 'pos',           label: 'Point of Sale',  href: '/dashboard/business/pos',            icon: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z', desc: 'Process walk-in and manual sales' },
-  { key: 'inventory',     label: 'Inventory',      href: '/dashboard/business/inventory',      icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', desc: 'Manage stock levels and movements' },
-  { key: 'vendors',       label: 'Vendors',        href: '/dashboard/business/inventory',      icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0', desc: 'Manage supplier and vendor information' },
-  { key: 'badOrders',     label: 'Bad Orders',     href: '/dashboard/business/inventory/returns', icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z', desc: 'Handle returns and defective items' },
+  { key: 'inventory',     label: 'Inventory',      href: '/dashboard/business/inventory-v2',   icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', desc: 'Manage stock levels and movements' },
+  { key: 'vendors',       label: 'Vendors',        href: '/dashboard/business/inventory-v2',   icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0', desc: 'Manage supplier and vendor information' },
+  { key: 'badOrders',     label: 'Bad Orders',     href: '/dashboard/business/inventory-v2',   icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z', desc: 'Handle returns and defective items' },
   { key: 'sales',         label: 'Sales',          href: '/dashboard/business/sales',          icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z', desc: 'View sales history and revenue' },
   { key: 'reports',       label: 'Reports',        href: '/dashboard/business/reports',        icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', desc: 'Business performance reports' },
-  { key: 'products',      label: 'Products',       href: '/dashboard/business/products',       icon: 'M4 6h16M4 10h16M4 14h16M4 18h16', desc: 'Manage the product catalog' },
+  { key: 'products',      label: 'Products',       href: '/dashboard/business/products-v2',    icon: 'M4 6h16M4 10h16M4 14h16M4 18h16', desc: 'Manage the product catalog' },
   { key: 'banners',       label: 'Banners',        href: '/dashboard/business/banners',        icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z', desc: 'Manage store banners and promotions' },
   { key: 'flashSales',    label: 'Flash Sales',    href: '/dashboard/business/flash-sales',    icon: 'M13 10V3L4 14h7v7l9-11h-7z', desc: 'Create and manage flash sales' },
   { key: 'vouchers',      label: 'Vouchers',       href: '/dashboard/business/vouchers',       icon: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z', desc: 'Manage discount vouchers and coupons' },
@@ -176,9 +176,13 @@ export default function DashboardOverviewPage() {
       const orders     = Array.isArray(allOrders) ? allOrders : [];
 
       // Compute order stats locally from fetched orders — avoids dependency on separate stats endpoint
-      const isDelivered  = (o) => ['Delivered', 'delivered'].includes(o.orderStatus);
-      const isCancelled  = (o) => ['Cancelled', 'cancelled'].includes(o.orderStatus);
-      const isPending    = (o) => !isDelivered(o) && !isCancelled(o);
+      const isDelivered   = (o) => ['Delivered', 'delivered'].includes(o.orderStatus);
+      const isCancelled   = (o) => ['Cancelled', 'cancelled'].includes(o.orderStatus);
+      const isPending     = (o) => !isDelivered(o) && !isCancelled(o);
+      const isExpiredOrder = (o) =>
+        o.orderStatus === 'Pending' &&
+        o.paymentStatus !== 'paid' &&
+        (Date.now() - new Date(o.createdAt).getTime()) / 86400000 >= 7;
 
       const deliveredOrders = orders.filter(isDelivered);
       const totalRevenue    = deliveredOrders.reduce((s, o) => s + Number(o.totalAmount ?? o.totalPrice ?? 0), 0);
@@ -189,6 +193,7 @@ export default function DashboardOverviewPage() {
         pendingOrders:    orders.filter(isPending).length,
         completedOrders:  deliveredOrders.length,
         cancelledOrders:  orders.filter(isCancelled).length,
+        expiredOrders:    orders.filter(isExpiredOrder).length,
         totalRevenue,
         cancellationRate: orders.length > 0
           ? Math.round((orders.filter(isCancelled).length / orders.length) * 10000) / 100

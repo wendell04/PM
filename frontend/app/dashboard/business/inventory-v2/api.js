@@ -92,10 +92,10 @@ export function normStockOut(h) {
   return {
     id,
     ref: orderId
-      ? `ORD-${String(orderId).slice(-6).toUpperCase()}`
+      ? `ORD-${String(orderId).slice(-8).toUpperCase()}`
       : h.invoiceNumber
         ? `INV-${h.invoiceNumber}`
-        : `ADJ-${id.slice(-6).toUpperCase()}`,
+        : `ADJ-${id.slice(-8).toUpperCase()}`,
     type:         orderId ? 'sale' : h.reason === 'production' ? 'production' : 'adjustment',
     matId:        String(h.inventoryId ?? ''),
     matName:      h.materialName ?? '',
