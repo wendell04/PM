@@ -906,7 +906,7 @@ export default function ShopPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/products`, {}, 30000);
+      const res = await fetchWithTimeout(`${API_URL}/api/products?slim=true`, {}, 30000);
       if (!res.ok) throw new Error('Server error');
       const data = await res.json();
       const products = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);

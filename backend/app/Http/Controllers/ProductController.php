@@ -172,7 +172,14 @@ class ProductController extends Controller
 
             $products = $query->orderBy('createdAt', 'desc')->get();
 
-            $data = $products->map(fn($p) => array_merge($p->toArray(), $this->computeAvailability($p)))->values();
+            $slim = $request->boolean('slim');
+            $data = $products->map(function ($p) use ($slim) {
+                $arr = array_merge($p->toArray(), $this->computeAvailability($p));
+                if ($slim) {
+                    unset($arr['description'], $arr['bomId']);
+                }
+                return $arr;
+            })->values();
 
             return $this->successResponse('Products fetched successfully.', $data);
         } catch (\Exception $e) {

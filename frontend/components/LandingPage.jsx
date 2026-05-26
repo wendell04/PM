@@ -867,7 +867,7 @@ const handleForgotResetPassword = async () => {
     if (navProducts.length > 0 || navProductsLoading) return;
     setNavProductsLoading(true);
     try {
-      const res = await fetchWithTimeout(`${API_URL}/api/products`, {}, 15000);
+      const res = await fetchWithTimeout(`${API_URL}/api/products?slim=true`, {}, 15000);
       const data = await res.json();
       const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
       setNavProducts(list.filter(p => p.isPublished !== false));
