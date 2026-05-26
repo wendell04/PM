@@ -16,6 +16,7 @@ export function getEcho(token) {
 
   if (echoInstance) return echoInstance;
   if (!token) return null;
+  if (!process.env.NEXT_PUBLIC_REVERB_APP_KEY) return null;
 
   window.Pusher = Pusher;
 
