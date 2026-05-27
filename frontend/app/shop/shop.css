@@ -1291,13 +1291,9 @@
         .shop-product-skeleton {
           height: 320px;
           border-radius: 12px;
-          background: linear-gradient(90deg, #e0e0e0 25%, #ececec 50%, #e0e0e0 75%);
+          background: linear-gradient(90deg, var(--dark) 25%, var(--dark2) 50%, var(--dark) 75%);
           background-size: 200% 100%;
           animation: shimmer 1.5s infinite;
-        }
-
-        html:not(.light) .shop-product-skeleton {
-          background: linear-gradient(90deg, var(--dark, #2a2a2a) 25%, var(--dark2, #333) 50%, var(--dark, #2a2a2a) 75%);
         }
 
         @keyframes shimmer {

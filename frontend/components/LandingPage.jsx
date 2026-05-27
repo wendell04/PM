@@ -72,7 +72,7 @@ const PasswordStrength = ({password}) => {
   );
 };
 
-const LandingPage = ({onEnterShop}) => {
+const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=[]}) => {
   const router = useRouter();
   const { currentUser: user, token, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -122,7 +122,7 @@ const LandingPage = ({onEnterShop}) => {
   const [tooltipY, setTooltipY] = useState(0);
 
   const [hoveredNav, setHoveredNav]               = useState(null);
-  const [navProducts, setNavProducts]             = useState([]);
+  const [navProducts, setNavProducts]             = useState(initialProducts.filter(p => p.isPublished !== false));
   const [navProductsLoading, setNavProductsLoading] = useState(false);
   const [hoveredCollection, setHoveredCollection] = useState(null);
   const [collectionProducts, setCollectionProducts] = useState([]);
@@ -141,10 +141,10 @@ const LandingPage = ({onEnterShop}) => {
   const [heroImgIdx, setHeroImgIdx] = useState(0);
 
   // Collections
-  const [landingCollections, setLandingCollections] = useState([]);
+  const [landingCollections, setLandingCollections] = useState(initialCollections);
 
   // Customer reviews
-  const [landingReviews, setLandingReviews] = useState([]);
+  const [landingReviews, setLandingReviews] = useState(initialReviews);
   const [reviewsIdx, setReviewsIdx] = useState(0);
 
   // Forgot password
@@ -298,6 +298,7 @@ const LandingPage = ({onEnterShop}) => {
 
   // Fetch customer reviews for landing page
   useEffect(() => {
+    if (initialReviews.length) return;
     fetch(`${API_URL}/api/storefront/reviews?limit=12`)
       .then(r => r.json())
       .then(d => {
@@ -307,6 +308,7 @@ const LandingPage = ({onEnterShop}) => {
   }, []);
 
   useEffect(() => {
+    if (initialCollections.length) return;
     fetchWithTimeout(`${API_URL}/api/storefront/collections`, {}, 15000)
       .then(r => r.json())
       .then(d => setLandingCollections(Array.isArray(d?.data) ? d.data : []))

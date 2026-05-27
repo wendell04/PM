@@ -35,7 +35,7 @@ return [
 
     'allowed_origins_patterns' => [
         '#^https://[^.]+\.netlify\.app$#',
-        '#^https://[^.]+\.railway\.app$#',
+ka        '#^https://[^.]+\.railway\.app$#',
     ],
 
     'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-XSRF-TOKEN'],

@@ -172,9 +172,63 @@ class ProductController extends Controller
 
             $products = $query->orderBy('createdAt', 'desc')->get();
 
+            // --- Batch load all BOMs and Inventory in 2-3 queries total ---
+            $bomGroupNames   = [];
+            $individualBomIds = [];
+
+            foreach ($products as $p) {
+                if (!empty($p->bomGroupName)) {
+                    $bomGroupNames[] = $p->bomGroupName;
+                } elseif (!empty($p->combinations)) {
+                    foreach ($p->combinations as $combo) {
+                        if (!empty($combo['bomId'])) {
+                            $individualBomIds[] = (string) $combo['bomId'];
+                        }
+                    }
+                } elseif (!empty($p->bomId)) {
+                    $individualBomIds[] = (string) $p->bomId;
+                }
+            }
+
+            $bomsByGroup = [];
+            $bomsById    = [];
+
+            if (!empty($bomGroupNames)) {
+                $groupBoms = \App\Models\BillOfMaterial::whereIn('productGroupName', array_unique($bomGroupNames))->get();
+                foreach ($groupBoms as $bom) {
+                    $bomsByGroup[$bom->productGroupName][] = $bom;
+                    $bomsById[(string) $bom->_id] = $bom;
+                }
+            }
+
+            if (!empty($individualBomIds)) {
+                $idBoms = \App\Models\BillOfMaterial::whereIn('_id', array_unique($individualBomIds))->get();
+                foreach ($idBoms as $bom) {
+                    $bomsById[(string) $bom->_id] = $bom;
+                }
+            }
+
+            $inventoryIds = [];
+            foreach ($bomsById as $bom) {
+                foreach ($bom->components ?? [] as $component) {
+                    if (!empty($component['inventoryId'])) {
+                        $inventoryIds[] = (string) $component['inventoryId'];
+                    }
+                }
+            }
+
+            $inventoryMap = [];
+            if (!empty($inventoryIds)) {
+                $items = Inventory::whereIn('_id', array_unique($inventoryIds))->get();
+                foreach ($items as $inv) {
+                    $inventoryMap[(string) $inv->_id] = $inv;
+                }
+            }
+            // --- End batch load ---
+
             $slim = $request->boolean('slim');
-            $data = $products->map(function ($p) use ($slim) {
-                $arr = array_merge($p->toArray(), $this->computeAvailability($p));
+            $data = $products->map(function ($p) use ($slim, $bomsByGroup, $bomsById, $inventoryMap) {
+                $arr = array_merge($p->toArray(), $this->computeAvailabilityBatched($p, $bomsByGroup, $bomsById, $inventoryMap));
                 if ($slim) {
                     unset($arr['description'], $arr['bomId']);
                 }
@@ -185,6 +239,98 @@ class ProductController extends Controller
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching products.');
         }
+    }
+
+    private function computeAvailabilityBatched(Product $product, array $bomsByGroup, array $bomsById, array $inventoryMap): array
+    {
+        $canProduce          = null;
+        $variantCanProduce   = null;
+        $variantAvailableQty = null;
+
+        $computeMin = function ($bom) use ($inventoryMap) {
+            $min = PHP_INT_MAX;
+            foreach ($bom->components ?? [] as $component) {
+                $inv = $inventoryMap[(string) ($component['inventoryId'] ?? '')] ?? null;
+                if (!$inv || $inv->isOnDemand) continue;
+                $qpu = (float) ($component['qty'] ?? 0);
+                if ($qpu <= 0) continue;
+                $min = min($min, (int) floor(($inv->stockQty ?? 0) / $qpu));
+            }
+            return $min === PHP_INT_MAX ? 0 : $min;
+        };
+
+        if (!empty($product->bomGroupName)) {
+            $boms = $bomsByGroup[$product->bomGroupName] ?? [];
+            $variantCanProduce   = [];
+            $variantAvailableQty = [];
+            foreach ($boms as $bom) {
+                $bomId    = (string) $bom->_id;
+                $cp       = $computeMin($bom);
+                $variantCanProduce[$bomId] = $cp;
+                $backorder = (bool) ($product->variantBackorder[$bomId] ?? false);
+                if ($backorder) {
+                    $variantAvailableQty[$bomId] = 9999;
+                } else {
+                    $manualCap = isset($product->variantStock[$bomId]) && (int) $product->variantStock[$bomId] > 0
+                        ? (int) $product->variantStock[$bomId] : null;
+                    $variantAvailableQty[$bomId] = $manualCap !== null ? min($cp, $manualCap) : $cp;
+                }
+            }
+        } elseif (!empty($product->combinations)) {
+            $combinations = is_array($product->combinations) ? $product->combinations : [];
+            $hasBomCombos = collect($combinations)->contains(fn($c) => !empty($c['bomId'] ?? null));
+            if ($hasBomCombos) {
+                $variantCanProduce   = [];
+                $variantAvailableQty = [];
+                foreach ($combinations as $combo) {
+                    $comboId = $combo['id'] ?? null;
+                    $bomId   = $combo['bomId'] ?? null;
+                    if (!$comboId) continue;
+                    if (!$bomId) {
+                        $variantCanProduce[$comboId]  = 9999;
+                        $variantAvailableQty[$comboId] = 9999;
+                        continue;
+                    }
+                    $bom = $bomsById[(string) $bomId] ?? null;
+                    if (!$bom) {
+                        $variantCanProduce[$comboId]  = 0;
+                        $variantAvailableQty[$comboId] = 0;
+                        continue;
+                    }
+                    $cp       = $computeMin($bom);
+                    $variantCanProduce[$comboId] = $cp;
+                    $backorder = (bool) ($product->variantBackorder[$comboId] ?? false);
+                    if ($backorder) {
+                        $variantAvailableQty[$comboId] = 9999;
+                    } else {
+                        $manualCap = isset($product->variantStock[$comboId]) && (int) $product->variantStock[$comboId] > 0
+                            ? (int) $product->variantStock[$comboId] : null;
+                        $variantAvailableQty[$comboId] = $manualCap !== null ? min($cp, $manualCap) : $cp;
+                    }
+                }
+            }
+        } elseif (!empty($product->bomId)) {
+            $bom = $bomsById[(string) $product->bomId] ?? null;
+            if ($bom) {
+                $canProduce = $computeMin($bom);
+            }
+        }
+
+        $cap = $product->storeStockCap !== null ? (int) $product->storeStockCap : null;
+
+        if ($canProduce !== null) {
+            $availableQty = $cap !== null ? min($canProduce, $cap) : $canProduce;
+        } else {
+            $base         = (int) ($product->stock ?? 0);
+            $availableQty = $cap !== null ? min($base, $cap) : $base;
+        }
+
+        return [
+            'canProduce'          => $canProduce,
+            'availableQty'        => $availableQty,
+            'variantCanProduce'   => $variantCanProduce,
+            'variantAvailableQty' => $variantAvailableQty,
+        ];
     }
 
     /**
