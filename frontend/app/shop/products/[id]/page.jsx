@@ -58,6 +58,7 @@ export default function ProductDetailPage() {
   const [reqType, setReqType] = useState('upload'); // 'upload' | 'request'
   const [customTcAccepted, setCustomTcAccepted] = useState(false);
   const [recommendations, setRecommendations] = useState([]);
+  const [productMongoId, setProductMongoId] = useState(null);
 
   const id = params?.id;
 
@@ -73,6 +74,7 @@ export default function ProductDetailPage() {
         const data = await res.json();
         const p = data.data ?? data;
         setProduct(p);
+        setProductMongoId(p._id ?? p.id ?? null);
 
         const moq = p.minOrderQty || 1;
         setQuantity(moq);
@@ -108,10 +110,10 @@ export default function ProductDetailPage() {
 
   // Fetch reviews
   useEffect(() => {
-    if (!id) return;
+    if (!productMongoId) return;
     setReviewsLoading(true);
     fetchWithTimeout(
-      `${API_URL}/api/products/${id}/reviews?page=${reviewsPage}&per_page=5`,
+      `${API_URL}/api/products/${productMongoId}/reviews?page=${reviewsPage}&per_page=5`,
       {},
       10000
     ).then(res => res.ok ? res.json() : null)
@@ -125,7 +127,7 @@ export default function ProductDetailPage() {
       })
       .catch(() => {})
       .finally(() => setReviewsLoading(false));
-  }, [id, reviewsPage]);
+  }, [productMongoId, reviewsPage]);
 
   // Fetch flash sale
   useEffect(() => {

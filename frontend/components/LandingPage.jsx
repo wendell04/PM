@@ -1299,7 +1299,7 @@ const handleForgotResetPassword = async () => {
                               <button
                                 key={p._id || p.id || String(idx)}
                                 className="mega-col-item"
-                                onClick={() => { setHoveredNav(null); router.push(`/shop/products/${p._id || p.id}`); }}
+                                onClick={() => { setHoveredNav(null); router.push(`/shop/products/${p.slug || (p.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`); }}
                               >
                                 {p.name}
                               </button>
@@ -1354,7 +1354,7 @@ const handleForgotResetPassword = async () => {
                             <button
                               key={p.id || p._id || String(idx)}
                               className="mega-col-item"
-                              onClick={() => { setHoveredNav(null); router.push(`/shop/products/${p.id || p._id}`); }}
+                              onClick={() => { setHoveredNav(null); router.push(`/shop/products/${p.slug || (p.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`); }}
                             >
                               {p.name}
                             </button>

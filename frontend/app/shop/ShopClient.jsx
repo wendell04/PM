@@ -12,6 +12,8 @@ import './shop.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
+const toSlug = (name) => (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
 // ─── Price Helper ─────────────────────────────────────────────────────────────
 function getDisplayPrice(product) {
   const fmt = (n) => `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -393,7 +395,7 @@ function QuickViewModal({ product, flashSale, onClose, onToast }) {
 
             {/* Action buttons */}
             {product.isCustom ? (
-              <Link href={`/shop/products/${product.id ?? product._id}`} className="shop-qv-btn-cart" onClick={onClose}>
+              <Link href={`/shop/products/${product.slug || toSlug(product.name)}`} className="shop-qv-btn-cart" onClick={onClose}>
                 Customize This Product
               </Link>
             ) : (
@@ -556,7 +558,7 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
 
 
   return (
-    <Link href={`/shop/products/${product.id ?? product._id}`} className="shop-product-card-link">
+    <Link href={`/shop/products/${product.slug || toSlug(product.name)}`} className="shop-product-card-link">
       <div
         className={`shop-product-card ${hovered ? 'hovered' : ''}`}
         onMouseEnter={() => setHovered(true)}
