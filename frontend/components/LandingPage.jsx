@@ -1582,7 +1582,7 @@ const handleForgotResetPassword = async () => {
         </section>
       )}
 
-      {/* SERVICE CAROUSEL */}
+      {/* SERVICE CAROUSEL — hidden
       <section id="services">
         <div className="container">
           <div className="section-header center">
@@ -1622,6 +1622,7 @@ const handleForgotResetPassword = async () => {
           </div>
         </div>
       </section>
+      */}
 
       {/* HOW IT WORKS */}
       <section id="how-it-works" className="hiw-new-section">
