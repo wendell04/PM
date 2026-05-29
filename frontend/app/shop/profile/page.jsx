@@ -194,24 +194,13 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
   };
 
   return (
-    <div
-      style={{
-        marginTop: "2rem",
-        paddingTop: "1.5rem",
-        borderTop: "1px solid var(--border)",
-      }}
-    >
+    <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+      <div style={{ padding: "0.875rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Two-Factor Authentication</span>
+      </div>
+      <div style={{ padding: "1.25rem" }}>
       {/* ── Toggle ── */}
-      <h3
-        style={{
-          margin: "0 0 0.75rem",
-          fontSize: "0.9375rem",
-          fontWeight: 700,
-          color: "var(--white)",
-        }}
-      >
-        Two-factor authentication
-      </h3>
 
       <div
         style={{
@@ -654,6 +643,7 @@ function TwoFactorSection({ token, twoFactorEnabled, setTwoFactorEnabled }) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -809,7 +799,7 @@ export default function CustomerProfilePage() {
     fetchWithTimeout(`${API_URL}/api/orders/my`, { headers: { Authorization: `Bearer ${token}` } }, 15000)
       .then((r) => r.json())
       .then((d) => {
-        const raw = d?.orders ?? d?.data ?? d;
+        const raw = d?.data?.data ?? d?.data?.orders ?? d?.orders ?? d?.data ?? d;
         setOverviewOrders(Array.isArray(raw) ? raw : []);
       })
       .catch(() => setOverviewOrders([]))
@@ -1635,7 +1625,7 @@ export default function CustomerProfilePage() {
             {/* TAB 1: Overview — Customer Dashboard */}
             {activeTab === "overview" && (() => {
               const orders = Array.isArray(overviewOrders) ? overviewOrders : [];
-              const inProgressStatuses = ["Pending", "Processing", "In Production", "For QC", "For Delivery", "For Pick-up", "Confirmed"];
+              const inProgressStatuses = ["Pending", "Confirmed", "Processing", "awaiting_production", "pending_design", "proof_sent", "revision_requested", "design_approved", "in_production", "In Production", "for_qc", "For QC", "ready_for_delivery", "for_delivery", "For Delivery", "For Pick-up"];
               const total = orders.length;
               const inProgress = orders.filter(o => inProgressStatuses.includes(o.orderStatus)).length;
               const delivered = orders.filter(o => o.orderStatus === "Delivered").length;
@@ -1644,17 +1634,68 @@ export default function CustomerProfilePage() {
               const paymentDue = orders.filter(o => inProgressStatuses.includes(o.orderStatus) && o.paymentStatus !== "paid" && parseFloat(o.balance || 0) > 0);
               const hasActions = needsDesignApproval.length > 0 || paymentDue.length > 0;
 
-              const statusStyle = (status) => {
+              const statusLabel = (status) => {
                 const map = {
-                  Delivered: { bg: "rgba(74,222,128,0.1)", color: "#4ade80", border: "rgba(74,222,128,0.25)" },
-                  Cancelled: { bg: "rgba(239,68,68,0.1)", color: "#f87171", border: "rgba(239,68,68,0.25)" },
-                  Returned:  { bg: "rgba(239,68,68,0.08)", color: "#f87171", border: "rgba(239,68,68,0.2)" },
-                  Pending:   { bg: "rgba(251,191,36,0.1)", color: "#fbbf24", border: "rgba(251,191,36,0.25)" },
-                  Confirmed: { bg: "rgba(212,168,67,0.1)", color: "var(--gold)", border: "rgba(212,168,67,0.3)" },
-                  "In Production": { bg: "rgba(96,165,250,0.1)", color: "#60a5fa", border: "rgba(96,165,250,0.25)" },
-                  "For QC":        { bg: "rgba(167,139,250,0.1)", color: "#a78bfa", border: "rgba(167,139,250,0.25)" },
-                  "For Delivery":  { bg: "rgba(52,211,153,0.1)", color: "#34d399", border: "rgba(52,211,153,0.25)" },
-                  "For Pick-up":   { bg: "rgba(52,211,153,0.1)", color: "#34d399", border: "rgba(52,211,153,0.25)" },
+                  // snake_case (actual DB values)
+                  awaiting_production:  "Awaiting Production",
+                  pending_design:       "Pending Design",
+                  proof_sent:           "Proof Sent",
+                  revision_requested:   "Revision Requested",
+                  design_approved:      "Design Approved",
+                  awaiting_payment:     "Awaiting Payment",
+                  in_production:        "In Production",
+                  for_qc:               "For QC",
+                  ready_for_delivery:   "Ready for Delivery",
+                  for_delivery:         "For Delivery",
+                  delivered:            "Delivered",
+                  cancelled:            "Cancelled",
+                  // Title-case legacy values
+                  Processing:           "Processing",
+                  "In Production":      "In Production",
+                  "For QC":             "For QC",
+                  "For Delivery":       "For Delivery",
+                  "For Pick-up":        "For Pick-up",
+                  Pending:              "Pending",
+                  Confirmed:            "Confirmed",
+                  Delivered:            "Delivered",
+                  Cancelled:            "Cancelled",
+                  Returned:             "Returned",
+                };
+                return map[status] || status;
+              };
+              const statusStyle = (status) => {
+                const blue   = { bg: "rgba(96,165,250,0.1)",  color: "#60a5fa", border: "rgba(96,165,250,0.25)"  };
+                const green  = { bg: "rgba(74,222,128,0.1)",  color: "#4ade80", border: "rgba(74,222,128,0.25)"  };
+                const teal   = { bg: "rgba(52,211,153,0.1)",  color: "#34d399", border: "rgba(52,211,153,0.25)"  };
+                const purple = { bg: "rgba(167,139,250,0.1)", color: "#a78bfa", border: "rgba(167,139,250,0.25)" };
+                const yellow = { bg: "rgba(251,191,36,0.1)",  color: "#fbbf24", border: "rgba(251,191,36,0.25)"  };
+                const gold   = { bg: "rgba(212,168,67,0.1)",  color: "var(--gold)", border: "rgba(212,168,67,0.3)" };
+                const red    = { bg: "rgba(239,68,68,0.1)",   color: "#f87171", border: "rgba(239,68,68,0.25)"   };
+                const map = {
+                  // snake_case
+                  awaiting_production:  blue,
+                  pending_design:       yellow,
+                  proof_sent:           blue,
+                  revision_requested:   yellow,
+                  design_approved:      teal,
+                  awaiting_payment:     yellow,
+                  in_production:        blue,
+                  for_qc:               purple,
+                  ready_for_delivery:   teal,
+                  for_delivery:         teal,
+                  delivered:            green,
+                  cancelled:            red,
+                  // Title-case
+                  Pending:              yellow,
+                  Confirmed:            gold,
+                  Processing:           blue,
+                  "In Production":      blue,
+                  "For QC":             purple,
+                  "For Delivery":       teal,
+                  "For Pick-up":        teal,
+                  Delivered:            green,
+                  Cancelled:            red,
+                  Returned:             red,
                 };
                 return map[status] || { bg: "rgba(255,255,255,0.05)", color: "var(--gray)", border: "var(--border)" };
               };
@@ -1671,8 +1712,19 @@ export default function CustomerProfilePage() {
 
               // Active order tracker
               const orderSteps = ["Pending", "Confirmed", "In Production", "For QC", "For Delivery", "Delivered"];
+              const statusToStep = {
+                awaiting_production: "In Production", in_production: "In Production",
+                pending_design: "Confirmed", proof_sent: "Confirmed",
+                revision_requested: "Confirmed", design_approved: "In Production",
+                awaiting_payment: "Pending",
+                for_qc: "For QC", ready_for_delivery: "For Delivery", for_delivery: "For Delivery",
+                delivered: "Delivered", cancelled: "Delivered",
+                Processing: "In Production",
+              };
               const activeOrder = orders.find(o => inProgressStatuses.includes(o.orderStatus));
-              const activeStepIdx = activeOrder ? orderSteps.indexOf(activeOrder.orderStatus) : -1;
+              const activeStepIdx = activeOrder
+                ? orderSteps.indexOf(statusToStep[activeOrder.orderStatus] ?? activeOrder.orderStatus)
+                : -1;
 
               // Pending reviews (delivered + paid)
               const pendingReviews = orders.filter(o => o.orderStatus === "Delivered" && o.paymentStatus === "paid");
@@ -1698,11 +1750,10 @@ export default function CustomerProfilePage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
 
                   {/* ── Welcome ── */}
-                  <div style={{ padding: "1.25rem 1.5rem", background: "linear-gradient(135deg, rgba(212,168,67,0.07) 0%, rgba(255,255,255,0.02) 100%)", border: "1px solid rgba(212,168,67,0.18)", borderRadius: "12px", position: "relative", overflow: "hidden" }}>
-                    <div style={{ position: "absolute", top: 0, right: 0, width: "120px", height: "100%", background: "linear-gradient(90deg, transparent, rgba(212,168,67,0.04))", pointerEvents: "none" }} />
+                  <div style={{ padding: "1.25rem 1.5rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "12px", position: "relative", overflow: "hidden" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
                       <div>
-                        <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "rgba(212,168,67,0.7)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.35rem" }}>
+                        <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.35rem" }}>
                           {(() => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; })()}
                         </div>
                         <h2 style={{ margin: "0 0 0.5rem", fontSize: "1.5rem", fontWeight: 800, color: "var(--white)", letterSpacing: "-0.02em", lineHeight: 1 }}>
@@ -1722,12 +1773,12 @@ export default function CustomerProfilePage() {
                       <div style={{ textAlign: "right", flexShrink: 0 }}>
                         <div style={{ fontSize: "0.6rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "0.1rem" }}>Profile Setup</div>
                         <div style={{ fontSize: "0.62rem", color: "var(--gray)", opacity: 0.6, marginBottom: "0.35rem" }}>Photo · Phone · Address · 2FA</div>
-                        <div style={{ fontSize: "1.25rem", fontWeight: 800, color: completePct === 100 ? "#4ade80" : "var(--gold)", letterSpacing: "-0.02em", marginBottom: "0.4rem" }}>{completePct}%</div>
+                        <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--white)", letterSpacing: "-0.02em", marginBottom: "0.4rem" }}>{completePct}%</div>
                         <div style={{ width: "80px", height: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "2px", overflow: "hidden", marginLeft: "auto" }}>
                           <div style={{ height: "100%", width: `${completePct}%`, background: completePct === 100 ? "#4ade80" : "var(--gold)", borderRadius: "2px", transition: "width 0.5s ease" }} />
                         </div>
                         {completePct < 100 && (
-                          <button onClick={() => setActiveTab(firstIncompleteTab)} style={{ marginTop: "0.4rem", background: "none", border: "none", color: "rgba(212,168,67,0.7)", fontSize: "0.67rem", cursor: "pointer", padding: 0 }}>
+                          <button onClick={() => setActiveTab(firstIncompleteTab)} style={{ marginTop: "0.4rem", background: "none", border: "none", color: "var(--gray)", fontSize: "0.67rem", cursor: "pointer", padding: 0 }}>
                             Complete profile →
                           </button>
                         )}
@@ -1735,12 +1786,12 @@ export default function CustomerProfilePage() {
                     </div>
                     {/* Completeness items — show only if incomplete */}
                     {completePct < 100 && (
-                      <div style={{ marginTop: "1rem", paddingTop: "0.875rem", borderTop: "1px solid rgba(212,168,67,0.1)", display: "flex", gap: "0.625rem", flexWrap: "wrap" }}>
+                      <div style={{ marginTop: "1rem", paddingTop: "0.875rem", borderTop: "1px solid var(--border)", display: "flex", gap: "0.625rem", flexWrap: "wrap" }}>
                         {completenessItems.map((c, i) => (
                           <span
                             key={i}
                             onClick={() => !c.done && setActiveTab(c.tab)}
-                            style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", fontSize: "0.68rem", fontWeight: 500, color: c.done ? "#4ade80" : "rgba(212,168,67,0.8)", opacity: c.done ? 0.7 : 1, cursor: c.done ? "default" : "pointer", textDecoration: c.done ? "none" : "underline", textUnderlineOffset: "2px" }}
+                            style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", fontSize: "0.68rem", fontWeight: 500, color: c.done ? "var(--gray-light)" : "var(--white)", opacity: c.done ? 0.7 : 1, cursor: c.done ? "default" : "pointer", textDecoration: c.done ? "none" : "underline", textUnderlineOffset: "2px" }}
                           >
                             {c.done
                               ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
@@ -1756,14 +1807,14 @@ export default function CustomerProfilePage() {
                   {/* ── Stats ── */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.75rem" }}>
                     {[
-                      { label: "Total Orders",  value: overviewOrdersLoading ? "—" : total,     color: "var(--gold)",  accent: "rgba(212,168,67,0.7)" },
-                      { label: "In Progress",   value: overviewOrdersLoading ? "—" : inProgress, color: "#60a5fa",      accent: "rgba(96,165,250,0.7)" },
-                      { label: "Delivered",     value: overviewOrdersLoading ? "—" : delivered,  color: "#4ade80",      accent: "rgba(74,222,128,0.7)" },
-                      { label: "Total Spent",   value: overviewOrdersLoading ? "—" : `₱${totalSpent.toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, color: "var(--white)", accent: "rgba(255,255,255,0.25)" },
+                      { label: "Total Orders",  value: overviewOrdersLoading ? "—" : total },
+                      { label: "In Progress",   value: overviewOrdersLoading ? "—" : inProgress },
+                      { label: "Delivered",     value: overviewOrdersLoading ? "—" : delivered },
+                      { label: "Total Spent",   value: overviewOrdersLoading ? "—" : `₱${totalSpent.toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` },
                     ].map((s, i) => (
-                      <div key={i} style={{ background: "var(--dark)", border: "1px solid var(--border)", borderLeft: `3px solid ${s.accent}`, borderRadius: "10px", padding: "1.125rem 1.25rem" }}>
+                      <div key={i} style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", padding: "1.125rem 1.25rem" }}>
                         <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.5rem" }}>{s.label}</div>
-                        <div style={{ fontSize: "1.625rem", fontWeight: 800, color: s.color, lineHeight: 1, letterSpacing: "-0.03em" }}>{s.value}</div>
+                        <div style={{ fontSize: "1.625rem", fontWeight: 800, color: "var(--white)", lineHeight: 1, letterSpacing: "-0.03em" }}>{s.value}</div>
                       </div>
                     ))}
                   </div>
@@ -1772,8 +1823,8 @@ export default function CustomerProfilePage() {
                   {!overviewOrdersLoading && (
                     <div style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
                       <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-                        <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--white)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Voucher Savings</span>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                        <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Voucher Savings</span>
                       </div>
                       {voucherOrders.length === 0 ? (
                         <div style={{ padding: "1.25rem 1rem", textAlign: "center" }}>
@@ -1809,25 +1860,25 @@ export default function CustomerProfilePage() {
 
                   {/* ── Action Alerts ── */}
                   {!overviewOrdersLoading && hasActions && (
-                    <div style={{ border: "1px solid rgba(239,68,68,0.25)", borderLeft: "3px solid #f87171", borderRadius: "10px", overflow: "hidden" }}>
-                      <div style={{ padding: "0.625rem 1rem", borderBottom: "1px solid rgba(239,68,68,0.15)", display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(239,68,68,0.04)" }}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                        <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "#f87171", textTransform: "uppercase", letterSpacing: "0.07em" }}>Action Required</span>
+                    <div style={{ border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
+                      <div style={{ padding: "0.625rem 1rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Action Required</span>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column" }}>
                         {needsDesignApproval.map((o, idx) => (
-                          <Link key={o._id} href="/shop/orders-history" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", borderBottom: idx < needsDesignApproval.length - 1 || paymentDue.length > 0 ? "1px solid rgba(239,68,68,0.1)" : "none", textDecoration: "none" }}>
+                          <Link key={o.id ?? o._id} href="/shop/orders-history" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", borderBottom: idx < needsDesignApproval.length - 1 || paymentDue.length > 0 ? "1px solid var(--border)" : "none", textDecoration: "none" }}>
                             <div style={{ minWidth: 0 }}>
-                              <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)" }}>Order #{String(o._id).slice(-8).toUpperCase()}</span>
+                              <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)" }}>Order #{String(o.id ?? o._id).slice(-8).toUpperCase()}</span>
                               <span style={{ fontSize: "0.72rem", color: "var(--gray)", display: "block", marginTop: "0.15rem" }}>Design proof sent — review and approve to proceed to production</span>
                             </div>
                             <span style={{ fontSize: "0.72rem", color: "var(--gold)", fontWeight: 600, flexShrink: 0, marginLeft: "1rem" }}>Review →</span>
                           </Link>
                         ))}
                         {paymentDue.map((o, idx) => (
-                          <Link key={o._id} href="/shop/orders-history" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", borderBottom: idx < paymentDue.length - 1 ? "1px solid rgba(239,68,68,0.1)" : "none", textDecoration: "none" }}>
+                          <Link key={o.id ?? o._id} href="/shop/orders-history" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", borderBottom: idx < paymentDue.length - 1 ? "1px solid var(--border)" : "none", textDecoration: "none" }}>
                             <div style={{ minWidth: 0 }}>
-                              <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)" }}>Order #{String(o._id).slice(-8).toUpperCase()}</span>
+                              <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)" }}>Order #{String(o.id ?? o._id).slice(-8).toUpperCase()}</span>
                               <span style={{ fontSize: "0.72rem", color: "var(--gray)", display: "block", marginTop: "0.15rem" }}>Outstanding balance: ₱{parseFloat(o.balance || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             </div>
                             <span style={{ fontSize: "0.72rem", color: "var(--gold)", fontWeight: 600, flexShrink: 0, marginLeft: "1rem" }}>Pay now →</span>
@@ -1842,8 +1893,9 @@ export default function CustomerProfilePage() {
                     <div style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
                       <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-                          <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Active Order</span>
-                          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--white)" }}>#{String(activeOrder._id).slice(-8).toUpperCase()}</span>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                          <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Active Order</span>
+                          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--white)" }}>#{String(activeOrder.id ?? activeOrder._id).slice(-8).toUpperCase()}</span>
                         </div>
                         <Link href="/shop/orders-history" style={{ fontSize: "0.72rem", color: "var(--gold)", textDecoration: "none", fontWeight: 600 }}>View details →</Link>
                       </div>
@@ -1854,18 +1906,19 @@ export default function CustomerProfilePage() {
                             const isPast = i < activeStepIdx;
                             const isCurrent = i === activeStepIdx;
                             const isFuture = i > activeStepIdx;
-                            const stepColor = isCurrent ? "var(--gold)" : isPast ? "#4ade80" : "rgba(255,255,255,0.12)";
-                            const labelColor = isCurrent ? "var(--gold)" : isPast ? "#4ade80" : "var(--gray)";
+                            const dotBg = isCurrent ? "var(--white)" : isPast ? "var(--gray-light)" : "var(--dark2)";
+                            const dotBorder = isCurrent ? "var(--white)" : isPast ? "var(--gray-light)" : "var(--border)";
+                            const labelColor = isCurrent ? "var(--white)" : isPast ? "var(--gray-light)" : "var(--gray)";
                             return (
                               <div key={step} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", position: "relative" }}>
                                 {/* Connector line */}
                                 {i < orderSteps.length - 1 && (
-                                  <div style={{ position: "absolute", top: "9px", left: "50%", width: "100%", height: "2px", background: i < activeStepIdx ? "#4ade80" : "rgba(255,255,255,0.08)", zIndex: 0 }} />
+                                  <div style={{ position: "absolute", top: "9px", left: "50%", width: "100%", height: "2px", background: i < activeStepIdx ? "var(--gray-light)" : "var(--border)", zIndex: 0 }} />
                                 )}
                                 {/* Dot */}
-                                <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: isFuture ? "var(--dark2)" : stepColor, border: `2px solid ${stepColor}`, zIndex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: isCurrent ? `0 0 8px rgba(212,168,67,0.5)` : "none" }}>
-                                  {isPast && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>}
-                                  {isCurrent && <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--gold)" }} />}
+                                <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: dotBg, border: `2px solid ${dotBorder}`, zIndex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                  {isPast && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="var(--dark)" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>}
+                                  {isCurrent && <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--dark)" }} />}
                                 </div>
                                 {/* Label */}
                                 <div style={{ marginTop: "0.375rem", fontSize: "0.6rem", fontWeight: isCurrent ? 700 : 500, color: labelColor, textAlign: "center", lineHeight: 1.2, letterSpacing: "0.02em" }}>
@@ -1877,10 +1930,12 @@ export default function CustomerProfilePage() {
                         </div>
                         {/* Item summary */}
                         {activeOrder.items?.[0] && (
-                          <div style={{ marginTop: "1rem", paddingTop: "0.875rem", borderTop: "1px solid var(--border)", fontSize: "0.72rem", color: "var(--gray)" }}>
-                            {activeOrder.items[0].productName || activeOrder.items[0].name || "Item"}
-                            {activeOrder.items.length > 1 && ` + ${activeOrder.items.length - 1} more item${activeOrder.items.length > 2 ? "s" : ""}`}
-                            <span style={{ color: "var(--gold)", marginLeft: "0.5rem" }}>
+                          <div style={{ marginTop: "1rem", paddingTop: "0.875rem", borderTop: "1px solid var(--border)", fontSize: "0.72rem", color: "var(--gray)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span>
+                              {activeOrder.items[0].productName || activeOrder.items[0].name || "Item"}
+                              {activeOrder.items.length > 1 && ` + ${activeOrder.items.length - 1} more item${activeOrder.items.length > 2 ? "s" : ""}`}
+                            </span>
+                            <span style={{ color: "var(--white)", fontWeight: 600 }}>
                               ₱{parseFloat(activeOrder.totalAmount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
                             </span>
                           </div>
@@ -1948,11 +2003,11 @@ export default function CustomerProfilePage() {
                           const firstItem = order.items?.[0];
                           const itemLabel = firstItem ? `${firstItem.productName || firstItem.name || "Item"}${order.items.length > 1 ? ` +${order.items.length - 1} more` : ""}` : "—";
                           return (
-                            <div key={order._id} style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.875rem 1rem", borderBottom: idx < Math.min(orders.length, 4) - 1 ? "1px solid var(--border)" : "none" }}>
+                            <div key={order.id ?? order._id} style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.875rem 1rem", borderBottom: idx < Math.min(orders.length, 4) - 1 ? "1px solid var(--border)" : "none" }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.2rem" }}>
-                                  <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--white)", letterSpacing: "0.01em" }}>#{String(order._id).slice(-8).toUpperCase()}</span>
-                                  <span style={{ fontSize: "0.62rem", fontWeight: 700, padding: "1px 6px", borderRadius: "999px", background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>{order.orderStatus}</span>
+                                  <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--white)", letterSpacing: "0.01em" }}>#{String(order.id ?? order._id).slice(-8).toUpperCase()}</span>
+                                  <span style={{ fontSize: "0.62rem", fontWeight: 700, padding: "1px 6px", borderRadius: "999px", background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>{statusLabel(order.orderStatus)}</span>
                                 </div>
                                 <div style={{ fontSize: "0.7rem", color: "var(--gray)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{itemLabel} · {date}</div>
                               </div>
@@ -1967,7 +2022,7 @@ export default function CustomerProfilePage() {
 
                   {/* ── Pending Reviews ── */}
                   {!overviewOrdersLoading && pendingReviews.length > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem 1rem", background: "rgba(212,168,67,0.05)", border: "1px solid rgba(212,168,67,0.18)", borderLeft: "3px solid rgba(212,168,67,0.6)", borderRadius: "10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.875rem 1rem", background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px" }}>
                       <div>
                         <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--white)", marginBottom: "0.15rem" }}>
                           {pendingReviews.length === 1 ? "You have a delivered order" : `You have ${pendingReviews.length} delivered orders`}
@@ -2041,10 +2096,10 @@ export default function CustomerProfilePage() {
                 {!isEditingProfile ? (
                   <>
                     {/* Name section */}
-                    <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", borderLeft: "3px solid rgba(212,168,67,0.5)" }}>
-                      <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(212,168,67,0.04)" }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                        <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)" }}>Identity</span>
+                    <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                      <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Identity</span>
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
                         {[
@@ -2060,10 +2115,10 @@ export default function CustomerProfilePage() {
                     </div>
 
                     {/* Contact section */}
-                    <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", borderLeft: "3px solid rgba(96,165,250,0.5)" }}>
-                      <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem", background: "rgba(96,165,250,0.04)" }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                        <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)" }}>Contact</span>
+                    <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                      <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                        <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Contact</span>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column" }}>
                         <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
@@ -2141,10 +2196,10 @@ export default function CustomerProfilePage() {
                 </div>
 
                 {/* Password card */}
-                <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", borderLeft: "3px solid rgba(212,168,67,0.5)" }}>
-                  <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", background: "rgba(212,168,67,0.04)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)" }}>Change Password</span>
+                <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                  <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Change Password</span>
                   </div>
                   <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
 
@@ -2642,11 +2697,11 @@ export default function CustomerProfilePage() {
                 </div>{/* end password card */}
 
                 {/* Active Sessions card */}
-                <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", borderLeft: "3px solid rgba(96,165,250,0.5)" }}>
-                  <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", background: "rgba(96,165,250,0.04)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
+                <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden" }}>
+                  <div style={{ padding: "0.75rem 1.25rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                      <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)" }}>Active Sessions</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                      <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Active Sessions</span>
                       <span style={{ fontSize: "0.68rem", color: "var(--gray)" }}>— Devices currently logged in</span>
                     </div>
                     <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>

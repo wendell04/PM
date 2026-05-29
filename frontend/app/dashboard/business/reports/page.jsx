@@ -8,6 +8,12 @@ import CustomDropdown from '@/app/components/CustomDropdown';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
+async function safeJson(res) {
+  const text = await res.text();
+  if (!text || !text.trim()) return null;
+  try { return JSON.parse(text); } catch { return null; }
+}
+
 const authHeaders = (token) => ({
   Authorization: `Bearer ${token}`,
   Accept: 'application/json',
@@ -147,7 +153,7 @@ function DateRangeFilter({ startDate, endDate, onStartChange, onEndChange, onApp
   );
 }
 
-function SectionHeader({ title, onExport, exporting }) {
+function SectionHeader({ title, onExport, exporting, collapsed, onToggle }) {
   return (
     <div
       style={{
@@ -159,7 +165,25 @@ function SectionHeader({ title, onExport, exporting }) {
         gap: '0.75rem',
       }}
     >
-      <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>{title}</div>
+      <div
+        onClick={onToggle}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '0.4rem',
+          cursor: onToggle ? 'pointer' : 'default',
+          userSelect: 'none',
+        }}
+      >
+        {onToggle && (
+          <svg
+            width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="var(--gray)" strokeWidth="2.5"
+            style={{ transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', flexShrink: 0 }}
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        )}
+        <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>{title}</span>
+      </div>
       <button
         type="button"
         onClick={onExport}
@@ -235,6 +259,8 @@ const TABS = [
 export default function ReportsPage() {
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState('sales');
+  const [salesTrendCollapsed, setSalesTrendCollapsed] = useState(false);
+  const [inventoryCollapsed, setInventoryCollapsed] = useState(false);
 
   const stateRef = useRef({});
 
@@ -300,7 +326,8 @@ export default function ReportsPage() {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/sales/summary?${params}`, {
         headers: authHeaders(token),
       }, 15000);
-      const json = await res.json();
+      const json = await safeJson(res);
+      if (!json) throw new Error('Server returned an empty response. Please retry.');
       if (!res.ok) throw new Error(json.message || 'Failed to load sales summary.');
       setSalesData(json.data ?? null);
     } catch (err) {
@@ -324,7 +351,8 @@ export default function ReportsPage() {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/stats${q ? `?${q}` : ''}`, {
         headers: authHeaders(token),
       }, 15000);
-      const json = await res.json();
+      const json = await safeJson(res);
+      if (!json) throw new Error('Server returned an empty response. Please retry.');
       if (!res.ok) throw new Error(json.message || 'Failed to load order stats.');
       setOrdersData(json.data ?? null);
     } catch (err) {
@@ -343,7 +371,8 @@ export default function ReportsPage() {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/inventory`, {
         headers: authHeaders(token),
       }, 15000);
-      const json = await res.json();
+      const json = await safeJson(res);
+      if (!json) throw new Error('Server returned an empty response. Please retry.');
       if (!res.ok) throw new Error(json.message || 'Failed to load inventory.');
       const list = json.data ?? json;
       setInventoryRaw(Array.isArray(list) ? list : []);
@@ -369,7 +398,8 @@ export default function ReportsPage() {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/sales/top-products?${params}`, {
         headers: authHeaders(token),
       }, 15000);
-      const json = await res.json();
+      const json = await safeJson(res);
+      if (!json) throw new Error('Server returned an empty response. Please retry.');
       if (!res.ok) throw new Error(json.message || 'Failed to load top products.');
       setTpData(json.data ?? null);
     } catch (err) {
@@ -393,7 +423,8 @@ export default function ReportsPage() {
       const res = await fetchWithTimeout(`${API_URL}/api/admin/order-requests/stats${q ? `?${q}` : ''}`, {
         headers: authHeaders(token),
       }, 15000);
-      const json = await res.json();
+      const json = await safeJson(res);
+      if (!json) throw new Error('Server returned an empty response. Please retry.');
       if (!res.ok) throw new Error(json.message || 'Failed to load order request stats.');
       setOrData(json.data ?? null);
     } catch (err) {
@@ -656,18 +687,11 @@ export default function ReportsPage() {
                 {salesLoading && <LoadingRows />}
                 {!salesLoading && salesData && (
                   <>
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-                        gap: '1rem',
-                        marginBottom: '1rem',
-                      }}
-                    >
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
                       <StatCard label="Total Transactions" value={String(salesData.totalSales ?? 0)} />
-                      <StatCard label="Total Revenue" value={fmtPeso(salesData.totalRevenue)} />
-                      <StatCard label="Total Cost" value={fmtPeso(salesData.totalCost)} />
-                      <StatCard label="Net Profit" value={fmtPeso(salesData.totalProfit)} />
+                      <StatCard label="Total Revenue"      value={fmtPeso(salesData.totalRevenue)} />
+                      <StatCard label="Total Cost"         value={fmtPeso(salesData.totalCost)} />
+                      <StatCard label="Net Profit"         value={fmtPeso(salesData.totalProfit)} />
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '1.25rem' }}>
                       <span
@@ -695,8 +719,8 @@ export default function ReportsPage() {
                         Online: {fmtPeso(salesData.onlineSales)}
                       </span>
                     </div>
-                    <SectionHeader title="Sales Trend" onExport={exportSales} exporting={salesExporting} />
-                    {salesGrouped && salesGrouped.length > 0 ? (
+                    <SectionHeader title="Sales Trend" onExport={exportSales} exporting={salesExporting} collapsed={salesTrendCollapsed} onToggle={() => setSalesTrendCollapsed(p => !p)} />
+                    {!salesTrendCollapsed && salesGrouped && salesGrouped.length > 0 ? (
                       <div style={{ overflowX: 'auto' }}>
                         <div style={{ width: '100%', display: 'table' }}>
                           <div style={{ display: 'table-row', background: 'var(--dark2)' }}>
@@ -770,11 +794,11 @@ export default function ReportsPage() {
                           })}
                         </div>
                       </div>
-                    ) : (
+                    ) : (!salesTrendCollapsed && (
                       <p style={{ textAlign: 'center', color: 'var(--gray)', fontSize: '0.9rem' }}>
                         No period data. Apply date range and grouping.
                       </p>
-                    )}
+                    ))}
                   </>
                 )}
               </div>
@@ -797,33 +821,15 @@ export default function ReportsPage() {
                 {ordersLoading && <LoadingRows />}
                 {!ordersLoading && ordersData && (
                   <>
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-                        gap: '1rem',
-                        marginBottom: '1.5rem',
-                      }}
-                    >
-                      <StatCard label="Total Orders" value={String(ordersData.totalOrders ?? 0)} />
-                      <StatCard label="Completed" value={String(ordersData.completedOrders ?? 0)} />
-                      <StatCard label="Pending" value={String(ordersData.pendingOrders ?? 0)} />
-                      <StatCard label="Cancelled" value={String(ordersData.cancelledOrders ?? 0)} />
-                      <StatCard label="Revenue" value={fmtPeso(ordersData.totalRevenue)} />
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+                      <StatCard label="Total Orders"  value={String(ordersData.totalOrders    ?? 0)} />
+                      <StatCard label="Completed"     value={String(ordersData.completedOrders ?? 0)} />
+                      <StatCard label="Pending"       value={String(ordersData.pendingOrders   ?? 0)} />
+                      <StatCard label="Cancelled"     value={String(ordersData.cancelledOrders ?? 0)} />
                     </div>
-                    <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.35rem' }}>
-                        Cancellation Rate
-                      </div>
-                      <div
-                        style={{
-                          fontSize: '2rem',
-                          fontWeight: 700,
-                          color: Number(ordersData.cancellationRate) > 10 ? '#ef4444' : '#10b981',
-                        }}
-                      >
-                        {ordersData.cancellationRate != null ? `${ordersData.cancellationRate}%` : '—'}
-                      </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+                      <StatCard label="Revenue"           value={fmtPeso(ordersData.totalRevenue)} />
+                      <StatCard label="Cancellation Rate" value={ordersData.cancellationRate != null ? `${ordersData.cancellationRate}%` : '—'} />
                     </div>
                     <SectionHeader title="Export" onExport={exportOrders} exporting={ordersExporting} />
                   </>
@@ -865,8 +871,9 @@ export default function ReportsPage() {
                       <StatCard label="Low Stock Items" value={String(invLow)} />
                       <StatCard label="Out of Stock Items" value={String(invOut)} />
                     </div>
-                    <SectionHeader title="Inventory Items" onExport={exportInventory} exporting={inventoryExporting} />
-                    {inventoryFiltered.length === 0 ? (
+                    <SectionHeader title="Inventory Items" onExport={exportInventory} exporting={inventoryExporting} collapsed={inventoryCollapsed} onToggle={() => setInventoryCollapsed(p => !p)} />
+                    {!inventoryCollapsed && (
+                      inventoryFiltered.length === 0 ? (
                       <p style={{ color: 'var(--gray)', fontSize: '0.9rem' }}>No items match this filter.</p>
                     ) : (
                       <div style={{ overflowX: 'auto' }}>
@@ -962,7 +969,7 @@ export default function ReportsPage() {
                           })}
                         </div>
                       </div>
-                    )}
+                    ))}
                   </>
                 )}
               </div>

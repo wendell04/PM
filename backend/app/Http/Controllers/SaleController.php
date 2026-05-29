@@ -228,7 +228,7 @@ class SaleController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $cacheKey = 'admin_sales_summary_' . md5($request->query->__toString());
+            $cacheKey = 'admin_sales_summary_' . md5($request->getQueryString() ?? '');
             $data = Cache::remember($cacheKey, 30, function () use ($request) {
                 $query = Sale::where('status', 'completed');
 
@@ -293,7 +293,7 @@ class SaleController extends Controller
             });
 
             return $this->successResponse('Sales summary fetched successfully.', $data);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching the sales summary.');
         }
     }
@@ -310,7 +310,7 @@ class SaleController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $cacheKey = 'admin_top_products_' . md5($request->query->__toString());
+            $cacheKey = 'admin_top_products_' . md5($request->getQueryString() ?? '');
             $data = Cache::remember($cacheKey, 30, function () use ($request) {
                 $query = Sale::where('status', 'completed');
 
@@ -346,7 +346,7 @@ class SaleController extends Controller
             });
 
             return $this->successResponse('Top products fetched successfully.', $data);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching top products.');
         }
     }

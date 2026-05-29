@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { updatePassword } from "@/lib/authApi";
 import { disconnectEcho, getEcho } from "@/lib/echo";
@@ -344,7 +344,7 @@ export default function BusinessDashboardLayout({ children }) {
     return () => clearInterval(interval);
   }, [token]);
 
-  // Reverb/Echo — real-time order status updates on admin channel
+  // Reverb/Echo â€” real-time order status updates on admin channel
   useEffect(() => {
     if (!token) return;
     const echo = getEcho(token);
@@ -356,7 +356,7 @@ export default function BusinessDashboardLayout({ children }) {
           setUnreadCount((prev) => prev + 1);
         });
     } catch {
-      // Echo/Reverb not reachable — silently ignore (HTTP polling still covers it)
+      // Echo/Reverb not reachable â€” silently ignore (HTTP polling still covers it)
     }
 
     return () => {
@@ -464,7 +464,7 @@ export default function BusinessDashboardLayout({ children }) {
           setPermissions(data.data.permissions);
         }
       })
-      .catch(() => {}); // non-fatal — sidebar degrades gracefully
+      .catch(() => {}); // non-fatal â€” sidebar degrades gracefully
   }, [token]);
 
   // Returns true if admin/owner (always full access) or permission is granted
@@ -776,7 +776,7 @@ export default function BusinessDashboardLayout({ children }) {
                 style={{ fontSize: '0.8rem', color: 'var(--gold)', textDecoration: 'none', fontWeight: 600 }}
                 onClick={() => setSelectedNotif(null)}
               >
-                View Order →
+                View Order â†’
               </a>
             )}
             <div style={{ fontSize: '0.75rem', color: 'var(--gray)', opacity: 0.6, marginTop: '0.25rem' }}>
@@ -1171,7 +1171,7 @@ export default function BusinessDashboardLayout({ children }) {
                     )}
                   </div>
 
-                  {/* Panel body — hidden scrollbar */}
+                  {/* Panel body â€” hidden scrollbar */}
                   <div
                     style={{
                       overflowY: "auto",
@@ -1326,7 +1326,7 @@ export default function BusinessDashboardLayout({ children }) {
         <main className="admin-page-content">{children}</main>
       </div>
 
-      {/* My Profile — read-only display card */}
+      {/* My Profile â€” read-only display card */}
       {profileViewOpen && (
         <div
           className="profile-modal-overlay"
@@ -1372,7 +1372,7 @@ export default function BusinessDashboardLayout({ children }) {
                 lineHeight: 1,
               }}
             >
-              ✕
+              âœ•
             </button>
 
             {/* Wait for currentUser to be populated */}
@@ -1389,7 +1389,7 @@ export default function BusinessDashboardLayout({ children }) {
               </div>
             ) : (
               <>
-                {/* Avatar — uses profileForm which is populated when currentUser loads */}
+                {/* Avatar â€” uses profileForm which is populated when currentUser loads */}
                 {currentUser?.avatar ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -1502,7 +1502,6 @@ export default function BusinessDashboardLayout({ children }) {
 
             {/* ── Hero: avatar + name + role ── */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "1rem 1.5rem 1.25rem", borderBottom: "1px solid var(--border)" }}>
-              {/* Avatar — display only */}
               <div style={{ position: "relative", marginBottom: "0.875rem" }}>
                 {currentUser?.avatar && !showAvatarFallback ? (
                   <Image
@@ -1521,26 +1520,20 @@ export default function BusinessDashboardLayout({ children }) {
                 )}
               </div>
 
-              {/* Name */}
               <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "var(--white)", textAlign: "center", lineHeight: 1.3 }}>
                 {currentUser?.firstName && currentUser?.lastName
                   ? `${currentUser.firstName} ${currentUser.lastName}`
                   : currentUser?.email || "—"}
               </div>
-
-              {/* Email */}
               <div style={{ fontSize: "0.78rem", color: "var(--gray)", marginTop: "0.2rem", textAlign: "center" }}>
                 {currentUser?.email || ""}
               </div>
-
-              {/* Role badge */}
               <span style={{ display: "inline-block", marginTop: "0.6rem", padding: "2px 10px", borderRadius: "999px", border: "1px solid var(--gold)", color: "var(--gold)", fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
                 {{ admin: "Admin", owner: "Owner", salesRep: "Sales Rep", productionOperator: "Production", qualityControl: "QC Staff", cashier: "Cashier", inventoryManager: "Inventory" }[currentUser?.role] ?? "Staff"}
               </span>
             </div>
 
             <div className="profile-modal-body">
-              {/* ── Account Summary (display-only) ── */}
               <div>
                 <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "0.25rem" }}>
                   Account Details
@@ -1560,7 +1553,6 @@ export default function BusinessDashboardLayout({ children }) {
                 </div>
               </div>
 
-              {/* ── Manage Settings link ── */}
               <div style={{ marginTop: "1.25rem" }}>
                 <Link
                   href="/dashboard/business/settings"
@@ -1574,943 +1566,6 @@ export default function BusinessDashboardLayout({ children }) {
                   Manage Settings
                 </Link>
               </div>
-
-              {/* ── DEAD CODE BELOW — kept for reference, never rendered ── */}
-              {false && activeTab === "personal" && (
-                <div>
-                  {/* Section header */}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
-                    <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Account Details
-                    </span>
-                    {!isEditingProfile ? (
-                      <button
-                        type="button"
-                        onClick={() => { setProfileSnapshot({ ...profileForm }); setIsEditingProfile(true); }}
-                        style={{ padding: "0.3rem 0.75rem", background: "var(--dark2)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--white)", fontSize: "0.75rem", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "0.375rem" }}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                        </svg>
-                        Edit
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => { if (profileSnapshot) setProfileForm(profileSnapshot); setIsEditingProfile(false); }}
-                        style={{ padding: "0.3rem 0.75rem", background: "transparent", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--gray)", fontSize: "0.75rem", cursor: "pointer" }}
-                      >
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Save/Error feedback */}
-                  {(saveSuccess || saveError) && (
-                    <div style={{ marginBottom: "0.875rem", padding: "0.6rem 0.875rem", borderRadius: "8px", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.5rem", background: saveSuccess ? "rgba(74,222,128,0.1)" : "rgba(239,68,68,0.1)", border: `1px solid ${saveSuccess ? "rgba(74,222,128,0.3)" : "rgba(239,68,68,0.3)"}`, color: saveSuccess ? "var(--green)" : "var(--red)" }}>
-                      {saveSuccess || saveError}
-                    </div>
-                  )}
-
-                  {/* Read-only display */}
-                  {!isEditingProfile && (
-                    !currentUser ? (
-                      <div style={{ color: "var(--gray)", fontSize: "0.875rem" }}>Loading profile...</div>
-                    ) : (
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        {[
-                          { label: "Full Name", value: [profileForm.firstName, profileForm.lastName].filter(Boolean).join(" ") || "—" },
-                          { label: "Email", value: profileForm.email || "—" },
-                          { label: "Phone", value: profileForm.phoneNumber || "—" },
-                          { label: "Address", value: profileForm.address || "—" },
-                        ].map((row, i, arr) => (
-                          <div key={row.label} style={{ display: "flex", flexDirection: "column", padding: "0.75rem 0", borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
-                            <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--gray)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>{row.label}</span>
-                            <span style={{ fontSize: "0.875rem", color: "var(--white)", wordBreak: "break-word" }}>{row.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )
-                  )}
-
-                  {/* Editable form fields — only when editing */}
-                  {isEditingProfile && (
-                    <div
-                      className="profile-form-grid"
-                      style={{
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: "1rem",
-                        marginBottom: "1rem",
-                      }}
-                    >
-                      <div className="profile-form-field">
-                        <label>
-                          First Name <span className="required">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={profileForm.firstName}
-                          onChange={(e) =>
-                            handleProfileChange("firstName", e.target.value)
-                          }
-                          placeholder="e.g., Juan"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              handleSaveProfile();
-                            }
-                          }}
-                        />
-                      </div>
-
-                      <div className="profile-form-field">
-                        <label>
-                          Last Name <span className="required">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={profileForm.lastName}
-                          onChange={(e) =>
-                            handleProfileChange("lastName", e.target.value)
-                          }
-                          placeholder="e.g., Dela Cruz"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              handleSaveProfile();
-                            }
-                          }}
-                        />
-                      </div>
-
-                      <div
-                        className="profile-form-field"
-                        style={{ gridColumn: "1 / -1" }}
-                      >
-                        <label>
-                          Email Address
-                          <span
-                            style={{
-                              marginLeft: "0.5rem",
-                              fontSize: "0.75rem",
-                              color: "var(--gray)",
-                            }}
-                          >
-                            (cannot be changed)
-                          </span>
-                        </label>
-                        <input
-                          type="email"
-                          value={profileForm.email}
-                          disabled={true}
-                          readOnly={true}
-                          tabIndex={-1}
-                          style={{
-                            opacity: 0.6,
-                            cursor: "not-allowed",
-                            background: "var(--dark3)",
-                            userSelect: "none",
-                          }}
-                        />
-                      </div>
-
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: "1rem",
-                        }}
-                      >
-                        <div className="profile-form-field">
-                          <label>
-                            Phone <span className="required">*</span>
-                          </label>
-                          <input
-                            type="tel"
-                            value={profileForm.phoneNumber}
-                            onChange={(e) =>
-                              handleProfileChange("phoneNumber", e.target.value)
-                            }
-                            placeholder="e.g., +63 912 345 6789"
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                handleSaveProfile();
-                              }
-                            }}
-                          />
-                        </div>
-
-                        <div className="profile-form-field">
-                          <label>
-                            Address <span className="required">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            value={profileForm.address}
-                            onChange={(e) =>
-                              handleProfileChange("address", e.target.value)
-                            }
-                            placeholder="e.g., 123 Main Street"
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                handleSaveProfile();
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Save Changes button — only when editing */}
-                  {isEditingProfile && (
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "0.75rem",
-                        justifyContent: "flex-end",
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (profileSnapshot) {
-                            setProfileForm(profileSnapshot);
-                          }
-                          setIsEditingProfile(false);
-                        }}
-                        style={{
-                          padding: "0.625rem 1.25rem",
-                          background: "transparent",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          color: "var(--gray)",
-                          fontSize: "0.875rem",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleSaveProfile();
-                        }}
-                        disabled={isSaving}
-                        style={{
-                          padding: "0.625rem 1.5rem",
-                          background: isSaving ? "var(--dark3)" : "var(--gold)",
-                          border: "none",
-                          borderRadius: "8px",
-                          color: isSaving ? "var(--gray)" : "var(--black)",
-                          fontSize: "0.875rem",
-                          fontWeight: 600,
-                          cursor: isSaving ? "not-allowed" : "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                        }}
-                      >
-                        {isSaving ? (
-                          <>
-                            <span className="spinner"></span>
-                            Saving...
-                          </>
-                        ) : (
-                          <>
-                            <svg
-                              width="18"
-                              height="18"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                            >
-                              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                              <polyline points="17 21 17 13 7 13 7 21" />
-                              <polyline points="7 3 7 8 15 8" />
-                            </svg>
-                            Save Changes
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Business Info Tab */}
-              {activeTab === "business" && (
-                <div
-                  className="profile-form-grid"
-                  style={{ gridTemplateColumns: "1fr 1fr", gap: "1rem" }}
-                >
-                  <div
-                    className="profile-form-field"
-                    style={{ gridColumn: "1 / -1" }}
-                  >
-                    <label>Business Name</label>
-                    <input
-                      type="text"
-                      value={profileForm.businessName}
-                      onChange={(e) =>
-                        handleProfileChange("businessName", e.target.value)
-                      }
-                      placeholder="Personalize Me Prints"
-                    />
-                  </div>
-
-                  <div
-                    className="profile-form-field"
-                    style={{ gridColumn: "1 / -1" }}
-                  >
-                    <label>Business Type</label>
-                    <select
-                      value={profileForm.businessType}
-                      onChange={(e) =>
-                        handleProfileChange("businessType", e.target.value)
-                      }
-                      style={{
-                        background: "var(--dark2)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "8px",
-                        padding: "0.75rem 0.875rem",
-                        color: "var(--white)",
-                        fontSize: "0.875rem",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <option value="">Select business type</option>
-                      <option value="sole-proprietorship">
-                        Sole Proprietorship
-                      </option>
-                      <option value="partnership">Partnership</option>
-                      <option value="corporation">Corporation</option>
-                      <option value="llc">LLC</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-
-                  <div className="profile-form-field">
-                    <label>Tax ID / TIN</label>
-                    <input
-                      type="text"
-                      value={profileForm.taxId}
-                      onChange={(e) =>
-                        handleProfileChange("taxId", e.target.value)
-                      }
-                      placeholder="000-000-000"
-                      maxLength={12}
-                    />
-                  </div>
-
-                  <div className="profile-form-field">
-                    <label>Website</label>
-                    <input
-                      type="url"
-                      value={profileForm.website}
-                      onChange={(e) =>
-                        handleProfileChange("website", e.target.value)
-                      }
-                      placeholder="https://yourstore.com"
-                    />
-                  </div>
-
-                  <div
-                    className="profile-form-field"
-                    style={{ gridColumn: "1 / -1" }}
-                  >
-                    <label>Business Bio</label>
-                    <textarea
-                      value={profileForm.bio}
-                      onChange={(e) =>
-                        handleProfileChange("bio", e.target.value)
-                      }
-                      placeholder="Tell customers about your business..."
-                      rows={4}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Security Tab */}
-              {activeTab === "security" && (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "1.25rem",
-                    maxWidth: "500px",
-                  }}
-                >
-                  <div
-                    style={{
-                      padding: "1rem",
-                      background:
-                        "color-mix(in srgb, var(--gold) 10%, transparent)",
-                      borderRadius: "8px",
-                      border:
-                        "1px solid color-mix(in srgb, var(--gold) 30%, transparent)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.75rem",
-                        marginBottom: "0.5rem",
-                      }}
-                    >
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="var(--gold)"
-                        strokeWidth="2"
-                      >
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                      </svg>
-                      <strong style={{ color: "var(--gold)" }}>
-                        Password Security
-                      </strong>
-                    </div>
-                    <p style={{ fontSize: "0.85rem", opacity: 0.8, margin: 0 }}>
-                      Your password is securely encrypted. Change it regularly
-                      to keep your account safe.
-                    </p>
-                  </div>
-
-                  <div className="profile-form-field">
-                    <label
-                      style={{
-                        display: "block",
-                        marginBottom: "0.5rem",
-                        fontSize: "0.875rem",
-                        color: "var(--white)",
-                      }}
-                    >
-                      Current Password{" "}
-                      <span
-                        className="required"
-                        style={{ color: "var(--red)" }}
-                      >
-                        *
-                      </span>
-                    </label>
-                    <div style={{ position: "relative" }}>
-                      <input
-                        type={showPasswords.current ? "text" : "password"}
-                        placeholder="Enter current password"
-                        value={passwordForm.currentPassword}
-                        onChange={(e) =>
-                          setPasswordForm({
-                            ...passwordForm,
-                            currentPassword: e.target.value,
-                          })
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleSavePassword();
-                          }
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "0.75rem 0.875rem",
-                          paddingRight: "3rem",
-                          background: "var(--dark)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          color: "var(--white)",
-                          fontSize: "0.875rem",
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowPasswords({
-                            ...showPasswords,
-                            current: !showPasswords.current,
-                          })
-                        }
-                        style={{
-                          position: "absolute",
-                          right: "0.75rem",
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          background: "transparent",
-                          border: "none",
-                          color: "var(--gray)",
-                          cursor: "pointer",
-                          padding: "0.25rem",
-                        }}
-                      >
-                        {showPasswords.current ? (
-                          <svg
-                            width="18"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                            <line x1="1" y1="1" x2="23" y2="23" />
-                          </svg>
-                        ) : (
-                          <svg
-                            width="18"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                            <circle cx="12" cy="12" r="3" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="profile-form-field">
-                    <label
-                      style={{
-                        display: "block",
-                        marginBottom: "0.5rem",
-                        fontSize: "0.875rem",
-                        color: "var(--white)",
-                      }}
-                    >
-                      New Password{" "}
-                      <span
-                        className="required"
-                        style={{ color: "var(--red)" }}
-                      >
-                        *
-                      </span>
-                    </label>
-                    <div style={{ position: "relative" }}>
-                      <input
-                        type={showPasswords.newPass ? "text" : "password"}
-                        placeholder="Enter new password"
-                        value={passwordForm.newPassword}
-                        onChange={(e) =>
-                          setPasswordForm({
-                            ...passwordForm,
-                            newPassword: e.target.value,
-                          })
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleSavePassword();
-                          }
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "0.75rem 0.875rem",
-                          paddingRight: "3rem",
-                          background: "var(--dark)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          color: "var(--white)",
-                          fontSize: "0.875rem",
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowPasswords({
-                            ...showPasswords,
-                            newPass: !showPasswords.newPass,
-                          })
-                        }
-                        style={{
-                          position: "absolute",
-                          right: "0.75rem",
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          background: "transparent",
-                          border: "none",
-                          color: "var(--gray)",
-                          cursor: "pointer",
-                          padding: "0.25rem",
-                        }}
-                      >
-                        {showPasswords.newPass ? (
-                          <svg
-                            width="18"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                            <line x1="1" y1="1" x2="23" y2="23" />
-                          </svg>
-                        ) : (
-                          <svg
-                            width="18"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                            <circle cx="12" cy="12" r="3" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                    {passwordForm.newPassword.length > 0 && (
-                      <div
-                        style={{
-                          marginTop: "0.5rem",
-                          background: "var(--dark2)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "10px",
-                          padding: "0.75rem",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: "0.4rem",
-                          }}
-                        >
-                          {[
-                            {
-                              label: "At least 8 characters",
-                              pass: passwordForm.newPassword.length >= 8,
-                            },
-                            {
-                              label: "One uppercase letter",
-                              pass: /[A-Z]/.test(passwordForm.newPassword),
-                            },
-                            {
-                              label: "One lowercase letter",
-                              pass: /[a-z]/.test(passwordForm.newPassword),
-                            },
-                            {
-                              label: "One number",
-                              pass: /\d/.test(passwordForm.newPassword),
-                            },
-                            {
-                              label: "One special character",
-                              pass: /[!@#$%^&*(),.?":{}|<>]/.test(
-                                passwordForm.newPassword,
-                              ),
-                            },
-                          ].map((c, i) => (
-                            <div
-                              key={i}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "0.4rem",
-                                fontSize: "0.78rem",
-                                color: c.pass ? "var(--green)" : "var(--gray)",
-                                transition: "color 0.2s",
-                              }}
-                            >
-                              <span
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  fontSize: "0.72rem",
-                                  color: "inherit",
-                                }}
-                              >
-                                {c.pass ? (
-                                  <svg
-                                    width="10"
-                                    height="10"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                    style={{ marginRight: "0.25rem" }}
-                                    aria-hidden
-                                  >
-                                    <path d="M5 13l4 4L19 7" />
-                                  </svg>
-                                ) : (
-                                  <span
-                                    style={{
-                                      display: "inline-block",
-                                      width: "0.65rem",
-                                      marginRight: "0.25rem",
-                                      textAlign: "center",
-                                      opacity: 0.45,
-                                    }}
-                                  >
-                                    –
-                                  </span>
-                                )}
-                              </span>
-                              {c.label}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {(() => {
-                      if (!passwordForm.newPassword) return null;
-                      const strength = getPasswordStrength(
-                        passwordForm.newPassword,
-                      );
-                      if (!strength) return null;
-                      return (
-                        <div style={{ marginTop: "6px" }}>
-                          <div
-                            style={{
-                              height: "4px",
-                              borderRadius: "2px",
-                              background: "var(--border)",
-                              overflow: "hidden",
-                            }}
-                          >
-                            <div
-                              style={{
-                                height: "100%",
-                                width: strength.width,
-                                background: strength.color,
-                                transition: "width 0.3s ease",
-                                borderRadius: "2px",
-                              }}
-                            />
-                          </div>
-                          <span
-                            style={{
-                              fontSize: "0.7rem",
-                              color: strength.color,
-                              marginTop: "4px",
-                              display: "block",
-                            }}
-                          >
-                            {strength.label}
-                          </span>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  <div className="profile-form-field">
-                    <label
-                      style={{
-                        display: "block",
-                        marginBottom: "0.5rem",
-                        fontSize: "0.875rem",
-                        color: "var(--white)",
-                      }}
-                    >
-                      Confirm New Password{" "}
-                      <span
-                        className="required"
-                        style={{ color: "var(--red)" }}
-                      >
-                        *
-                      </span>
-                    </label>
-                    <div style={{ position: "relative" }}>
-                      <input
-                        type={showPasswords.confirm ? "text" : "password"}
-                        placeholder="Confirm new password"
-                        value={passwordForm.confirmPassword}
-                        onChange={(e) =>
-                          setPasswordForm({
-                            ...passwordForm,
-                            confirmPassword: e.target.value,
-                          })
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleSavePassword();
-                          }
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "0.75rem 0.875rem",
-                          paddingRight: "3rem",
-                          background: "var(--dark)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          color: "var(--white)",
-                          fontSize: "0.875rem",
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowPasswords({
-                            ...showPasswords,
-                            confirm: !showPasswords.confirm,
-                          })
-                        }
-                        style={{
-                          position: "absolute",
-                          right: "0.75rem",
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          background: "transparent",
-                          border: "none",
-                          color: "var(--gray)",
-                          cursor: "pointer",
-                          padding: "0.25rem",
-                        }}
-                      >
-                        {showPasswords.confirm ? (
-                          <svg
-                            width="18"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                            <line x1="1" y1="1" x2="23" y2="23" />
-                          </svg>
-                        ) : (
-                          <svg
-                            width="18"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                            <circle cx="12" cy="12" r="3" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {passwordError && (
-                    <div
-                      style={{
-                        marginBottom: "1rem",
-                        padding: "0.75rem 1rem",
-                        background: "rgba(239, 68, 68, 0.1)",
-                        border: "1px solid rgba(239, 68, 68, 0.3)",
-                        borderRadius: "8px",
-                        color: "var(--red)",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                      }}
-                    >
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <circle cx="12" cy="12" r="10" />
-                        <line x1="12" y1="8" x2="12" y2="12" />
-                        <line x1="12" y1="16" x2="12.01" y2="16" />
-                      </svg>
-                      {passwordError}
-                    </div>
-                  )}
-
-                  {passwordSuccess && (
-                    <div
-                      style={{
-                        marginBottom: "1rem",
-                        padding: "0.75rem 1rem",
-                        background: "rgba(34, 197, 94, 0.1)",
-                        border: "1px solid rgba(34, 197, 94, 0.3)",
-                        borderRadius: "8px",
-                        color: "var(--gold)",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                      }}
-                    >
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                        <polyline points="22 4 12 14.01 9 11.01" />
-                      </svg>
-                      {passwordSuccess}
-                    </div>
-                  )}
-
-                  <button
-                    className="btn-primary"
-                    onClick={handleSavePassword}
-                    disabled={isSavingPassword}
-                    style={{
-                      marginTop: "0.5rem",
-                      padding: "0.875rem 1.5rem",
-                      background: isSavingPassword
-                        ? "var(--gray)"
-                        : "var(--gold)",
-                      border: "none",
-                      borderRadius: "8px",
-                      color: isSavingPassword ? "var(--dark)" : "var(--black)",
-                      fontWeight: 600,
-                      fontSize: "0.9rem",
-                      cursor: isSavingPassword ? "not-allowed" : "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.5rem",
-                      width: "fit-content",
-                    }}
-                  >
-                    {isSavingPassword ? (
-                      <>
-                        <span className="spinner"></span>
-                        Updating...
-                      </>
-                    ) : (
-                      <>
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <rect
-                            x="3"
-                            y="11"
-                            width="18"
-                            height="11"
-                            rx="2"
-                            ry="2"
-                          />
-                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                        </svg>
-                        Update Password
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
             </div>
 
             {/* ── Sign Out footer ── */}

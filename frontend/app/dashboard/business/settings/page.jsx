@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
@@ -735,7 +735,7 @@ export default function SettingsPage() {
     <ErrorBoundary>
       <div className="page-content-wrapper">
 
-        <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start', maxWidth: '960px' }}>
+        <div style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
           <nav
             aria-label="Settings sections"
             style={{
@@ -783,336 +783,165 @@ export default function SettingsPage() {
             ))}
           </nav>
 
-          <div style={{ flex: 1, minWidth: 0, maxWidth: 640 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
 
           {activeTab === 'profile' && (
-          <>
-          {/* ── Avatar Card ───────────────────────────────── */}
-          <div style={{
-            background: 'var(--dark2)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            marginBottom: '1.5rem',
-            padding: '1.5rem',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '1.5rem', alignItems: 'start' }}>
 
-              {/* Avatar */}
-              <div style={{ position: 'relative', flexShrink: 0 }}>
-                {currentUser?.avatar && !showAvatarFallback ? (
-                  <Image
-                    src={currentUser.avatar}
-                    alt="avatar"
-                    width={72}
-                    height={72}
-                    onError={() => setShowAvatarFallback(true)}
-                    style={{
-                      borderRadius: '50%',
-                      objectFit: 'cover',
-                      border: '2px solid var(--gold)',
-                    }}
-                    unoptimized
-                  />
-                ) : (
-                  <div style={{
-                    width: '72px', height: '72px', borderRadius: '50%',
-                    background: 'var(--gold)', color: 'var(--black)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 700, fontSize: '1.5rem', border: '2px solid var(--gold)',
-                  }}>
-                    {getInitials(currentUser)}
-                  </div>
-                )}
-                <label
-                  htmlFor="settings-avatar-upload"
-                  style={{
-                    position: 'absolute', bottom: 0, right: 0,
-                    width: '26px', height: '26px', borderRadius: '50%',
-                    background: 'var(--gold)', display: 'flex',
-                    alignItems: 'center', justifyContent: 'center',
-                    cursor: isUploadingAvatar ? 'not-allowed' : 'pointer',
-                    border: '2px solid var(--dark2)', zIndex: 2,
-                  }}
-                >
-                  {isUploadingAvatar ? (
-                    <span className="spinner" style={{ width: '10px', height: '10px' }} />
+            {/* ── Left: Avatar sidebar card ──────────────────── */}
+            <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+              <div style={{ padding: '1.75rem 1.25rem', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '0.625rem' }}>
+                <div style={{ position: 'relative' }}>
+                  {currentUser?.avatar && !showAvatarFallback ? (
+                    <Image
+                      src={currentUser.avatar}
+                      alt="avatar"
+                      width={88}
+                      height={88}
+                      onError={() => setShowAvatarFallback(true)}
+                      style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--gold)', display: 'block' }}
+                      unoptimized
+                    />
                   ) : (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                      stroke="var(--black)" strokeWidth="2.5">
-                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                      <circle cx="12" cy="13" r="4"/>
-                    </svg>
+                    <div style={{ width: '88px', height: '88px', borderRadius: '50%', background: 'var(--gold)', color: 'var(--black)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.75rem', border: '2px solid var(--gold)' }}>
+                      {getInitials(currentUser)}
+                    </div>
                   )}
-                </label>
-                <input
-                  id="settings-avatar-upload"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  style={{ display: 'none' }}
-                  disabled={isUploadingAvatar}
-                  onChange={handleAvatarUpload}
-                />
-              </div>
-
-              {/* Identity */}
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--white)' }}>
-                  {currentUser?.firstName && currentUser?.lastName
-                    ? `${currentUser.firstName} ${currentUser.lastName}`
-                    : currentUser?.email || ''}
+                  <label htmlFor="settings-avatar-upload" style={{ position: 'absolute', bottom: 0, right: 0, width: '28px', height: '28px', borderRadius: '50%', background: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isUploadingAvatar ? 'not-allowed' : 'pointer', border: '2px solid var(--dark2)', zIndex: 2 }}>
+                    {isUploadingAvatar ? <span className="spinner" style={{ width: '10px', height: '10px' }} /> : (
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--black)" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                    )}
+                  </label>
+                  <input id="settings-avatar-upload" type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} disabled={isUploadingAvatar} onChange={handleAvatarUpload} />
                 </div>
-                <div style={{ fontSize: '0.85rem', color: 'var(--gray)', marginTop: '0.15rem' }}>
-                  {currentUser?.email}
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--white)', lineHeight: 1.3 }}>
+                    {currentUser?.firstName && currentUser?.lastName ? `${currentUser.firstName} ${currentUser.lastName}` : currentUser?.email || ''}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: '0.2rem' }}>{currentUser?.email}</div>
                 </div>
-                <span style={{
-                  display: 'inline-block', marginTop: '6px',
-                  padding: '2px 10px', borderRadius: '999px',
-                  border: '1px solid var(--gold)', color: 'var(--gold)',
-                  fontSize: '0.7rem', fontWeight: 700,
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                }}>
+                <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: '999px', border: '1px solid var(--gold)', color: 'var(--gold)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                   {ROLE_LABELS[currentUser?.role] ?? 'Staff'}
                 </span>
+                {avatarError && (
+                  <div style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--red)', fontSize: '0.78rem' }}>{avatarError}</div>
+                )}
+                {avatarSuccess && (
+                  <div style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'color-mix(in srgb, var(--green) 15%, transparent)', border: '1px solid var(--green)', borderRadius: '8px', color: 'var(--green)', fontSize: '0.78rem' }}>Avatar updated successfully.</div>
+                )}
               </div>
             </div>
 
-            {/* Avatar feedback */}
-            {avatarError && (
-              <div style={{
-                marginTop: '0.75rem', padding: '0.5rem 0.75rem',
-                background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
-                borderRadius: '8px', color: 'var(--red)', fontSize: '0.8rem',
-              }}>{avatarError}</div>
-            )}
-            {avatarSuccess && (
-              <div style={{
-                marginTop: '0.75rem', padding: '0.5rem 0.75rem',
-                background: 'color-mix(in srgb, var(--green) 15%, transparent)',
-                border: '1px solid var(--green)',
-                borderRadius: '8px', color: 'var(--green)', fontSize: '0.8rem',
-              }}>Avatar updated successfully.</div>
-            )}
-          </div>
-
-          {/* ── Profile: personal info ──────────────────────────────── */}
-            <div style={{
-              background: 'var(--dark2)', border: '1px solid var(--border)',
-              borderRadius: '12px', padding: '1.5rem',
-            }}>
-              <div style={{
-                display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between', marginBottom: '1.25rem',
-              }}>
-                <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
-                  Personal Information
-                </h2>
-                {!isEditing ? (
-                  <button
-                    type="button"
-                    onClick={() => { setSnapshot({ ...profileForm }); setIsEditing(true); setSaveError(''); setSaveSuccess(''); }}
-                    style={{
-                      padding: '0.5rem 1rem', background: 'transparent',
-                      border: '1px solid var(--border)', borderRadius: '8px',
-                      color: 'var(--white)', fontSize: '0.875rem', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', gap: '0.5rem',
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="2">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                    Edit Profile
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => { setProfileForm({ ...snapshot }); setIsEditing(false); setSaveError(''); }}
-                    style={{
-                      padding: '0.5rem 1rem', background: 'transparent',
-                      border: '1px solid var(--border)', borderRadius: '8px',
-                      color: 'var(--gray)', fontSize: '0.875rem', cursor: 'pointer',
-                    }}
-                  >
-                    Cancel Editing
-                  </button>
-                )}
+            {/* ── Right: Personal info ──────────────────────── */}
+            <div>
+            {!isEditing ? (
+            <>
+              {/* Section header row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Personal Information</h2>
+                  <p style={{ margin: '0.2rem 0 0', fontSize: '0.78rem', color: 'var(--gray)' }}>Manage your name, contact details, and display information</p>
+                </div>
+                <button type="button" onClick={() => { setSnapshot({ ...profileForm }); setIsEditing(true); setSaveError(''); setSaveSuccess(''); }}
+                  style={{ padding: '0.5rem 1rem', background: 'transparent', border: '1px solid var(--gold)', borderRadius: '8px', color: 'var(--gold)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  Edit Profile
+                </button>
               </div>
 
-              {/* Feedback */}
               {saveSuccess && (
-                <div style={{
-                  marginBottom: '1rem', padding: '0.75rem 1rem',
-                  background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
-                  borderRadius: '8px', color: 'var(--green)',
-                  display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem',
-                }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                    <polyline points="22 4 12 14.01 9 11.01"/>
-                  </svg>
+                <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                   {saveSuccess}
                 </div>
               )}
-              {saveError && (
-                <div style={{
-                  marginBottom: '1rem', padding: '0.75rem 1rem',
-                  background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
-                  borderRadius: '8px', color: 'var(--red)',
-                  display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem',
-                }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="12" y1="8" x2="12" y2="12"/>
-                    <line x1="12" y1="16" x2="12.01" y2="16"/>
-                  </svg>
-                  {saveError}
-                </div>
-              )}
 
-              {/* Read-only view */}
-              {!isEditing && (
-                <div style={{
-                  display: 'grid', gridTemplateColumns: '1fr 1fr',
-                  gap: '1rem', marginBottom: '0.5rem',
-                }}>
-                  {[
-                    { label: 'First Name',    value: profileForm.firstName   },
-                    { label: 'Last Name',     value: profileForm.lastName    },
-                    { label: 'Email',         value: profileForm.email,   full: true },
-                    { label: 'Phone',         value: profileForm.phoneNumber },
-                    { label: 'Address',       value: profileForm.address     },
-                  ].map(({ label, value, full }) => (
-                    <div key={label} style={full ? { gridColumn: '1 / -1' } : {}}>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginBottom: '0.2rem' }}>
-                        {label}
-                      </div>
-                      <div style={{ fontSize: '0.925rem', color: 'var(--white)' }}>
-                        {value || '—'}
-                      </div>
+              {/* Identity card */}
+              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', marginBottom: '1rem', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Identity</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Your name as it appears on your account.</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                  {[{ label: 'First Name', value: profileForm.firstName }, { label: 'Last Name', value: profileForm.lastName }].map(({ label, value }, i) => (
+                    <div key={label} style={{ padding: '1rem 1.25rem', borderRight: i === 0 ? '1px solid var(--border)' : 'none' }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>{label}</div>
+                      <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{value || '—'}</div>
                     </div>
                   ))}
                 </div>
-              )}
+              </div>
 
-              {/* Edit form */}
-              {isEditing && (
-                <>
-                  <div className="profile-form-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                    <div className="profile-form-field">
-                      <label>First Name <span className="required">*</span></label>
-                      <input
-                        type="text"
-                        value={profileForm.firstName}
-                        onChange={e => setProfileForm(p => ({ ...p, firstName: e.target.value }))}
-                        placeholder="e.g., Juan"
-                        maxLength={64}
-                        autoComplete="given-name"
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }}
-                      />
-                    </div>
-                    <div className="profile-form-field">
-                      <label>Last Name <span className="required">*</span></label>
-                      <input
-                        type="text"
-                        value={profileForm.lastName}
-                        onChange={e => setProfileForm(p => ({ ...p, lastName: e.target.value }))}
-                        placeholder="e.g., Dela Cruz"
-                        maxLength={64}
-                        autoComplete="family-name"
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }}
-                      />
-                    </div>
-                    <div className="profile-form-field" style={{ gridColumn: '1 / -1' }}>
-                      <label>
-                        Email Address
-                        <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>
-                          (cannot be changed)
-                        </span>
-                      </label>
-                      <input
-                        type="email"
-                        value={profileForm.email}
-                        disabled
-                        readOnly
-                        tabIndex={-1}
-                        autoComplete="off"
-                        style={{
-                          opacity: 0.5, cursor: 'not-allowed',
-                          background: 'var(--dark3)', userSelect: 'none',
-                        }}
-                      />
-                    </div>
-                    <div className="profile-form-field">
-                      <label>Phone <span className="required">*</span></label>
-                      <input
-                        type="tel"
-                        value={profileForm.phoneNumber}
-                        onChange={e => setProfileForm(p => ({ ...p, phoneNumber: e.target.value }))}
-                        placeholder="e.g., 09123456789"
-                        maxLength={20}
-                        autoComplete="tel"
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }}
-                      />
-                    </div>
-                    <div className="profile-form-field">
-                      <label>Address <span className="required">*</span></label>
-                      <input
-                        type="text"
-                        value={profileForm.address}
-                        onChange={e => setProfileForm(p => ({ ...p, address: e.target.value }))}
-                        placeholder="e.g., 123 Main Street"
-                        maxLength={200}
-                        autoComplete="street-address"
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }}
-                      />
-                    </div>
+              {/* Contact card */}
+              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Contact</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Email, phone, and address on file.</span>
+                </div>
+                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>Email Address</div>
+                    <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{profileForm.email || '—'}</div>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                    <button
-                      type="button"
-                      onClick={() => { setProfileForm({ ...snapshot }); setIsEditing(false); setSaveError(''); }}
-                      style={{
-                        padding: '0.625rem 1.25rem', background: 'transparent',
-                        border: '1px solid var(--border)', borderRadius: '8px',
-                        color: 'var(--gray)', fontSize: '0.875rem', cursor: 'pointer',
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveProfile}
-                      disabled={isSaving}
-                      style={{
-                        padding: '0.625rem 1.5rem',
-                        background: isSaving ? 'var(--dark3)' : 'var(--gold)',
-                        border: 'none', borderRadius: '8px',
-                        color: isSaving ? 'var(--gray)' : 'var(--black)',
-                        fontSize: '0.875rem', fontWeight: 600,
-                        cursor: isSaving ? 'not-allowed' : 'pointer',
-                        display: 'flex', alignItems: 'center', gap: '0.5rem',
-                      }}
-                    >
-                      {isSaving ? (
-                        <><span className="spinner" />Saving...</>
-                      ) : (
-                        <>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" strokeWidth="2">
-                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                            <polyline points="17 21 17 13 7 13 7 21"/>
-                            <polyline points="7 3 7 8 15 8"/>
-                          </svg>
-                          Save Changes
-                        </>
-                      )}
-                    </button>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)', color: 'var(--gray)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Locked</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                  {[{ label: 'Phone Number', value: profileForm.phoneNumber }, { label: 'Address', value: profileForm.address }].map(({ label, value }, i) => (
+                    <div key={label} style={{ padding: '1rem 1.25rem', borderRight: i === 0 ? '1px solid var(--border)' : 'none' }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>{label}</div>
+                      <div style={{ fontSize: '0.925rem', color: 'var(--white)', fontWeight: 500 }}>{value || '—'}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+            ) : (
+              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+                  <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Edit Profile</h2>
+                  <button type="button" onClick={() => { setProfileForm({ ...snapshot }); setIsEditing(false); setSaveError(''); }} style={{ padding: '0.5rem 1rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--gray)', fontSize: '0.875rem', cursor: 'pointer' }}>Cancel</button>
+                </div>
+                {saveError && (
+                  <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    {saveError}
                   </div>
-                </>
-              )}
+                )}
+                <div className="profile-form-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                  <div className="profile-form-field">
+                    <label>First Name <span className="required">*</span></label>
+                    <input type="text" value={profileForm.firstName} onChange={e => setProfileForm(p => ({ ...p, firstName: e.target.value }))} placeholder="e.g., Juan" maxLength={64} autoComplete="given-name" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }} />
+                  </div>
+                  <div className="profile-form-field">
+                    <label>Last Name <span className="required">*</span></label>
+                    <input type="text" value={profileForm.lastName} onChange={e => setProfileForm(p => ({ ...p, lastName: e.target.value }))} placeholder="e.g., Dela Cruz" maxLength={64} autoComplete="family-name" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }} />
+                  </div>
+                  <div className="profile-form-field" style={{ gridColumn: '1 / -1' }}>
+                    <label>Email Address <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--gray)' }}>(cannot be changed)</span></label>
+                    <input type="email" value={profileForm.email} disabled readOnly tabIndex={-1} autoComplete="off" style={{ opacity: 0.5, cursor: 'not-allowed', background: 'var(--dark3)', userSelect: 'none' }} />
+                  </div>
+                  <div className="profile-form-field">
+                    <label>Phone <span className="required">*</span></label>
+                    <input type="tel" value={profileForm.phoneNumber} onChange={e => setProfileForm(p => ({ ...p, phoneNumber: e.target.value }))} placeholder="e.g., 09123456789" maxLength={20} autoComplete="tel" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }} />
+                  </div>
+                  <div className="profile-form-field">
+                    <label>Address <span className="required">*</span></label>
+                    <input type="text" value={profileForm.address} onChange={e => setProfileForm(p => ({ ...p, address: e.target.value }))} placeholder="e.g., 123 Main Street" maxLength={200} autoComplete="street-address" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile(); } }} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => { setProfileForm({ ...snapshot }); setIsEditing(false); setSaveError(''); }} style={{ padding: '0.625rem 1.25rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--gray)', fontSize: '0.875rem', cursor: 'pointer' }}>Cancel</button>
+                  <button type="button" onClick={handleSaveProfile} disabled={isSaving} style={{ padding: '0.625rem 1.5rem', background: isSaving ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSaving ? 'var(--gray)' : 'var(--black)', fontSize: '0.875rem', fontWeight: 600, cursor: isSaving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {isSaving ? <><span className="spinner" />Saving...</> : <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Changes</>}
+                  </button>
+                </div>
+              </div>
+            )}
             </div>
-          </>
+
+          </div>
           )}
 
           {/* ── Security Tab ──────────────────────────────── */}
@@ -1120,15 +949,14 @@ export default function SettingsPage() {
   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
     {/* ── Change Password ─────────────────────────── */}
-    <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
-      <h2 style={{ margin: '0 0 1.25rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Change Password</h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxWidth: '480px' }}>
-
-        <div style={{ padding: '0.875rem 1rem', background: 'color-mix(in srgb, var(--gold) 10%, transparent)', borderRadius: '8px', border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <span style={{ fontSize: '0.8125rem', color: 'var(--gold)', fontWeight: 600 }}>Password Security</span>
-          <span style={{ fontSize: '0.8125rem', color: 'var(--gray)', fontWeight: 400, marginLeft: 0 }}>— Change it regularly to keep your account safe.</span>
-        </div>
+    <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+      <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Change Password</span>
+        <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Change it regularly to keep your account safe.</span>
+      </div>
+      <div style={{ padding: '1.5rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxWidth: '520px' }}>
 
         {[
           { key: 'currentPassword', label: 'Current Password', showKey: 'current', placeholder: 'Enter current password' },
@@ -1207,14 +1035,16 @@ export default function SettingsPage() {
           {isSavingPassword ? <><span className="spinner" />Updating...</> : <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Update Password</>}
         </button>
       </div>
+      </div>
     </div>
 
     {/* ── Active Sessions ──────────────────────────── */}
-    <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.875rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Active Sessions</h2>
-          <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--gray)' }}>Devices currently logged into your account.</p>
+    <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+      <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Active Sessions</span>
+          <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Devices currently logged into your account.</span>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           {sessions.filter(s => !s.is_current).length > 0 && (
@@ -1227,6 +1057,7 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+      <div style={{ padding: '1rem 1.5rem' }}>
 
       {sessionsOpen && (
         <>
@@ -1279,11 +1110,16 @@ export default function SettingsPage() {
           )}
         </>
       )}
+      </div>
     </div>
 
     {/* ── Two-Factor Authentication ────────────────── */}
-    <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
-      <h2 style={{ margin: '0 0 0.875rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Two-factor authentication</h2>
+    <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+      <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Two-Factor Authentication</span>
+      </div>
+      <div style={{ padding: '1.5rem' }}>
 
       {/* Toggle row */}
       <div style={{ padding: '0.875rem 1rem', background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
@@ -1398,18 +1234,19 @@ export default function SettingsPage() {
           </button>
         </div>
       )}
+      </div>
     </div>
   </div>
 )}
 
           {activeTab === 'business' && (
-  <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
-    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-      <div>
-        <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Business Details</h2>
-        <p style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: 'var(--gray)' }}>Public information shown to your customers</p>
-      </div>
+  <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+    <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Business Details</span>
+      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Public information shown to your customers.</span>
     </div>
+    <div style={{ padding: '1.5rem' }}>
 
     {businessSuccess && (
       <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '8px', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
@@ -1424,29 +1261,30 @@ export default function SettingsPage() {
       </div>
     )}
 
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '480px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
       <div className="profile-form-field">
         <label>Business name</label>
         <input type="text" value={businessForm.businessName} onChange={e => setBusinessForm(f => ({ ...f, businessName: e.target.value }))} placeholder="PersonalizeMe Prints" maxLength={100} />
-      </div>
-      <div className="profile-form-field">
-        <label>Business address</label>
-        <input type="text" value={businessForm.businessAddress} onChange={e => setBusinessForm(f => ({ ...f, businessAddress: e.target.value }))} placeholder="Street, city" maxLength={200} />
       </div>
       <div className="profile-form-field">
         <label>Operating hours</label>
         <input type="text" value={businessForm.operatingHours} onChange={e => setBusinessForm(f => ({ ...f, operatingHours: e.target.value }))} placeholder="Mon–Sat 9:00–18:00" maxLength={100} />
       </div>
       <div className="profile-form-field">
+        <label>Business address</label>
+        <input type="text" value={businessForm.businessAddress} onChange={e => setBusinessForm(f => ({ ...f, businessAddress: e.target.value }))} placeholder="Street, city" maxLength={200} />
+      </div>
+      <div className="profile-form-field">
         <label>Customer contact email</label>
         <input type="email" value={businessForm.contactEmail} onChange={e => setBusinessForm(f => ({ ...f, contactEmail: e.target.value }))} placeholder="support@example.com" maxLength={100} />
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.25rem' }}>
+      <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', paddingTop: '0.25rem' }}>
         <button type="button" onClick={handleSaveBusinessSettings} disabled={isSavingBusiness} style={{ padding: '0.625rem 1.5rem', background: isSavingBusiness ? 'var(--dark3)' : 'var(--gold)', border: 'none', borderRadius: '8px', color: isSavingBusiness ? 'var(--gray)' : 'var(--black)', fontSize: '0.875rem', fontWeight: 600, cursor: isSavingBusiness ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           {isSavingBusiness ? <><span className="spinner" />Saving...</> : <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Changes</>}
         </button>
       </div>
+    </div>
     </div>
   </div>
 )}
@@ -1455,11 +1293,14 @@ export default function SettingsPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
               {/* Store Location */}
-              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
-                <h2 style={{ margin: '0 0 0.375rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
-                  Store Location
-                </h2>
-                <p style={{ margin: '0 0 1.25rem', fontSize: '0.8125rem', color: 'var(--gray)' }}>
+              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+                <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Store Location</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Pin your store on the map. Shipping fee is calculated from this point.</span>
+                </div>
+                <div style={{ padding: '1.5rem' }}>
+                <p style={{ margin: '0 0 1.25rem', fontSize: '0.8125rem', color: 'var(--gray)', display: 'none' }}>
                   Pin your store on the map. Shipping fee is calculated from this point to the customer's address.
                 </p>
 
@@ -1546,14 +1387,18 @@ export default function SettingsPage() {
                     maxLength={300}
                   />
                 </div>
+                </div>
               </div>
 
               {/* Shipping Rates */}
-              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
-                <h2 style={{ margin: '0 0 0.375rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
-                  Shipping Rate
-                </h2>
-                <p style={{ margin: '0 0 1.25rem', fontSize: '0.8125rem', color: 'var(--gray)' }}>
+              <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+                <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Shipping Rate</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Choose how shipping is calculated at checkout.</span>
+                </div>
+                <div style={{ padding: '1.5rem' }}>
+                <p style={{ margin: '0 0 1.25rem', fontSize: '0.8125rem', color: 'var(--gray)', display: 'none' }}>
                   Choose how shipping is calculated at checkout.
                 </p>
 
@@ -1695,21 +1540,19 @@ export default function SettingsPage() {
                   )}
                 </button>
               </div>
-
+              </div>
             </div>
+
           )}
 
           {activeTab === 'notifications' && (
-            <div style={{
-              background: 'var(--dark2)', border: '1px solid var(--border)',
-              borderRadius: '12px', padding: '1.5rem',
-            }}>
-              <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>
-                Notifications
-              </h2>
-              <p style={{ margin: '0 0 1.25rem', fontSize: '0.875rem', color: 'var(--gray)' }}>
-                Preferences are stored on this device for now.
-              </p>
+            <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+              <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Notifications</span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Preferences are stored on this device.</span>
+              </div>
+              <div style={{ padding: '1.5rem' }}>
               {[
                 { key: 'newOrders', label: 'New order notifications' },
                 { key: 'lowStock', label: 'Low stock alerts' },
@@ -1742,15 +1585,20 @@ export default function SettingsPage() {
                   </button>
                 </div>
               ))}
+              </div>
             </div>
           )}
 
           {activeTab === 'appearance' && (
-  <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem' }}>
-    <h2 style={{ margin: '0 0 0.25rem', fontSize: '1rem', fontWeight: 700, color: 'var(--white)' }}>Appearance</h2>
-    <p style={{ margin: '0 0 1.5rem', fontSize: '0.8rem', color: 'var(--gray)' }}>Choose how the dashboard looks to you</p>
+  <div style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+    <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--white)' }}>Appearance</span>
+      <span style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>— Choose how the dashboard looks to you.</span>
+    </div>
+    <div style={{ padding: '1.5rem' }}>
 
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '480px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       {[
         { id: 'dark', label: 'Dark', desc: 'Easy on the eyes in low-light environments', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg> },
         { id: 'light', label: 'Light', desc: 'Classic light theme for bright environments', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> },
@@ -1776,6 +1624,7 @@ export default function SettingsPage() {
           </button>
         );
       })}
+    </div>
     </div>
   </div>
 )}

@@ -571,7 +571,7 @@ input[type="number"] {
   justify-content: space-between;
   padding: 0 1.25rem;
   position: sticky;
-  top: 0;
+  top: var(--offline-banner-h, 0px);
   z-index: 100;
   width: 100%;
   box-sizing: border-box;
@@ -3275,7 +3275,6 @@ input[type="text"][inputMode="numeric"] {
   animation: fadeIn 0.2s ease;
 }
 
-/* Slide-in profile panel (layout quick profile) */
 .profile-modal-overlay.profile-modal-overlay--slide {
   justify-content: flex-end;
   align-items: stretch;
@@ -3337,7 +3336,6 @@ input[type="text"][inputMode="numeric"] {
   flex-wrap: wrap;
 }
 
-/* Narrow panel: stack two-column grids */
 .profile-modal.profile-modal--slide [style*="grid-template-columns: 1fr 1fr"] {
   grid-template-columns: 1fr !important;
 }

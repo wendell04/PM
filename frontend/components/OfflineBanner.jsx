@@ -7,22 +7,31 @@ export default function OfflineBanner() {
   const [justReconnected, setJustReconnected] = useState(false);
 
   useEffect(() => {
+    const root = document.documentElement;
+    const BANNER_H = '36px';
+
     const onOffline = () => {
       setOffline(true);
       setJustReconnected(false);
+      root.style.setProperty('--offline-banner-h', BANNER_H);
     };
     const onOnline = () => {
       setOffline(false);
       setJustReconnected(true);
-      setTimeout(() => setJustReconnected(false), 3000);
+      setTimeout(() => {
+        setJustReconnected(false);
+        root.style.removeProperty('--offline-banner-h');
+      }, 3000);
     };
 
+    if (!navigator.onLine) root.style.setProperty('--offline-banner-h', BANNER_H);
     setOffline(!navigator.onLine);
     window.addEventListener('offline', onOffline);
     window.addEventListener('online', onOnline);
     return () => {
       window.removeEventListener('offline', onOffline);
       window.removeEventListener('online', onOnline);
+      root.style.removeProperty('--offline-banner-h');
     };
   }, []);
 

@@ -844,7 +844,7 @@ class OrderController extends Controller
                 return $this->unauthorizedResponse();
             }
 
-            $cacheKey = 'admin_order_stats_' . md5($request->query->__toString());
+            $cacheKey = 'admin_order_stats_' . md5($request->getQueryString() ?? '');
             $data = Cache::remember($cacheKey, 30, function () use ($request) {
                 $base = Order::query()
                     ->when($request->filled('startDate'), fn($q) => $q->where('createdAt', '>=', $request->startDate))
@@ -871,7 +871,7 @@ class OrderController extends Controller
             });
 
             return $this->successResponse('Order statistics fetched successfully.', $data);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while fetching order statistics.');
         }
     }

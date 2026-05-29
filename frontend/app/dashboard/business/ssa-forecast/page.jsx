@@ -300,6 +300,7 @@ const pageStyles = `
     display: flex;
     gap: 0;
     border-bottom: 1px solid var(--border);
+    margin-top: 1.25rem;
     margin-bottom: 1.5rem;
     overflow-x: auto;
     scrollbar-width: none;
@@ -375,6 +376,68 @@ const pageStyles = `
   .ssa-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .ssa-tbl-wrap { overflow: auto; scrollbar-width: none; }
   .ssa-tbl-wrap::-webkit-scrollbar { display: none; }
+  .ssa-page-header {
+    padding: 1.5rem 0 1.25rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .ssa-page-title {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--white);
+    margin: 0 0 0.3rem;
+    letter-spacing: -0.02em;
+  }
+  .ssa-page-desc {
+    font-size: 0.82rem;
+    color: var(--gray);
+    margin: 0;
+    line-height: 1.6;
+    max-width: 600px;
+  }
+  .ssa-config-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0 2.5rem;
+    align-items: start;
+  }
+  @media (max-width: 700px) {
+    .ssa-config-grid { grid-template-columns: 1fr; gap: 1.25rem; }
+  }
+  .ssa-config-divider {
+    grid-column: 1 / -1;
+    height: 1px;
+    background: var(--border);
+    opacity: 0.5;
+    margin: 0.25rem 0;
+  }
+  .ssa-field-label {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--gold);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.65px;
+    margin-bottom: 0.6rem;
+    opacity: 0.85;
+  }
+  .ssa-alerts-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-bottom: 1.5rem;
+  }
+  .ssa-section-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 1.5rem 0;
+    opacity: 0.45;
+  }
 `;
 
 function getISOWeek(date) {
@@ -489,6 +552,10 @@ export default function SSAForecastPage() {
   const [backtestData, setBacktestData] = useState([]);
   const [productMap, setProductMap] = useState({});
   const [rawRows, setRawRows] = useState([]);
+  const [stockHistoryRows, setStockHistoryRows] = useState([]);
+  const [stockoutDate, setStockoutDate] = useState(null);
+  const [currentStockQty, setCurrentStockQty] = useState(null);
+  const [depletionMethod, setDepletionMethod] = useState(null);
 
   const [activeTab, setActiveTab] = useState("forecast");
   const [rfmResult, setRfmResult] = useState(null);
@@ -557,6 +624,10 @@ export default function SSAForecastPage() {
     setError("");
     setResult(null);
     setSubmittedConfig(null);
+    setStockHistoryRows([]);
+    setStockoutDate(null);
+    setCurrentStockQty(null);
+    setDepletionMethod(null);
     setIsLoading(true);
 
     try {
@@ -598,51 +669,61 @@ export default function SSAForecastPage() {
             value: dataSource === "sales_revenue" ? v.revenue : v.qty,
           }));
       } else {
-        const res = await fetchWithTimeout(
-          `${API_URL}/api/admin/inventory/${selectedInventoryId}/history`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: "application/json",
-            },
-          },
+        // Fetch stock history (staircase reference) and all sales (SSA demand input) in parallel
+        const [histResponse, salesResponse] = await Promise.all([
+          fetchWithTimeout(
+            `${API_URL}/api/admin/inventory/${selectedInventoryId}/history`,
+            { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
+          ),
+          fetchWithTimeout(
+            `${API_URL}/api/admin/sales?limit=10000&status=completed`,
+            { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
+          ),
+        ]);
+        const histData  = await histResponse.json();
+        const salesData = await salesResponse.json();
+        const history  = Array.isArray(histData.data  ?? histData)  ? (histData.data  ?? histData)  : [];
+        const allSales = Array.isArray(salesData.data ?? salesData) ? (salesData.data ?? salesData) : [];
+
+        // Build stock history staircase — raw events sorted chronologically (left of today)
+        const sortedHistory = [...history]
+          .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+          .map(h => ({
+            date:  h.createdAt ? new Date(h.createdAt).toISOString().split("T")[0] : null,
+            value: h.remainingQty ?? 0,
+          }))
+          .filter(h => h.date !== null);
+
+        setStockHistoryRows(sortedHistory);
+
+        // Current stock qty from the inventory list (live value for depletion start)
+        const selectedItem = inventoryList.find(i => (i._id ?? i.id) === selectedInventoryId);
+        const currentStock = selectedItem?.stockQty ?? 0;
+        setCurrentStockQty(currentStock);
+
+        // Filter sales for this item by inventoryId or product name, aggregate by date
+        const productSales = allSales.filter(s =>
+          String(s.inventoryId ?? "") === String(selectedInventoryId) ||
+          (selectedItem?.name && s.productName === selectedItem.name)
         );
-        const d = await res.json();
-        const history = Array.isArray(d.data ?? d) ? (d.data ?? d) : [];
-        // Sort chronologically and build a movement map (date → last remainingQty)
-        const sorted = [...history].sort(
-          (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
-        );
-        const movementMap = {};
-        sorted.forEach((h) => {
-          const date = h.createdAt
-            ? new Date(h.createdAt).toISOString().split("T")[0]
-            : null;
-          if (date) movementMap[date] = h.remainingQty ?? 0;
+        const salesMap = {};
+        productSales.forEach(s => {
+          const d = s.saleDate ? new Date(s.saleDate) : null;
+          if (!d || isNaN(d)) return;
+          const ds = d.toISOString().split("T")[0];
+          salesMap[ds] = (salesMap[ds] ?? 0) + (s.quantity ?? 0);
         });
-        // Forward-fill daily stock levels from first movement to today
-        // so SSA has a dense enough time series regardless of movement count.
-        const movDates = Object.keys(movementMap).sort();
-        if (movDates.length > 0) {
-          const start = new Date(movDates[0]);
-          start.setHours(0, 0, 0, 0);
-          const end = new Date();
-          end.setHours(0, 0, 0, 0);
-          let lastQty = movementMap[movDates[0]];
-          const cur = new Date(start);
-          while (cur <= end) {
-            const ds = cur.toISOString().split("T")[0];
-            if (movementMap[ds] !== undefined) lastQty = movementMap[ds];
-            rows.push({ date: ds, value: lastQty });
-            cur.setDate(cur.getDate() + 1);
-          }
-        }
+        rows = Object.entries(salesMap)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([date, value]) => ({ date, value }));
+
+        setDepletionMethod(rows.length >= 10 ? "ssa" : "none");
       }
 
       if (rows.length < 10) {
         const inventoryHint =
           dataSource === "inventory_stock"
-            ? ` This item needs at least 10 days of stock history to forecast. Add more stock movements or wait until more history accumulates.`
+            ? ` This item has only ${rows.length} sale record${rows.length !== 1 ? "s" : ""}. At least 10 are needed to run the depletion forecast.`
             : "";
         setError(
           `Not enough data points (${rows.length}). SSA requires at least 10.${inventoryHint}`,
@@ -660,7 +741,7 @@ export default function SSAForecastPage() {
           rows,
           forecast_periods: count,
           forecast_type: forecastPeriod.type,
-          data_type: dataSource === "inventory_stock" ? "stock" : "sales",
+          data_type: "sales",
         }),
         signal: controller.signal,
       });
@@ -910,8 +991,28 @@ export default function SSAForecastPage() {
     else if (activeTab === "products" && (!basketResult || !serviceResult) && !analyticsLoading) loadProducts();
   }, [activeTab, token]); // eslint-disable-line
 
+  // Compute stockout date whenever inventory depletion forecast updates
+  useEffect(() => {
+    if (submittedConfig?.source !== "inventory_stock" || !result || currentStockQty === null) {
+      setStockoutDate(null);
+      return;
+    }
+    const todayStr = new Date().toISOString().split("T")[0];
+    const fcDates  = result.forecast?.dates  || [];
+    const fcValues = result.forecast?.values || [];
+    let remaining = currentStockQty;
+    for (let i = 0; i < fcDates.length; i++) {
+      if (fcDates[i] <= todayStr) continue;
+      remaining -= Math.max(0, Math.round(fcValues[i] ?? 0));
+      if (remaining <= 0) { setStockoutDate(fcDates[i]); return; }
+    }
+    setStockoutDate(null);
+  }, [result, currentStockQty, submittedConfig?.source]); // eslint-disable-line
+
   // Keyed by date string → actual raw sale revenue (unfloored, ₱0 for no-sale days)
   const rawRevMap = Object.fromEntries(rawRows.map((r) => [r.date, r.value]));
+  const isInvMode = submittedConfig?.source === "inventory_stock";
+  const selectedItemName = inventoryList.find(i => (i._id ?? i.id) === selectedInventoryId)?.name ?? "";
 
   const getCombinedChartData = () => {
     if (!result) return [];
@@ -1044,6 +1145,44 @@ export default function SSAForecastPage() {
     }));
   };
 
+  const getInventoryChartData = () => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const data = [];
+
+    // Left side: forward-fill stock history events into a staircase up to today
+    if (stockHistoryRows.length > 0) {
+      const eventMap = {};
+      stockHistoryRows.forEach(r => { eventMap[r.date] = r.value; });
+      const allDates = Object.keys(eventMap).sort();
+      const cur = new Date(allDates[0] + "T00:00:00Z");
+      let lastQty = eventMap[allDates[0]];
+      while (cur.toISOString().split("T")[0] <= todayStr) {
+        const ds = cur.toISOString().split("T")[0];
+        if (eventMap[ds] !== undefined) lastQty = eventMap[ds];
+        data.push({ date: ds, StockActual: lastQty, StockForecast: null });
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+    } else {
+      // No history — anchor at today with current stock level
+      data.push({ date: todayStr, StockActual: currentStockQty ?? 0, StockForecast: null });
+    }
+
+    // Right side: subtract SSA-forecasted demand from current stock to get projected remaining
+    if (result && currentStockQty !== null) {
+      const fcDates  = result.forecast?.dates  || [];
+      const fcValues = result.forecast?.values || [];
+      let remaining = currentStockQty;
+      for (let i = 0; i < fcDates.length; i++) {
+        if (fcDates[i] <= todayStr) continue;
+        remaining = Math.max(0, remaining - Math.max(0, Math.round(fcValues[i] ?? 0)));
+        data.push({ date: fcDates[i], StockActual: null, StockForecast: remaining });
+      }
+    }
+
+    data.sort((a, b) => a.date.localeCompare(b.date));
+    return data;
+  };
+
   const formatDateLabel = (dateString, periodType, forceDaily = false) => {
     if (!dateString) return dateString;
     const d = new Date(dateString + "T00:00:00Z");
@@ -1115,12 +1254,22 @@ export default function SSAForecastPage() {
   return (
     <ErrorBoundary>
       <div className="page-content-wrapper">
+        <style dangerouslySetInnerHTML={{ __html: pageStyles }} />
 
+        {/* ── Page Header ─────────────────────────────────────────────────── */}
+        <div className="ssa-page-header">
+          <div>
+            <h1 className="ssa-page-title">Business Analytics</h1>
+            <p className="ssa-page-desc">
+              Forecast future sales, segment customers by value, and analyze product performance using Singular Spectrum Analysis.
+            </p>
+          </div>
+        </div>
 
-        {/* ── Analytics tab navigation ──────────────────────────────────── */}
+        {/* ── Tab Navigation ──────────────────────────────────────────────── */}
         <div className="ssa-tab-nav">
           {[
-            { key: "forecast",  label: "Forecast" },
+            { key: "forecast",  label: "Demand Forecast" },
             { key: "segments",  label: "Customer Segments" },
             { key: "products",  label: "Products & Services" },
           ].map(({ key, label }) => (
@@ -1138,112 +1287,60 @@ export default function SSAForecastPage() {
         {activeTab === "forecast" && (
         <>
 
-        {!(result && submittedConfig) && dataSource !== "inventory_stock" && (
-          <div className="ssa-info-banner">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="var(--gold)"
-              strokeWidth="2"
-              style={{ flexShrink: 0, marginTop: 2 }}
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="16" x2="12" y2="12" />
-              <line x1="12" y1="8" x2="12.01" y2="8" />
-            </svg>
-            <span>
-              Data is pulled directly from your database. Choose a data source,
-              forecast period, and how many periods ahead — results update
-              automatically. SSA requires at least 10 historical data points.
-            </span>
-          </div>
-        )}
-
+        {/* ── Configuration ─────────────────────────────────────────────────── */}
         <div className="ssa-card">
-          <div style={{ marginBottom: "1.25rem" }}>
-            <label
-              style={{
-                fontSize: "0.75rem",
-                color: "var(--gray)",
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                display: "block",
-                marginBottom: "0.5rem",
-              }}
-            >
-              Data Source
-            </label>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              {DATA_SOURCES.map((s) => (
-                <button
-                  key={s.key}
-                  type="button"
-                  className={`ssa-source-btn ${dataSource === s.key ? "active" : ""}`}
-                  onClick={() => {
-                    setDataSource(s.key);
-                    setDynamicMaxCount(forecastPeriod.maxCount);
-                    setResult(null);
-                    setSubmittedConfig(null);
-                    setError("");
-                  }}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <div className="ssa-config-grid">
 
-          {/* Forecast period + count — only shown for sales sources in the config card.
-              For inventory stock these controls live inside the SSA section below. */}
-          {dataSource !== "inventory_stock" && <>
-          <hr
-            style={{
-              border: "none",
-              borderTop: "1px solid var(--border)",
-              margin: "0.25rem 0 1.25rem",
-              opacity: 0.5,
-            }}
-          />
-          <div style={{ marginBottom: "1.25rem" }}>
-            <label
-              style={{
-                fontSize: "0.75rem",
-                color: "var(--gray)",
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                display: "block",
-                marginBottom: "0.5rem",
-              }}
-            >
-              Forecast Period
-            </label>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
-              {FORECAST_PERIODS.map((p) => (
-                <button
-                  key={p.type}
-                  type="button"
-                  className={`ssa-period-btn ${forecastPeriod.type === p.type ? "active" : ""}`}
-                  onClick={() => {
-                    setForecastPeriod(p);
-                    setDynamicMaxCount(p.maxCount);
-                    setForecastCount((prev) => {
-                      const n = parseInt(prev, 10);
-                      if (!n || n < 1) return "";
-                      return Math.min(n, p.maxCount);
-                    });
-                    setResult(null);
-                    setSubmittedConfig(null);
-                  }}
-                >
-                  {p.label}
-                </button>
-              ))}
+            {/* Column 1: Data Source */}
+            <div>
+              <span className="ssa-field-label">Data Source</span>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                {DATA_SOURCES.map((s) => (
+                  <button
+                    key={s.key}
+                    type="button"
+                    className={`ssa-source-btn ${dataSource === s.key ? "active" : ""}`}
+                    onClick={() => {
+                      setDataSource(s.key);
+                      setDynamicMaxCount(forecastPeriod.maxCount);
+                      setResult(null);
+                      setSubmittedConfig(null);
+                      setError("");
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+
+            {/* Column 2: Forecast Period + Count (or inventory hint) */}
+            {dataSource !== "inventory_stock" ? (
+            <div>
+              <span className="ssa-field-label">Forecast Period</span>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.65rem" }}>
+                {FORECAST_PERIODS.map((p) => (
+                  <button
+                    key={p.type}
+                    type="button"
+                    className={`ssa-period-btn ${forecastPeriod.type === p.type ? "active" : ""}`}
+                    onClick={() => {
+                      setForecastPeriod(p);
+                      setDynamicMaxCount(p.maxCount);
+                      setForecastCount((prev) => {
+                        const n = parseInt(prev, 10);
+                        if (!n || n < 1) return "";
+                        return Math.min(n, p.maxCount);
+                      });
+                      setResult(null);
+                      setSubmittedConfig(null);
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
               <input
                 type="number"
                 min={1}
@@ -1281,19 +1378,27 @@ export default function SSAForecastPage() {
                   Updating...
                 </span>
               )}
+              </div>
+              {error && (
+                <div className="ssa-error" style={{ marginTop: "0.75rem" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  {error}
+                </div>
+              )}
             </div>
+            ) : (
+            <div style={{ display: "flex", alignItems: "flex-start", paddingTop: "1.4rem" }}>
+              <p style={{ fontSize: "0.83rem", color: "var(--gray)", lineHeight: 1.6, margin: 0 }}>
+                Select an inventory item below to forecast its future stock level using Singular Spectrum Analysis.
+              </p>
+            </div>
+            )}
+
           </div>
-          {error && (
-            <div className="ssa-error">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-              {error}
-            </div>
-          )}
-          </>}
         </div>
 
         {/* ── Inventory Stock Level overview ───────────────────────────────── */}
@@ -1303,25 +1408,6 @@ export default function SSAForecastPage() {
           const lowItems = tracked.filter(
             (i) => (i.stockQty ?? 0) > 0 && (i.stockQty ?? 0) <= (i.minStockLevel ?? 0),
           );
-          const okItems = tracked.filter(
-            (i) => (i.stockQty ?? 0) > (i.minStockLevel ?? 0),
-          );
-
-          const chartData = [
-            ...outItems,
-            ...lowItems,
-            ...okItems,
-          ].map((i) => ({
-            name: i.name,
-            stock: i.stockQty ?? 0,
-            min: i.minStockLevel ?? 0,
-            status: (i.stockQty ?? 0) === 0 ? "out" : (i.stockQty ?? 0) <= (i.minStockLevel ?? 0) ? "low" : "ok",
-          }));
-
-          const barColor = (status) =>
-            status === "out" ? "#f87171" : status === "low" ? "#eab308" : "#4ade80";
-
-          const chartHeight = Math.max(280, chartData.length * 34);
 
           return (
             <>
@@ -1345,87 +1431,6 @@ export default function SSAForecastPage() {
                     <div className="ssa-stat-value" style={{ color }}>{value}</div>
                   </div>
                 ))}
-              </div>
-
-              {/* Bar chart */}
-              <div className="ssa-card">
-                <div className="ssa-card-header">
-                  <h2 className="ssa-card-title">Current Stock Levels — All Products</h2>
-                </div>
-                {tracked.length === 0 ? (
-                  <p style={{ color: "var(--gray)", fontSize: "0.85rem" }}>
-                    No tracked inventory items found.
-                  </p>
-                ) : (
-                  <div style={{ height: chartHeight, overflowY: "auto" }}>
-                    <ResponsiveContainer width="100%" height={chartHeight}>
-                      <BarChart
-                        layout="vertical"
-                        data={chartData}
-                        margin={{ top: 5, right: 40, left: 10, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
-                        <XAxis
-                          type="number"
-                          stroke="var(--gray)"
-                          tick={{ fill: "var(--gray)", fontSize: 11 }}
-                          tickFormatter={(v) => v.toLocaleString()}
-                        />
-                        <YAxis
-                          type="category"
-                          dataKey="name"
-                          width={180}
-                          stroke="var(--gray)"
-                          tick={{ fill: "var(--gray)", fontSize: 11 }}
-                        />
-                        <Tooltip
-                          content={({ active, payload }) => {
-                            if (!active || !payload?.length) return null;
-                            const d = payload[0].payload;
-                            return (
-                              <div
-                                style={{
-                                  background: "var(--dark2)",
-                                  border: "1px solid var(--border)",
-                                  borderRadius: 8,
-                                  padding: "0.65rem 0.85rem",
-                                  fontSize: "0.8rem",
-                                }}
-                              >
-                                <div style={{ color: "var(--white)", fontWeight: 600, marginBottom: "0.3rem" }}>
-                                  {d.name}
-                                </div>
-                                <div style={{ color: barColor(d.status) }}>
-                                  Stock: {d.stock.toLocaleString()} units
-                                </div>
-                                {d.min > 0 && (
-                                  <div style={{ color: "var(--gray)", fontSize: "0.75rem", marginTop: "0.15rem" }}>
-                                    Min level: {d.min} units
-                                  </div>
-                                )}
-                                <div
-                                  style={{
-                                    marginTop: "0.25rem",
-                                    fontSize: "0.72rem",
-                                    color: barColor(d.status),
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  {d.status === "out" ? "OUT OF STOCK" : d.status === "low" ? "LOW STOCK" : "OK"}
-                                </div>
-                              </div>
-                            );
-                          }}
-                        />
-                        <Bar dataKey="stock" radius={[0, 4, 4, 0]}>
-                          {chartData.map((entry, index) => (
-                            <Cell key={index} fill={barColor(entry.status)} fillOpacity={0.85} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
               </div>
 
               {/* SSA drill-down — item picker + forecast controls */}
@@ -1612,13 +1617,19 @@ export default function SSAForecastPage() {
 
                 <div className="ssa-stat-card">
                   <div className="ssa-stat-label">
-                    {submittedConfig?.source === "inventory_stock"
+                    {(result ? submittedConfig?.source : dataSource) === "inventory_stock"
                       ? "Current Stock Level"
+                      : isRevenue
+                      ? forecastPeriod.type === "weekly"
+                        ? "Last 7-Day Revenue"
+                        : forecastPeriod.type === "monthly"
+                        ? "Last 30-Day Revenue"
+                        : "Last Recorded Year Value"
                       : forecastPeriod.type === "weekly"
-                      ? "Last 7-Day Revenue"
+                      ? "Last 7-Day Quantity"
                       : forecastPeriod.type === "monthly"
-                      ? "Last 30-Day Revenue"
-                      : "Last Recorded Year Value"}
+                      ? "Last 30-Day Quantity"
+                      : "Last Year Quantity"}
                   </div>
                   {firstLoad ? (
                     <div className="ssa-skeleton" />
@@ -1628,11 +1639,13 @@ export default function SSAForecastPage() {
                         className="ssa-stat-value"
                         style={{ color: "var(--gold)" }}
                       >
-                        {lastVal !== null
-                          ? submittedConfig?.source === "inventory_stock"
-                            ? `${Math.round(lastVal).toLocaleString("en-US")} units`
-                            : `${isRevenue ? "\u20b1" : ""}${lastVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                          : "\u2014"}
+                        {submittedConfig?.source === "inventory_stock"
+                          ? currentStockQty !== null
+                            ? `${currentStockQty.toLocaleString("en-US")} units`
+                            : "\u2014"
+                          : lastVal !== null
+                            ? `${isRevenue ? "\u20b1" : ""}${lastVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : "\u2014"}
                       </div>
                       {!isRevenue && submittedConfig?.source !== "inventory_stock" && (
                         <div
@@ -1765,6 +1778,39 @@ export default function SSAForecastPage() {
 
         {result && submittedConfig && submittedConfig.source === dataSource && (
           <>
+            {/* ── Inventory depletion status banners ─────────────────────── */}
+            {isInvMode && stockoutDate && (
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: "10px", padding: "0.875rem 1.25rem", fontSize: "0.85rem", color: "var(--gray)", lineHeight: 1.6, marginBottom: "1.5rem" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <span>
+                  <strong style={{ color: "#f87171" }}>Predicted stockout —</strong>{" "}
+                  Based on current demand trends, <strong style={{ color: "var(--white)" }}>{selectedItemName}</strong> is projected to run out around{" "}
+                  <strong style={{ color: "var(--white)" }}>{formatDateLabel(stockoutDate, submittedConfig?.period?.type)}</strong>.{" "}
+                  Consider restocking soon.
+                </span>
+              </div>
+            )}
+            {isInvMode && !stockoutDate && parseInt(forecastCount, 10) > 0 && (
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", background: "rgba(74,222,128,0.06)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: "10px", padding: "0.875rem 1.25rem", fontSize: "0.85rem", color: "var(--gray)", lineHeight: 1.6, marginBottom: "1.5rem" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                <span>
+                  <strong style={{ color: "#4ade80" }}>Stock sufficient</strong>{" "}
+                  — No stockout predicted within the {submittedConfig.count} {submittedConfig.period.unit} forecast window.
+                </span>
+              </div>
+            )}
+
+            {!isInvMode && ((parseInt(forecastCount, 10) > 0 && result?.data_quality?.is_low_confidence) ||
+              result?.data_quality?.trim_warning ||
+              result?.is_high_volatility ||
+              result?.forecast_dampened) && (
+            <div className="ssa-alerts-group">
             {parseInt(forecastCount, 10) > 0 &&
               result?.data_quality?.is_low_confidence && (
                 <div
@@ -1776,7 +1822,6 @@ export default function SSAForecastPage() {
                     border: "1px solid rgba(251,191,36,0.3)",
                     borderRadius: "10px",
                     padding: "0.875rem 1.25rem",
-                    marginBottom: "1.5rem",
                     fontSize: "0.85rem",
                     color: "var(--gray)",
                     lineHeight: 1.6,
@@ -1890,61 +1935,69 @@ export default function SSAForecastPage() {
                 </span>
               </div>
             )}
+            </div>
+            )}
 
             <div className="ssa-card">
               <div className="ssa-card-header">
                 <h2 className="ssa-card-title">
-                  {parseInt(forecastCount, 10) > 0
-                    ? `${submittedConfig.sourceLabel} \u2014 ${submittedConfig.count} ${submittedConfig.period.unit} Forecast`
-                    : `${submittedConfig.sourceLabel} \u2014 Historical Data`}
+                  {isInvMode
+                    ? `Stock Depletion \u2014 ${selectedItemName}`
+                    : parseInt(forecastCount, 10) > 0
+                      ? `${submittedConfig.sourceLabel} \u2014 ${submittedConfig.count} ${submittedConfig.period.unit} Forecast`
+                      : `${submittedConfig.sourceLabel} \u2014 Historical Data`}
                 </h2>
-                {parseInt(forecastCount, 10) > 0 && (
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "0.5rem",
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className={`ssa-toggle-btn ${showConfidence ? "active" : ""}`}
-                      onClick={() => setShowConfidence((v) => !v)}
-                    >
-                      Confidence Band
-                    </button>
-                    <button
-                      type="button"
-                      className={`ssa-toggle-btn ${showTrend ? "active" : ""}`}
-                      onClick={() => setShowTrend((v) => !v)}
-                    >
-                      Trend
-                    </button>
-                    <button
-                      type="button"
-                      className={`ssa-toggle-btn ${showSeasonality ? "active" : ""}`}
-                      onClick={() => setShowSeasonality((v) => !v)}
-                    >
-                      Seasonality
-                    </button>
-                    <span className="ssa-tooltip">
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                  {!isInvMode && parseInt(forecastCount, 10) > 0 && (
+                    <>
                       <button
                         type="button"
-                        className={`ssa-toggle-btn ${showBacktest ? "active" : ""}`}
-                        onClick={() => setShowBacktest((v) => !v)}
+                        className={`ssa-toggle-btn ${showConfidence ? "active" : ""}`}
+                        onClick={() => setShowConfidence((v) => !v)}
                       >
-                        Backtest
+                        Confidence
                       </button>
-                      <span className="ssa-tooltip-text">
-                        Backtest shows how the model would have performed on
-                        past data it never saw. The green line = actual sales
-                        during the held-out test window. Comparing it to the
-                        forecast line shows how trustworthy the model is.
+                      <button
+                        type="button"
+                        className={`ssa-toggle-btn ${showTrend ? "active" : ""}`}
+                        onClick={() => setShowTrend((v) => !v)}
+                      >
+                        Trend
+                      </button>
+                      <button
+                        type="button"
+                        className={`ssa-toggle-btn ${showSeasonality ? "active" : ""}`}
+                        onClick={() => setShowSeasonality((v) => !v)}
+                      >
+                        Seasonality
+                      </button>
+                      <span className="ssa-tooltip">
+                        <button
+                          type="button"
+                          className={`ssa-toggle-btn ${showBacktest ? "active" : ""}`}
+                          onClick={() => setShowBacktest((v) => !v)}
+                        >
+                          Backtest
+                        </button>
+                        <span className="ssa-tooltip-text">
+                          Backtest shows how the model would have performed on
+                          past data it never saw. The green line = actual sales
+                          during the held-out test window. Comparing it to the
+                          forecast line shows how trustworthy the model is.
+                        </span>
                       </span>
-                    </span>
-                  </div>
-                )}
+                    </>
+                  )}
+                  {!isInvMode && (
+                    <button
+                      type="button"
+                      className={`ssa-toggle-btn ${showDecomp ? "active" : ""}`}
+                      onClick={() => setShowDecomp((v) => !v)}
+                    >
+                      Decomposition
+                    </button>
+                  )}
+                </div>
               </div>
 
               {showBacktest && backtestData.length > 0 && (
@@ -1973,7 +2026,7 @@ export default function SSAForecastPage() {
               <div ref={chartRef} style={{ height: 360 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   {(() => {
-                    const chartData = getCombinedChartData();
+                    const chartData = isInvMode ? getInventoryChartData() : getCombinedChartData();
                     return (
                       <LineChart
                         data={chartData}
@@ -2079,79 +2132,105 @@ export default function SSAForecastPage() {
                             fontSize: "0.8rem",
                           }}
                         />
-                        <Line
-                          type={submittedConfig?.source === "inventory_stock" ? "stepAfter" : "monotone"}
-                          dataKey="Actual"
-                          stroke="var(--gray)"
-                          strokeWidth={2}
-                          dot={false}
-                          activeDot={{ r: 3 }}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="Forecast"
-                          stroke="var(--gold)"
-                          strokeWidth={2.5}
-                          strokeDasharray="6 3"
-                          dot={false}
-                          activeDot={{ r: 5 }}
-                        />
-                        {showConfidence && (
+                        {isInvMode ? (
+                          <>
+                            <Line
+                              type="stepAfter"
+                              dataKey="StockActual"
+                              name="Stock Level"
+                              stroke="var(--gray)"
+                              strokeWidth={2}
+                              dot={false}
+                              activeDot={{ r: 3 }}
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="StockForecast"
+                              name="Projected Stock"
+                              stroke="var(--gold)"
+                              strokeWidth={2.5}
+                              strokeDasharray="6 3"
+                              dot={false}
+                              activeDot={{ r: 5 }}
+                            />
+                          </>
+                        ) : (
                           <>
                             <Line
                               type="monotone"
-                              dataKey="High"
-                              name="Upper CI"
-                              stroke="rgba(212,168,67,0.35)"
-                              strokeWidth={1}
-                              strokeDasharray="3 3"
+                              dataKey="Actual"
+                              stroke="var(--gray)"
+                              strokeWidth={2}
                               dot={false}
-                              legendType="line"
+                              activeDot={{ r: 3 }}
                             />
                             <Line
                               type="monotone"
-                              dataKey="Low"
-                              name="Lower CI"
-                              stroke="rgba(212,168,67,0.35)"
-                              strokeWidth={1}
-                              strokeDasharray="3 3"
+                              dataKey="Forecast"
+                              stroke="var(--gold)"
+                              strokeWidth={2.5}
+                              strokeDasharray="6 3"
                               dot={false}
-                              legendType="line"
+                              activeDot={{ r: 5 }}
                             />
+                            {showConfidence && (
+                              <>
+                                <Line
+                                  type="monotone"
+                                  dataKey="High"
+                                  name="Upper CI"
+                                  stroke="rgba(212,168,67,0.35)"
+                                  strokeWidth={1}
+                                  strokeDasharray="3 3"
+                                  dot={false}
+                                  legendType="line"
+                                />
+                                <Line
+                                  type="monotone"
+                                  dataKey="Low"
+                                  name="Lower CI"
+                                  stroke="rgba(212,168,67,0.35)"
+                                  strokeWidth={1}
+                                  strokeDasharray="3 3"
+                                  dot={false}
+                                  legendType="line"
+                                />
+                              </>
+                            )}
+                            {showTrend && (
+                              <Line
+                                type="monotone"
+                                dataKey="Trend"
+                                stroke="#60a5fa"
+                                strokeWidth={1.5}
+                                dot={false}
+                                activeDot={{ r: 3 }}
+                              />
+                            )}
+                            {showSeasonality && (
+                              <Line
+                                type="monotone"
+                                dataKey="Seasonality"
+                                stroke="#a78bfa"
+                                strokeWidth={1.5}
+                                dot={false}
+                                activeDot={{ r: 3 }}
+                              />
+                            )}
+                            {showBacktest && backtestData.length > 0 && (
+                              <Line
+                                type="monotone"
+                                dataKey="BacktestActual"
+                                name="Backtest Actual"
+                                stroke="#4ade80"
+                                strokeWidth={2}
+                                strokeDasharray="4 2"
+                                dot={false}
+                                activeDot={{ r: 3 }}
+                                legendType="line"
+                              />
+                            )}
                           </>
-                        )}
-                        {showTrend && (
-                          <Line
-                            type="monotone"
-                            dataKey="Trend"
-                            stroke="#60a5fa"
-                            strokeWidth={1.5}
-                            dot={false}
-                            activeDot={{ r: 3 }}
-                          />
-                        )}
-                        {showSeasonality && (
-                          <Line
-                            type="monotone"
-                            dataKey="Seasonality"
-                            stroke="#a78bfa"
-                            strokeWidth={1.5}
-                            dot={false}
-                            activeDot={{ r: 3 }}
-                          />
-                        )}
-                        {showBacktest && backtestData.length > 0 && (
-                          <Line
-                            type="monotone"
-                            dataKey="BacktestActual"
-                            name="Backtest Actual"
-                            stroke="#4ade80"
-                            strokeWidth={2}
-                            strokeDasharray="4 2"
-                            dot={false}
-                            activeDot={{ r: 3 }}
-                            legendType="line"
-                          />
                         )}
                         {chartData.length > 1 &&
                           (() => {
@@ -2175,14 +2254,10 @@ export default function SSAForecastPage() {
                               />
                             );
                           })()}
-                        {parseInt(forecastCount, 10) > 0 &&
+                        {!isInvMode && parseInt(forecastCount, 10) > 0 &&
                           (() => {
                             const firstFcDate = result?.forecast?.dates?.[0];
                             const todayStr = new Date().toISOString().split("T")[0];
-                            // Only draw "Forecast Start" when it's strictly in the future.
-                            // If the forecast period has already begun (firstFcDate ≤ today),
-                            // the "Today" reference line already marks the boundary — a second
-                            // line before today looks like a bug.
                             if (!firstFcDate || firstFcDate <= todayStr) return null;
                             return (
                               <ReferenceLine
@@ -2214,122 +2289,74 @@ export default function SSAForecastPage() {
                             />
                           );
                         })()}
+                        {isInvMode && stockoutDate && (
+                          <ReferenceLine
+                            x={stockoutDate}
+                            stroke="rgba(248,113,113,0.65)"
+                            strokeDasharray="4 4"
+                            label={{
+                              value: "Stockout",
+                              position: "insideTopLeft",
+                              fill: "#f87171",
+                              fontSize: 10,
+                            }}
+                          />
+                        )}
                       </LineChart>
                     );
                   })()}
                 </ResponsiveContainer>
               </div>
+
+              {/* \u2500\u2500 Inline SSA Decomposition \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+              {showDecomp && (
+                <>
+                  <div className="ssa-section-divider" />
+                  <div className="ssa-card-header" style={{ margin: "1.25rem 0 1rem" }}>
+                    <h2 className="ssa-card-title" style={{ fontSize: "0.9rem" }}>SSA Decomposition</h2>
+                    <span style={{ fontSize: "0.75rem", color: "var(--gray)" }}>Trend \u00b7 Seasonality \u00b7 Noise</span>
+                  </div>
+                  <div style={{ height: 280 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={getDecompChartData()}
+                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                        <XAxis
+                          dataKey="date"
+                          stroke="var(--gray)"
+                          tick={{ fill: "var(--gray)", fontSize: 11 }}
+                          tickMargin={8}
+                          minTickGap={60}
+                          tickFormatter={(v) => formatDateLabel(v, null, true)}
+                        />
+                        <YAxis
+                          stroke="var(--gray)"
+                          tick={{ fill: "var(--gray)", fontSize: 11 }}
+                          tickFormatter={yAxisFormatter}
+                        />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: "var(--dark2)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "0.8rem" }}
+                          itemStyle={{ color: "var(--white)" }}
+                          labelStyle={{ color: "var(--gray)" }}
+                          labelFormatter={(v) => formatDateLabel(v, null, true)}
+                        />
+                        <Legend wrapperStyle={{ paddingTop: "16px", fontSize: "0.8rem" }} />
+                        <Line type="monotone" dataKey="Trend" stroke="var(--gold)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+                        <Line type="monotone" dataKey="Seasonality" stroke="#60a5fa" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} />
+                        <Line type="monotone" dataKey="Noise" stroke="rgba(255,255,255,0.25)" strokeWidth={1} dot={false} activeDot={{ r: 2 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <p style={{ fontSize: "0.72rem", color: "var(--gray)", marginTop: "0.75rem", marginBottom: 0, lineHeight: 1.5 }}>
+                    Trend: long-run direction. Seasonality: periodic patterns. Noise: residual.
+                  </p>
+                </>
+              )}
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                marginBottom: "0.75rem",
-              }}
-            >
-              <button
-                className={`ssa-source-btn ${showDecomp ? "active" : ""}`}
-                type="button"
-                onClick={() => setShowDecomp((v) => !v)}
-              >
-                {showDecomp
-                  ? "Hide SSA Decomposition"
-                  : "Show SSA Decomposition"}
-              </button>
-            </div>
-
-            {showDecomp && (
-              <div className="ssa-card" style={{ marginBottom: "1rem" }}>
-                <div className="ssa-card-header">
-                  <h2 className="ssa-card-title">SSA Decomposition</h2>
-                  <span style={{ fontSize: "0.75rem", color: "var(--gray)" }}>
-                    {"Trend \u00b7 Seasonality \u00b7 Noise"}
-                  </span>
-                </div>
-                <div style={{ height: 320 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={getDecompChartData()}
-                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                    >
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke="rgba(255,255,255,0.06)"
-                      />
-                      <XAxis
-                        dataKey="date"
-                        stroke="var(--gray)"
-                        tick={{ fill: "var(--gray)", fontSize: 11 }}
-                        tickMargin={8}
-                        minTickGap={60}
-                        tickFormatter={(v) => formatDateLabel(v, null, true)}
-                      />
-                      <YAxis
-                        stroke="var(--gray)"
-                        tick={{ fill: "var(--gray)", fontSize: 11 }}
-                        tickFormatter={yAxisFormatter}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "var(--dark2)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          fontSize: "0.8rem",
-                        }}
-                        itemStyle={{ color: "var(--white)" }}
-                        labelStyle={{ color: "var(--gray)" }}
-                        labelFormatter={(v) => formatDateLabel(v, null, true)}
-                      />
-                      <Legend
-                        wrapperStyle={{
-                          paddingTop: "16px",
-                          fontSize: "0.8rem",
-                        }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="Trend"
-                        stroke="var(--gold)"
-                        strokeWidth={2}
-                        dot={false}
-                        activeDot={{ r: 3 }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="Seasonality"
-                        stroke="#60a5fa"
-                        strokeWidth={1.5}
-                        dot={false}
-                        activeDot={{ r: 3 }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="Noise"
-                        stroke="rgba(255,255,255,0.25)"
-                        strokeWidth={1}
-                        dot={false}
-                        activeDot={{ r: 2 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-                <p
-                  style={{
-                    fontSize: "0.72rem",
-                    color: "var(--gray)",
-                    marginTop: "0.75rem",
-                    marginBottom: 0,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  Trend: long-run direction. Seasonality: periodic patterns.
-                  Noise: residual.
-                </p>
-              </div>
-            )}
-
-            {parseInt(forecastCount, 10) > 0 && (
+            {parseInt(forecastCount, 10) > 0 && !isInvMode && (
               <>
                 <p
                   style={{
@@ -2363,8 +2390,72 @@ export default function SSAForecastPage() {
                 )}
               </>
             )}
+            {parseInt(forecastCount, 10) > 0 && isInvMode && (
+              <p style={{ fontSize: "0.75rem", color: "var(--gray)", fontStyle: "italic", marginTop: "0.75rem", marginBottom: "1.5rem", lineHeight: 1.5 }}>
+                {`SSA modeled ${selectedItemName}'s historical sales demand and projects how the current stock of ${currentStockQty?.toLocaleString() ?? "\u2014"} units depletes over the forecast window. Gray staircase = recorded stock movements. Gold line = projected remaining stock.`}
+              </p>
+            )}
 
             {parseInt(forecastCount, 10) > 0 && (
+              isInvMode ? (
+                <div className="ssa-card">
+                  <div className="ssa-card-header">
+                    <h2 className="ssa-card-title">Projected Stock Levels</h2>
+                  </div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table className="ssa-table">
+                      <thead>
+                        <tr>
+                          <th>{submittedConfig.period.tableHeader}</th>
+                          <th>Date</th>
+                          <th>Projected Stock</th>
+                          <th>Est. Demand</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          const fcDates  = result.forecast?.dates  || [];
+                          const fcValues = result.forecast?.values || [];
+                          const todayStr = new Date().toISOString().split("T")[0];
+                          let remaining = currentStockQty ?? 0;
+                          const tblRows = [];
+                          let displayIdx = 0;
+                          for (let i = 0; i < fcDates.length; i++) {
+                            if (fcDates[i] <= todayStr) continue;
+                            const demand = Math.max(0, Math.round(fcValues[i] ?? 0));
+                            remaining = Math.max(0, remaining - demand);
+                            const isOut = remaining === 0;
+                            const isLow = !isOut && currentStockQty > 0 && remaining <= currentStockQty * 0.2;
+                            tblRows.push(
+                              <tr key={i} className="ssa-forecast-day-row">
+                                <td>{++displayIdx}</td>
+                                <td style={{ fontSize: "0.85rem", color: "var(--gray)" }}>
+                                  {formatDateLabel(fcDates[i], submittedConfig.period.type)}
+                                </td>
+                                <td>
+                                  <span style={{ color: isOut ? "#f87171" : isLow ? "#fbbf24" : "var(--gold)", fontWeight: 600 }}>
+                                    {remaining.toLocaleString()} units
+                                  </span>
+                                </td>
+                                <td style={{ fontSize: "0.85rem", color: "var(--gray)" }}>
+                                  ~{demand.toLocaleString()} units
+                                </td>
+                                <td>
+                                  <span style={{ fontSize: "0.75rem", fontWeight: 600, color: isOut ? "#f87171" : isLow ? "#fbbf24" : "#4ade80" }}>
+                                    {isOut ? "Out of Stock" : isLow ? "Low Stock" : "In Stock"}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          }
+                          return tblRows;
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
               <div className="ssa-card">
                 <div className="ssa-card-header">
                   <h2 className="ssa-card-title">Forecasted Values</h2>
@@ -2435,7 +2526,7 @@ export default function SSAForecastPage() {
                   </div>
                 </div>
                 <div style={{ overflowX: "auto" }}>
-                  <table className="inventory-table">
+                  <table className="ssa-table">
                     <thead>
                       <tr>
                         <th>{submittedConfig.period.tableHeader}</th>
@@ -2492,6 +2583,7 @@ export default function SSAForecastPage() {
                   </table>
                 </div>
               </div>
+              )
             )}
           </>
         )}
@@ -2823,7 +2915,6 @@ export default function SSAForecastPage() {
         )}
 
       </div>
-      <style dangerouslySetInnerHTML={{ __html: pageStyles }} />
     </ErrorBoundary>
   );
 }
