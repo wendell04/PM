@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:cloudflare": "npx @opennextjs/cloudflare build",
     "start": "next start",
     "lint": "next lint",
     "audit": "npm audit"
@@ -28,10 +29,12 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.19.11",
     "autoprefixer": "^10.4.27",
     "eslint": "^8.57.0",
     "eslint-config-next": "15.3.0",
     "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.19"
+    "tailwindcss": "^3.4.19",
+    "wrangler": "^4.100.0"
   }
 }

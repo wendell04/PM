@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { useCart as useGlobalCart } from '../../context/CartContext';
 import { syncCart, mergeCart } from '@/lib/cartApi';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
-import { forgotPassword, sendResetCode, verifyResetCode, resetPassword } from '@/lib/authApi';
+import { forgotPassword, sendResetCode, verifyResetCode, resetPassword, getCurrentUser } from '@/lib/authApi';
 import {
   fetchUnreadCount,
   fetchNotifications,
@@ -806,7 +806,28 @@ export default function ShopLayout({ children }) {
   useEffect(() => {
     setMounted(true);
     const u = getUser();
+    const token = getToken();
     setUser(u);
+
+    if (u && token) {
+      getCurrentUser(token)
+        .then(data => {
+          const serverUser = data.data ?? data;
+          localStorage.setItem('auth_user', JSON.stringify(serverUser));
+          setUser(serverUser);
+        })
+        .catch(err => {
+          if (err.message === 'Unauthenticated') {
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('auth_user');
+            setUser(null);
+            setAuthModalType('login');
+            setAuthModalSubtitle('Your session expired. Please sign in again.');
+            setAuthModalOpen(true);
+            setAuthModalInstanceKey(k => k + 1);
+          }
+        });
+    }
 
     // Auto-open login modal if session expired or user just logged out
     const sessionExpired = sessionStorage.getItem('sessionExpired');
