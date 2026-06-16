@@ -3,5 +3,5 @@
   "name": "personalize-me",
   "compatibility_date": "2025-01-01",
   "compatibility_flags": ["nodejs_compat"],
-  "pages_build_output_dir": ".open-next"
+  "pages_build_output_dir": ".open-next/assets"
 }
