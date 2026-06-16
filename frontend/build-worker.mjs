@@ -35,7 +35,7 @@ const bannerCases = cfAvailableModules
   .join("\n  ");
 
 const banner = `${bannerImports}
-const require = (id) => { switch(id) { ${bannerCases} default: return undefined; } };`;
+globalThis.require = (id) => { switch(id) { ${bannerCases} default: return undefined; } };`;
 
 // Plugin handles esbuild-level CJS require() resolutions (build-time)
 const cjsNodeShimPlugin = {
