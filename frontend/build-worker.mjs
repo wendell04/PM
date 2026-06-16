@@ -16,6 +16,25 @@ const nodeModules = [
   "util", "v8", "vm", "wasi", "worker_threads", "zlib",
 ];
 
+// CF Workers only supports ESM import for node: modules, not CJS require().
+// This plugin intercepts CJS require() calls and routes them through an
+// ESM re-export shim so esbuild wraps them properly instead of throwing.
+const cjsNodeShimPlugin = {
+  name: "cjs-node-shim",
+  setup(build) {
+    const nodePattern = new RegExp(`^(node:)?(${nodeModules.join("|")})$`);
+    build.onResolve({ filter: nodePattern }, (args) => {
+      if (args.kind !== "require-call" && args.kind !== "dynamic-import") return;
+      const mod = args.path.startsWith("node:") ? args.path : `node:${args.path}`;
+      return { path: mod, namespace: "cjs-node-shim" };
+    });
+    build.onLoad({ filter: /.*/, namespace: "cjs-node-shim" }, (args) => ({
+      contents: `export * from "${args.path}";`,
+      loader: "js",
+    }));
+  },
+};
+
 const wrapperPath = resolve(openNextDir, "_debug_entry.mjs");
 writeFileSync(wrapperPath, `
 export { DOQueueHandler } from "./.build/durable-objects/queue.js";
@@ -62,6 +81,7 @@ await build({
   mainFields: ["worker", "browser", "module", "main"],
   alias: Object.fromEntries(nodeModules.map((m) => [m, `node:${m}`])),
   external: [...nodeModules.map((m) => `node:${m}`), "cloudflare:*"],
+  plugins: [cjsNodeShimPlugin],
   logLevel: "info",
 });
 
