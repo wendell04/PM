@@ -23,6 +23,6 @@ await build({
   conditions: ["workerd", "worker", "browser"],
   mainFields: ["worker", "browser", "module", "main"],
   alias: Object.fromEntries(nodeModules.map((m) => [m, `node:${m}`])),
-  external: nodeModules.map((m) => `node:${m}`),
+  external: [...nodeModules.map((m) => `node:${m}`), "cloudflare:*"],
   logLevel: "info",
 });
