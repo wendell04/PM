@@ -78,6 +78,8 @@ const cjsNodeShimPlugin = {
 const handlerPath = resolve(openNextDir, "server-functions/default/handler.mjs");
 let handler = readFileSync(handlerPath, "utf-8");
 
+// Step 1: replace require("fs") with our fs stub (fs is the only module needing a stub
+// since node:fs.existsSync may not be available in all compat modes)
 let patchCount = 0;
 for (const pat of ['require("fs")', "require('fs')", 'require("node:fs")', "require('node:fs')"]) {
   const parts = handler.split(pat);
@@ -86,13 +88,26 @@ for (const pat of ['require("fs")', "require('fs')", 'require("node:fs")', "requ
     handler = parts.join("globalThis.__cfFsStub");
   }
 }
-
 if (patchCount > 0) {
-  writeFileSync(handlerPath, handler);
   console.log(`[build-worker] Replaced ${patchCount} require("fs") call(s) with globalThis.__cfFsStub`);
 } else {
-  console.warn("[build-worker] No require(fs) calls found in handler.mjs — patch may be needed for a different pattern");
+  console.warn("[build-worker] No require(fs) calls found in handler.mjs");
 }
+
+// Step 2: inject `var require = globalThis.require;` right after the last top-level import.
+// This makes esbuild treat ALL remaining require() calls as regular function calls
+// (not CJS module imports), so they all route through our globalThis.require polyfill
+// at runtime instead of esbuild trying to resolve them statically.
+const lastImport = handler.lastIndexOf("\nimport ");
+if (lastImport !== -1) {
+  const lineEnd = handler.indexOf("\n", lastImport + 1) + 1;
+  handler = handler.slice(0, lineEnd) + "var require = globalThis.require;\n" + handler.slice(lineEnd);
+  console.log("[build-worker] Injected var require = globalThis.require after last import");
+} else {
+  console.warn("[build-worker] Could not find import statements in handler.mjs to inject require shim");
+}
+
+writeFileSync(handlerPath, handler);
 
 const wrapperPath = resolve(openNextDir, "_debug_entry.mjs");
 writeFileSync(wrapperPath, `
