@@ -155,6 +155,24 @@ try {
 
 export default {
   async fetch(request, env, ctx) {
+    // Serve static assets via CF Pages ASSETS binding before hitting Next.js.
+    // Without this, the Worker intercepts /_next/static/ requests and routes
+    // them to SSR which returns HTML (wrong MIME) or 404 for JS chunks.
+    if (env.ASSETS) {
+      const url = new URL(request.url);
+      if (
+        url.pathname.startsWith("/_next/") ||
+        url.pathname === "/favicon.ico" ||
+        url.pathname === "/robots.txt" ||
+        url.pathname === "/sitemap.xml"
+      ) {
+        try {
+          const assetRes = await env.ASSETS.fetch(request.clone());
+          if (assetRes.status !== 404) return assetRes;
+        } catch (_) {}
+      }
+    }
+
     if (_initError) {
       return new Response(
         "[INIT ERROR]\\n" + (_initError?.stack || String(_initError)),
