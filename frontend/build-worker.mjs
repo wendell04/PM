@@ -31,9 +31,30 @@ const shimEntries = cfAvailableModules
   .map((m) => `"${m}": __shim_${m.replace(/[^a-z]/g, "_")}`)
   .join(", ");
 
+// Standalone fs stub — used when node:fs shim doesn't provide existsSync.
+// _interop_require_default(stub) wraps this as { default: stub },
+// so _fs.default.existsSync works correctly.
+const FS_STUB =
+  `{existsSync:()=>false,` +
+  `readFileSync:(p)=>{const e=new Error("ENOENT: no such file or directory, open '"+p+"'");e.code="ENOENT";throw e;},` +
+  `promises:{` +
+    `readFile:async(p)=>{const e=new Error("ENOENT:"+p);e.code="ENOENT";throw e;},` +
+    `writeFile:async()=>{},` +
+    `mkdir:async()=>{},` +
+    `stat:async(p)=>{const e=new Error("ENOENT:"+p);e.code="ENOENT";throw e;}` +
+  `},` +
+  `writeFile:(p,d,o,cb)=>{(typeof o==="function"?o:cb)(null);},` +
+  `mkdir:(p,o,cb)=>{(typeof o==="function"?o:cb)(null);},` +
+  `stat:(p,cb)=>cb(Object.assign(new Error("ENOENT"),{code:"ENOENT"}))}`;
+
 const banner = `${bannerImports}
 globalThis.__cfNodeShims = { ${shimEntries} };
-globalThis.require = (id) => { const k = id.startsWith("node:") ? id.slice(5) : id; return globalThis.__cfNodeShims[k] || void 0; };`;
+globalThis.__cfFsStub = ${FS_STUB};
+globalThis.require = (id) => {
+  const k = id.startsWith("node:") ? id.slice(5) : id;
+  if (k === "fs") return globalThis.__cfFsStub;
+  return globalThis.__cfNodeShims ? globalThis.__cfNodeShims[k] || void 0 : void 0;
+};`;
 
 const cjsNodeShimPlugin = {
   name: "cjs-node-shim",
@@ -51,37 +72,26 @@ const cjsNodeShimPlugin = {
   },
 };
 
-// Post-process handler.mjs: replace ALL __require("fs") calls globally with an
-// inline expression that uses the CF node:fs shim (or a safe stub fallback).
-// Previous approaches tried to find a specific section — this replaces every
-// occurrence regardless of location so no search/index logic can fail.
+// Post-process handler.mjs: OpenNext's bundle-server.js replaces all __require( → require(
+// so the correct pattern to search is require("fs"), not __require("fs").
+// Replace every occurrence with a reference to globalThis.__cfFsStub (set in the banner above).
 const handlerPath = resolve(openNextDir, "server-functions/default/handler.mjs");
 let handler = readFileSync(handlerPath, "utf-8");
 
-const FS_SHIM =
-  `(globalThis.__cfNodeShims&&globalThis.__cfNodeShims.fs` +
-  `?globalThis.__cfNodeShims.fs` +
-  `:{existsSync:function(){return false;},readFileSync:function(p){var e=new Error("ENOENT: no such file or directory, open '"+p+"'");e.code="ENOENT";throw e;}})`;
-
 let patchCount = 0;
-for (const pat of [
-  '__require("fs")',
-  "__require('fs')",
-  '__require("node:fs")',
-  "__require('node:fs')",
-]) {
+for (const pat of ['require("fs")', "require('fs')", 'require("node:fs")', "require('node:fs')"]) {
   const parts = handler.split(pat);
   if (parts.length > 1) {
     patchCount += parts.length - 1;
-    handler = parts.join(FS_SHIM);
+    handler = parts.join("globalThis.__cfFsStub");
   }
 }
 
 if (patchCount > 0) {
   writeFileSync(handlerPath, handler);
-  console.log(`[build-worker] Replaced ${patchCount} __require("fs") call(s) with CF fs shim`);
+  console.log(`[build-worker] Replaced ${patchCount} require("fs") call(s) with globalThis.__cfFsStub`);
 } else {
-  console.warn("[build-worker] No __require(fs) calls found in handler.mjs");
+  console.warn("[build-worker] No require(fs) calls found in handler.mjs — patch may be needed for a different pattern");
 }
 
 const wrapperPath = resolve(openNextDir, "_debug_entry.mjs");
