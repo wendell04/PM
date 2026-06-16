@@ -51,37 +51,37 @@ const cjsNodeShimPlugin = {
   },
 };
 
-// Post-process handler.mjs: target the SPECIFIC __require("fs") call inside the
-// node-fs-methods.js section and replace it with a direct ESM import reference.
-// This bypasses __require entirely — esbuild's variable renaming can't break a
-// direct import binding.
+// Post-process handler.mjs: replace ALL __require("fs") calls globally with an
+// inline expression that uses the CF node:fs shim (or a safe stub fallback).
+// Previous approaches tried to find a specific section — this replaces every
+// occurrence regardless of location so no search/index logic can fail.
 const handlerPath = resolve(openNextDir, "server-functions/default/handler.mjs");
 let handler = readFileSync(handlerPath, "utf-8");
 
-const sectionKey = "node-fs-methods.js";
-const sectionIdx = handler.indexOf(sectionKey);
+const FS_SHIM =
+  `(globalThis.__cfNodeShims&&globalThis.__cfNodeShims.fs` +
+  `?globalThis.__cfNodeShims.fs` +
+  `:{existsSync:function(){return false;},readFileSync:function(p){var e=new Error("ENOENT: no such file or directory, open '"+p+"'");e.code="ENOENT";throw e;}})`;
 
-if (sectionIdx !== -1) {
-  let patched = false;
-  for (const pattern of ['__require("fs")', "__require('fs')"]) {
-    const idx = handler.indexOf(pattern, sectionIdx);
-    if (idx !== -1 && idx < sectionIdx + 3000) {
-      handler =
-        'import * as __cfNodeFs from "node:fs";\n' +
-        handler.slice(0, idx) +
-        "__cfNodeFs" +
-        handler.slice(idx + pattern.length);
-      writeFileSync(handlerPath, handler);
-      console.log("[build-worker] Patched node:fs direct import in node-fs-methods.js");
-      patched = true;
-      break;
-    }
+let patchCount = 0;
+for (const pat of [
+  '__require("fs")',
+  "__require('fs')",
+  '__require("node:fs")',
+  "__require('node:fs')",
+]) {
+  const parts = handler.split(pat);
+  if (parts.length > 1) {
+    patchCount += parts.length - 1;
+    handler = parts.join(FS_SHIM);
   }
-  if (!patched) {
-    console.warn("[build-worker] Could not find __require('fs') near node-fs-methods.js section");
-  }
+}
+
+if (patchCount > 0) {
+  writeFileSync(handlerPath, handler);
+  console.log(`[build-worker] Replaced ${patchCount} __require("fs") call(s) with CF fs shim`);
 } else {
-  console.warn("[build-worker] node-fs-methods.js section not found in handler.mjs");
+  console.warn("[build-worker] No __require(fs) calls found in handler.mjs");
 }
 
 const wrapperPath = resolve(openNextDir, "_debug_entry.mjs");
