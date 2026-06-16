@@ -23,37 +23,65 @@ const cfAvailableModules = [
   "url", "util", "zlib",
 ];
 
+// FIX #1: Import BOTH namespace (*) and default export for each module.
+// Using only `import * as` returns the ESM namespace object which does NOT
+// expose CJS-style properties like stream.Readable, stream.Writable, etc.
+// Merging namespace + default ensures both named exports and CJS properties work.
 const bannerImports = cfAvailableModules
-  .map((m) => `import * as __shim_${m.replace(/[^a-z]/g, "_")} from "node:${m}";`)
+  .map((m) => {
+    const key = m.replace(/[^a-z]/g, "_");
+    return [
+      `import * as __shim_ns_${key} from "node:${m}";`,
+      `import __shim_def_${key} from "node:${m}";`,
+    ].join("\n");
+  })
   .join("\n");
 
 const shimEntries = cfAvailableModules
-  .map((m) => `"${m}": __shim_${m.replace(/[^a-z]/g, "_")}`)
+  .map((m) => {
+    const key = m.replace(/[^a-z]/g, "_");
+    // Merge: default export first (CJS properties like .Readable),
+    // then namespace on top (named ESM exports). Object.create(null) avoids
+    // prototype pollution issues in the Workers runtime.
+    return `"${m}": Object.assign(Object.create(null), __shim_ns_${key}, __shim_def_${key} || {})`;
+  })
   .join(", ");
 
-// Standalone fs stub — used when node:fs shim doesn't provide existsSync.
-// _interop_require_default(stub) wraps this as { default: stub },
-// so _fs.default.existsSync works correctly.
+// FIX #2: Expanded fs stub — added readdirSync, statSync, mkdirSync, and
+// promises.readdir which Next.js server internals call. Missing these causes
+// secondary crashes after the stream.Readable fix.
 const FS_STUB =
   `{existsSync:()=>false,` +
   `readFileSync:(p)=>{const e=new Error("ENOENT: no such file or directory, open '"+p+"'");e.code="ENOENT";throw e;},` +
+  `readdirSync:(p)=>{const e=new Error("ENOENT: no such file or directory, scandir '"+p+"'");e.code="ENOENT";throw e;},` +
+  `statSync:(p)=>{const e=new Error("ENOENT: no such file or directory, stat '"+p+"'");e.code="ENOENT";throw e;},` +
+  `mkdirSync:()=>{},` +
   `promises:{` +
     `readFile:async(p)=>{const e=new Error("ENOENT:"+p);e.code="ENOENT";throw e;},` +
     `writeFile:async()=>{},` +
     `mkdir:async()=>{},` +
-    `stat:async(p)=>{const e=new Error("ENOENT:"+p);e.code="ENOENT";throw e;}` +
+    `stat:async(p)=>{const e=new Error("ENOENT:"+p);e.code="ENOENT";throw e;},` +
+    `readdir:async(p)=>{const e=new Error("ENOENT:"+p);e.code="ENOENT";throw e;}` +
   `},` +
   `writeFile:(p,d,o,cb)=>{(typeof o==="function"?o:cb)(null);},` +
   `mkdir:(p,o,cb)=>{(typeof o==="function"?o:cb)(null);},` +
   `stat:(p,cb)=>cb(Object.assign(new Error("ENOENT"),{code:"ENOENT"}))}`;
 
+// FIX #3: globalThis.require now unwraps `.default` when present.
+// Previously if shim had a `default` key (from ESM default import),
+// CJS consumers doing require("stream").Readable got undefined because
+// they were accessing the namespace wrapper instead of the actual module.
 const banner = `${bannerImports}
 globalThis.__cfNodeShims = { ${shimEntries} };
 globalThis.__cfFsStub = ${FS_STUB};
 globalThis.require = (id) => {
   const k = id.startsWith("node:") ? id.slice(5) : id;
   if (k === "fs") return globalThis.__cfFsStub;
-  return globalThis.__cfNodeShims ? globalThis.__cfNodeShims[k] || void 0 : void 0;
+  const shim = globalThis.__cfNodeShims?.[k];
+  if (shim && typeof shim === "object" && "default" in shim) {
+    return Object.assign(Object.create(null), shim, shim.default || {});
+  }
+  return shim ?? void 0;
 };`;
 
 const cjsNodeShimPlugin = {
@@ -72,14 +100,11 @@ const cjsNodeShimPlugin = {
   },
 };
 
-// Post-process handler.mjs: OpenNext's bundle-server.js replaces all __require( → require(
-// so the correct pattern to search is require("fs"), not __require("fs").
-// Replace every occurrence with a reference to globalThis.__cfFsStub (set in the banner above).
+// Post-process handler.mjs
 const handlerPath = resolve(openNextDir, "server-functions/default/handler.mjs");
 let handler = readFileSync(handlerPath, "utf-8");
 
-// Step 1: replace require("fs") with our fs stub (fs is the only module needing a stub
-// since node:fs.existsSync may not be available in all compat modes)
+// Step 1: replace require("fs") / require("node:fs") with our fs stub
 let patchCount = 0;
 for (const pat of ['require("fs")', "require('fs')", 'require("node:fs")', "require('node:fs')"]) {
   const parts = handler.split(pat);
@@ -94,17 +119,20 @@ if (patchCount > 0) {
   console.warn("[build-worker] No require(fs) calls found in handler.mjs");
 }
 
-// Step 2: inject `var require = globalThis.require;` right after the last top-level import.
-// This makes esbuild treat ALL remaining require() calls as regular function calls
-// (not CJS module imports), so they all route through our globalThis.require polyfill
-// at runtime instead of esbuild trying to resolve them statically.
+// Step 2: inject `var require = globalThis.require;` so all remaining require()
+// calls in the bundle route through our polyfill at runtime.
+// OpenNext 1.19.11 fully pre-bundles handler.mjs — no top-level import statements
+// remain — so we inject at the very top of the file instead.
 const lastImport = handler.lastIndexOf("\nimport ");
 if (lastImport !== -1) {
+  // Legacy path: file still has import statements — inject after the last one
   const lineEnd = handler.indexOf("\n", lastImport + 1) + 1;
   handler = handler.slice(0, lineEnd) + "var require = globalThis.require;\n" + handler.slice(lineEnd);
   console.log("[build-worker] Injected var require = globalThis.require after last import");
 } else {
-  console.warn("[build-worker] Could not find import statements in handler.mjs to inject require shim");
+  // OpenNext 1.19.11+ path: no imports — inject at the very top of the file
+  handler = "var require = globalThis.require;\n" + handler;
+  console.log("[build-worker] Injected var require = globalThis.require at top of file (no imports found)");
 }
 
 writeFileSync(handlerPath, handler);
