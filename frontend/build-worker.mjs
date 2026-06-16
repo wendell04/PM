@@ -51,38 +51,37 @@ const cjsNodeShimPlugin = {
   },
 };
 
-// Post-process handler.mjs: replace the __require IIFE with a version that reads
-// from globalThis.__cfNodeShims (populated by the banner above at runtime).
-// esbuild constant-folds `typeof require !== "undefined"` to false in ESM bundles,
-// so the original IIFE always falls through to return undefined. Direct patch fixes this.
+// Post-process handler.mjs: target the SPECIFIC __require("fs") call inside the
+// node-fs-methods.js section and replace it with a direct ESM import reference.
+// This bypasses __require entirely — esbuild's variable renaming can't break a
+// direct import binding.
 const handlerPath = resolve(openNextDir, "server-functions/default/handler.mjs");
 let handler = readFileSync(handlerPath, "utf-8");
 
-const requireMarker = "var __require = /* @__PURE__ */";
-const newRequireImpl = `var __require = (id) => { const k = id.startsWith("node:") ? id.slice(5) : id; return globalThis.__cfNodeShims ? globalThis.__cfNodeShims[k] : void 0; };`;
+const sectionKey = "node-fs-methods.js";
+const sectionIdx = handler.indexOf(sectionKey);
 
-if (handler.includes(requireMarker)) {
-  const start = handler.indexOf(requireMarker);
-  const tails = [
-    "require(x);\n});",
-    "require(x);\r\n});",
-    "require(x)\n});",
-    "require(x)});",
-  ];
-  let endPos = -1;
-  for (const tail of tails) {
-    const idx = handler.indexOf(tail, start);
-    if (idx !== -1) { endPos = idx + tail.length; break; }
+if (sectionIdx !== -1) {
+  let patched = false;
+  for (const pattern of ['__require("fs")', "__require('fs')"]) {
+    const idx = handler.indexOf(pattern, sectionIdx);
+    if (idx !== -1 && idx < sectionIdx + 3000) {
+      handler =
+        'import * as __cfNodeFs from "node:fs";\n' +
+        handler.slice(0, idx) +
+        "__cfNodeFs" +
+        handler.slice(idx + pattern.length);
+      writeFileSync(handlerPath, handler);
+      console.log("[build-worker] Patched node:fs direct import in node-fs-methods.js");
+      patched = true;
+      break;
+    }
   }
-  if (endPos !== -1) {
-    handler = handler.slice(0, start) + newRequireImpl + "\n" + handler.slice(endPos);
-    writeFileSync(handlerPath, handler);
-    console.log("[build-worker] Patched __require in handler.mjs");
-  } else {
-    console.warn("[build-worker] Could not locate end of __require IIFE — skipping patch");
+  if (!patched) {
+    console.warn("[build-worker] Could not find __require('fs') near node-fs-methods.js section");
   }
 } else {
-  console.warn("[build-worker] __require marker not found in handler.mjs — skipping patch");
+  console.warn("[build-worker] node-fs-methods.js section not found in handler.mjs");
 }
 
 const wrapperPath = resolve(openNextDir, "_debug_entry.mjs");
