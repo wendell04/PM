@@ -16,9 +16,28 @@ const nodeModules = [
   "util", "v8", "vm", "wasi", "worker_threads", "zlib",
 ];
 
-// CF Workers only supports ESM import for node: modules, not CJS require().
-// This plugin intercepts CJS require() calls and routes them through an
-// ESM re-export shim so esbuild wraps them properly instead of throwing.
+// Modules available in CF Workers with nodejs_compat
+const cfAvailableModules = [
+  "assert", "async_hooks", "buffer", "crypto", "events", "fs",
+  "http", "https", "module", "net", "os", "path", "process",
+  "querystring", "stream", "string_decoder", "timers", "tls",
+  "url", "util", "zlib",
+];
+
+// Banner: injects a require() polyfill so OpenNext's internal __require helper
+// (which checks `typeof require !== "undefined"`) can load node: modules at runtime.
+const bannerImports = cfAvailableModules
+  .map((m) => `import * as __shim_${m.replace(/[^a-z]/g, "_")} from "node:${m}";`)
+  .join("\n");
+
+const bannerCases = cfAvailableModules
+  .map((m) => `case "${m}": case "node:${m}": return __shim_${m.replace(/[^a-z]/g, "_")};`)
+  .join("\n  ");
+
+const banner = `${bannerImports}
+const require = (id) => { switch(id) { ${bannerCases} default: return undefined; } };`;
+
+// Plugin handles esbuild-level CJS require() resolutions (build-time)
 const cjsNodeShimPlugin = {
   name: "cjs-node-shim",
   setup(build) {
@@ -82,6 +101,7 @@ await build({
   alias: Object.fromEntries(nodeModules.map((m) => [m, `node:${m}`])),
   external: [...nodeModules.map((m) => `node:${m}`), "cloudflare:*"],
   plugins: [cjsNodeShimPlugin],
+  banner: { js: banner },
   logLevel: "info",
 });
 
