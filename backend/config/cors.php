@@ -36,6 +36,9 @@ return [
     'allowed_origins_patterns' => [
         '#^https://[^.]+\.netlify\.app$#',
         '#^https://[^.]+\.railway\.app$#',
+        '#^https://[^.]+\.pages\.dev$#',
+        '#^https://personalizemeprints\.com$#',
+        '#^https://www\.personalizemeprints\.com$#',
     ],
 
     'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-XSRF-TOKEN'],
@@ -44,6 +47,6 @@ return [
 
     'max_age' => 86400,
 
-    'supports_credentials' => false,
+    'supports_credentials' => true,
 
 ];
