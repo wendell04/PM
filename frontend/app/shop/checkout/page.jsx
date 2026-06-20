@@ -646,6 +646,10 @@ export default function CheckoutPage() {
   // ── MAIN RENDER ──
   return (
     <div className="checkout-wrapper">
+      <style>{`
+        .checkout-card-row { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:0.75rem; }
+        @media(max-width:480px){ .checkout-card-row { grid-template-columns:1fr; } }
+      `}</style>
 
       {/* ── Payment Success Modal ── */}
       {successModal && (
@@ -1466,7 +1470,7 @@ export default function CheckoutPage() {
             </div>
 
             {/* Expiry + CVC */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            <div className="checkout-card-row" style={{ display: 'grid', gap: '0.75rem', marginBottom: '0.75rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 600, marginBottom: '0.35rem', letterSpacing: '0.03em' }}>
                   Expiration date

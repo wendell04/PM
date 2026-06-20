@@ -1188,6 +1188,16 @@ export default function CustomerProfilePage() {
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--darker)" }}>
+      <style>{`
+        .profile-2col { display:grid; grid-template-columns:1fr 1fr; gap:0; }
+        .profile-form-2col { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; }
+        .profile-info-2col { display:grid; grid-template-columns:1fr 1fr; gap:0.625rem; margin-bottom:1.25rem; }
+        @media(max-width:480px){
+          .profile-2col, .profile-form-2col, .profile-info-2col { grid-template-columns:1fr; }
+          .profile-info-2col { gap:0.5rem; }
+          .profile-form-2col { gap:1rem; }
+        }
+      `}</style>
       {/* Back to Shop - standalone below global navbar */}
       <div
         style={{
@@ -2101,7 +2111,7 @@ export default function CustomerProfilePage() {
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                         <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Identity</span>
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+                      <div className="profile-2col" style={{ display: "grid", gap: 0 }}>
                         {[
                           { label: "First Name", value: profileForm.firstName },
                           { label: "Last Name",  value: profileForm.lastName  },
@@ -2149,7 +2159,7 @@ export default function CustomerProfilePage() {
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                       <span style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gray)" }}>Editing Profile</span>
                     </div>
-                    <div style={{ padding: "1.5rem", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
+                    <div className="profile-form-2col" style={{ padding: "1.5rem", display: "grid", gap: "1.25rem" }}>
                       <div>
                         <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gray)", marginBottom: "0.4rem" }}>
                           First Name <span style={{ color: "var(--red)" }}>*</span>
@@ -3085,7 +3095,7 @@ export default function CustomerProfilePage() {
 
                   <div style={{ padding: '1.25rem 1.5rem', maxHeight: '80vh', overflowY: 'auto' }}>
                     {/* What happens — two columns */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem', marginBottom: '1.25rem' }}>
+                    <div className="profile-info-2col" style={{ display: 'grid', gap: '0.625rem', marginBottom: '1.25rem' }}>
                       <div style={{ padding: '0.75rem', background: 'rgba(239,68,68,0.06)', borderRadius: '8px', fontSize: '0.77rem', lineHeight: 1.6, color: 'var(--gray)' }}>
                         <strong style={{ color: 'var(--white)', display: 'block', marginBottom: '0.3rem', fontSize: '0.78rem' }}>Removed</strong>
                         Your name, email, phone, address, profile photo, and login access.

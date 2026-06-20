@@ -772,6 +772,7 @@ export default function ShopClient({
   const [priceMin, setPriceMin]         = useState(0);
   const [priceMax, setPriceMax]         = useState(Infinity);
   const [sidebarOpen, setSidebarOpen]   = useState(false);
+  const [mobileSheet, setMobileSheet]   = useState(null);
   const [sortOpen, setSortOpen]         = useState(false);
   const [showMoreCols, setShowMoreCols] = useState(false);
   const [banners, setBanners]         = useState(initialBanners);
@@ -1182,10 +1183,49 @@ export default function ShopClient({
         </div>
       )}
 
+      {/* ── Mobile: Filter pill (sort is inside the filter sheet) ── */}
+      <div className="mobile-filter-bar">
+        <div className="mobile-filter-bar-pills">
+          <button
+            className={`mobile-action-pill${activeFilterCount > 0 || sortBy !== 'featured' ? ' active' : ''}`}
+            onClick={() => setMobileSheet('all')}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
+              <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="12" y1="18" x2="20" y2="18"/>
+            </svg>
+            Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+            {sortBy !== 'featured' && <span style={{fontSize:'0.72rem',opacity:0.75,marginLeft:3}}>· {sortBy === 'newest' ? 'Newest' : sortBy === 'price-asc' ? 'Price ↑' : 'Price ↓'}</span>}
+          </button>
+        </div>
+        {activeFilterCount > 0 && (
+          <div className="mobile-active-chips">
+            {availability === 'in-stock' && (
+              <span className="mobile-active-chip">In Stock <button onClick={() => setAvailability('all')} aria-label="Remove"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>
+            )}
+            {availability === 'out-of-stock' && (
+              <span className="mobile-active-chip">Out of Stock <button onClick={() => setAvailability('all')} aria-label="Remove"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>
+            )}
+            {[...selectedSlugs].map(slug => {
+              const col = collections.find(c => c.slug === slug);
+              return (
+                <span key={slug} className="mobile-active-chip">{col?.title || slug} <button onClick={() => handleToggleCol(col || { slug })} aria-label="Remove"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>
+              );
+            })}
+            {productType && (
+              <span className="mobile-active-chip">{productType === 'customizable' ? 'Customizable' : 'Ready Made'} <button onClick={() => setProductType('')} aria-label="Remove"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>
+            )}
+            {priceFilterActive && (
+              <span className="mobile-active-chip">₱{priceMin.toLocaleString()}–{priceMax < Infinity ? `₱${priceMax.toLocaleString()}` : 'Any'} <button onClick={() => { setPriceMin(0); setPriceMax(Infinity); }} aria-label="Remove"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>
+            )}
+            <button className="mobile-active-clear" onClick={() => { setAvailability('all'); setSelectedSlugs(new Set()); setPriceMin(0); setPriceMax(Infinity); setProductType(''); }}>Clear all</button>
+          </div>
+        )}
+      </div>
+
       {/* Sidebar + Grid layout */}
       <div className="shop-body">
 
-        {/* ── Mobile filter toggle ── */}
+        {/* ── Mobile filter toggle (desktop only, hidden on mobile) ── */}
         <button className="shop-filter-toggle" onClick={() => setSidebarOpen(o => !o)}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="12" y1="18" x2="20" y2="18"/>
@@ -1794,6 +1834,187 @@ export default function ShopClient({
           </svg>
           <span>{toast.message}</span>
         </div>
+      )}
+
+      {/* ── Mobile filter bottom sheet ── */}
+      {mobileSheet && (
+        <>
+          <div className="mobile-sheet-backdrop" onClick={() => setMobileSheet(null)} />
+          <div className="mobile-sheet">
+            <div className="mobile-sheet-handle" />
+            <div className="mobile-sheet-header">
+              <span className="mobile-sheet-title">
+                {mobileSheet === 'all' && 'Filters & Sort'}
+                {mobileSheet === 'availability' && 'Availability'}
+                {mobileSheet === 'type' && 'Product Type'}
+                {mobileSheet === 'collections' && 'Collections'}
+                {mobileSheet === 'price' && 'Price Range'}
+              </span>
+              <button className="mobile-sheet-close" onClick={() => setMobileSheet(null)} aria-label="Close">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div className="mobile-sheet-body">
+
+              {/* Sort */}
+              {mobileSheet === 'all' && (
+                <div className="mobile-sheet-section" style={{padding:0}}>
+                  <div className="mobile-sheet-section-title" style={{padding:'12px 20px 8px'}}>Sort by</div>
+                  {[
+                    { value: 'featured',   label: 'Featured' },
+                    { value: 'newest',     label: 'Newest' },
+                    { value: 'price-asc',  label: 'Price: Low → High' },
+                    { value: 'price-desc', label: 'Price: High → Low' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      className={`mobile-sort-option${sortBy === opt.value ? ' active' : ''}`}
+                      onClick={() => setSortBy(opt.value)}
+                    >
+                      {opt.label}
+                      {sortBy === opt.value && (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Availability */}
+              {(mobileSheet === 'all' || mobileSheet === 'availability') && (
+                <div className="mobile-sheet-section">
+                  {mobileSheet === 'all' && <div className="mobile-sheet-section-title">Availability</div>}
+                  {[
+                    { value: 'all', label: 'All' },
+                    { value: 'in-stock', label: 'In Stock' },
+                    { value: 'out-of-stock', label: 'Out of Stock' },
+                  ].map(opt => (
+                    <label key={opt.value} className="mobile-sheet-option">
+                      <input
+                        type="radio"
+                        name="mobile-availability"
+                        checked={availability === opt.value}
+                        onChange={() => setAvailability(opt.value)}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Product Type */}
+              {(mobileSheet === 'all' || mobileSheet === 'type') && (
+                <div className="mobile-sheet-section">
+                  {mobileSheet === 'all' && <div className="mobile-sheet-section-title">Product Type</div>}
+                  {[
+                    { value: '', label: 'All Types' },
+                    { value: 'customizable', label: 'Customizable' },
+                    { value: 'ready-made', label: 'Ready Made' },
+                  ].map(opt => (
+                    <label key={opt.value || 'all'} className="mobile-sheet-option">
+                      <input
+                        type="radio"
+                        name="mobile-producttype"
+                        checked={productType === opt.value}
+                        onChange={() => setProductType(opt.value)}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Collections */}
+              {(mobileSheet === 'all' || mobileSheet === 'collections') && collections.length > 0 && (
+                <div className="mobile-sheet-section">
+                  {mobileSheet === 'all' && <div className="mobile-sheet-section-title">Collections</div>}
+                  {collections.map(col => (
+                    <label key={col.slug} className="mobile-sheet-option">
+                      <input
+                        type="checkbox"
+                        checked={selectedSlugs.has(col.slug)}
+                        onChange={() => handleToggleCol(col)}
+                      />
+                      {col.title}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Price Range */}
+              {(mobileSheet === 'all' || mobileSheet === 'price') && (
+                <div className="mobile-sheet-section">
+                  {mobileSheet === 'all' && <div className="mobile-sheet-section-title">Price Range</div>}
+                  <div className="mobile-sheet-price-label">
+                    <span>₱{priceMin.toLocaleString()}</span>
+                    <span>{priceMax < Infinity ? `₱${priceMax.toLocaleString()}` : 'Any'}</span>
+                  </div>
+                  <input
+                    type="range" className="shop-range-slider"
+                    min={0} max={priceRangeMax} step={1}
+                    value={priceMin}
+                    onChange={e => {
+                      const v = Math.min(Number(e.target.value), (priceMax === Infinity ? priceRangeMax : priceMax) - 1);
+                      setPriceMin(v);
+                    }}
+                  />
+                  <input
+                    type="range" className="shop-range-slider"
+                    min={0} max={priceRangeMax} step={1}
+                    value={priceMax === Infinity ? priceRangeMax : priceMax}
+                    onChange={e => {
+                      const v = Math.max(Number(e.target.value), priceMin + 1);
+                      setPriceMax(v >= priceRangeMax ? Infinity : v);
+                    }}
+                  />
+                  <div className="mobile-sheet-price-inputs">
+                    <div className="shop-range-field">
+                      <span>₱</span>
+                      <input
+                        type="number" min={0} max={(priceMax === Infinity ? priceRangeMax : priceMax) - 1}
+                        value={priceMin}
+                        onChange={e => {
+                          const v = Number(e.target.value);
+                          if (!isNaN(v) && v >= 0) setPriceMin(Math.min(v, (priceMax === Infinity ? priceRangeMax : priceMax) - 1));
+                        }}
+                      />
+                    </div>
+                    <div className="shop-range-field">
+                      <span>₱</span>
+                      <input
+                        type="number" min={priceMin + 1} max={priceRangeMax}
+                        value={priceMax === Infinity ? priceRangeMax : priceMax}
+                        onChange={e => {
+                          const v = Number(e.target.value);
+                          if (!isNaN(v)) setPriceMax(v >= priceRangeMax ? Infinity : Math.max(v, priceMin + 1));
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+
+            </div>
+            <div className="mobile-sheet-footer">
+              {activeFilterCount > 0 && (
+                <button
+                  className="mobile-sheet-clear"
+                  onClick={() => { setAvailability('all'); setSelectedSlugs(new Set()); setPriceMin(0); setPriceMax(Infinity); setProductType(''); setSortBy('featured'); }}
+                >
+                  Clear all
+                </button>
+              )}
+              <button className="mobile-sheet-apply" onClick={() => setMobileSheet(null)}>
+                {activeFilterCount > 0 ? `Show results (${filtered.length})` : 'Apply'}
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
     </div>

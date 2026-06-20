@@ -87,10 +87,15 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [lpCartOpen, setLpCartOpen] = useState(false);
   const [lpNotifOpen, setLpNotifOpen] = useState(false);
+  const cartSheetRef = useRef(null);
+  const notifSheetRef = useRef(null);
+  const sheetDragStartY = useRef(0);
   const [lpNotifications, setLpNotifications] = useState([]);
   const [lpNotifLoading, setLpNotifLoading] = useState(false);
   const [lpUnreadCount, setLpUnreadCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen]   = useState(false);
+  const [mobileNavPanel, setMobileNavPanel]   = useState(null);
+  const [mobileAuthOpen, setMobileAuthOpen]   = useState(false);
   const [scrolled, setScrolled]               = useState(false);
   const [modal, setModal]                     = useState(null);
   const [showPassword, setShowPassword]       = useState(false);
@@ -338,23 +343,16 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       .catch(() => {});
   }, []);
 
-  // Hero carousel auto-advance
+  // Hero carousel auto-advance — taglines and images cycle independently
   useEffect(() => {
     if (heroPaused) return;
     const count = heroBanners.length > 0 ? heroBanners.length : 3;
     const t = setInterval(() => {
       setHeroSlide(s => (s + 1) % count);
+      setHeroImgIdx(i => (i + 1) % HERO_SLIDER_IMAGES.length);
     }, 4000);
     return () => clearInterval(t);
   }, [heroPaused, heroBanners.length]);
-
-  // Hero right-side image slider
-  useEffect(() => {
-    const t = setInterval(() => {
-      setHeroImgIdx(i => (i + 1) % HERO_SLIDER_IMAGES.length);
-    }, 6000);
-    return () => clearInterval(t);
-  }, []);
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
@@ -400,7 +398,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     });
   };
 
-  const closeMobile = () => { setMobileMenuOpen(false); document.body.style.overflow = ''; };
+  const closeMobile = () => { setMobileMenuOpen(false); setMobileNavPanel(null); document.body.style.overflow = ''; };
   const toggleMobile = () => {
     const next = !mobileMenuOpen;
     setMobileMenuOpen(next);
@@ -1075,6 +1073,37 @@ const handleForgotResetPassword = async () => {
   const colTotalSets = Math.ceil(colSource.length / 4);
   const colCurrentSet = colSource.slice(colSetIdx * 4, colSetIdx * 4 + 4);
 
+  // Lock background scroll when a sheet is open — phones only
+  useEffect(() => {
+    if (!lpCartOpen && !lpNotifOpen || window.innerWidth > 640) return;
+    const block = (e) => {
+      if (!e.target.closest('.lp-nav-popup')) e.preventDefault();
+    };
+    document.addEventListener('touchmove', block, { passive: false });
+    return () => document.removeEventListener('touchmove', block);
+  }, [lpCartOpen, lpNotifOpen]);
+
+  // Drag-to-dismiss handlers
+  const onSheetDragStart = (e) => { sheetDragStartY.current = e.touches[0].clientY; };
+  const onSheetDragMove = (ref) => (e) => {
+    const dy = e.touches[0].clientY - sheetDragStartY.current;
+    if (dy <= 0 || !ref.current) return;
+    ref.current.style.transition = 'none';
+    ref.current.style.transform = `translateY(${dy}px)`;
+  };
+  const onSheetDragEnd = (ref, close) => (e) => {
+    const dy = e.changedTouches[0].clientY - sheetDragStartY.current;
+    if (!ref.current) return;
+    if (dy > 80) {
+      ref.current.style.transition = 'transform 0.28s cubic-bezier(0.4,0,0.2,1)';
+      ref.current.style.transform = 'translateY(110%)';
+      setTimeout(close, 260);
+    } else {
+      ref.current.style.transition = 'transform 0.28s cubic-bezier(0.4,0,0.2,1)';
+      ref.current.style.transform = 'translateY(0)';
+    }
+  };
+
   // ─── JSX ──────────────────────────────────────────────────────────────────────
   return (
     <>
@@ -1108,120 +1137,32 @@ const handleForgotResetPassword = async () => {
               <li><a href="#contact">Contact</a></li>
               <li><a href="/shop" className="nav-go-to-shop">Go to Shop</a></li>
             </ul>
-            <div className="nav-auth" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="nav-auth">
               {mounted && (user ? (
                 <>
-                  {/* Cart popup */}
+                  {/* Cart trigger */}
                   <div style={{position:'relative'}}>
-                    <button type="button" className="lp-nav-icon-btn" title="Cart" onClick={() => setLpCartOpen(o => !o)} style={{position:'relative'}}>
+                    <button type="button" className="lp-nav-icon-btn" title="Cart" onClick={() => { setLpCartOpen(o => !o); setLpNotifOpen(false); setUserMenuOpen(false); }} style={{position:'relative'}}>
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
                         <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
                       </svg>
                       {cartCount > 0 && <span className="lp-nav-badge">{cartCount > 99 ? '99+' : cartCount}</span>}
                     </button>
-                    {lpCartOpen && (
-                      <>
-                        <div style={{position:'fixed',inset:0,zIndex:98}} onClick={() => setLpCartOpen(false)} />
-                        <div className="lp-nav-popup">
-                          <div className="lp-nav-popup-header">
-                            Cart
-                            {cartCount > 0 && <span className="lp-nav-popup-count">{cartCount}</span>}
-                            <button className="lp-nav-popup-close" onClick={() => setLpCartOpen(false)}>
-                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                            </button>
-                          </div>
-                          {cartItems.length === 0 ? (
-                            <div className="lp-nav-popup-empty">
-                              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-                              <span className="lp-nav-popup-empty-title">Your cart is empty</span>
-                              <button className="lp-nav-popup-cta" onClick={() => { setLpCartOpen(false); handleEnterShop(); }}>Continue shopping</button>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="lp-nav-popup-items">
-                                {cartItems.map((item, i) => (
-                                  <div key={item.lineId || i} className="lp-nav-popup-item">
-                                    {item.image ? (
-                                      <img src={item.image} alt={item.productName} className="lp-nav-popup-item-img" />
-                                    ) : (
-                                      <div className="lp-nav-popup-item-img-ph" />
-                                    )}
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div className="lp-nav-popup-item-name">{item.productName}</div>
-                                      {item.variantName && <div className="lp-nav-popup-item-variant">{item.variantName}</div>}
-                                      <div className="lp-nav-popup-item-price">₱{(item.lineTotal||0).toLocaleString()} × {item.qty}</div>
-                                    </div>
-                                    <button
-                                      className="lp-nav-popup-remove"
-                                      onClick={() => removeFromCart(item.lineId)}
-                                      title="Remove"
-                                    >
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="lp-nav-popup-footer">
-                                <div className="lp-nav-popup-total"><span>Total</span><span>₱{cartItems.reduce((s,i)=>s+(i.lineTotal||0),0).toLocaleString()}</span></div>
-                                <a href="/shop/cart" onClick={() => setLpCartOpen(false)} className="lp-nav-popup-view-btn">View Cart</a>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </>
-                    )}
                   </div>
 
-                  {/* Notifications popup */}
+                  {/* Notifications trigger */}
                   <div style={{position:'relative'}}>
-                    <button type="button" className="lp-nav-icon-btn" title="Notifications" onClick={() => setLpNotifOpen(o => !o)} style={{position:'relative'}}>
+                    <button type="button" className="lp-nav-icon-btn" title="Notifications" onClick={() => { setLpNotifOpen(o => !o); setLpCartOpen(false); setUserMenuOpen(false); }} style={{position:'relative'}}>
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
                         <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
                       </svg>
                       {lpUnreadCount > 0 && <span className="lp-nav-badge notif">{lpUnreadCount > 99 ? '99+' : lpUnreadCount}</span>}
                     </button>
-                    {lpNotifOpen && (
-                      <>
-                        <div style={{position:'fixed',inset:0,zIndex:98}} onClick={() => setLpNotifOpen(false)} />
-                        <div className="lp-nav-popup lp-nav-notif-popup">
-                          <div className="lp-nav-popup-header">
-                            Notifications
-                            {lpUnreadCount > 0 && <span className="lp-nav-popup-count red">{lpUnreadCount}</span>}
-                            {lpUnreadCount > 0 && (
-                              <button className="lp-nav-popup-mark-all" onClick={async () => { try { await markAllNotificationsRead(token); setLpUnreadCount(0); setLpNotifications(p => p.map(n => ({...n, is_read: true}))); } catch{} }}>Mark all read</button>
-                            )}
-                            <button className="lp-nav-popup-close" onClick={() => setLpNotifOpen(false)}>
-                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                            </button>
-                          </div>
-                          <div className="lp-nav-notif-body">
-                            {lpNotifications.length === 0 ? (
-                              <div className="lp-nav-popup-empty">
-                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                                <span className="lp-nav-popup-empty-title">No notifications</span>
-                              </div>
-                            ) : lpNotifications.map((n, i) => {
-                              const id = n._id ?? n.id ?? String(i);
-                              return (
-                                <div key={id} className={`lp-nav-notif-item${n.is_read ? '' : ' unread'}`} onClick={async () => { if (!n.is_read) { try { await markNotificationRead(token, id); setLpUnreadCount(c => Math.max(0,c-1)); setLpNotifications(p => p.map(x => x._id===id||x.id===id ? {...x,is_read:true} : x)); } catch{} } }}>
-                                  <div className={`lp-nav-notif-dot${n.is_read ? ' read' : ''}`} />
-                                  <div>
-                                    <div className="lp-nav-notif-title" style={{fontWeight: n.is_read ? 400 : 600}}>{n.title}</div>
-                                    <div className="lp-nav-notif-msg">{n.message}</div>
-                                    <div className="lp-nav-notif-time">{new Date(n.created_at).toLocaleDateString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </>
-                    )}
                   </div>
                   <div style={{position:'relative'}}>
-                    <button className={`lp-nav-avatar-btn${user?.avatar ? ' has-avatar' : ''}`} onClick={() => setUserMenuOpen(o => !o)} title="Account">
+                    <button className={`lp-nav-avatar-btn${user?.avatar ? ' has-avatar' : ''}`} onClick={() => { setUserMenuOpen(o => !o); setLpCartOpen(false); setLpNotifOpen(false); }} title="Account">
                       {user?.avatar ? (
                         <img src={user.avatar} alt="avatar" style={{width:'100%',height:'100%',objectFit:'cover'}} />
                       ) : (
@@ -1260,6 +1201,13 @@ const handleForgotResetPassword = async () => {
                 <>
                   <button className="btn-nav-login" onClick={() => openModal('login')}>Sign In</button>
                   <button className="btn-nav-register" onClick={() => openModal('register')}>Get Started</button>
+                  {/* Mobile only: person icon replaces the two buttons above */}
+                  <button className="nav-mobile-person-btn" onClick={() => setMobileAuthOpen(true)} aria-label="Sign in">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                      <circle cx="12" cy="7" r="4"/>
+                    </svg>
+                  </button>
                 </>
               ))}
             </div>
@@ -1331,7 +1279,7 @@ const handleForgotResetPassword = async () => {
                             key={colId}
                             className={`mega-cat-item${hoveredCollection === colId ? ' active' : ''}`}
                             onMouseEnter={() => handleHoverCollection(col)}
-                            onClick={() => { setHoveredNav(null); router.push('/shop'); }}
+                            onClick={() => { setHoveredNav(null); router.push(`/shop?collection=${col.slug ?? colId}`); }}
                           >
                             <span>{col.title}</span>
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1370,22 +1318,241 @@ const handleForgotResetPassword = async () => {
         )}
       </nav>
 
-      {/* MOBILE MENU */}
-      <div className={`mobile-menu ${mobileMenuOpen ? 'open' : ''}`}>
-        <a href="#services"     onClick={closeMobile}>Products</a>
-        <a href="#how-it-works" onClick={closeMobile}>How It Works</a>
-        <a href="#pricing"      onClick={closeMobile}>Pricing</a>
-        <a href="#contact"      onClick={closeMobile}>Contact</a>
-        <a href="/shop"         onClick={closeMobile}>Go to Shop</a>
-        <div className="mobile-auth-btns">
-          {mounted && !user && (
+      {/* Mobile backdrop overlay for cart / notif sheets */}
+      {(lpCartOpen || lpNotifOpen) && (
+        <div className="lp-sheet-backdrop" onClick={() => { setLpCartOpen(false); setLpNotifOpen(false); }} />
+      )}
+
+      {/* Desktop click-outside overlay */}
+      {(lpCartOpen || lpNotifOpen) && (
+        <div style={{position:'fixed',inset:0,zIndex:198}} onClick={() => { setLpCartOpen(false); setLpNotifOpen(false); }} />
+      )}
+
+      {/* Cart sheet — at root level so position:fixed is viewport-relative, not navbar-relative */}
+      {lpCartOpen && (
+        <div className="lp-nav-popup" ref={cartSheetRef}
+          onTouchStart={onSheetDragStart}
+          onTouchMove={onSheetDragMove(cartSheetRef)}
+          onTouchEnd={onSheetDragEnd(cartSheetRef, () => setLpCartOpen(false))}>
+          <div className="lp-nav-popup-header">
+            Cart
+            {cartCount > 0 && <span className="lp-nav-popup-count">{cartCount}</span>}
+            <button className="lp-nav-popup-close" onClick={() => setLpCartOpen(false)}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          {cartItems.length === 0 ? (
+            <div className="lp-nav-popup-empty">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+              <span className="lp-nav-popup-empty-title">Your cart is empty</span>
+              <button className="lp-nav-popup-cta" onClick={() => { setLpCartOpen(false); handleEnterShop(); }}>Continue shopping</button>
+            </div>
+          ) : (
             <>
-              <button className="btn-nav-login" onClick={() => openModal('login')}>Sign In</button>
-              <button className="btn-nav-register" onClick={() => openModal('register')}>Get Started</button>
+              <div className="lp-nav-popup-items">
+                {cartItems.map((item, i) => (
+                  <div key={item.lineId || i} className="lp-nav-popup-item">
+                    {item.image ? (
+                      <img src={item.image} alt={item.productName} className="lp-nav-popup-item-img" />
+                    ) : (
+                      <div className="lp-nav-popup-item-img-ph" />
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="lp-nav-popup-item-name">{item.productName}</div>
+                      {item.variantName && <div className="lp-nav-popup-item-variant">{item.variantName}</div>}
+                      <div className="lp-nav-popup-item-price">₱{(item.lineTotal||0).toLocaleString()} × {item.qty}</div>
+                    </div>
+                    <button
+                      className="lp-nav-popup-remove"
+                      onClick={() => removeFromCart(item.lineId)}
+                      title="Remove"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="lp-nav-popup-footer">
+                <div className="lp-nav-popup-total"><span>Total</span><span>₱{cartItems.reduce((s,i)=>s+(i.lineTotal||0),0).toLocaleString()}</span></div>
+                <a href="/shop/cart" onClick={() => setLpCartOpen(false)} className="lp-nav-popup-view-btn">View Cart</a>
+              </div>
             </>
           )}
         </div>
+      )}
+
+      {/* Notifications sheet — at root level */}
+      {lpNotifOpen && (
+        <div className="lp-nav-popup lp-nav-notif-popup" ref={notifSheetRef}
+          onTouchStart={onSheetDragStart}
+          onTouchMove={onSheetDragMove(notifSheetRef)}
+          onTouchEnd={onSheetDragEnd(notifSheetRef, () => setLpNotifOpen(false))}>
+          <div className="lp-nav-popup-header">
+            Notifications
+            {lpUnreadCount > 0 && <span className="lp-nav-popup-count red">{lpUnreadCount}</span>}
+            {lpUnreadCount > 0 && (
+              <button className="lp-nav-popup-mark-all" onClick={async () => { try { await markAllNotificationsRead(token); setLpUnreadCount(0); setLpNotifications(p => p.map(n => ({...n, is_read: true}))); } catch{} }}>Mark all read</button>
+            )}
+            <button className="lp-nav-popup-close" onClick={() => setLpNotifOpen(false)}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div className="lp-nav-notif-body">
+            {lpNotifications.length === 0 ? (
+              <div className="lp-nav-popup-empty">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                <span className="lp-nav-popup-empty-title">No notifications</span>
+              </div>
+            ) : lpNotifications.map((n, i) => {
+              const id = n._id ?? n.id ?? String(i);
+              return (
+                <div key={id} className={`lp-nav-notif-item${n.is_read ? '' : ' unread'}`} onClick={async () => { if (!n.is_read) { try { await markNotificationRead(token, id); setLpUnreadCount(c => Math.max(0,c-1)); setLpNotifications(p => p.map(x => x._id===id||x.id===id ? {...x,is_read:true} : x)); } catch{} } }}>
+                  <div className={`lp-nav-notif-dot${n.is_read ? ' read' : ''}`} />
+                  <div>
+                    <div className="lp-nav-notif-title" style={{fontWeight: n.is_read ? 400 : 600}}>{n.title}</div>
+                    <div className="lp-nav-notif-msg">{n.message}</div>
+                    <div className="lp-nav-notif-time">{new Date(n.created_at).toLocaleDateString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Backdrop — click outside drawer to close */}
+      {mobileMenuOpen && (
+        <div className="mm-backdrop" onClick={closeMobile} />
+      )}
+
+      {/* MOBILE MENU — Nike right-side drawer */}
+      <div className={`mobile-menu ${mobileMenuOpen ? 'open' : ''}`}>
+
+        {/* ── Level 1: main items ── */}
+        <div className={`mm-panel mm-l1${mobileNavPanel ? ' mm-hidden' : ''}`}>
+          <div className="mm-close-row">
+            <button className="mm-close-btn" onClick={closeMobile} aria-label="Close">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+
+          <button className="mm-item mm-has-sub" onClick={() => setMobileNavPanel('products')}>
+            Products
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button className="mm-item mm-has-sub" onClick={() => setMobileNavPanel('categories')}>
+            Categories
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <a href="#how-it-works" className="mm-item" onClick={closeMobile}>How It Works</a>
+          <a href="#pricing"      className="mm-item" onClick={closeMobile}>Pricing</a>
+          <a href="#contact"      className="mm-item" onClick={closeMobile}>Contact</a>
+          <a href="/shop"         className="mm-item mm-shop-link" onClick={closeMobile}>Go to Shop</a>
+
+          {mounted && !user && (
+            <div className="mm-auth-row">
+              <button className="mm-btn-login"    onClick={() => { closeMobile(); openModal('login'); }}>Sign In</button>
+              <button className="mm-btn-register" onClick={() => { closeMobile(); openModal('register'); }}>Get Started</button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Level 2: Products ── */}
+        <div className={`mm-panel mm-l2${mobileNavPanel === 'products' ? ' mm-visible' : ''}`}>
+          <div className="mm-l2-header">
+            <button className="mm-back-btn" onClick={() => setMobileNavPanel(null)}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              Menu
+            </button>
+            <button className="mm-close-btn" onClick={closeMobile} aria-label="Close">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div className="mm-l2-title">Products</div>
+          <div className="mm-l2-body">
+            {navProductsLoading ? (
+              <span className="mm-empty">Loading…</span>
+            ) : navProducts.length === 0 ? (
+              <span className="mm-empty">No products yet</span>
+            ) : (() => {
+              const grouped = navProducts.reduce((acc, p) => {
+                const cat = p.category || 'Other';
+                if (!acc[cat]) acc[cat] = [];
+                acc[cat].push(p);
+                return acc;
+              }, {});
+              return Object.entries(grouped).map(([cat, prods]) => (
+                <div key={cat} className="mm-group">
+                  <div className="mm-group-heading">{cat}</div>
+                  {prods.map((p, idx) => (
+                    <a
+                      key={p._id || p.id || String(idx)}
+                      href={`/shop/products/${p.slug || (p.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`}
+                      className="mm-sub-item"
+                      onClick={closeMobile}
+                    >
+                      {p.name}
+                    </a>
+                  ))}
+                </div>
+              ));
+            })()}
+            <a href="/shop" className="mm-view-all" onClick={closeMobile}>View all products →</a>
+          </div>
+        </div>
+
+        {/* ── Level 2: Categories ── */}
+        <div className={`mm-panel mm-l2${mobileNavPanel === 'categories' ? ' mm-visible' : ''}`}>
+          <div className="mm-l2-header">
+            <button className="mm-back-btn" onClick={() => setMobileNavPanel(null)}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              Menu
+            </button>
+            <button className="mm-close-btn" onClick={closeMobile} aria-label="Close">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div className="mm-l2-title">Categories</div>
+          <div className="mm-l2-body">
+            {landingCollections.length === 0 ? (
+              <span className="mm-empty">No categories yet</span>
+            ) : landingCollections.map(col => (
+              <a
+                key={col.id ?? col._id}
+                href={`/shop?collection=${col.slug ?? col.id ?? col._id}`}
+                className="mm-sub-item"
+                onClick={closeMobile}
+              >
+                {col.title}
+              </a>
+            ))}
+          </div>
+        </div>
+
       </div>
+
+      {/* Mobile auth modal (logged-out person icon) */}
+      {mobileAuthOpen && (
+        <div className="mobile-auth-modal-overlay" onClick={() => setMobileAuthOpen(false)}>
+          <div className="mobile-auth-modal" onClick={e => e.stopPropagation()}>
+            <button className="mobile-auth-modal-close" onClick={() => setMobileAuthOpen(false)} aria-label="Close">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+            <div className="mobile-auth-modal-title">Welcome back</div>
+            <div className="mobile-auth-modal-sub">Sign in to your account or create a new one.</div>
+            <button className="mobile-auth-modal-login" onClick={() => { setMobileAuthOpen(false); openModal('login'); }}>Sign In</button>
+            <button className="mobile-auth-modal-register" onClick={() => { setMobileAuthOpen(false); openModal('register'); }}>Get Started — It&apos;s Free</button>
+          </div>
+        </div>
+      )}
 
       {/* HERO */}
       <section className="hero" id="home">
@@ -1529,9 +1696,8 @@ const handleForgotResetPassword = async () => {
           <div className="container">
             <div className="lp-pinnacle-hd">
               <div>
-                <span className="section-tag">Shop by Collection</span>
-                <h2 className="section-title" style={{ marginTop: '0.25rem', marginBottom: 0 }}>
-                  Our <span className="gold-text">Collections</span>
+                <h2 className="section-title" style={{ marginBottom: 0 }}>
+                  Shop by <span className="gold-text">Collections</span>
                 </h2>
               </div>
               <button className="lp-col-viewall-btn" onClick={() => router.push('/shop')}>
@@ -1578,6 +1744,32 @@ const handleForgotResetPassword = async () => {
                 ))}
               </div>
             )}
+
+            {/* Mobile: all collections as individual stacked cards */}
+            <div className="lp-pinnacle-mobile-stack">
+              {colSource.map((col, i) => (
+                <button
+                  key={col._id || col.id || i}
+                  className="lp-pinnacle-mobile-stack-card"
+                  onClick={() => router.push(`/shop?collection=${col.slug}`)}
+                >
+                  <div className="lp-mob-card-img">
+                    {col.image ? (
+                      <img src={col.image} alt={col.title} style={{ objectPosition: col.landing_image_position || 'center center' }} />
+                    ) : (
+                      <div className="lp-mob-card-ph" />
+                    )}
+                  </div>
+                  <div className="lp-mob-card-label">
+                    <span className="lp-mob-card-title">{col.title}</span>
+                    {col.productCount > 0 && (
+                      <span className="lp-mob-card-count">{col.productCount} items</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+
           </div>
         </section>
       )}
@@ -1616,6 +1808,7 @@ const handleForgotResetPassword = async () => {
                   onMouseLeave={() => setHoveredService(null)}>
                   <div className="service-slide-img-wrap"><img src={s.img} alt={s.title} className="service-slide-img"/></div>
                   <h3>{s.title}</h3>
+                  <p className="service-slide-desc">{s.desc}</p>
                 </div>
               ))}
             </div>

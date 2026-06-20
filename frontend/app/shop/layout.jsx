@@ -799,6 +799,9 @@ export default function ShopLayout({ children }) {
   const [notifLoading, setNotifLoading] = useState(false);
   const [selectedNotif, setSelectedNotif] = useState(null);
   const notifRef = useRef(null);
+  const shopCartSheetRef = useRef(null);
+  const shopNotifSheetRef = useRef(null);
+  const shopSheetDragStartY = useRef(0);
   const [logoutBanner, setLogoutBanner] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
@@ -1314,24 +1317,42 @@ export default function ShopLayout({ children }) {
     return () => window.removeEventListener('unhandledrejection', handler);
   }, []);
 
-  // Close notification panel on outside click
+  // Scroll lock when cart or notif sheet is open (phones only)
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (notifRef.current &&
-          !notifRef.current.contains(e.target)) {
-        setNotifOpen(false);
-      }
+    if (!cartOpen && !notifOpen || window.innerWidth > 640) return;
+    const block = (e) => {
+      if (!e.target.closest('.shop-cart-popup') && !e.target.closest('.shop-notif-panel')) e.preventDefault();
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () =>
-      document.removeEventListener(
-        'mousedown', handleClickOutside);
-  }, []);
+    document.addEventListener('touchmove', block, { passive: false });
+    return () => document.removeEventListener('touchmove', block);
+  }, [cartOpen, notifOpen]);
+
+  const onShopSheetDragStart = (e) => { shopSheetDragStartY.current = e.touches[0].clientY; };
+  const onShopSheetDragMove = (ref) => (e) => {
+    const dy = e.touches[0].clientY - shopSheetDragStartY.current;
+    if (dy <= 0 || !ref.current) return;
+    ref.current.style.transition = 'none';
+    ref.current.style.transform = `translateY(${dy}px)`;
+  };
+  const onShopSheetDragEnd = (ref, close) => (e) => {
+    const dy = e.changedTouches[0].clientY - shopSheetDragStartY.current;
+    if (!ref.current) return;
+    if (dy > 80) {
+      ref.current.style.transition = 'transform 0.28s cubic-bezier(0.4,0,0.2,1)';
+      ref.current.style.transform = 'translateY(110%)';
+      setTimeout(close, 260);
+    } else {
+      ref.current.style.transition = 'transform 0.28s cubic-bezier(0.4,0,0.2,1)';
+      ref.current.style.transform = 'translateY(0)';
+    }
+  };
 
   const handleOpenNotifications = useCallback(async () => {
     const isOpening = !notifOpen;
     setNotifOpen(isOpening);
     if (!isOpening) return;
+    setCartOpen(false);
+    setMenuOpen(false);
     setNotifLoading(true);
     try {
       const token = getToken();
@@ -1637,12 +1658,12 @@ export default function ShopLayout({ children }) {
                   <span>Shop</span>
                 </Link>
               )}
-              {/* Cart button + popup */}
+              {/* Cart trigger */}
               <div style={{ position: 'relative' }}>
                 <button
                   type="button"
                   className="shop-navbar-cart"
-                  onClick={() => setCartOpen(o => !o)}
+                  onClick={() => { setCartOpen(o => !o); setNotifOpen(false); setMenuOpen(false); }}
                   aria-label="Cart"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -1657,64 +1678,6 @@ export default function ShopLayout({ children }) {
                     </span>
                   )}
                 </button>
-                {cartOpen && (
-                  <>
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 98 }} onClick={() => setCartOpen(false)} />
-                    <div className="shop-cart-popup">
-                      <div className="shop-cart-popup-header">
-                        Cart
-                        {globalCartCount > 0 && <span className="shop-cart-popup-count">{globalCartCount}</span>}
-                        <button className="shop-cart-popup-close" onClick={() => setCartOpen(false)}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        </button>
-                      </div>
-                      {globalCartItems.length === 0 ? (
-                        <div className="shop-cart-popup-empty">
-                          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
-                            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-                          </svg>
-                          <span className="shop-cart-popup-empty-title">Your cart is empty</span>
-                          <button className="shop-cart-popup-continue" onClick={() => setCartOpen(false)}>Continue shopping</button>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="shop-cart-popup-items">
-                            {globalCartItems.map((item, i) => (
-                              <div key={item.lineId || i} className="shop-cart-popup-item">
-                                {item.image ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={item.image} alt={item.productName} className="shop-cart-popup-img" />
-                                ) : (
-                                  <div className="shop-cart-popup-img-placeholder" />
-                                )}
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div className="shop-cart-popup-item-name">{item.productName}</div>
-                                  {item.variantName && <div className="shop-cart-popup-item-variant">{item.variantName}</div>}
-                                  <div className="shop-cart-popup-item-price">₱{(item.lineTotal || 0).toLocaleString()} × {item.qty}</div>
-                                </div>
-                                <button
-                                  className="shop-cart-popup-remove"
-                                  onClick={() => globalRemoveFromCart(item.lineId)}
-                                  title="Remove"
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="shop-cart-popup-footer">
-                            <div className="shop-cart-popup-total">
-                              <span>Total</span>
-                              <span>₱{globalCartItems.reduce((s, i) => s + (i.lineTotal || 0), 0).toLocaleString()}</span>
-                            </div>
-                            <Link href="/shop/cart" onClick={() => setCartOpen(false)} className="shop-cart-popup-view-btn">View Cart</Link>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </>
-                )}
               </div>
 
               {/* User section - Show Login/Register if not logged in, or User menu if logged in */}
@@ -1740,120 +1703,14 @@ export default function ShopLayout({ children }) {
                         </span>
                       )}
                     </button>
-
-                    {notifOpen && (
-                      <div className="shop-notif-panel">
-                        {/* Panel header */}
-                        <div className="shop-notif-panel-header">
-                          <div className="shop-notif-panel-title">
-                            Notifications
-                            {unreadCount > 0 && (
-                              <span className="shop-notif-count-badge">
-                                {unreadCount}
-                              </span>
-                            )}
-                          </div>
-                          {unreadCount > 0 && (
-                            <button
-                              type="button"
-                              onClick={handleMarkAllRead}
-                              className="shop-notif-mark-all"
-                            >
-                              Mark all read
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Panel body */}
-                        <div className="shop-notif-panel-body">
-                          {notifLoading ? (
-                            <div style={{ padding: '0.75rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                              {[...Array(3)].map((_, i) => (
-                                <div key={i} style={{
-                                  display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
-                                  animation: 'shopSkeletonPulse 1.4s ease-in-out infinite',
-                                  animationDelay: `${i * 0.1}s`,
-                                }}>
-                                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--border)', flexShrink: 0, marginTop: '5px' }} />
-                                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                    <div style={{ height: '13px', background: 'var(--border)', borderRadius: '4px', width: '65%' }} />
-                                    <div style={{ height: '11px', background: 'var(--border)', borderRadius: '4px', width: '85%' }} />
-                                    <div style={{ height: '10px', background: 'var(--border)', borderRadius: '4px', width: '35%' }} />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : notifications.length === 0 ? (
-                            <div className="shop-notif-empty">
-                              <svg width="40" height="40"
-                                viewBox="0 0 24 24" fill="none"
-                                stroke="currentColor" strokeWidth="1.5"
-                                style={{ marginBottom: '0.75rem',
-                                  opacity: 0.4 }}>
-                                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3
-                                  9h18s-3-2-3-9"/>
-                                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                              </svg>
-                              <div style={{ fontWeight: 600,
-                                color: 'var(--white)',
-                                marginBottom: '0.25rem' }}>
-                                No notifications
-                              </div>
-                              <div style={{ fontSize: '0.8rem' }}>
-                                You are all caught up.
-                              </div>
-                            </div>
-                          ) : (
-                            notifications.map((n, i) => {
-                              const id = n._id ?? n.id ?? String(i);
-                              return (
-                                <div
-                                  key={id}
-                                  onClick={() => {
-                                    if (!n.is_read) handleMarkRead(id);
-                                    setSelectedNotif(n);
-                                    setNotifOpen(false);
-                                  }}
-                                  className={`shop-notif-item${
-                                    n.is_read ? '' : ' unread'}`}
-                                  style={{ cursor: 'pointer' }}
-                                >
-                                  <div className={`shop-notif-dot${
-                                    n.is_read ? ' read' : ''}`} />
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div className="shop-notif-item-title"
-                                      style={{
-                                        fontWeight: n.is_read ? 400 : 600,
-                                      }}>
-                                      {n.title}
-                                    </div>
-                                    <div className="shop-notif-item-msg">
-                                      {n.message}
-                                    </div>
-                                    <div className="shop-notif-item-time">
-                                      {new Date(n.created_at)
-                                        .toLocaleDateString('en-PH', {
-                                          month: 'short',
-                                          day: 'numeric',
-                                          hour: '2-digit',
-                                          minute: '2-digit',
-                                        })}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-                      </div>
-                    )}
                   </div>
+
 
 
                   {/* Logged in - Show user menu */}
                   <div className="shop-navbar-user">
                     <button
-                      onClick={() => setMenuOpen(o => !o)}
+                      onClick={() => { setMenuOpen(o => !o); setCartOpen(false); setNotifOpen(false); }}
                       className={`shop-navbar-user-btn${user?.avatar ? ' has-avatar' : ''}`}
                       title={user?.firstName || 'Account'}
                     >
@@ -1950,14 +1807,20 @@ export default function ShopLayout({ children }) {
                 </a>
               </div>
             </div>
-            <div className="shop-footer-col">
-              <h4>Shop</h4>
+            <details className="shop-footer-col">
+              <summary>
+                <h4>Shop</h4>
+                <svg className="shop-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </summary>
               <Link href="/shop">All Products</Link>
               <Link href="/shop">Collections</Link>
               <Link href="/#pricing">Pricing</Link>
-            </div>
-            <div className="shop-footer-col">
-              <h4>Accepted Payments</h4>
+            </details>
+            <details className="shop-footer-col">
+              <summary>
+                <h4>Accepted Payments</h4>
+                <svg className="shop-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </summary>
               <div className="shop-footer-pay-grid">
                 <img src="/logos/Gcash-Logo-1024x1024.png" alt="GCash" className="shop-footer-pay-badge" />
                 <img src="/logos/maya logo.png" alt="Maya" className="shop-footer-pay-badge" />
@@ -1972,13 +1835,16 @@ export default function ShopLayout({ children }) {
                   <path d="M30 8.8a13 13 0 0 1 0 20.4A13 13 0 0 1 30 8.8z" fill="#FF5F00"/>
                 </svg>
               </div>
-            </div>
-            <div className="shop-footer-col">
-              <h4>Account</h4>
+            </details>
+            <details className="shop-footer-col">
+              <summary>
+                <h4>Account</h4>
+                <svg className="shop-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </summary>
               <Link href="/shop/orders-history">My Orders</Link>
               <Link href="/shop/profile">My Profile</Link>
               <Link href="/shop/cart">Cart</Link>
-            </div>
+            </details>
           </div>
           <div className="shop-footer-bottom">
             <span className="shop-footer-copy">© {new Date().getFullYear()} Personalize Me Prints. All rights reserved.</span>
@@ -2235,60 +2101,126 @@ export default function ShopLayout({ children }) {
         )}
       </div>
 
-      {/* Floating cart FAB — mobile only, hidden on cart page */}
-      {pathname !== '/shop/cart' && globalCartCount > 0 && (
-        <Link
-          href="/shop/cart"
-          aria-label={`View cart (${globalCartCount} items)`}
-          style={{
-            position: 'fixed',
-            bottom: '1.5rem',
-            left: '1.5rem',
-            zIndex: 9990,
-            width: '52px',
-            height: '52px',
-            borderRadius: '50%',
-            background: 'var(--gold)',
-            display: 'none',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-            textDecoration: 'none',
-          }}
-          className="shop-fab-cart"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-            style={{ stroke: 'var(--black)' }} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="9" cy="21" r="1"/>
-            <circle cx="20" cy="21" r="1"/>
-            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-          </svg>
-          <span style={{
-            position: 'absolute',
-            top: '-4px',
-            right: '-4px',
-            background: 'var(--black)',
-            color: 'var(--gold)',
-            borderRadius: '50%',
-            width: '20px',
-            height: '20px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '0.65rem',
-            fontWeight: 800,
-            border: '2px solid var(--gold)',
-          }}>
-            {globalCartCount > 99 ? '99+' : globalCartCount}
-          </span>
-        </Link>
+
+      {/* Shop cart / notif sheets — root level so position:fixed is viewport-relative */}
+      {(cartOpen || notifOpen) && (
+        <div className="shop-sheet-backdrop" onClick={() => { setCartOpen(false); setNotifOpen(false); }} />
+      )}
+      {(cartOpen || notifOpen) && (
+        <div style={{position:'fixed',inset:0,zIndex:198}} onClick={() => { setCartOpen(false); setNotifOpen(false); }} />
       )}
 
-      <style>{`
-        @media (max-width: 768px) {
-          .shop-fab-cart { display: flex !important; }
-        }
-      `}</style>
+      {cartOpen && (
+        <div className="shop-cart-popup" ref={shopCartSheetRef}
+          onTouchStart={onShopSheetDragStart}
+          onTouchMove={onShopSheetDragMove(shopCartSheetRef)}
+          onTouchEnd={onShopSheetDragEnd(shopCartSheetRef, () => setCartOpen(false))}>
+          <div className="shop-cart-popup-header">
+            Cart
+            {globalCartCount > 0 && <span className="shop-cart-popup-count">{globalCartCount}</span>}
+            <button className="shop-cart-popup-close" onClick={() => setCartOpen(false)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          {globalCartItems.length === 0 ? (
+            <div className="shop-cart-popup-empty">
+              <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+              </svg>
+              <span className="shop-cart-popup-empty-title">Your cart is empty</span>
+              <button className="shop-cart-popup-continue" onClick={() => setCartOpen(false)}>Continue shopping</button>
+            </div>
+          ) : (
+            <>
+              <div className="shop-cart-popup-items">
+                {globalCartItems.map((item, i) => (
+                  <div key={item.lineId || i} className="shop-cart-popup-item">
+                    {item.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.image} alt={item.productName} className="shop-cart-popup-img" />
+                    ) : (
+                      <div className="shop-cart-popup-img-placeholder" />
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="shop-cart-popup-item-name">{item.productName}</div>
+                      {item.variantName && <div className="shop-cart-popup-item-variant">{item.variantName}</div>}
+                      <div className="shop-cart-popup-item-price">₱{(item.lineTotal || 0).toLocaleString()} × {item.qty}</div>
+                    </div>
+                    <button className="shop-cart-popup-remove" onClick={() => globalRemoveFromCart(item.lineId)} title="Remove">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="shop-cart-popup-footer">
+                <div className="shop-cart-popup-total">
+                  <span>Total</span>
+                  <span>₱{globalCartItems.reduce((s, i) => s + (i.lineTotal || 0), 0).toLocaleString()}</span>
+                </div>
+                <Link href="/shop/cart" onClick={() => setCartOpen(false)} className="shop-cart-popup-view-btn">View Cart</Link>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {notifOpen && (
+        <div className="shop-notif-panel" ref={shopNotifSheetRef}
+          onTouchStart={onShopSheetDragStart}
+          onTouchMove={onShopSheetDragMove(shopNotifSheetRef)}
+          onTouchEnd={onShopSheetDragEnd(shopNotifSheetRef, () => setNotifOpen(false))}>
+          <div className="shop-notif-panel-header">
+            <div className="shop-notif-panel-title">
+              Notifications
+              {unreadCount > 0 && <span className="shop-notif-count-badge">{unreadCount}</span>}
+            </div>
+            {unreadCount > 0 && (
+              <button type="button" onClick={handleMarkAllRead} className="shop-notif-mark-all">Mark all read</button>
+            )}
+          </div>
+          <div className="shop-notif-panel-body">
+            {notifLoading ? (
+              <div style={{ padding: '0.75rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', animation: 'shopSkeletonPulse 1.4s ease-in-out infinite', animationDelay: `${i * 0.1}s` }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--border)', flexShrink: 0, marginTop: '5px' }} />
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <div style={{ height: '13px', background: 'var(--border)', borderRadius: '4px', width: '65%' }} />
+                      <div style={{ height: '11px', background: 'var(--border)', borderRadius: '4px', width: '85%' }} />
+                      <div style={{ height: '10px', background: 'var(--border)', borderRadius: '4px', width: '35%' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="shop-notif-empty">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '0.75rem', opacity: 0.4 }}>
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+                <div style={{ fontWeight: 600, color: 'var(--white)', marginBottom: '0.25rem' }}>No notifications</div>
+                <div style={{ fontSize: '0.8rem' }}>You are all caught up.</div>
+              </div>
+            ) : (
+              notifications.map((n, i) => {
+                const id = n._id ?? n.id ?? String(i);
+                return (
+                  <div key={id} onClick={() => { if (!n.is_read) handleMarkRead(id); setSelectedNotif(n); setNotifOpen(false); }}
+                    className={`shop-notif-item${n.is_read ? '' : ' unread'}`} style={{ cursor: 'pointer' }}>
+                    <div className={`shop-notif-dot${n.is_read ? ' read' : ''}`} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="shop-notif-item-title" style={{ fontWeight: n.is_read ? 400 : 600 }}>{n.title}</div>
+                      <div className="shop-notif-item-msg">{n.message}</div>
+                      <div className="shop-notif-item-time">{new Date(n.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Floating chat widget */}
       <CustomerChatModal

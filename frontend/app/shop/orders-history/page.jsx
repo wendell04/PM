@@ -884,6 +884,18 @@ export default function OrdersHistoryPage() {
 
       {/* ── Detail Modal ─────────────────────────────── */}
       {modalOpen && (
+        <>
+        <style>{`
+          .oh-modal-outer { display:flex; flex:1; overflow:hidden; min-height:0; }
+          .oh-modal-columns { display:flex; flex:1; overflow:hidden; min-height:0; }
+          .oh-modal-right { width:265px; flex-shrink:0; overflow-y:auto; border-left:1px solid var(--border); display:flex; flex-direction:column; background:var(--dark); scrollbar-width:none; -ms-overflow-style:none; }
+          @media(max-width:640px){
+            .oh-modal-outer { overflow-y:auto; }
+            .oh-modal-columns { flex-direction:column; overflow:visible; height:auto; flex:none; min-height:unset; }
+            .oh-modal-left-col { overflow-y:visible !important; }
+            .oh-modal-right { width:100%; border-left:none; border-top:1px solid var(--border); flex-shrink:0; overflow-y:visible; height:auto; }
+          }
+        `}</style>
         <div onClick={closeModal} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '16px', width: '100%', maxWidth: '820px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
@@ -915,7 +927,7 @@ export default function OrdersHistoryPage() {
             </div>
 
             {/* Modal body */}
-            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', minHeight: 0 }}>
+            <div className="oh-modal-outer" style={{ flex: 1, overflow: 'hidden', display: 'flex', minHeight: 0 }}>
 
               {detailLoading && (
                 <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px', animation: 'pulse 1.5s ease-in-out infinite' }}>
@@ -935,10 +947,10 @@ export default function OrdersHistoryPage() {
               )}
 
               {!detailLoading && !detailError && selectedOrder && (
-                <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+                <div className="oh-modal-columns" style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
                   {/* LEFT column */}
-                  <div style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '20px', minWidth: 0, scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                  <div className="oh-modal-left-col" style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '20px', minWidth: 0, scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
 
                     {/* Tracker */}
                     <div style={{ padding: '18px', background: 'var(--dark2)', borderRadius: '12px', border: '1px solid var(--border)' }}>
@@ -1196,7 +1208,7 @@ export default function OrdersHistoryPage() {
                   </div>
 
                   {/* RIGHT column */}
-                  <div style={{ width: '265px', flexShrink: 0, overflowY: 'auto', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'var(--dark)', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                  <div className="oh-modal-right" style={{ display: 'flex', flexDirection: 'column', background: 'var(--dark)' }}>
 
                     {/* Items */}
                     {selectedOrder.items?.length > 0 && (
@@ -1437,6 +1449,7 @@ export default function OrdersHistoryPage() {
             </div>
           </div>
         </div>
+        </>
       )}
 
       {/* PayNow Verifying Overlay */}
