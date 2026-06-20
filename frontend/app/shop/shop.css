@@ -3623,6 +3623,13 @@ html.light .shop-collection-tab-count {
 .shop-footer-chevron { display: none; }
 details.shop-footer-col > *:not(summary) { display: block; }
 details.shop-footer-col > .shop-footer-pay-grid { display: flex; }
+/* Tablet/desktop (≥769px): force the details fully open & non-collapsible.
+   Modern Chrome hides closed <details> via ::details-content content-visibility,
+   which display:block alone can't override — handle both mechanisms. */
+@media (min-width: 769px) {
+  details.shop-footer-col::details-content { content-visibility: visible; }
+  details.shop-footer-col > summary { pointer-events: none; }
+}
 
 .shop-footer-bottom {
   max-width: 1200px;

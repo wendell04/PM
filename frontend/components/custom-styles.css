@@ -2128,6 +2128,27 @@
 
   .lp-footer-col a:hover { color: var(--gold); }
 
+  /* Footer accordion (collapsible on phones, static on tablet/desktop) */
+  .lp-footer-col summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: default;
+  }
+  .lp-footer-col summary::-webkit-details-marker { display: none; }
+  .lp-footer-col summary h4 { margin: 0 0 1rem; }
+  .lp-footer-chevron { display: none; }
+  details.lp-footer-col > *:not(summary) { display: block; }
+  details.lp-footer-col > .lp-footer-pay-grid { display: flex; }
+  /* Tablet/desktop (≥769px): force details fully open & non-collapsible.
+     Modern Chrome hides closed <details> via ::details-content content-visibility,
+     which display:block alone can't override — handle both mechanisms. */
+  @media (min-width: 769px) {
+    details.lp-footer-col::details-content { content-visibility: visible; }
+    details.lp-footer-col > summary { pointer-events: none; }
+  }
+
   .lp-footer-pay-grid {
     display: flex;
     flex-wrap: wrap;
@@ -2208,6 +2229,50 @@
     .lp-footer-bottom {
       flex-direction: column;
       align-items: flex-start;
+    }
+  }
+
+  /* Phones (≤768px): collapse footer columns into chevron accordions.
+     Tablets (≥769px: iPad Air/Pro, Galaxy S9 Tab) keep the static columns. */
+  @media (max-width: 768px) {
+    .lp-footer-inner {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+    .lp-footer-brand {
+      grid-column: 1 / -1;
+      margin-bottom: 1.5rem;
+    }
+    details.lp-footer-col {
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .lp-footer-col summary {
+      cursor: pointer;
+      padding: 1rem 0;
+    }
+    .lp-footer-col summary h4 { margin: 0; }
+    .lp-footer-chevron {
+      display: block;
+      flex-shrink: 0;
+      color: rgba(255,255,255,0.5);
+      transition: transform 0.25s ease;
+    }
+    details.lp-footer-col[open] .lp-footer-chevron { transform: rotate(180deg); }
+    details.lp-footer-col > *:not(summary) { display: none; }
+    details.lp-footer-col[open] {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    details.lp-footer-col[open] > summary { flex: 0 0 100%; }
+    details.lp-footer-col[open] > a {
+      display: inline-block;
+      margin: 0 1.5rem 1rem 0;
+    }
+    details.lp-footer-col[open] > .lp-footer-pay-grid {
+      display: flex;
+      flex: 0 0 100%;
+      margin-bottom: 1rem;
     }
   }
 
@@ -3288,6 +3353,95 @@
       grid-template-columns: 1fr;
     }
     .contact-fields-row { grid-template-columns: 1fr; }
+  }
+
+  /* ── Tablet portrait (769–1024px): hero uses full-bleed image + overlay,
+        same as phone, because the angled split image is unreadable here.
+        Tablet landscape widths are ≥1025px → keep the desktop split. ── */
+  @media (min-width: 769px) and (max-width: 1024px) {
+    .hero {
+      display: block !important;
+      position: relative;
+      min-height: 82vh;
+      overflow: hidden;
+    }
+    .hero-visual {
+      position: absolute !important;
+      inset: 0 !important;
+      left: 0 !important;
+      top: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      z-index: 1;
+      overflow: hidden;
+    }
+    .hero-image-slider {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      border-radius: 0 !important;
+      object-fit: cover !important;
+    }
+    .hero-visual::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.42) 50%, rgba(0,0,0,0.05) 100%);
+      z-index: 2;
+      pointer-events: none;
+    }
+    .hero-content {
+      position: absolute !important;
+      bottom: 56px !important;
+      left: 0 !important;
+      right: 0 !important;
+      top: auto !important;
+      z-index: 3 !important;
+      clip-path: none !important;
+      background: transparent !important;
+      padding: 0 2.5rem !important;
+      flex: none !important;
+      width: auto !important;
+      text-align: left !important;
+    }
+    .hero-carousel { min-height: unset !important; }
+    .hero-title {
+      color: #fff !important;
+      text-shadow: 0 2px 24px rgba(0,0,0,0.9), 0 0 60px rgba(0,0,0,0.5) !important;
+      margin-bottom: 0.75rem !important;
+    }
+    .hero-subtitle {
+      color: rgba(255,255,255,0.92) !important;
+      text-shadow: 0 1px 12px rgba(0,0,0,0.85) !important;
+      margin: 0 0 1.5rem !important;
+      max-width: 520px;
+    }
+    .hero .btn-primary,
+    .hero .btn-secondary {
+      border-radius: 999px;
+      padding: 12px 28px;
+      font-size: 0.95rem;
+    }
+    .hero .btn-secondary {
+      border: 2px solid rgba(255,255,255,0.85) !important;
+      color: #fff !important;
+      background: rgba(0,0,0,0.4) !important;
+      backdrop-filter: blur(6px);
+      text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+    }
+    .hero-actions {
+      justify-content: flex-start !important;
+      gap: 12px !important;
+      flex-wrap: wrap;
+    }
+    .hero-nav {
+      z-index: 4;
+      position: absolute;
+      bottom: 12px;
+      left: 0; right: 0;
+    }
+    .hero-slider-dots, .hero-slider-label { display: none; }
   }
 
   @media (max-width: 640px) {

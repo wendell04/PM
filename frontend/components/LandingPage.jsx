@@ -2183,21 +2183,30 @@ const handleForgotResetPassword = async () => {
               </a>
             </div>
           </div>
-          <div className="lp-footer-col">
-            <h4>Explore</h4>
+          <details className="lp-footer-col">
+            <summary>
+              <h4>Explore</h4>
+              <svg className="lp-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </summary>
             <a href="#services">Products</a>
             <a href="#how-it-works">How It Works</a>
             <a href="#pricing">Pricing</a>
             <a href="#contact">Contact Us</a>
-          </div>
-          <div className="lp-footer-col">
-            <h4>Shop</h4>
+          </details>
+          <details className="lp-footer-col">
+            <summary>
+              <h4>Shop</h4>
+              <svg className="lp-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </summary>
             <a href="/shop" onClick={handleEnterShop}>Browse Products</a>
             <a href="/shop" onClick={handleEnterShop}>Collections</a>
             <a href="/shop/cart" onClick={handleEnterShop}>My Cart</a>
-          </div>
-          <div className="lp-footer-col">
-            <h4>Accepted Payments</h4>
+          </details>
+          <details className="lp-footer-col">
+            <summary>
+              <h4>Accepted Payments</h4>
+              <svg className="lp-footer-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </summary>
             <div className="lp-footer-pay-grid">
               <img src="/logos/Gcash-Logo-1024x1024.png" alt="GCash" className="lp-footer-pay-badge" />
               <img src="/logos/maya logo.png" alt="Maya" className="lp-footer-pay-badge" />
@@ -2212,7 +2221,7 @@ const handleForgotResetPassword = async () => {
                 <path d="M30 8.8a13 13 0 0 1 0 20.4A13 13 0 0 1 30 8.8z" fill="#FF5F00"/>
               </svg>
             </div>
-          </div>
+          </details>
         </div>
         <div className="lp-footer-bottom">
           <span className="lp-footer-copy">© {new Date().getFullYear()} Personalize Me Prints. All rights reserved.</span>
