@@ -4399,7 +4399,9 @@ html.light .lp-mob-card-title { color: #111; }
 }
 html.light .lp-mob-card-count { color: #888; }
 
-@media (max-width: 768px) {
+/* Collections: single-card swipe carousel for phones AND all tablets.
+   The multi-card pinnacle grid is desktop-only (≥1025px). */
+@media (max-width: 1024px) {
   .lp-pinnacle-grid { display: none !important; }
   .lp-pinnacle-dots { display: none !important; }
   .lp-col-viewall-btn { display: none !important; }

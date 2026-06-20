@@ -560,24 +560,24 @@ export default function ProductDetailPage() {
 
       {/* PRODUCT DETAIL */}
       {!loading && !error && product && (
-        <div style={{
+        <div className="pdp-container" style={{
           background: 'var(--dark2)',
           border: '1px solid var(--border)',
           borderRadius: '16px',
           padding: '1.25rem',
           boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
         }}>
-          <div style={{ display: 'flex', gap: '1.75rem',
+          <div className="pdp-body" style={{ display: 'flex', gap: '1.75rem',
             flexWrap: 'wrap', alignItems: 'flex-start' }}>
 
           {/* LEFT — Images + Pricing below */}
-          <div style={{ flex: '1 1 320px', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="pdp-left-col" style={{ flex: '1 1 320px', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
             {/* Image row: thumbnails + main */}
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div className="pdp-image-row" style={{ display: 'flex', gap: '10px' }}>
               {/* Vertical thumbnail strip — max 5, 5th shows +N if more */}
               {displayImages.length > 1 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, width: '64px' }}>
+                <div className="pdp-thumbs" style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, width: '64px' }}>
                   {displayImages.slice(0, 5).map((img, i) => {
                     const isOverflowSlot = i === 4 && displayImages.length > 5;
                     const remaining = displayImages.length - 5;
@@ -598,7 +598,7 @@ export default function ProductDetailPage() {
                 </div>
               )}
               {/* Main image with carousel arrows */}
-              <div style={{ flex: 1, position: 'relative', aspectRatio: '1/1', background: 'var(--dark2)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+              <div className="pdp-main-img" style={{ flex: 1, position: 'relative', aspectRatio: '1/1', background: 'var(--dark2)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
                 {/* Prev arrow */}
                 {activeImage > 0 && (
                   <button onClick={() => setActiveImage(p => p - 1)}
@@ -786,7 +786,7 @@ export default function ProductDetailPage() {
           </div>
 
           {/* RIGHT — Info + Order Form */}
-          <div style={{ flex: '1 1 360px',
+          <div className="pdp-right-col" style={{ flex: '1 1 360px',
             display: 'flex', flexDirection: 'column',
             gap: '1.25rem' }}>
 

@@ -621,20 +621,7 @@ function ProductCard({ product, onAddToCart, onQuickView, flashSale }) {
 
           {/* Customizable badge */}
           {product.isCustom && (
-            <div style={{
-              position: 'absolute',
-              top: '10px',
-              right: '10px',
-              background: '#D4A843',
-              color: '#000',
-              fontSize: '0.6rem',
-              fontWeight: 700,
-              padding: '3px 8px',
-              borderRadius: '6px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              zIndex: 2,
-            }}>
+            <div className="shop-custom-badge">
               Customizable
             </div>
           )}
