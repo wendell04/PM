@@ -1192,10 +1192,43 @@ export default function CustomerProfilePage() {
         .profile-2col { display:grid; grid-template-columns:1fr 1fr; gap:0; }
         .profile-form-2col { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; }
         .profile-info-2col { display:grid; grid-template-columns:1fr 1fr; gap:0.625rem; margin-bottom:1.25rem; }
-        @media(max-width:480px){
+        .order-stepper-mini { display:none; }
+        @media(max-width:640px){
+          .order-stepper-full { display:none !important; }
+          .order-stepper-mini { display:block; }
+
           .profile-2col, .profile-form-2col, .profile-info-2col { grid-template-columns:1fr; }
           .profile-info-2col { gap:0.5rem; }
           .profile-form-2col { gap:1rem; }
+
+          /* ── Mobile profile: compact header + horizontal tab strip ── */
+          .profile-layout { flex-direction:column !important; align-items:stretch !important; gap:0.85rem !important; padding:0.65rem !important; }
+          .profile-aside {
+            width:100% !important;
+            position:static !important;
+            top:auto !important;
+            padding:1.1rem 1.1rem 0.85rem !important;
+            box-sizing:border-box;
+          }
+          .profile-aside-divider { margin:0.85rem 0 !important; }
+
+          /* Nav becomes a swipeable pill strip */
+          .profile-nav {
+            flex-direction:row !important;
+            overflow-x:auto;
+            gap:0.5rem !important;
+            padding-bottom:4px;
+            scrollbar-width:none;
+            -webkit-overflow-scrolling:touch;
+          }
+          .profile-nav::-webkit-scrollbar { display:none; }
+          .profile-nav .profile-nav-item {
+            flex-shrink:0 !important;
+            white-space:nowrap;
+            background:rgba(255,255,255,0.05);
+            padding:0.5rem 0.9rem !important;
+            font-size:0.82rem !important;
+          }
         }
       `}</style>
       {/* Back to Shop - standalone below global navbar */}
@@ -1239,6 +1272,7 @@ export default function CustomerProfilePage() {
       >
         {/* LEFT: Profile Card */}
         <aside
+          className="profile-aside"
           style={{
             width: "260px",
             flexShrink: 0,
@@ -1388,7 +1422,7 @@ export default function CustomerProfilePage() {
           </div>
 
           {/* Name */}
-          <div style={{ textAlign: "center", marginBottom: "0.25rem" }}>
+          <div className="profile-identity" style={{ textAlign: "center", marginBottom: "0.25rem" }}>
             <div
               style={{
                 fontSize: "1.1rem",
@@ -1411,6 +1445,7 @@ export default function CustomerProfilePage() {
 
           {/* Role Badge and Member Since */}
           <div
+            className="profile-meta"
             style={{
               display: "flex",
               flexDirection: "column",
@@ -1468,6 +1503,7 @@ export default function CustomerProfilePage() {
 
           {/* Divider */}
           <div
+            className="profile-aside-divider"
             style={{
               height: "1px",
               background: "var(--border)",
@@ -1477,6 +1513,7 @@ export default function CustomerProfilePage() {
 
           {/* Navigation Buttons */}
           <nav
+            className="profile-nav"
             style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
           >
             <button
@@ -1901,17 +1938,17 @@ export default function CustomerProfilePage() {
                   {/* ── Active Order Tracker ── */}
                   {!overviewOrdersLoading && activeOrder && (
                     <div style={{ background: "var(--dark)", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
-                      <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                          <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)" }}>Active Order</span>
-                          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--white)" }}>#{String(activeOrder.id ?? activeOrder._id).slice(-8).toUpperCase()}</span>
+                      <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gray-light)" strokeWidth="2" style={{ flexShrink: 0 }}><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                          <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--white)", whiteSpace: "nowrap" }}>Active Order</span>
+                          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--white)", whiteSpace: "nowrap" }}>#{String(activeOrder.id ?? activeOrder._id).slice(-8).toUpperCase()}</span>
                         </div>
-                        <Link href="/shop/orders-history" style={{ fontSize: "0.72rem", color: "var(--gold)", textDecoration: "none", fontWeight: 600 }}>View details →</Link>
+                        <Link href="/shop/orders-history" style={{ fontSize: "0.72rem", color: "var(--gold)", textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>View details →</Link>
                       </div>
                       <div style={{ padding: "1.25rem 1rem" }}>
-                        {/* Step tracker */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 0, position: "relative" }}>
+                        {/* Step tracker — full wizard (tablet/desktop) */}
+                        <div className="order-stepper-full" style={{ display: "flex", alignItems: "center", gap: 0, position: "relative" }}>
                           {orderSteps.map((step, i) => {
                             const isPast = i < activeStepIdx;
                             const isCurrent = i === activeStepIdx;
@@ -1938,6 +1975,25 @@ export default function CustomerProfilePage() {
                             );
                           })}
                         </div>
+                        {/* Step tracker — compact (mobile): status badge + progress bar */}
+                        {(() => {
+                          const st = statusStyle(activeOrder.orderStatus);
+                          const stepNo = Math.max(1, activeStepIdx + 1);
+                          const pct = Math.round((stepNo / orderSteps.length) * 100);
+                          return (
+                            <div className="order-stepper-mini">
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", fontSize: "0.72rem", fontWeight: 700, padding: "3px 10px", borderRadius: "999px", background: st.bg, color: st.color, border: `1px solid ${st.border}`, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                                  {statusLabel(activeOrder.orderStatus)}
+                                </span>
+                                <span style={{ fontSize: "0.68rem", color: "var(--gray)" }}>Step {stepNo} of {orderSteps.length}</span>
+                              </div>
+                              <div style={{ height: "8px", background: "rgba(130,130,130,0.22)", borderRadius: "4px", overflow: "hidden" }}>
+                                <div style={{ height: "100%", width: `${pct}%`, background: "var(--gold)", borderRadius: "4px", transition: "width 0.4s ease" }} />
+                              </div>
+                            </div>
+                          );
+                        })()}
                         {/* Item summary */}
                         {activeOrder.items?.[0] && (
                           <div style={{ marginTop: "1rem", paddingTop: "0.875rem", borderTop: "1px solid var(--border)", fontSize: "0.72rem", color: "var(--gray)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -2013,17 +2069,20 @@ export default function CustomerProfilePage() {
                           const firstItem = order.items?.[0];
                           const itemLabel = firstItem ? `${firstItem.productName || firstItem.name || "Item"}${order.items.length > 1 ? ` +${order.items.length - 1} more` : ""}` : "—";
                           return (
-                            <div key={order.id ?? order._id} style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.875rem 1rem", borderBottom: idx < Math.min(orders.length, 4) - 1 ? "1px solid var(--border)" : "none" }}>
+                            <div key={order.id ?? order._id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.875rem 1rem", borderBottom: idx < Math.min(orders.length, 4) - 1 ? "1px solid var(--border)" : "none" }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.2rem" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.2rem", flexWrap: "wrap" }}>
                                   <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--white)", letterSpacing: "0.01em" }}>#{String(order.id ?? order._id).slice(-8).toUpperCase()}</span>
                                   <span style={{ fontSize: "0.62rem", fontWeight: 700, padding: "1px 6px", borderRadius: "999px", background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: "0.04em" }}>{statusLabel(order.orderStatus)}</span>
                                 </div>
                                 <div style={{ fontSize: "0.7rem", color: "var(--gray)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{itemLabel} · {date}</div>
                               </div>
-                              <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--gold)", flexShrink: 0 }}>₱{parseFloat(order.totalAmount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</div>
-                              <Link href="/shop/orders-history" style={{ fontSize: "0.7rem", color: "var(--gray)", textDecoration: "none", padding: "0.2rem 0.5rem", border: "1px solid var(--border)", borderRadius: "6px", flexShrink: 0 }}>View</Link>
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.35rem", flexShrink: 0 }}>
+                                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--gold)", whiteSpace: "nowrap" }}>₱{parseFloat(order.totalAmount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+                                <Link href="/shop/orders-history" style={{ fontSize: "0.7rem", color: "var(--gray)", textDecoration: "none", padding: "0.2rem 0.6rem", border: "1px solid var(--border)", borderRadius: "6px", whiteSpace: "nowrap" }}>View</Link>
+                              </div>
                             </div>
+
                           );
                         })}
                       </div>

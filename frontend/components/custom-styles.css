@@ -983,13 +983,13 @@
   /* ── Cart/notif sheet backdrop: hidden on desktop ── */
   .lp-sheet-backdrop { display: none; }
 
-  /* ── Backdrop behind right-side drawer ── */
+  /* ── Backdrop behind right-side drawer ──
+     Solid dark dim (no backdrop-filter): nothing behind it renders, so it can never mirror. */
   .mm-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.45);
+    background: rgba(0,0,0,0.85);
     z-index: 899;
-    backdrop-filter: blur(2px);
   }
 
   /* ── Mobile menu: Nike-style right-side drawer ── */
@@ -1189,13 +1189,12 @@
   .mobile-auth-modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.6);
+    background: rgba(0,0,0,0.7);
     z-index: 1000;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    backdrop-filter: blur(8px);
   }
   .mobile-auth-modal {
     background: #fff;
@@ -1444,6 +1443,7 @@
     overflow: hidden;
   }
 
+
   .logo-3d-scene {
     position: relative;
     width: 380px;
@@ -1631,6 +1631,30 @@
   }
 
   .hero-slider-img.active { opacity: 1; }
+
+  /* CMS hero image: desktop focus/zoom by default; mobile focus/zoom ≤1024px.
+     Vars are set inline per image; switching the property in the media query
+     (not the var) lets the mobile crop override the inline desktop values. */
+  /* CMS hero images fill the SQUARE slice to the right of the wedge (not the full
+     bleed-behind area), so the photo isn't double-cropped. Fill = cover (no white),
+     Fit = contain (whole photo + white) — object-fit/background are set inline.
+     Mobile is full-bleed (left:0/width:100%). */
+  .hero-cms-img {
+    left: 37%;
+    width: 63%;
+    object-position: var(--hero-pos, center center);
+    transform: scale(var(--hero-scale, 1));
+    transform-origin: var(--hero-pos, center center);
+  }
+  @media (max-width: 1024px) {
+    .hero-cms-img {
+      left: 0;
+      width: 100%;
+      object-position: var(--hero-pos-m, center center);
+      transform: scale(var(--hero-scale-m, 1));
+      transform-origin: var(--hero-pos-m, center center);
+    }
+  }
 
   .hero-slider-label {
     position: absolute;
@@ -2296,8 +2320,7 @@
     position: fixed;
     inset: 0;
     z-index: 1000;
-    background: rgba(0,0,0,.75);
-    backdrop-filter: blur(8px);
+    background: rgba(0,0,0,.8);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -4328,14 +4351,15 @@ html.light .lp-collection-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.12); 
 
 /* Mobile Nike-style swipe carousel */
 .lp-pinnacle-mobile-stack {
-  display: none;
+  display: flex;
   flex-direction: row;
-  overflow-x: scroll;
+  overflow-x: auto;
   scroll-snap-type: x mandatory;
+  scroll-padding-left: 9%;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  padding: 0 12px;
-  gap: 12px;
+  padding: 0;
+  gap: 14px;
   background: transparent;
   height: auto;
   width: 100%;
@@ -4343,8 +4367,8 @@ html.light .lp-collection-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.12); 
 .lp-pinnacle-mobile-stack::-webkit-scrollbar { display: none; }
 
 .lp-pinnacle-mobile-stack-card {
-  flex: 0 0 82%;
-  min-width: 82%;
+  flex: 0 0 40%;
+  min-width: 40%;
   scroll-snap-align: start;
   display: flex;
   flex-direction: column;
@@ -4361,7 +4385,8 @@ html.light .lp-pinnacle-mobile-stack-card {
 
 .lp-mob-card-img {
   width: 100%;
-  height: 200px;
+  aspect-ratio: 1 / 1;
+  height: auto;
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -4399,27 +4424,49 @@ html.light .lp-mob-card-title { color: #111; }
 }
 html.light .lp-mob-card-count { color: #888; }
 
-/* Collections: single-card swipe carousel for phones AND all tablets.
-   The multi-card pinnacle grid is desktop-only (≥1025px). */
-@media (max-width: 1024px) {
-  .lp-pinnacle-grid { display: none !important; }
-  .lp-pinnacle-dots { display: none !important; }
-  .lp-col-viewall-btn { display: none !important; }
-  .lp-pinnacle-mobile-stack { display: flex; padding: 0; }
-  .lp-pinnacle-mobile-stack-card {
-    flex: 0 0 85%;
-    min-width: 85%;
-  }
-  .lp-mob-card-img { height: 280px; }
+/* Collections carousel header: arrows (desktop) + View all */
+.lp-pinnacle-hd-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
+.lp-pinnacle-arrows {
+  display: flex;
+  gap: 0.5rem;
+}
+.lp-pinnacle-arrow {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.04);
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.lp-pinnacle-arrow:hover {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #1a1a1a;
+}
+html.light .lp-pinnacle-arrow { background: #f3f3f1; border-color: #e5e5e3; color: #1a1a1a; }
+html.light .lp-pinnacle-arrow:hover { background: var(--gold); border-color: var(--gold); }
 
+/* Phone: one big square card + peek of the next (swipe). */
 @media (max-width: 640px) {
-  .lp-pinnacle-mobile-stack { padding: 0; }
   .lp-pinnacle-mobile-stack-card {
     flex: 0 0 82%;
     min-width: 82%;
   }
-  .lp-mob-card-img { height: 200px; }
+}
+
+/* Arrows are desktop-only; mobile + tablet swipe. */
+@media (max-width: 1024px) {
+  .lp-pinnacle-arrows { display: none; }
+  .lp-col-viewall-btn { display: none !important; }
 }
 
 /* ═══════════════════════════════════════════════════

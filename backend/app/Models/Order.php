@@ -17,6 +17,7 @@ class Order extends Model
         'downPayment'        => 'float',
         'balance'            => 'float',
         'shippingFee'        => 'float',
+        'courierFee'         => 'float',
         'totalAmount'        => 'float',
         'targetCompletion'   => 'datetime',
         'paymentDate'          => 'datetime',

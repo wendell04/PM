@@ -157,7 +157,7 @@ export default function SettingsPage() {
   // ── Shipping ──────────────────────────────────────────────
   const [shippingForm, setShippingForm] = useState({
     storeAddress: '', storeLat: null, storeLng: null,
-    shippingMode: 'distance',
+    shippingMode: 'courier_booked',
     shippingBaseRate: '50', shippingPerKmRate: '15',
     flatRateInsideMetro: '150', flatRateOutsideMetro: '250',
   });
@@ -225,7 +225,7 @@ export default function SettingsPage() {
             storeAddress:         d.data.storeAddress         || '',
             storeLat:             d.data.storeLat             ?? null,
             storeLng:             d.data.storeLng             ?? null,
-            shippingMode:         d.data.shippingMode         || 'distance',
+            shippingMode:         d.data.shippingMode         || 'courier_booked',
             shippingBaseRate:     d.data.shippingBaseRate     != null ? String(d.data.shippingBaseRate)     : '50',
             shippingPerKmRate:    d.data.shippingPerKmRate    != null ? String(d.data.shippingPerKmRate)    : '15',
             flatRateInsideMetro:  d.data.flatRateInsideMetro  != null ? String(d.data.flatRateInsideMetro)  : '150',
@@ -635,17 +635,20 @@ export default function SettingsPage() {
   const handleSaveShipping = async () => {
     setShippingError('');
     setShippingSuccess('');
+    const noFee  = shippingForm.shippingMode === 'courier_booked';
     const isFlat = shippingForm.shippingMode === 'flat';
     const base    = parseFloat(shippingForm.shippingBaseRate);
     const perKm   = parseFloat(shippingForm.shippingPerKmRate);
     const inside  = parseFloat(shippingForm.flatRateInsideMetro);
     const outside = parseFloat(shippingForm.flatRateOutsideMetro);
-    if (!isFlat) {
-      if (isNaN(base) || base < 0)   { setShippingError('Base rate must be a valid positive number.'); return; }
-      if (isNaN(perKm) || perKm < 0) { setShippingError('Per km rate must be a valid positive number.'); return; }
-    } else {
-      if (isNaN(inside)  || inside  < 0) { setShippingError('Inside Metro rate must be a valid positive number.'); return; }
-      if (isNaN(outside) || outside < 0) { setShippingError('Outside Metro rate must be a valid positive number.'); return; }
+    if (!noFee) {
+      if (!isFlat) {
+        if (isNaN(base) || base < 0)   { setShippingError('Base rate must be a valid positive number.'); return; }
+        if (isNaN(perKm) || perKm < 0) { setShippingError('Per km rate must be a valid positive number.'); return; }
+      } else {
+        if (isNaN(inside)  || inside  < 0) { setShippingError('Inside Metro rate must be a valid positive number.'); return; }
+        if (isNaN(outside) || outside < 0) { setShippingError('Outside Metro rate must be a valid positive number.'); return; }
+      }
     }
     setIsSavingShipping(true);
     try {
@@ -1337,7 +1340,7 @@ export default function SettingsPage() {
                   <label style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.4rem', display: 'block' }}>
                     Search Address <span style={{ fontWeight: 400 }}>(auto-fills the field below)</span>
                   </label>
-                  <div style={{ position: 'relative' }}>
+                  <div style={{ position: 'relative', width: '100%' }}>
                     <input
                       type="text"
                       value={addrSearch}
@@ -1345,7 +1348,7 @@ export default function SettingsPage() {
                       onBlur={() => setTimeout(() => setAddrShowSug(false), 200)}
                       onFocus={() => addrSuggestions.length > 0 && setAddrShowSug(true)}
                       placeholder="Type a street, barangay, or landmark…"
-                      style={{ paddingRight: '2.2rem' }}
+                      style={{ width: '100%', paddingRight: '2.2rem', boxSizing: 'border-box' }}
                     />
                     <span style={{ position: 'absolute', right: '0.65rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--gray)' }}>
                       {addrSearching
@@ -1403,8 +1406,9 @@ export default function SettingsPage() {
                 </p>
 
                 {/* Mode toggle */}
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
                   {[
+                    { id: 'courier_booked', label: 'Courier Booked', sub: 'No system fee — you book on-demand' },
                     { id: 'distance', label: 'Distance-based', sub: 'Base + ₱/km via OSRM route' },
                     { id: 'flat',     label: 'Flat Rate',      sub: 'Fixed by Metro / Non-Metro' },
                   ].map(({ id, label, sub }) => {
@@ -1427,6 +1431,17 @@ export default function SettingsPage() {
                     );
                   })}
                 </div>
+
+                {shippingForm.shippingMode === 'courier_booked' && (
+                  <div style={{ maxWidth: '560px', padding: '1rem 1.25rem', background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '10px', fontSize: '0.82rem', color: 'var(--gray-light)', lineHeight: 1.6 }}>
+                    <div style={{ fontWeight: 700, color: 'var(--gold)', marginBottom: '0.4rem' }}>No system-calculated shipping fee</div>
+                    Checkout shows <em>“Shipping: arranged after order.”</em> Customers pay only the item total upfront.
+                    After an order comes in, you book your courier (Lalamove / Grab) using the customer’s pinned drop-off —
+                    the order page gives you one-tap <strong>Google Maps / Waze / copy-coordinates</strong> links. You can then
+                    add the real courier fee to the order, and the customer’s total updates. Recommended when you have no
+                    partnered logistics.
+                  </div>
+                )}
 
                 {shippingForm.shippingMode === 'distance' && (
                   <>
@@ -1511,19 +1526,26 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{
+                display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.75rem',
+                background: 'var(--dark2)', border: '1px solid var(--border)',
+                borderRadius: '12px', padding: '1rem 1.25rem', flexWrap: 'wrap',
+              }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--gray)', marginRight: 'auto' }}>
+                  Changes apply to checkout immediately after saving.
+                </span>
                 <button
                   type="button"
                   onClick={handleSaveShipping}
                   disabled={isSavingShipping}
                   style={{
-                    padding: '0.625rem 1.5rem',
+                    padding: '0.7rem 1.75rem',
                     background: isSavingShipping ? 'var(--dark3)' : 'var(--gold)',
                     border: 'none', borderRadius: '8px',
                     color: isSavingShipping ? 'var(--gray)' : 'var(--black)',
-                    fontSize: '0.875rem', fontWeight: 600,
+                    fontSize: '0.875rem', fontWeight: 700,
                     cursor: isSavingShipping ? 'not-allowed' : 'pointer',
-                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
                   }}
                 >
                   {isSavingShipping ? (

@@ -3186,6 +3186,10 @@
   align-items: flex-start;
   gap: 2rem;
 }
+/* Address form: stack the 2-column rows on phones (fields too narrow otherwise) */
+@media (max-width: 640px) {
+  .addr-2col { grid-template-columns: 1fr !important; }
+}
 .profile-nav-item {
   transition: background-color 0.2s ease, color 0.2s ease;
 }

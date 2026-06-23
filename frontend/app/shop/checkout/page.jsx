@@ -115,6 +115,12 @@ export default function CheckoutPage() {
   const [shippingLoading, setShippingLoading] = useState(false);
   const [showPinModal, setShowPinModal]     = useState(false);
 
+  // Courier-booked shipping: no system-calculated fee shown to the customer.
+  // The owner books an on-demand courier (Lalamove/Grab) using the customer's pin
+  // and adds the real fee to the order afterward. Active when the store hasn't set
+  // an explicit fee-based mode (flat / distance).
+  const courierBooked = !storeSettings?.shippingMode || storeSettings.shippingMode === 'courier_booked';
+
   // ── EFFECT: Load store settings for shipping calculation ──
   useEffect(() => {
     fetch(`${API_URL}/api/public/settings`)
@@ -126,6 +132,8 @@ export default function CheckoutPage() {
   // ── EFFECT: Calculate shipping fee when address or store settings change ──
   useEffect(() => {
     const addr = addresses.find(a => a.id === selectedAddressId) ?? null;
+
+    if (courierBooked) { setShippingFeeAmt(null); setShippingLoading(false); return; }
 
     if (storeSettings?.shippingMode === 'flat') {
       if (!addr) { setShippingFeeAmt(null); return; }
@@ -157,7 +165,7 @@ export default function CheckoutPage() {
       })
       .catch(() => setShippingFeeAmt(null))
       .finally(() => setShippingLoading(false));
-  }, [selectedAddressId, addresses, storeSettings]);
+  }, [selectedAddressId, addresses, storeSettings, courierBooked]);
 
   // ── EFFECT: Handle return from PayMongo ──
   useEffect(() => {
@@ -438,12 +446,12 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (
-      storeSettings?.shippingMode !== 'flat' &&
-      storeSettings?.storeLat && storeSettings?.storeLng &&
-      (!selectedAddress.lat || !selectedAddress.lng)
-    ) {
-      setError('Please pin your delivery location so we can calculate the shipping fee.');
+    const needsPin = courierBooked
+      || (storeSettings?.shippingMode !== 'flat' && storeSettings?.storeLat && storeSettings?.storeLng);
+    if (needsPin && (!selectedAddress.lat || !selectedAddress.lng)) {
+      setError(courierBooked
+        ? 'Please pin your delivery location so the seller can book your courier accurately.'
+        : 'Please pin your delivery location so we can calculate the shipping fee.');
       setShowPinModal(true);
       return;
     }
@@ -495,11 +503,14 @@ export default function CheckoutPage() {
         house_number: selectedAddress.house_number,
         street:       selectedAddress.street,
         subdivision:  selectedAddress.subdivision,
+        region:       selectedAddress.region ?? null,
         barangay:     selectedAddress.barangay,
         city:         selectedAddress.city,
         province:     selectedAddress.province,
         zip:          selectedAddress.zip,
         phone:        selectedAddress.phone,
+        lat:          selectedAddress.lat ?? null,
+        lng:          selectedAddress.lng ?? null,
       };
 
       let fetchBody;
@@ -1074,7 +1085,9 @@ export default function CheckoutPage() {
         </div>
         <div className="checkout-summary-row">
           <span>Delivery</span>
-          {shippingLoading ? (
+          {courierBooked ? (
+            <span className="checkout-shipping-note" style={{ textAlign: 'right' }}>Arranged after order</span>
+          ) : shippingLoading ? (
             <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>Calculating…</span>
           ) : shippingFeeAmt !== null ? (
             <span>₱{shippingFeeAmt.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -1168,6 +1181,16 @@ export default function CheckoutPage() {
           <span>Total</span>
           <span className="checkout-total-amount">₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
+        {courierBooked && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginTop: '8px', padding: '10px 12px', background: 'rgba(212,168,67,0.07)', border: '1px solid rgba(212,168,67,0.2)', borderRadius: '8px' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
+              <rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+            </svg>
+            <span style={{ fontSize: '0.75rem', color: 'var(--gray-light)', lineHeight: 1.5 }}>
+              Total above excludes delivery. The seller books a courier to your pinned location after your order is confirmed, then advises the shipping fee (paid to the rider or the seller).
+            </span>
+          </div>
+        )}
         {downpaymentRequired && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', padding: '8px 10px', background: 'rgba(212,168,67,0.08)', borderRadius: '8px', border: '1px solid rgba(212,168,67,0.2)' }}>
             <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gold)' }}>Due Now</span>
@@ -1575,9 +1598,11 @@ export default function CheckoutPage() {
 
       <p className="checkout-disclaimer">
         {paymentMethod === 'cod'
-          ? shippingFeeAmt !== null
-            ? 'By placing this order, you agree to our terms. You will pay upon delivery including the estimated shipping fee.'
-            : 'By placing this order, you agree to our terms. You will pay upon delivery. Exact delivery fee may vary.'
+          ? courierBooked
+            ? 'By placing this order, you agree to our terms. You pay the item total on delivery; the courier fee is arranged by the seller after booking.'
+            : shippingFeeAmt !== null
+              ? 'By placing this order, you agree to our terms. You will pay upon delivery including the estimated shipping fee.'
+              : 'By placing this order, you agree to our terms. You will pay upon delivery. Exact delivery fee may vary.'
           : paymentMethod === 'gcash'
             ? 'By placing this order, you agree to our terms. You\'ll be redirected to GCash to complete payment.'
             : paymentMethod === 'paymaya'

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { fetchRegions, fetchProvinces, fetchCities, fetchBarangays, isNCR } from '@/lib/psgc';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -38,9 +39,27 @@ const fieldError = (msg) =>
 
 const emptyForm = {
   label: '', house_number: '', street: '', subdivision: '',
-  barangay: '', city: '', province: '', zip: '', phone: '',
+  region: '', region_code: '',
+  province: '', province_code: '',
+  city: '', city_code: '',
+  barangay: '', barangay_code: '',
+  zip: '', phone: '',
   is_default: false, lat: null, lng: null,
 };
+
+const selectStyle = (hasError, disabled) => ({
+  width: '100%',
+  padding: '0.625rem 0.75rem',
+  background: 'var(--dark2)',
+  border: `1px solid ${hasError ? 'var(--red)' : 'var(--border)'}`,
+  borderRadius: '8px',
+  color: 'var(--white)',
+  fontSize: '0.875rem',
+  boxSizing: 'border-box',
+  cursor: disabled ? 'not-allowed' : 'pointer',
+  opacity: disabled ? 0.5 : 1,
+  appearance: 'auto',
+});
 
 export default function AddressBook({ onSaved, initialEditAddress }) {
   const { token } = useAuth();
@@ -58,6 +77,15 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
   const [mapExpanded, setMapExpanded]     = useState(false);
   const autoOpenedRef                     = useRef(false);
   const [isGeocoding, setIsGeocoding]     = useState(false);
+
+  // PSGC cascading dropdown option lists
+  const [regions, setRegions]       = useState([]);
+  const [provinces, setProvinces]   = useState([]);
+  const [cities, setCities]         = useState([]);
+  const [barangays, setBarangays]   = useState([]);
+
+  // Address search (autocomplete) — convenience: pre-fills pin + free-text +
+  // best-effort the PSGC dropdowns. User confirms the dropdowns.
   const [addressSearch, setAddressSearch] = useState('');
   const [suggestions, setSuggestions]     = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -81,49 +109,89 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     }
   }, [successMsg]);
 
-  const fetchAddresses = async () => {
-    if (!token) return;
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await fetchWithTimeout(`${API_URL}/api/addresses`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to fetch addresses');
-      setAddresses(data.addresses || []);
-    } catch (err) {
-      setError(err.message || 'Failed to load addresses');
-    } finally {
-      setIsLoading(false);
-    }
+  // ── PSGC cascade: load regions once, then children as codes change ──
+  useEffect(() => {
+    let cancelled = false;
+    fetchRegions().then(r => { if (!cancelled) setRegions(r); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!formData.region_code) { setProvinces([]); setCities([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        if (isNCR(formData.region_code)) {
+          setProvinces([]);
+          const c = await fetchCities(formData.region_code, null);
+          if (!cancelled) setCities(c);
+        } else {
+          const p = await fetchProvinces(formData.region_code);
+          if (!cancelled) setProvinces(p);
+        }
+      } catch { /* network — leave lists as-is */ }
+    })();
+    return () => { cancelled = true; };
+  }, [formData.region_code]);
+
+  useEffect(() => {
+    if (isNCR(formData.region_code)) return; // NCR cities loaded by the region effect
+    if (!formData.province_code) { setCities([]); return; }
+    let cancelled = false;
+    fetchCities(formData.region_code, formData.province_code)
+      .then(c => { if (!cancelled) setCities(c); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [formData.province_code, formData.region_code]);
+
+  useEffect(() => {
+    if (!formData.city_code) { setBarangays([]); return; }
+    let cancelled = false;
+    fetchBarangays(formData.city_code)
+      .then(b => { if (!cancelled) setBarangays(b); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [formData.city_code]);
+
+  const handleRegionChange = (code) => {
+    const r = regions.find(x => x.code === code);
+    const ncr = isNCR(code);
+    setFormData(prev => ({
+      ...prev,
+      region: r?.name || '', region_code: code,
+      province: ncr ? 'Metro Manila' : '', province_code: ncr ? code : '',
+      city: '', city_code: '',
+      barangay: '', barangay_code: '',
+    }));
+    setFormErrors(prev => ({ ...prev, region: null, province: null, city: null, barangay: null }));
   };
 
-  const handleLocationSelect = async (lat, lng) => {
-    setFormData(prev => ({ ...prev, lat, lng }));
-    setIsGeocoding(true);
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
-        { headers: { 'Accept-Language': 'en' } }
-      );
-      const data = await res.json();
-      if (data?.address) {
-        const a = data.address;
-        setFormData(prev => ({
-          ...prev,
-          lat, lng,
-          city:     a.city || a.town || a.municipality || a.county || prev.city,
-          province: a.state || a.region || prev.province,
-          zip:      a.postcode ? a.postcode.replace(/\D/g, '').slice(0, 4) : prev.zip,
-          barangay: a.suburb || a.village || a.neighbourhood || prev.barangay,
-        }));
-      }
-    } catch { /* Nominatim unavailable — keep existing fields */ }
-    finally { setIsGeocoding(false); }
+  const handleProvinceChange = (code) => {
+    const p = provinces.find(x => x.code === code);
+    setFormData(prev => ({
+      ...prev,
+      province: p?.name || '', province_code: code,
+      city: '', city_code: '',
+      barangay: '', barangay_code: '',
+    }));
+    setFormErrors(prev => ({ ...prev, province: null, city: null, barangay: null }));
   };
 
+  const handleCityChange = (code) => {
+    const c = cities.find(x => x.code === code);
+    setFormData(prev => ({
+      ...prev,
+      city: c?.name || '', city_code: code,
+      barangay: '', barangay_code: '',
+    }));
+    setFormErrors(prev => ({ ...prev, city: null, barangay: null }));
+  };
+
+  const handleBarangayChange = (code) => {
+    const b = barangays.find(x => x.code === code);
+    setFormData(prev => ({ ...prev, barangay: b?.name || '', barangay_code: code }));
+    setFormErrors(prev => ({ ...prev, barangay: null }));
+  };
+
+  // ── Address search (free, OpenStreetMap/Nominatim, PH-filtered) ──
   const handleSearchChange = (val) => {
     setAddressSearch(val);
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
@@ -143,15 +211,63 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     }, 280);
   };
 
-  const handleSuggestionSelect = (s) => {
+  // Best-effort: match a Nominatim address to the PSGC cascade (Region→Province→City→Barangay).
+  // Returns a partial formData patch of whatever it could confidently match.
+  const autoFillPsgc = async (a) => {
+    const norm = (s) => (s || '').toLowerCase()
+      .replace(/\b(city of|municipality of|province of|city|municipality)\b/g, '')
+      .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const match = (list, name) => {
+      const n = norm(name);
+      if (!n) return null;
+      return list.find(x => norm(x.name) === n)
+          || list.find(x => norm(x.name).includes(n) || n.includes(norm(x.name)));
+    };
+    try {
+      const regionName   = a.region || '';
+      const provinceName = a.state || '';
+      const cityName     = a.city || a.town || a.municipality || a.county || '';
+      const brgyName     = a.suburb || a.village || a.neighbourhood || a.quarter || '';
+      const isMM = /metro manila|national capital/i.test(`${regionName} ${provinceName}`);
+
+      const regs = await fetchRegions();
+      const reg  = isMM ? regs.find(r => isNCR(r.code)) : match(regs, regionName);
+      if (!reg) return null;
+
+      const patch = {
+        region: reg.name, region_code: reg.code,
+        province: '', province_code: '', city: '', city_code: '', barangay: '', barangay_code: '',
+      };
+
+      let cityList = null;
+      if (isNCR(reg.code)) {
+        patch.province = 'Metro Manila'; patch.province_code = reg.code;
+        cityList = await fetchCities(reg.code, null);
+      } else {
+        const prov = match(await fetchProvinces(reg.code), provinceName);
+        if (prov) {
+          patch.province = prov.name; patch.province_code = prov.code;
+          cityList = await fetchCities(reg.code, prov.code);
+        }
+      }
+      if (cityList) {
+        const city = match(cityList, cityName);
+        if (city) {
+          patch.city = city.name; patch.city_code = city.code;
+          const brgy = match(await fetchBarangays(city.code), brgyName);
+          if (brgy) { patch.barangay = brgy.name; patch.barangay_code = brgy.code; }
+        }
+      }
+      return patch;
+    } catch { return null; }
+  };
+
+  const handleSuggestionSelect = async (s) => {
     const a = s.address || {};
     setFormData(prev => ({
       ...prev,
       house_number: a.house_number || prev.house_number,
       street:       a.road || a.pedestrian || a.footway || prev.street,
-      barangay:     a.suburb || a.village || a.neighbourhood || a.quarter || prev.barangay,
-      city:         a.city || a.town || a.municipality || a.county || prev.city,
-      province:     a.state || a.region || prev.province,
       zip:          a.postcode ? a.postcode.replace(/\D/g, '').slice(0, 4) : prev.zip,
       lat:          parseFloat(s.lat),
       lng:          parseFloat(s.lon),
@@ -160,15 +276,62 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     setSuggestions([]);
     setShowSuggestions(false);
     setMapExpanded(true);
+    const patch = await autoFillPsgc(a);
+    if (patch) {
+      setFormData(prev => ({ ...prev, ...patch }));
+      setFormErrors(prev => ({ ...prev, region: null, province: null, city: null, barangay: null }));
+    }
+  };
+
+  const fetchAddresses = async () => {
+    if (!token) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/addresses`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to fetch addresses');
+      setAddresses(data.addresses || []);
+    } catch (err) {
+      setError(err.message || 'Failed to load addresses');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Pin drop → only SUGGEST a ZIP if the user hasn't typed one (dropdowns stay authoritative)
+  const handleLocationSelect = async (lat, lng) => {
+    setFormData(prev => ({ ...prev, lat, lng }));
+    setIsGeocoding(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
+        { headers: { 'Accept-Language': 'en' } }
+      );
+      const data = await res.json();
+      const pc = data?.address?.postcode;
+      if (pc) {
+        setFormData(prev => ({
+          ...prev, lat, lng,
+          zip: prev.zip || pc.replace(/\D/g, '').slice(0, 4),
+        }));
+      }
+    } catch { /* Nominatim unavailable — keep existing fields */ }
+    finally { setIsGeocoding(false); }
   };
 
   const validateForm = () => {
     const errors = {};
+    if (!formData.region_code)   errors.region   = 'Region is required';
+    if (!isNCR(formData.region_code) && !formData.province_code)
+      errors.province = 'Province is required';
+    if (!formData.city_code)     errors.city     = 'City/Municipality is required';
+    if (!formData.barangay_code) errors.barangay = 'Barangay is required';
     if (!formData.house_number.trim()) errors.house_number = 'House/Unit No. is required';
     if (!formData.street.trim())       errors.street       = 'Street is required';
-    if (!formData.barangay.trim())     errors.barangay     = 'Barangay is required';
-    if (!formData.city.trim())         errors.city         = 'City is required';
-    if (!formData.province.trim())     errors.province     = 'Province is required';
     if (!formData.zip.trim() || !/^\d{4}$/.test(formData.zip.trim()))
       errors.zip = 'ZIP Code must be a 4-digit number';
     if (!formData.phone.trim() || !/^\+63\d{10}$/.test(formData.phone.trim()))
@@ -216,18 +379,23 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
   const handleEdit = (address) => {
     setEditingAddress(address);
     setFormData({
-      label:        address.label        || '',
-      house_number: address.house_number || '',
-      street:       address.street       || '',
-      subdivision:  address.subdivision  || '',
-      barangay:     address.barangay     || '',
-      city:         address.city         || '',
-      province:     address.province     || '',
-      zip:          address.zip          || '',
-      phone:        address.phone        || '',
-      is_default:   address.is_default   || false,
-      lat:          address.lat          ?? null,
-      lng:          address.lng          ?? null,
+      label:         address.label         || '',
+      house_number:  address.house_number  || '',
+      street:        address.street        || '',
+      subdivision:   address.subdivision   || '',
+      region:        address.region        || '',
+      region_code:   address.region_code   || '',
+      province:      address.province      || '',
+      province_code: address.province_code || '',
+      city:          address.city          || '',
+      city_code:     address.city_code     || '',
+      barangay:      address.barangay      || '',
+      barangay_code: address.barangay_code || '',
+      zip:           address.zip           || '',
+      phone:         address.phone         || '',
+      is_default:    address.is_default    || false,
+      lat:           address.lat           ?? null,
+      lng:           address.lng           ?? null,
     });
     setMapExpanded(!!(address.lat && address.lng));
     setShowForm(true);
@@ -280,6 +448,9 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
     setShowForm(false);
     setFormErrors({});
     setMapExpanded(false);
+    setProvinces([]);
+    setCities([]);
+    setBarangays([]);
     setAddressSearch('');
     setSuggestions([]);
     setShowSuggestions(false);
@@ -340,7 +511,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
 
           {/* ── Address search / autocomplete ── */}
           <div style={{ position: 'relative' }}>
-            <label style={labelStyle}>Search Address <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional — auto-fills fields below)</span></label>
+            <label style={labelStyle}>Search your address <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(drops the pin & fills the fields below)</span></label>
             <div style={{ position: 'relative' }}>
               <input
                 type="text"
@@ -348,23 +519,21 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
                 onChange={e => handleSearchChange(e.target.value)}
                 onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 160)}
-                placeholder="Type a street, barangay, or landmark…"
+                placeholder="Type a street, barangay, building, or landmark…"
                 style={{ ...inputStyle, paddingRight: '2.25rem' }}
                 autoComplete="off"
               />
-              {isSearching ? (
-                <span style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
+              <span style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', display: 'flex' }}>
+                {isSearching ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
                     <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
                   </svg>
-                </span>
-              ) : (
-                <span style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                ) : (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray)" strokeWidth="2">
                     <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                   </svg>
-                </span>
-              )}
+                )}
+              </span>
             </div>
 
             {showSuggestions && suggestions.length > 0 && (
@@ -388,7 +557,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
             )}
             {!isSearching && addressSearch.trim().length >= 3 && !showSuggestions && suggestions.length === 0 && (
               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1200, background: 'var(--dark2)', border: '1px solid var(--border)', borderRadius: '8px', marginTop: '4px', padding: '0.75rem 0.875rem', fontSize: '0.8125rem', color: 'var(--gray)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-                No results. Try a more specific address with correct spelling.
+                No results. Try a more specific address, or just pin it on the map below.
               </div>
             )}
           </div>
@@ -405,7 +574,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
               </svg>
               {mapExpanded ? 'Hide Map' : (formData.lat && formData.lng ? 'Update Pin Location' : 'Pin Location on Map')}
               <span style={{ fontSize: '0.72rem', color: formErrors.pin ? 'var(--red)' : 'var(--gray)', fontWeight: 400 }}>
-                {formErrors.pin ? '— required' : '— auto-fills city, province & zip'}
+                {formErrors.pin ? '— required' : '— for exact delivery location'}
               </span>
             </button>
             {formErrors.pin && !mapExpanded && (
@@ -441,7 +610,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
                   </div>
                 )}
                 <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--gray)', lineHeight: 1.5 }}>
-                  Map coordinates may be inaccurate. Pin the exact location on the map to overwrite the address fields with the correct address.
+                  Drag the pin to your exact doorstep. This precise location is what the seller uses to book your courier — select your Region, City and Barangay from the dropdowns below.
                 </p>
               </div>
             )}
@@ -450,7 +619,7 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
           <div style={{ height: '1px', background: 'var(--border)' }} />
 
           {/* ROW 1: Label | Phone */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
               <label style={labelStyle}>Label <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional)</span></label>
               <input type="text" value={formData.label} onChange={e => handleInputChange('label', e.target.value)} placeholder="e.g. Home, Office" style={formErrors.label ? inputErrorStyle : inputStyle} />
@@ -463,17 +632,67 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
             </div>
           </div>
 
-          {/* ROW 2: House/Unit No. | Subdivision */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          {/* PSGC cascade: Region | Province */}
+          <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div>
+              <label style={labelStyle}>Region <span style={{ color: 'var(--red)' }}>*</span></label>
+              <select value={formData.region_code} onChange={e => handleRegionChange(e.target.value)} style={selectStyle(!!formErrors.region, false)}>
+                <option value="">Select region</option>
+                {regions.map(r => <option key={r.code} value={r.code}>{r.name}</option>)}
+              </select>
+              {fieldError(formErrors.region)}
+            </div>
+            <div>
+              <label style={labelStyle}>Province {!isNCR(formData.region_code) && <span style={{ color: 'var(--red)' }}>*</span>}</label>
+              <select
+                value={formData.province_code}
+                onChange={e => handleProvinceChange(e.target.value)}
+                disabled={!formData.region_code || isNCR(formData.region_code)}
+                style={selectStyle(!!formErrors.province, !formData.region_code || isNCR(formData.region_code))}
+              >
+                <option value="">{isNCR(formData.region_code) ? 'Metro Manila (NCR)' : 'Select province'}</option>
+                {provinces.map(p => <option key={p.code} value={p.code}>{p.name}</option>)}
+              </select>
+              {fieldError(formErrors.province)}
+            </div>
+          </div>
+
+          {/* PSGC cascade: City/Municipality | Barangay */}
+          <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div>
+              <label style={labelStyle}>City / Municipality <span style={{ color: 'var(--red)' }}>*</span></label>
+              <select
+                value={formData.city_code}
+                onChange={e => handleCityChange(e.target.value)}
+                disabled={cities.length === 0}
+                style={selectStyle(!!formErrors.city, cities.length === 0)}
+              >
+                <option value="">{cities.length === 0 ? 'Select region/province first' : 'Select city/municipality'}</option>
+                {cities.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+              </select>
+              {fieldError(formErrors.city)}
+            </div>
+            <div>
+              <label style={labelStyle}>Barangay <span style={{ color: 'var(--red)' }}>*</span></label>
+              <select
+                value={formData.barangay_code}
+                onChange={e => handleBarangayChange(e.target.value)}
+                disabled={barangays.length === 0}
+                style={selectStyle(!!formErrors.barangay, barangays.length === 0)}
+              >
+                <option value="">{barangays.length === 0 ? 'Select city first' : 'Select barangay'}</option>
+                {barangays.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+              </select>
+              {fieldError(formErrors.barangay)}
+            </div>
+          </div>
+
+          {/* House/Unit No. | Subdivision */}
+          <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
               <label style={labelStyle}>House/Unit No. <span style={{ color: 'var(--red)' }}>*</span></label>
               <input type="text" value={formData.house_number} onChange={e => handleInputChange('house_number', e.target.value)} placeholder="e.g. Blk 2 Lot 24" style={formErrors.house_number ? inputErrorStyle : inputStyle} />
               {fieldError(formErrors.house_number)}
-              {!formErrors.house_number && (
-                <span style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '0.25rem', display: 'block' }}>
-                  Auto-filled when available. Add Blk/Lot/Unit number manually if missing.
-                </span>
-              )}
             </div>
             <div>
               <label style={labelStyle}>Subdivision / Village <span style={{ color: 'var(--gray)', fontSize: '0.7rem' }}>(optional)</span></label>
@@ -481,36 +700,12 @@ export default function AddressBook({ onSaved, initialEditAddress }) {
             </div>
           </div>
 
-          {/* ROW 3: Street */}
-          <div>
-            <label style={labelStyle}>Street <span style={{ color: 'var(--red)' }}>*</span></label>
-            <input type="text" value={formData.street} onChange={e => handleInputChange('street', e.target.value)} placeholder="e.g. Rizal Avenue" style={formErrors.street ? inputErrorStyle : inputStyle} />
-            {fieldError(formErrors.street)}
-          </div>
-
-          {/* ROW 4: Barangay | City */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          {/* Street | ZIP */}
+          <div className="addr-2col" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
             <div>
-              <label style={labelStyle}>Barangay <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" value={formData.barangay} onChange={e => handleInputChange('barangay', e.target.value)} placeholder="e.g. Barangay 176" style={formErrors.barangay ? inputErrorStyle : inputStyle} />
-              {fieldError(formErrors.barangay)}
-            </div>
-            <div>
-              <label style={labelStyle}>
-                City <span style={{ color: 'var(--red)' }}>*</span>
-                {isGeocoding && <span style={{ fontSize: '0.65rem', color: 'var(--gold)', marginLeft: '0.4rem' }}>detecting…</span>}
-              </label>
-              <input type="text" value={formData.city} onChange={e => handleInputChange('city', e.target.value)} placeholder="e.g. Caloocan City" style={formErrors.city ? inputErrorStyle : inputStyle} />
-              {fieldError(formErrors.city)}
-            </div>
-          </div>
-
-          {/* ROW 5: Province | ZIP */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div>
-              <label style={labelStyle}>Province <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input type="text" value={formData.province} onChange={e => handleInputChange('province', e.target.value)} placeholder="e.g. Metro Manila" style={formErrors.province ? inputErrorStyle : inputStyle} />
-              {fieldError(formErrors.province)}
+              <label style={labelStyle}>Street <span style={{ color: 'var(--red)' }}>*</span></label>
+              <input type="text" value={formData.street} onChange={e => handleInputChange('street', e.target.value)} placeholder="e.g. Rizal Avenue" style={formErrors.street ? inputErrorStyle : inputStyle} />
+              {fieldError(formErrors.street)}
             </div>
             <div>
               <label style={labelStyle}>ZIP Code <span style={{ color: 'var(--red)' }}>*</span></label>

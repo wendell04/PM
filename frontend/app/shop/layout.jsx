@@ -347,7 +347,6 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
     firstName: '',
     middleInitial: '',
     lastName: '',
-    address: '',
     phoneNumber: '',
     email: '',
     password: '',
@@ -375,10 +374,6 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
       case 'lastName':
         if (!value.trim()) return 'Last name is required';
         if (value.trim().length < 2) return 'Last name must be at least 2 characters';
-        return '';
-      case 'address':
-        if (!value.trim()) return 'Address is required';
-        if (value.trim().length < 10) return 'Address must be at least 10 characters';
         return '';
       case 'phoneNumber':
         if (!value.trim()) return 'Phone number is required';
@@ -418,7 +413,7 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
 
   const validateForm = () => {
     const newErrors = {};
-    ['firstName', 'middleInitial', 'lastName', 'address', 'phoneNumber', 'email', 'password', 'confirmPassword', 'agreeToTerms']
+    ['firstName', 'middleInitial', 'lastName', 'phoneNumber', 'email', 'password', 'confirmPassword', 'agreeToTerms']
       .forEach(field => {
         const err = validateField(field, formData[field]);
         if (err) newErrors[field] = err;
@@ -440,7 +435,6 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
           firstName: formData.firstName.trim(),
           middleInitial: formData.middleInitial.trim(),
           lastName: formData.lastName.trim(),
-          address: formData.address.trim(),
           phoneNumber: formData.phoneNumber.trim(),
           email: formData.email.trim(),
           password: formData.password,
@@ -510,18 +504,6 @@ function RegisterForm({ onSuccess, onSwitchToLogin }) {
               />
               {errors.lastName && <span className="error-message">{errors.lastName}</span>}
             </div>
-          </div>
-
-          <div className="auth-field">
-            <label>Address</label>
-            <input
-              type="text"
-              placeholder="123 Main Street, City, Province, ZIP Code"
-              value={formData.address}
-              onChange={e => handleRegisterChange('address', e.target.value)}
-              className={errors.address ? 'error' : ''}
-            />
-            {errors.address && <span className="error-message">{errors.address}</span>}
           </div>
 
           <div className="auth-field">

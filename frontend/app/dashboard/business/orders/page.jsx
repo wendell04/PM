@@ -542,8 +542,30 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
   const [uploading,   setUploading]   = useState(false);
   const [expiring,    setExpiring]    = useState(false);
   const [expireErr,   setExpireErr]   = useState('');
+  const [feeInput,    setFeeInput]    = useState('');
+  const [savingFee,   setSavingFee]   = useState(false);
+  const [feeErr,      setFeeErr]      = useState('');
 
   useEffect(() => { setLo(o); setSelStatus(o.orderStatus); }, [o]);
+  useEffect(() => { setFeeInput(o.courierFee != null && Number(o.courierFee) > 0 ? String(o.courierFee) : ''); }, [o]);
+
+  const handleSaveCourierFee = async () => {
+    const val = parseFloat(feeInput);
+    if (isNaN(val) || val < 0) { setFeeErr('Enter a valid amount.'); return; }
+    setSavingFee(true); setFeeErr('');
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/admin/orders/${lo.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify({ courierFee: val }),
+      }, 15000);
+      if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.message || 'Failed to save delivery fee'); }
+      const updated = { ...lo, courierFee: val };
+      setLo(updated);
+      if (onStatusUpdated) onStatusUpdated(lo.id, updated);
+    } catch (err) { setFeeErr(err.message || 'Failed to save delivery fee'); }
+    finally { setSavingFee(false); }
+  };
 
   const canDelete  = ['Cancelled','Delivered','Returned'].includes(lo.orderStatus);
   const canExpire  = lo.orderStatus === 'Pending' && lo.paymentStatus !== 'paid' && isExpired(lo);
@@ -650,10 +672,70 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
               <SectionLabel>Delivery Address</SectionLabel>
               <div style={{ fontSize:'12px', color:'#374151', lineHeight:1.6 }}>
                 {typeof lo.deliveryAddress === 'object'
-                  ? [lo.deliveryAddress.street, lo.deliveryAddress.barangay && `Brgy. ${lo.deliveryAddress.barangay}`,
+                  ? [lo.deliveryAddress.house_number, lo.deliveryAddress.street,
+                     lo.deliveryAddress.subdivision,
+                     lo.deliveryAddress.barangay && `Brgy. ${lo.deliveryAddress.barangay}`,
                      lo.deliveryAddress.city, lo.deliveryAddress.province, lo.deliveryAddress.zip].filter(Boolean).join(', ')
                   : lo.deliveryAddress}
               </div>
+              {typeof lo.deliveryAddress === 'object' && lo.deliveryAddress.phone && (
+                <div style={{ fontSize:'12px', color:'#6b7280', marginTop:'2px' }}>☎ {lo.deliveryAddress.phone}</div>
+              )}
+              {typeof lo.deliveryAddress === 'object' && lo.deliveryAddress.lat && lo.deliveryAddress.lng && (
+                <div style={{ marginTop:'8px' }}>
+                  <div style={{ fontSize:'11px', color:'#6b7280', marginBottom:'5px' }}>
+                    Pinned drop-off — open this exact spot to book your courier (Lalamove / Grab / etc.):
+                  </div>
+                  <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', alignItems:'center' }}>
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${lo.deliveryAddress.lat},${lo.deliveryAddress.lng}`}
+                       target="_blank" rel="noopener noreferrer"
+                       style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'5px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid #d1d5db', background:'#fff', color:'#1a1a2e', textDecoration:'none', cursor:'pointer' }}>
+                      📍 Google Maps
+                    </a>
+                    <a href={`https://waze.com/ul?ll=${lo.deliveryAddress.lat},${lo.deliveryAddress.lng}&navigate=yes`}
+                       target="_blank" rel="noopener noreferrer"
+                       style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'5px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid #d1d5db', background:'#fff', color:'#1a1a2e', textDecoration:'none', cursor:'pointer' }}>
+                      Waze
+                    </a>
+                    <button type="button"
+                       onClick={() => { navigator.clipboard?.writeText(`${lo.deliveryAddress.lat}, ${lo.deliveryAddress.lng}`); }}
+                       style={{ display:'inline-flex', alignItems:'center', gap:'4px', padding:'5px 10px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'1px solid #d1d5db', background:'#fff', color:'#1a1a2e', cursor:'pointer' }}>
+                      ⧉ Copy coordinates
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Courier-booked delivery fee — paid by customer to the rider on delivery */}
+              {!(Number(lo.shippingFee) > 0) && (
+                <div style={{ marginTop:'10px', padding:'10px 12px', background:'#fafafa', border:'1px solid #e5e7eb', borderRadius:'8px' }}>
+                  <div style={{ fontSize:'11px', fontWeight:600, color:'#374151', marginBottom:'2px' }}>Delivery fee (paid by customer to rider)</div>
+                  <div style={{ fontSize:'10.5px', color:'#9ca3af', marginBottom:'6px' }}>
+                    After you book the courier, enter the fee. The customer is notified to pay this in cash on delivery.
+                  </div>
+                  <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
+                    <div style={{ display:'flex', alignItems:'center', border:'1px solid #d1d5db', borderRadius:'6px', overflow:'hidden', background:'#fff' }}>
+                      <span style={{ padding:'0 8px', fontSize:'12px', color:'#6b7280' }}>₱</span>
+                      <input
+                        type="text" inputMode="decimal" value={feeInput}
+                        onChange={e => { setFeeInput(e.target.value.replace(/[^\d.]/g, '')); if (feeErr) setFeeErr(''); }}
+                        placeholder="0.00"
+                        style={{ width:'90px', border:'none', outline:'none', padding:'6px 8px 6px 0', fontSize:'12px', color:'#1a1a2e' }}
+                      />
+                    </div>
+                    <button type="button" onClick={handleSaveCourierFee} disabled={savingFee}
+                      style={{ padding:'6px 12px', fontSize:'11px', fontWeight:600, borderRadius:'6px', border:'none', background: savingFee ? '#d1d5db' : '#c9973f', color:'#fff', cursor: savingFee ? 'not-allowed' : 'pointer' }}>
+                      {savingFee ? 'Saving…' : (Number(lo.courierFee) > 0 ? 'Update fee' : 'Set fee')}
+                    </button>
+                    {Number(lo.courierFee) > 0 && (
+                      <span style={{ fontSize:'11px', color:'#166534', fontWeight:600 }}>
+                        Set: ₱{fmt(lo.courierFee)} · customer notified
+                      </span>
+                    )}
+                  </div>
+                  {feeErr && <div style={{ marginTop:'4px', fontSize:'11px', color:'#dc2626' }}>{feeErr}</div>}
+                </div>
+              )}
             </>
           )}
 
@@ -868,6 +950,12 @@ function OrderDetail({ o, token, onStatusUpdated, onPayment, onDelete }) {
             <span style={{ color:'#1a1a2e' }}>Total</span>
             <span style={{ color:'#c9973f' }}>₱{fmt(lo.totalAmount ?? lo.totalPrice)}</span>
           </div>
+          {Number(lo.courierFee) > 0 && (
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', padding:'3px 0', color:'#6b7280' }}>
+              <span>Delivery fee (customer → rider)</span>
+              <span style={{ fontWeight:600 }}>₱{fmt(lo.courierFee)}</span>
+            </div>
+          )}
           <InfoRow label="Paid" value={`₱${fmt(lo.downPayment)}`} />
           <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', padding:'3px 0' }}>
             <span style={{ color:'#6b7280' }}>Balance</span>

@@ -21,7 +21,7 @@ class SettingsController extends Controller
                 'designRequestFee'     => (float) ($owner->designRequestFee     ?? 100),
                 'storeLat'             => $owner->storeLat              ?? null,
                 'storeLng'             => $owner->storeLng              ?? null,
-                'shippingMode'         => $owner->shippingMode          ?? 'distance',
+                'shippingMode'         => $owner->shippingMode          ?? 'courier_booked',
                 'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 50),
                 'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
                 'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
@@ -49,7 +49,7 @@ class SettingsController extends Controller
                 'storeAddress'         => $owner->storeAddress          ?? '',
                 'storeLat'             => $owner->storeLat              ?? null,
                 'storeLng'             => $owner->storeLng              ?? null,
-                'shippingMode'         => $owner->shippingMode          ?? 'distance',
+                'shippingMode'         => $owner->shippingMode          ?? 'courier_booked',
                 'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 50),
                 'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
                 'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),
@@ -73,7 +73,7 @@ class SettingsController extends Controller
                 'storeAddress'         => 'nullable|string|max:300',
                 'storeLat'             => 'nullable|numeric|between:-90,90',
                 'storeLng'             => 'nullable|numeric|between:-180,180',
-                'shippingMode'         => 'nullable|string|in:distance,flat',
+                'shippingMode'         => 'nullable|string|in:distance,flat,courier_booked',
                 'shippingBaseRate'     => 'nullable|numeric|min:0|max:9999',
                 'shippingPerKmRate'    => 'nullable|numeric|min:0|max:9999',
                 'flatRateInsideMetro'  => 'nullable|numeric|min:0|max:9999',
@@ -83,7 +83,7 @@ class SettingsController extends Controller
             if ($request->has('storeAddress'))         $owner->storeAddress         = $request->storeAddress ?? '';
             if ($request->has('storeLat'))             $owner->storeLat             = $request->storeLat !== null ? (float) $request->storeLat : null;
             if ($request->has('storeLng'))             $owner->storeLng             = $request->storeLng !== null ? (float) $request->storeLng : null;
-            if ($request->has('shippingMode'))         $owner->shippingMode         = $request->shippingMode ?? 'distance';
+            if ($request->has('shippingMode'))         $owner->shippingMode         = $request->shippingMode ?? 'courier_booked';
             if ($request->has('shippingBaseRate'))     $owner->shippingBaseRate     = (float) $request->shippingBaseRate;
             if ($request->has('shippingPerKmRate'))    $owner->shippingPerKmRate    = (float) $request->shippingPerKmRate;
             if ($request->has('flatRateInsideMetro'))  $owner->flatRateInsideMetro  = (float) $request->flatRateInsideMetro;
@@ -94,7 +94,7 @@ class SettingsController extends Controller
                 'storeAddress'         => $owner->storeAddress          ?? '',
                 'storeLat'             => $owner->storeLat              ?? null,
                 'storeLng'             => $owner->storeLng              ?? null,
-                'shippingMode'         => $owner->shippingMode          ?? 'distance',
+                'shippingMode'         => $owner->shippingMode          ?? 'courier_booked',
                 'shippingBaseRate'     => (float) ($owner->shippingBaseRate     ?? 50),
                 'shippingPerKmRate'    => (float) ($owner->shippingPerKmRate    ?? 15),
                 'flatRateInsideMetro'  => (float) ($owner->flatRateInsideMetro  ?? 150),

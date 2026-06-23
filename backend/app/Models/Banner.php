@@ -10,6 +10,7 @@ class Banner extends Model
     protected $collection = 'banners';
 
     protected $fillable = [
+        'name',
         'headline',
         'headlineAccent',
         'headlineAccentColor',
@@ -22,6 +23,10 @@ class Banner extends Model
         'cta2Label',
         'cta2Link',
         'imagePosition',
+        'imageScale',
+        'imagePositionMobile',
+        'imageScaleMobile',
+        'imageFit',
         'image',
         'isVisible',
         'status',
@@ -29,6 +34,7 @@ class Banner extends Model
         'scheduleStart',
         'scheduleEnd',
         'showOn',
+        'heroRole',
     ];
 
     protected $casts = [

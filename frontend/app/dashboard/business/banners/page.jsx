@@ -19,6 +19,7 @@ import {
   uploadBannerImage,
 } from '@/lib/bannerUtils';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import HeroImagePositioner from '@/components/cms/HeroImagePositioner';
 
 // UX limit — keeps carousel manageable regardless of storage backend
 // Safe to keep even after MongoDB migration (enforced at API level too)
@@ -857,21 +858,14 @@ export default function BannerManagementPage() {
         }
       `}</style>
 
-      {/* Page Tabs */}
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '1.5rem', background: 'var(--dark2)', padding: '4px', borderRadius: '10px', width: 'fit-content' }}>
-        {[{ key: 'shop', label: 'Shop (/shop)' }, { key: 'landing', label: 'Landing (Homepage)' }].map(tab => (
-          <button key={tab.key} type="button" onClick={() => { setActivePage(tab.key); setActiveBannerIdLocal(null); setEditedBanner(null); }}
-            style={{
-              padding: '6px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer',
-              fontSize: '0.82rem', fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
-              background: activePage === tab.key ? 'var(--dark)' : 'transparent',
-              color: activePage === tab.key ? 'var(--white)' : 'var(--gray)',
-              boxShadow: activePage === tab.key ? '0 1px 4px rgba(0,0,0,0.18)' : 'none',
-              transition: 'all 0.15s',
-            }}>
-            {tab.label}
-          </button>
-        ))}
+      {/* Shop banners only — the landing hero is managed in the Homepage module */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        <span style={{ padding: '6px 14px', borderRadius: '7px', background: 'var(--dark2)', color: 'var(--white)', fontSize: '0.82rem', fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
+          Shop Banners (/shop)
+        </span>
+        <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
+          Editing the homepage hero? Go to <a href="/dashboard/business/homepage" style={{ color: 'var(--gold)' }}>Homepage</a>.
+        </span>
       </div>
 
       {/* Header */}
@@ -1147,22 +1141,15 @@ export default function BannerManagementPage() {
                 </div>
               )}
 
-              {/* Landing-only: Image focus point */}
+              {/* Landing-only: draggable image focus point + true hero-crop preview */}
               {activePage === 'landing' && (
                 <div className="banner-form-group">
                   <label className="banner-form-label">Image Focus Point</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '4px', width: '120px', marginTop: '6px' }}>
-                    {['top left','top center','top right','center left','center center','center right','bottom left','bottom center','bottom right'].map(pos => {
-                      const active = (editedBanner?.imagePosition || 'center center') === pos;
-                      return (
-                        <button key={pos} type="button" title={pos} onClick={() => updateField('imagePosition', pos)}
-                          style={{ width: '36px', height: '36px', borderRadius: '5px', border: `2px solid ${active ? 'var(--gold)' : 'var(--border)'}`, background: active ? 'rgba(212,168,67,0.12)' : 'var(--dark2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: active ? 'var(--gold)' : 'var(--gray)' }} />
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p style={{ fontSize: '0.7rem', color: 'var(--gray)', marginTop: '4px' }}>{editedBanner?.imagePosition || 'center center'}</p>
+                  <HeroImagePositioner
+                    image={editedBanner?.image}
+                    value={editedBanner?.imagePosition || 'center center'}
+                    onChange={(pos) => updateField('imagePosition', pos)}
+                  />
                 </div>
               )}
             </div>

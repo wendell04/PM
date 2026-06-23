@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 
 const TILE_LAYERS = {
   street: {
-    url:         'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    maxZoom:     19,
+    // CARTO Positron — clean, minimal light basemap (same OpenStreetMap data, cleaner style).
+    url:         'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains:  'abcd',
+    maxZoom:     20,
     label:       'Street',
   },
   satellite: {
@@ -74,6 +76,7 @@ export default function StoreLocationMap({ lat, lng, onLocationSelect }) {
       tileLayerRef.current = L.tileLayer(cfg.url, {
         attribution: cfg.attribution,
         maxZoom:     cfg.maxZoom,
+        subdomains:  cfg.subdomains ?? 'abc',
       }).addTo(map);
 
       const pin = makePinIcon(L);
@@ -147,11 +150,12 @@ export default function StoreLocationMap({ lat, lng, onLocationSelect }) {
     tileLayerRef.current = L.tileLayer(cfg.url, {
       attribution: cfg.attribution,
       maxZoom:     cfg.maxZoom,
+      subdomains:  cfg.subdomains ?? 'abc',
     }).addTo(map);
   }, [tileMode]);
 
   return (
-    <div style={{ position: 'relative', width: '100%' }}>
+    <div style={{ position: 'relative', width: '100%', isolation: 'isolate' }}>
       {/* Satellite / Street toggle */}
       <div style={{
         position: 'absolute', top: '10px', right: '10px', zIndex: 1000,

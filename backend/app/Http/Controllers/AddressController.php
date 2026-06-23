@@ -61,19 +61,24 @@ class AddressController extends Controller
             : '';
 
         $newAddress = [
-            'id'           => Str::uuid()->toString(),
-            'label'        => $san($validated['label'] ?? null),
-            'house_number' => $san($validated['house_number']),
-            'street'       => $san($validated['street']),
-            'subdivision'  => $san($validated['subdivision'] ?? null),
-            'barangay'     => $san($validated['barangay']),
-            'city'         => $san($validated['city']),
-            'province'     => $san($validated['province']),
-            'zip'          => $validated['zip'],
-            'phone'        => $validated['phone'],
-            'is_default'   => $isDefault,
-            'lat'          => isset($validated['lat']) ? (float) $validated['lat'] : null,
-            'lng'          => isset($validated['lng']) ? (float) $validated['lng'] : null,
+            'id'            => Str::uuid()->toString(),
+            'label'         => $san($validated['label'] ?? null),
+            'house_number'  => $san($validated['house_number']),
+            'street'        => $san($validated['street']),
+            'subdivision'   => $san($validated['subdivision'] ?? null),
+            'region'        => $san($validated['region']),
+            'region_code'   => $validated['region_code'],
+            'province'      => $san($validated['province']),
+            'province_code' => $validated['province_code'] ?? '',
+            'city'          => $san($validated['city']),
+            'city_code'     => $validated['city_code'],
+            'barangay'      => $san($validated['barangay']),
+            'barangay_code' => $validated['barangay_code'],
+            'zip'           => $validated['zip'],
+            'phone'         => $validated['phone'],
+            'is_default'    => $isDefault,
+            'lat'           => isset($validated['lat']) ? (float) $validated['lat'] : null,
+            'lng'           => isset($validated['lng']) ? (float) $validated['lng'] : null,
         ];
 
         $addresses[] = $newAddress;
@@ -132,18 +137,23 @@ class AddressController extends Controller
 
         // Merge changes
         $addresses[$index] = array_merge($addresses[$index], [
-            'label'        => $san($validated['label'] ?? null),
-            'house_number' => $san($validated['house_number']),
-            'street'       => $san($validated['street']),
-            'subdivision'  => $san($validated['subdivision'] ?? null),
-            'barangay'     => $san($validated['barangay']),
-            'city'         => $san($validated['city']),
-            'province'     => $san($validated['province']),
-            'zip'          => $validated['zip'],
-            'phone'        => $validated['phone'],
-            'is_default'   => $isDefault,
-            'lat'          => isset($validated['lat']) ? (float) $validated['lat'] : ($addresses[$index]['lat'] ?? null),
-            'lng'          => isset($validated['lng']) ? (float) $validated['lng'] : ($addresses[$index]['lng'] ?? null),
+            'label'         => $san($validated['label'] ?? null),
+            'house_number'  => $san($validated['house_number']),
+            'street'        => $san($validated['street']),
+            'subdivision'   => $san($validated['subdivision'] ?? null),
+            'region'        => $san($validated['region']),
+            'region_code'   => $validated['region_code'],
+            'province'      => $san($validated['province']),
+            'province_code' => $validated['province_code'] ?? '',
+            'city'          => $san($validated['city']),
+            'city_code'     => $validated['city_code'],
+            'barangay'      => $san($validated['barangay']),
+            'barangay_code' => $validated['barangay_code'],
+            'zip'           => $validated['zip'],
+            'phone'         => $validated['phone'],
+            'is_default'    => $isDefault,
+            'lat'           => isset($validated['lat']) ? (float) $validated['lat'] : ($addresses[$index]['lat'] ?? null),
+            'lng'           => isset($validated['lng']) ? (float) $validated['lng'] : ($addresses[$index]['lng'] ?? null),
         ]);
 
         $user->addresses = $addresses;

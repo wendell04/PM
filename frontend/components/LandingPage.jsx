@@ -175,7 +175,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
 
   const [registerForm, setRegisterForm] = useState({
     firstName: '', middleInitial: '', lastName: '',
-    address: '', phoneNumber: '', email: '',
+    phoneNumber: '', email: '',
     password: '', confirmPassword: '', agreeToTerms: false
   });
   const [loginForm, setLoginForm] = useState({email: '', password: ''});
@@ -343,16 +343,20 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       .catch(() => {});
   }, []);
 
-  // Hero carousel auto-advance — taglines and images cycle independently
+  // Hero carousel auto-advance — taglines loop, images cycle through all (independent)
   useEffect(() => {
     if (heroPaused) return;
-    const count = heroBanners.length > 0 ? heroBanners.length : 3;
+    const tags = heroBanners.filter(b => b.heroRole === 'tagline');
+    const imgs = heroBanners.filter(b => b.heroRole === 'image' && b.image);
+    const useCms = tags.length > 0 && imgs.length > 0;
+    const tCount = useCms ? tags.length : 3;
+    const iCount = useCms ? imgs.length : HERO_SLIDER_IMAGES.length;
     const t = setInterval(() => {
-      setHeroSlide(s => (s + 1) % count);
-      setHeroImgIdx(i => (i + 1) % HERO_SLIDER_IMAGES.length);
+      setHeroSlide(s => (s + 1) % tCount);
+      setHeroImgIdx(i => (i + 1) % iCount);
     }, 4000);
     return () => clearInterval(t);
-  }, [heroPaused, heroBanners.length]);
+  }, [heroPaused, heroBanners]);
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
@@ -393,7 +397,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
     setHasReadTerms(false);
     setRegisterForm({
       firstName: '', middleInitial: '', lastName: '',
-      address: '', phoneNumber: '', email: '',
+      phoneNumber: '', email: '',
       password: '', confirmPassword: '', agreeToTerms: false
     });
   };
@@ -470,10 +474,6 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
         if (!value.trim()) return 'Last name is required';
         if (value.trim().length < 2) return 'Last name must be at least 2 characters';
         return '';
-      case 'address':
-        if (!value.trim()) return 'Address is required';
-        if (value.trim().length < 10) return 'Address must be at least 10 characters';
-        return '';
       case 'phoneNumber':
         if (!value.trim()) return 'Phone number is required';
         if (!/^(\+63|0)\d{10}$/.test(value.replace(/\s/g, ''))) return 'Please enter a valid Philippine phone number';
@@ -504,7 +504,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
 
   // Scroll to first error — runs after DOM paint using name attributes
   const scrollToFirstError = (errorObj) => {
-    const fieldOrder = ['firstName', 'lastName', 'address', 'phoneNumber', 'email', 'password', 'confirmPassword'];
+    const fieldOrder = ['firstName', 'lastName', 'phoneNumber', 'email', 'password', 'confirmPassword'];
     for (const field of fieldOrder) {
       if (errorObj[field]) {
         // Find input by placeholder or just the first .error input in the modal
@@ -520,7 +520,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
 
   const validateForm = () => {
     const newErrors = {};
-    ['firstName','middleInitial','lastName','address','phoneNumber','email','password','confirmPassword']
+    ['firstName','middleInitial','lastName','phoneNumber','email','password','confirmPassword']
       .forEach(field => {
         const err = validateField(field, registerForm[field]);
         if (err) newErrors[field] = err;
@@ -545,7 +545,6 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
           firstName:    registerForm.firstName.trim(),
           middleInitial: registerForm.middleInitial.trim(),
           lastName:     registerForm.lastName.trim(),
-          address:      registerForm.address.trim(),
           phoneNumber:  registerForm.phoneNumber.trim(),
           email:        registerForm.email.trim(),
           password:     registerForm.password,
@@ -566,7 +565,7 @@ const LandingPage = ({initialProducts=[], initialCollections=[], initialReviews=
       setPendingAuth({ token: data.data.token, user: data.data.user, rememberMe });
       setRegisteredEmail(registerForm.email);
       setModal(null);
-      setRegisterForm({firstName:'',middleInitial:'',lastName:'',address:'',phoneNumber:'',email:'',password:'',confirmPassword:'',agreeToTerms:false});
+      setRegisterForm({firstName:'',middleInitial:'',lastName:'',phoneNumber:'',email:'',password:'',confirmPassword:'',agreeToTerms:false});
       setErrors({});
       setVerifyError('');
       setVerificationModal(true);
@@ -1045,33 +1044,55 @@ const handleForgotResetPassword = async () => {
     },
   ];
 
-  const effectiveSlides = heroBanners.length > 0
-    ? heroBanners.map(b => {
+  // ── Hero = TAGLINES (text, loop) × IMAGES (cycle through all), paired by rotation.
+  // CMS-driven when both published lists exist (heroRole); else hardcoded fallback. ──
+  const cmsTaglines = heroBanners.filter(b => b.heroRole === 'tagline');
+  const cmsImages   = heroBanners.filter(b => b.heroRole === 'image' && b.image);
+  const useCmsHero  = cmsTaglines.length > 0 && cmsImages.length > 0;
+
+  const effectiveSlides = useCmsHero
+    ? cmsTaglines.map(b => {
         const parts = [];
         if (b.headline) parts.push({ text: b.headline, plain: true });
         if (b.headlineAccent) parts.push({ text: b.headlineAccent, className: `${b.headlineAccentColor || 'gold'}-text` });
         if (b.headlineAccent2) parts.push({ text: b.headlineAccent2, className: `${b.headlineAccent2Color || 'gold'}-text` });
         return {
-          tag:           b.tag || null,
-          image:         b.image || null,
-          imagePosition: b.imagePosition || 'center center',
-          titleParts:    parts.length > 0 ? parts : [{ text: '', plain: true }],
-          subtitle:      b.subtext || '',
-          cta:           b.ctaLabel  ? { label: b.ctaLabel,  href: b.ctaLink  || '#' } : null,
-          cta2:          b.cta2Label ? { label: b.cta2Label, href: b.cta2Link || '#' } : null,
+          tag:        b.tag || null,
+          titleParts: parts.length > 0 ? parts : [{ text: '', plain: true }],
+          subtitle:   b.subtext || '',
+          cta:        b.ctaLabel  ? { label: b.ctaLabel,  href: b.ctaLink  || '#' } : null,
+          cta2:       b.cta2Label ? { label: b.cta2Label, href: b.cta2Link || '#' } : null,
         };
       })
     : heroSlides;
 
-  const currentBannerImage    = effectiveSlides[heroSlide]?.image ?? null;
-  const currentBannerPosition = effectiveSlides[heroSlide]?.imagePosition ?? 'center center';
+  const imageList = useCmsHero
+    ? cmsImages.map(b => {
+        const isFit = b.imageFit === 'contain';
+        return {
+          image:          b.image,
+          position:       b.imagePosition || 'center center',
+          scale:          Math.max(1, b.imageScale || 1),
+          positionMobile: b.imagePositionMobile || b.imagePosition || 'center center',
+          scaleMobile:    Math.max(1, b.imageScaleMobile || b.imageScale || 1),
+          fit:            isFit ? 'contain' : 'cover',
+          bg:             isFit ? '#ffffff' : '#0f0f0f',
+        };
+      })
+    : HERO_SLIDER_IMAGES.map(im => ({ image: im.src, position: im.pos, scale: 1, positionMobile: im.pos, scaleMobile: 1, fit: 'cover', bg: '#0f0f0f' }));
 
   const landingOrdered = [...landingCollections]
     .filter(c => c.landing_order != null)
     .sort((a, b) => a.landing_order - b.landing_order);
   const colSource = landingOrdered.length > 0 ? landingOrdered : landingCollections;
-  const colTotalSets = Math.ceil(colSource.length / 4);
-  const colCurrentSet = colSource.slice(colSetIdx * 4, colSetIdx * 4 + 4);
+
+  // Collections carousel: arrow scroll (desktop) — touch swipes natively.
+  const colScrollRef = useRef(null);
+  const scrollCols = (dir) => {
+    const el = colScrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * el.clientWidth * 0.85, behavior: 'smooth' });
+  };
 
   // Lock background scroll when a sheet is open — phones only
   useEffect(() => {
@@ -1546,10 +1567,10 @@ const handleForgotResetPassword = async () => {
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
             </button>
-            <div className="mobile-auth-modal-title">Welcome back</div>
-            <div className="mobile-auth-modal-sub">Sign in to your account or create a new one.</div>
-            <button className="mobile-auth-modal-login" onClick={() => { setMobileAuthOpen(false); openModal('login'); }}>Sign In</button>
-            <button className="mobile-auth-modal-register" onClick={() => { setMobileAuthOpen(false); openModal('register'); }}>Get Started — It&apos;s Free</button>
+            <div className="mobile-auth-modal-title">Personalize <span style={{ color: 'var(--gold)' }}>Me</span> Prints</div>
+            <div className="mobile-auth-modal-sub">Sign in or create a free account to continue.</div>
+            <button className="mobile-auth-modal-login" onClick={() => { setMobileAuthOpen(false); openModal('login'); }}>Sign in</button>
+            <button className="mobile-auth-modal-register" onClick={() => { setMobileAuthOpen(false); openModal('register'); }}>Register</button>
           </div>
         </div>
       )}
@@ -1621,36 +1642,24 @@ const handleForgotResetPassword = async () => {
 
         </div>
         <div className="hero-visual">
-          {currentBannerImage ? (
-            <img
-              src={currentBannerImage}
-              alt=""
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: currentBannerPosition }}
-            />
-          ) : (
-            <div className="hero-image-slider">
-              {HERO_SLIDER_IMAGES.map((img, i) => (
-                <img
-                  key={img.src}
-                  src={img.src}
-                  alt={img.label}
-                  className={`hero-slider-img${heroImgIdx === i ? ' active' : ''}`}
-                  style={{ objectPosition: img.pos }}
-                />
-              ))}
-              <div className="hero-slider-label">{HERO_SLIDER_IMAGES[heroImgIdx].label}</div>
-              <div className="hero-slider-dots">
-                {HERO_SLIDER_IMAGES.map((_, i) => (
-                  <button
-                    key={i}
-                    className={`hero-slider-dot${heroImgIdx === i ? ' active' : ''}`}
-                    onClick={() => setHeroImgIdx(i)}
-                    aria-label={`Product ${i + 1}`}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+          <div className="hero-image-slider">
+            {imageList.map((im, i) => (
+              <img
+                key={`${im.image}-${i}`}
+                src={im.image}
+                alt=""
+                className={`hero-slider-img hero-cms-img${heroImgIdx % Math.max(1, imageList.length) === i ? ' active' : ''}`}
+                style={{
+                  '--hero-pos': im.position,
+                  '--hero-scale': im.scale,
+                  '--hero-pos-m': im.positionMobile,
+                  '--hero-scale-m': im.scaleMobile,
+                  objectFit: im.fit,
+                  background: im.bg,
+                }}
+              />
+            ))}
+          </div>
         </div>
 
         {/* Nav centered across full banner */}
@@ -1700,53 +1709,26 @@ const handleForgotResetPassword = async () => {
                   Shop by <span className="gold-text">Collections</span>
                 </h2>
               </div>
-              <button className="lp-col-viewall-btn" onClick={() => router.push('/shop')}>
-                View all
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-                </svg>
-              </button>
-            </div>
-
-            {/* 4-collection Pinnacle grid */}
-            <div className="lp-pinnacle-grid">
-              {colCurrentSet.map((col, i) => (
-                <button
-                  key={col._id || col.id || i}
-                  className={`lp-pinnacle-card lp-pinnacle-card--${['large', 'wide', 'sm-left', 'sm-right'][i]}`}
-                  onClick={() => router.push(`/shop?collection=${col.slug}`)}
-                >
-                  {col.image ? (
-                    <img src={col.image} alt={col.title} style={{ objectPosition: col.landing_image_position || 'center center' }} />
-                  ) : (
-                    <div className="lp-pinnacle-card-ph" />
-                  )}
-                  <div className="lp-pinnacle-card-overlay">
-                    <span className="lp-pinnacle-card-title">{col.title}</span>
-                    {col.productCount > 0 && (
-                      <span className="lp-pinnacle-card-count">{col.productCount} items</span>
-                    )}
-                  </div>
+              <div className="lp-pinnacle-hd-right">
+                <div className="lp-pinnacle-arrows">
+                  <button className="lp-pinnacle-arrow" onClick={() => scrollCols(-1)} aria-label="Previous collections">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  </button>
+                  <button className="lp-pinnacle-arrow" onClick={() => scrollCols(1)} aria-label="Next collections">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </button>
+                </div>
+                <button className="lp-col-viewall-btn" onClick={() => router.push('/shop')}>
+                  View all
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                  </svg>
                 </button>
-              ))}
+              </div>
             </div>
 
-            {/* Progress dots — only when multiple sets */}
-            {colTotalSets > 1 && (
-              <div className="lp-pinnacle-dots">
-                {Array.from({ length: colTotalSets }).map((_, i) => (
-                  <button
-                    key={i}
-                    className={`lp-pinnacle-dot${colSetIdx === i ? ' active' : ''}`}
-                    onClick={() => setColSetIdx(i)}
-                    aria-label={`Set ${i + 1}`}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Mobile: all collections as individual stacked cards */}
-            <div className="lp-pinnacle-mobile-stack">
+            {/* Collections carousel — square cards. Swipe on touch; arrows on desktop. */}
+            <div className="lp-pinnacle-mobile-stack" ref={colScrollRef}>
               {colSource.map((col, i) => (
                 <button
                   key={col._id || col.id || i}
@@ -2352,18 +2334,6 @@ const handleForgotResetPassword = async () => {
                           className={errors.lastName ? 'error' : ''}/>
                         {errors.lastName && <span className="error-message">{errors.lastName}</span>}
                       </div>
-                    </div>
-
-                    <div className="auth-field">
-                      <label>Home Address</label>
-                      <input type="text" placeholder="e.g. 123 Rizal Ave, Brgy. San Antonio, Caloocan"
-                        value={registerForm.address}
-                        onChange={e => handleRegisterChange('address', e.target.value)}
-                        className={errors.address ? 'error' : ''}/>
-                      {errors.address && <span className="error-message">{errors.address}</span>}
-                      <span style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: '0.3rem', display: 'block' }}>
-                        For delivery, you&apos;ll add a pinned address in your profile after registering.
-                      </span>
                     </div>
 
                     <div className="auth-field">

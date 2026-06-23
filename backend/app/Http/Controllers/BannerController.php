@@ -32,6 +32,7 @@ class BannerController extends Controller
     {
         try {
             $validated = $request->validate([
+                'name'                => 'nullable|string|max:100',
                 'headline'            => 'nullable|string|max:255',
                 'headlineAccent'      => 'nullable|string|max:255',
                 'headlineAccentColor' => 'nullable|in:gold,red,white',
@@ -44,6 +45,10 @@ class BannerController extends Controller
                 'cta2Label'           => 'nullable|string',
                 'cta2Link'            => 'nullable|string',
                 'imagePosition'       => 'nullable|string|max:40',
+                'imageScale'          => 'nullable|numeric|min:1|max:3',
+                'imagePositionMobile' => 'nullable|string|max:40',
+                'imageScaleMobile'    => 'nullable|numeric|min:1|max:3',
+                'imageFit'            => 'nullable|in:contain,cover',
                 'image'               => 'nullable|string',
                 'isVisible'           => 'nullable|boolean',
                 'status'              => 'nullable|in:draft,live,scheduled',
@@ -51,9 +56,11 @@ class BannerController extends Controller
                 'scheduleStart'       => 'nullable|date',
                 'scheduleEnd'         => 'nullable|date',
                 'showOn'              => 'nullable|in:both,shop,landing',
+                'heroRole'            => 'nullable|in:tagline,image',
             ]);
 
             $banner = Banner::create([
+                'name'                => $validated['name'] ?? null,
                 'headline'            => $validated['headline'] ?? '',
                 'headlineAccent'      => $validated['headlineAccent'] ?? null,
                 'headlineAccentColor' => $validated['headlineAccentColor'] ?? 'gold',
@@ -66,6 +73,10 @@ class BannerController extends Controller
                 'cta2Label'           => $validated['cta2Label'] ?? null,
                 'cta2Link'            => $validated['cta2Link'] ?? null,
                 'imagePosition'       => $validated['imagePosition'] ?? 'center center',
+                'imageScale'          => $validated['imageScale'] ?? 1,
+                'imagePositionMobile' => $validated['imagePositionMobile'] ?? null,
+                'imageScaleMobile'    => $validated['imageScaleMobile'] ?? null,
+                'imageFit'            => $validated['imageFit'] ?? 'cover',
                 'image'               => $validated['image'] ?? null,
                 'isVisible'           => $validated['isVisible'] ?? false,
                 'status'              => $validated['status'] ?? 'draft',
@@ -73,6 +84,7 @@ class BannerController extends Controller
                 'scheduleStart'       => $validated['scheduleStart'] ?? null,
                 'scheduleEnd'         => $validated['scheduleEnd'] ?? null,
                 'showOn'              => $validated['showOn'] ?? 'both',
+                'heroRole'            => $validated['heroRole'] ?? null,
             ]);
 
             Cache::forget('admin_banners');
@@ -98,6 +110,7 @@ class BannerController extends Controller
             }
 
             $validated = $request->validate([
+                'name'                => 'nullable|string|max:100',
                 'headline'            => 'nullable|string|max:255',
                 'headlineAccent'      => 'nullable|string|max:255',
                 'headlineAccentColor' => 'nullable|in:gold,red,white',
@@ -110,6 +123,10 @@ class BannerController extends Controller
                 'cta2Label'           => 'nullable|string',
                 'cta2Link'            => 'nullable|string',
                 'imagePosition'       => 'nullable|string|max:40',
+                'imageScale'          => 'nullable|numeric|min:1|max:3',
+                'imagePositionMobile' => 'nullable|string|max:40',
+                'imageScaleMobile'    => 'nullable|numeric|min:1|max:3',
+                'imageFit'            => 'nullable|in:contain,cover',
                 'image'               => 'nullable|string',
                 'isVisible'           => 'nullable|boolean',
                 'status'              => 'nullable|in:draft,live,scheduled',
@@ -117,6 +134,7 @@ class BannerController extends Controller
                 'scheduleStart'       => 'nullable|date',
                 'scheduleEnd'         => 'nullable|date',
                 'showOn'              => 'nullable|in:both,shop,landing',
+                'heroRole'            => 'nullable|in:tagline,image',
             ]);
 
             $banner->update($validated);
@@ -170,6 +188,7 @@ class BannerController extends Controller
                 'isVisible' => true,
             ]);
 
+            Cache::forget('admin_banners');
             return $this->successResponse('Banner published.', $banner);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while publishing banner.');
@@ -194,6 +213,7 @@ class BannerController extends Controller
                 'isVisible' => false,
             ]);
 
+            Cache::forget('admin_banners');
             return $this->successResponse('Banner unpublished.', $banner);
         } catch (\Exception $e) {
             return $this->serverErrorResponse($e, 'An unexpected error occurred while unpublishing banner.');

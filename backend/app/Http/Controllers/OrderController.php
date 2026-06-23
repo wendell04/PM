@@ -94,11 +94,14 @@ class OrderController extends Controller
                 'deliveryAddress.house_number'=> 'nullable|string|max:100',
                 'deliveryAddress.street'      => 'nullable|string|max:255',
                 'deliveryAddress.subdivision' => 'nullable|string|max:255',
+                'deliveryAddress.region'      => 'nullable|string|max:255',
                 'deliveryAddress.barangay'    => 'nullable|string|max:255',
                 'deliveryAddress.city'        => 'nullable|string|max:255',
                 'deliveryAddress.province'    => 'nullable|string|max:255',
                 'deliveryAddress.zip'         => 'nullable|string|max:10',
                 'deliveryAddress.phone'       => 'nullable|string|max:30',
+                'deliveryAddress.lat'         => 'nullable|numeric|between:-90,90',
+                'deliveryAddress.lng'         => 'nullable|numeric|between:-180,180',
                 'design_file'                 => 'nullable|file|mimes:jpeg,jpg,png,webp,pdf|max:10240',
                 'design_notes'                => 'nullable|string|max:2000',
                 'voucherCode'                 => 'nullable|string|max:50',
@@ -682,6 +685,7 @@ class OrderController extends Controller
             'items',
             'subtotal',
             'shippingFee',
+            'courierFee',
             'totalAmount',
             'total',
             'totalPrice',
@@ -731,6 +735,9 @@ class OrderController extends Controller
                 'paymentStatus' => 'sometimes|in:unpaid,partial,paid',
                 'notes'         => 'nullable|string|max:1000',
                 'shippingFee'   => 'sometimes|numeric|min:0|max:50000',
+                // Courier-booked delivery fee — paid by the customer directly to the
+                // rider on delivery. Informational only: does NOT change the order total.
+                'courierFee'    => 'sometimes|numeric|min:0|max:50000',
             ]);
 
             // Block for_delivery if DP custom order hasn't been fully paid
@@ -756,6 +763,35 @@ class OrderController extends Controller
                 $subtotal = (float) ($order->subtotal ?? ($order->totalAmount - $prevShipping));
                 $order->totalAmount = round($subtotal + (float) $validated['shippingFee'], 2);
                 $order->save();
+            }
+
+            // Courier-booked delivery fee: store as informational only (paid by the
+            // customer to the rider on delivery — NOT added to the shop's order total).
+            // Notify the customer so they have cash ready.
+            if (array_key_exists('courierFee', $validated)) {
+                $newFee = (float) $validated['courierFee'];
+                $prevFee = (float) ($order->getOriginal('courierFee') ?? 0);
+                $order->courierFee = $newFee;
+                $order->save();
+
+                if ($newFee > 0 && abs($newFee - $prevFee) > 0.001) {
+                    try {
+                        Notification::create([
+                            'user_id'    => (string) $order->userId,
+                            'type'       => 'delivery_fee_set',
+                            'title'      => 'Delivery Fee',
+                            'message'    => 'Your delivery fee for order #' .
+                                strtoupper(substr((string) $order->_id, -8)) .
+                                ' is ₱' . number_format($newFee, 2) .
+                                '. Please prepare this amount in cash to pay the rider on delivery.',
+                            'is_read'    => false,
+                            'data'       => ['orderId' => (string) $order->_id, 'courierFee' => $newFee],
+                            'created_at' => now(),
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::warning('adminUpdate: courier fee notification failed', ['error' => $e->getMessage()]);
+                    }
+                }
             }
 
             // Handle cancellation: cancel linked JobOrder and restore inventory
